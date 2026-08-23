@@ -1,0 +1,37 @@
+@use '@global-styles/helpers' as *;
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bone);
+  border: var(--border-width) solid var(--void);
+
+  &__header {
+    @include panel-header;
+
+    flex: 0 0 auto;
+  }
+
+  &__title {
+    @include label-text;
+  }
+
+  &__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  &__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: var(--space-3);
+
+    &--scroll {
+      @include scrollbar;
+
+      overflow-y: auto;
+    }
+  }
+}

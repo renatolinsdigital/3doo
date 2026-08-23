@@ -1,0 +1,70 @@
+@use '@global-styles/helpers' as *;
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-2) var(--space-4);
+  background: var(--oxblood);
+  color: var(--bone);
+  border-top: var(--border-width) solid var(--void);
+  overflow-x: auto;
+  white-space: nowrap;
+
+  &__section {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+
+    &--message {
+      flex: 1 1 auto;
+      min-width: 0;
+      gap: var(--space-3);
+    }
+
+    &--flags {
+      margin-left: auto;
+      gap: var(--space-2);
+    }
+  }
+
+  &__metric {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+
+  &__label {
+    @include label-text;
+
+    opacity: 0.75;
+  }
+
+  &__value {
+    @include mono-value;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  // Modal hints stay legible in the message slot, which never wraps.
+  &__section--message &__value {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  &__flag {
+    @include label-text;
+
+    padding: var(--space-1) var(--space-3);
+    border: var(--border-thin) solid var(--bone);
+    opacity: 0.6;
+
+    &--on {
+      background: var(--amber);
+      color: var(--void);
+      border-color: var(--void);
+      opacity: 1;
+    }
+  }
+}

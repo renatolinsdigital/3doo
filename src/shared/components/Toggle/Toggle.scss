@@ -1,0 +1,50 @@
+@use '@global-styles/helpers' as *;
+
+.toggle {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+
+  &__input {
+    @include visually-hidden;
+
+    // Focus lands on the hidden input, so the visible box carries the ring.
+    &:focus-visible + .toggle__label .toggle__box {
+      outline: var(--border-thin) solid var(--cyan);
+      outline-offset: 2px;
+    }
+
+    &:checked + .toggle__label .toggle__box {
+      background: var(--red);
+      color: var(--bone);
+    }
+
+    &:disabled + .toggle__label {
+      color: var(--ink-muted);
+      cursor: not-allowed;
+    }
+  }
+
+  &__label {
+    @include label-text;
+
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    width: 100%;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  &__box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    font-size: var(--text-md);
+    line-height: 1;
+    background: var(--bone);
+    border: var(--border-thin) solid var(--void);
+  }
+}

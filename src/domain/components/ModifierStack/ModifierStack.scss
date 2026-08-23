@@ -1,0 +1,65 @@
+@use '@global-styles/helpers' as *;
+
+.modifiers {
+  &__empty {
+    @include mono-value;
+
+    color: var(--ink-muted);
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  &__item {
+    border: var(--border-thin) solid var(--void);
+    background: var(--bone);
+  }
+
+  &__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    background: var(--rust);
+    color: var(--bone);
+    border-bottom: var(--border-thin) solid var(--void);
+  }
+
+  &__name {
+    @include label-text;
+  }
+
+  &__controls {
+    display: flex;
+    gap: var(--space-1);
+
+    button {
+      @include brutal-focus;
+
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      font-size: var(--text-xs);
+      color: var(--bone);
+      border: var(--border-thin) solid var(--bone);
+
+      &:hover:not(:disabled) {
+        background: var(--bone);
+        color: var(--rust);
+      }
+    }
+  }
+
+  &__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+}

@@ -1,0 +1,51 @@
+@use '@global-styles/helpers' as *;
+
+.icon-button {
+  @include brutal-border(var(--border-thin));
+  @include brutal-focus;
+  @include label-text;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 100%;
+  min-height: var(--hit-target);
+  padding: var(--space-2);
+  background: var(--bone);
+  color: var(--void);
+
+  &:hover:not(:disabled) {
+    background: var(--bone-dim);
+  }
+
+  &:active:not(:disabled) {
+    background: var(--bone-shade);
+  }
+
+  // Active tools read through three channels: fill, the inset bar, and the
+  // shortcut hint flipping to bone.
+  &--active {
+    @include active-indicator(var(--void));
+
+    background: var(--red);
+    color: var(--bone);
+
+    &:hover:not(:disabled) {
+      background: var(--rust);
+    }
+  }
+
+  &__glyph {
+    font-size: var(--text-lg);
+    line-height: 1;
+  }
+
+  &__shortcut {
+    font-size: 8px;
+    letter-spacing: 0.08em;
+    opacity: 0.75;
+  }
+}

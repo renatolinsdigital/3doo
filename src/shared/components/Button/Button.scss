@@ -1,0 +1,65 @@
+@use '@global-styles/helpers' as *;
+
+.button {
+  @include brutal-border;
+  @include brutal-shadow;
+  @include brutal-press;
+  @include brutal-focus;
+  @include label-text;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: var(--hit-target);
+  padding: var(--space-2) var(--space-4);
+  background: var(--bone);
+  color: var(--void);
+  transition: background-color 80ms linear;
+
+  &:hover:not(:disabled) {
+    background: var(--bone-dim);
+  }
+
+  &--primary {
+    background: var(--red);
+    color: var(--bone);
+
+    &:hover:not(:disabled) {
+      background: var(--rust);
+    }
+  }
+
+  &--danger {
+    background: var(--oxblood);
+    color: var(--bone);
+  }
+
+  &--ghost {
+    box-shadow: none;
+    background: transparent;
+
+    &:hover:not(:disabled) {
+      background: var(--bone-dim);
+    }
+  }
+
+  // Active state is carried by the inset bar as well as the fill, so it never
+  // depends on colour alone.
+  &--active {
+    @include active-indicator(var(--void));
+
+    background: var(--red);
+    color: var(--bone);
+  }
+
+  &--full {
+    width: 100%;
+  }
+
+  &__icon {
+    display: inline-flex;
+    font-size: var(--text-md);
+    line-height: 1;
+  }
+}

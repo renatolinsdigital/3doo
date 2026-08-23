@@ -1,0 +1,53 @@
+// Design tokens.
+//
+// Values live as CSS custom properties so they can be read at runtime (the
+// viewport needs the palette too); Sass provides the organisation and mixins.
+
+:root {
+  // Palette
+  --void: #0b0b0b;
+  --bone: #f4f1ea;
+  --red: #e5342a;
+  --oxblood: #7b1113;
+  --rust: #b8452f;
+  --ash: #1a1918;
+  --grid: #3a2a28;
+  --amber: #f2a03d;
+  --cyan: #3de0d0;
+
+  // Derived surfaces
+  --bone-dim: #ddd8cd;
+  --bone-shade: #c9c3b6;
+  --ink-muted: #57534c;
+
+  // Structure
+  --border-width: 3px;
+  --border-thin: 2px;
+  --shadow-offset: 4px;
+  --panel-gap: 8px;
+  --hit-target: 40px;
+  --rail-size: 56px;
+
+  // Spacing scale
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 24px;
+
+  // Typography
+  --font-display: 'Archivo Black', 'Arial Black', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
+
+  --text-xs: 10px;
+  --text-sm: 11px;
+  --text-md: 13px;
+  --text-lg: 16px;
+
+  // Z-index scale
+  --z-panel: 10;
+  --z-overlay: 100;
+  --z-modal: 1000;
+  --z-toast: 2000;
+}

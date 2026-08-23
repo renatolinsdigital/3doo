@@ -1,0 +1,51 @@
+@use '@global-styles/helpers' as *;
+
+.shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+
+  &__heading {
+    @include label-text;
+
+    padding-bottom: var(--space-2);
+    border-bottom: var(--border-width) solid var(--void);
+  }
+
+  &__list {
+    display: flex;
+    flex-direction: column;
+    margin-top: var(--space-2);
+  }
+
+  &__row {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: var(--space-3);
+    padding: var(--space-2) 0;
+    border-bottom: 1px solid var(--bone-shade);
+  }
+
+  &__keys {
+    @include mono-value;
+
+    font-weight: 700;
+  }
+
+  &__action {
+    @include mono-value;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+  }
+
+  &__mode {
+    @include label-text;
+
+    padding: 0 var(--space-2);
+    background: var(--bone-shade);
+    border: 1px solid var(--void);
+  }
+}

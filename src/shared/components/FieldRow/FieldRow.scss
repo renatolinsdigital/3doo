@@ -1,0 +1,32 @@
+@use '@global-styles/helpers' as *;
+
+.field-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+
+  &__legend {
+    @include label-text;
+
+    padding-bottom: var(--space-1);
+    color: var(--ink-muted);
+    border-bottom: var(--border-thin) solid var(--void);
+  }
+
+  &__grid {
+    display: grid;
+    gap: var(--space-2);
+
+    &--1 {
+      grid-template-columns: 1fr;
+    }
+
+    &--2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    &--3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+}

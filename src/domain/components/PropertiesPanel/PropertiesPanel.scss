@@ -1,0 +1,64 @@
+@use '@global-styles/helpers' as *;
+
+.properties {
+  &__empty,
+  &__hint {
+    @include mono-value;
+
+    color: var(--ink-muted);
+  }
+
+  &__hint {
+    font-size: var(--text-xs);
+  }
+
+  .panel__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  &__materials {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  &__material {
+    display: grid;
+    grid-template-columns: 1fr 36px;
+    border: var(--border-thin) solid var(--void);
+  }
+
+  &__material-slot {
+    @include label-text;
+    @include brutal-focus;
+
+    min-height: 28px;
+    padding: var(--space-2) var(--space-3);
+    text-align: left;
+    background: var(--bone);
+
+    &--active {
+      background: var(--red);
+      color: var(--bone);
+      box-shadow: inset 3px 0 0 var(--void);
+    }
+  }
+
+  &__swatch {
+    width: 100%;
+    height: 100%;
+    padding: 2px;
+    background: var(--bone);
+    border: none;
+    border-left: var(--border-thin) solid var(--void);
+    cursor: pointer;
+  }
+
+  &__material-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+}

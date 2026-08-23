@@ -1,0 +1,21 @@
+@use 'helpers' as *;
+
+.u-label {
+  @include label-text;
+}
+
+.u-display {
+  @include display-text;
+}
+
+.u-value {
+  @include mono-value;
+}
+
+.u-muted {
+  color: var(--ink-muted);
+}
+
+.u-visually-hidden {
+  @include visually-hidden;
+}

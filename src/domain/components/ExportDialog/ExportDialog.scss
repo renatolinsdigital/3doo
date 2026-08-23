@@ -1,0 +1,16 @@
+@use '@global-styles/helpers' as *;
+
+.export-dialog {
+  &__hint,
+  &__note {
+    @include mono-value;
+
+    font-size: var(--text-xs);
+    color: var(--ink-muted);
+  }
+
+  &__note {
+    padding: var(--space-3);
+    border: var(--border-thin) dashed var(--void);
+  }
+}
