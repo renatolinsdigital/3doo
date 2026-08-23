@@ -9,4 +9,5 @@ export { AddPanel } from './AddPanel/AddPanel';
 export { OperationsPanel } from './OperationsPanel/OperationsPanel';
 export { MergeDialog } from './MergeDialog/MergeDialog';
 export { ExportDialog } from './ExportDialog/ExportDialog';
+export { PreferencesDialog } from './PreferencesDialog/PreferencesDialog';
 export { ShortcutOverlay } from './ShortcutOverlay/ShortcutOverlay';

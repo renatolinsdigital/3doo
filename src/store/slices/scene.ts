@@ -66,6 +66,7 @@ export interface SceneSlice {
     options?: { touchGeometry?: boolean; status?: string },
   ) => void;
   setActiveObject: (id: string | null, additive?: boolean) => void;
+  selectAllObjects: () => void;
   renameObject: (id: string, name: string) => void;
   toggleObjectVisibility: (id: string) => void;
   toggleObjectLock: (id: string) => void;
@@ -209,6 +210,15 @@ export const createSceneSlice: StateCreator<
         : [id];
       return { activeObjectId: id, selectedObjectIds: selected };
     });
+  },
+
+  /** The object-mode equivalent of "select all" in edit mode. */
+  selectAllObjects: () => {
+    set((state) => ({
+      selectedObjectIds: state.objects.map((object) => object.id),
+      activeObjectId: state.activeObjectId ?? state.objects[state.objects.length - 1]?.id ?? null,
+      status: `Selected all ${state.objects.length} object(s)`,
+    }));
   },
 
   renameObject: (id, name) => {

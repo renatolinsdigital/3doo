@@ -12,4 +12,5 @@ export { Select, type SelectOption, type SelectProps } from './Select/Select';
 export { Modal, type ModalProps } from './Modal/Modal';
 export { Toast, type ToastProps, type ToastVariant } from './Toast/Toast';
 export { ToastHost } from './ToastHost/ToastHost';
+export { TooltipHost } from './TooltipHost/TooltipHost';
 export { FieldRow, type FieldRowProps } from './FieldRow/FieldRow';

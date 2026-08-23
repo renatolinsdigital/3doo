@@ -1,6 +1,6 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useEditorStore } from '@store/index';
 
@@ -18,6 +18,11 @@ vi.mock('@viewport/index', () => ({
 describe('App shell', () => {
   beforeEach(() => {
     useEditorStore.getState().resetScene();
+    useEditorStore.setState({ tooltipsEnabled: true, hint: null });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('renders the full brutalist layout', () => {
@@ -139,5 +144,92 @@ describe('App shell', () => {
 
     expect(useEditorStore.getState().objects[0].modifiers).toHaveLength(0);
     expect(within(modifiers).getByText(/Stack is empty/i)).toBeInTheDocument();
+  });
+
+  it('selects all objects when pressing A in object mode', async () => {
+    render(<App />);
+    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'PLANE' }));
+    act(() => useEditorStore.getState().setActiveObject(null));
+    expect(useEditorStore.getState().selectedObjectIds).toHaveLength(0);
+
+    fireEvent.keyDown(window, { key: 'a' });
+
+    expect(useEditorStore.getState().selectedObjectIds).toHaveLength(2);
+    expect(screen.getByRole('status')).toHaveTextContent('Selected all 2 object(s)');
+  });
+
+  it('selects all geometry when pressing A in edit mode', async () => {
+    render(<App />);
+    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(screen.getByRole('button', { name: 'EDIT' }));
+
+    fireEvent.keyDown(window, { key: 'a' });
+
+    expect(useEditorStore.getState().objects[0].mesh.selectedFaces()).toHaveLength(6);
+  });
+
+  it('treats Ctrl+A as a no-op that only suppresses the browser default', async () => {
+    render(<App />);
+    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    act(() => useEditorStore.getState().setActiveObject(null));
+    expect(useEditorStore.getState().selectedObjectIds).toHaveLength(0);
+
+    // fireEvent's return value mirrors dispatchEvent: false means preventDefault() ran.
+    const notPrevented = fireEvent.keyDown(window, { key: 'a', ctrlKey: true });
+
+    expect(notPrevented).toBe(false);
+    expect(useEditorStore.getState().selectedObjectIds).toHaveLength(0);
+  });
+
+  it('shows a hint tooltip after hovering a control, once the delay passes', () => {
+    render(<App />);
+    const exportButton = screen.getByRole('button', { name: 'EXPORT' });
+
+    vi.useFakeTimers();
+    fireEvent.mouseEnter(exportButton);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/export the scene/i);
+
+    fireEvent.mouseLeave(exportButton);
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('stops showing hint tooltips once disabled from Preferences', async () => {
+    render(<App />);
+    await userEvent.click(screen.getByRole('button', { name: 'PREFS' }));
+    const dialog = screen.getByRole('dialog', { name: 'PREFERENCES' });
+    await userEvent.click(
+      within(dialog).getByRole('checkbox', { name: 'SHOW HINT TOOLTIPS' }),
+    );
+    await userEvent.keyboard('{Escape}');
+    expect(useEditorStore.getState().tooltipsEnabled).toBe(false);
+
+    vi.useFakeTimers();
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'EXPORT' }));
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+  });
+
+  it('credits the developer in the shortcuts overlay with a LinkedIn link', async () => {
+    render(<App />);
+    await userEvent.click(screen.getByRole('button', { name: '?' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'KEYBOARD SHORTCUTS' });
+    const link = within(dialog).getByRole('link', { name: 'Renato Lins' });
+
+    expect(link).toHaveAttribute('href', 'https://www.linkedin.com/in/renatolinsdigital/');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link.getAttribute('rel')).toEqual(expect.stringContaining('noopener'));
   });
 });

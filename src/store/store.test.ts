@@ -235,4 +235,23 @@ describe('editor store', () => {
     store().exec('subdivide', { cuts: 1 }, 'Subdivide');
     expect(store().meshVersion).toBeGreaterThan(afterAdd);
   });
+
+  it('selects every object in the scene, the object-mode equivalent of edit-mode select all', () => {
+    store().addPrimitive('box');
+    store().addPrimitive('cylinder');
+    store().setActiveObject(null);
+    expect(store().selectedObjectIds).toHaveLength(0);
+
+    store().selectAllObjects();
+
+    expect(store().selectedObjectIds).toHaveLength(2);
+    expect(store().selectedObjectIds).toEqual(store().objects.map((object) => object.id));
+    expect(store().status).toMatch(/Selected all 2 object/);
+  });
+
+  it('leaves an empty scene alone when selecting all objects', () => {
+    store().selectAllObjects();
+    expect(store().selectedObjectIds).toEqual([]);
+    expect(store().activeObjectId).toBeNull();
+  });
 });

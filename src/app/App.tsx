@@ -1,4 +1,4 @@
-import { ToastHost } from '@shared/components';
+import { ToastHost, TooltipHost } from '@shared/components';
 import { useEditorStore } from '@store/index';
 
 import {
@@ -8,6 +8,7 @@ import {
   ModifierStack,
   OperationsPanel,
   Outliner,
+  PreferencesDialog,
   PropertiesPanel,
   ShortcutOverlay,
   StatusBar,
@@ -57,8 +58,10 @@ export function App() {
 
       <ExportDialog />
       <MergeDialog />
+      <PreferencesDialog />
       <ShortcutOverlay />
       <ToastHost />
+      <TooltipHost />
     </div>
   );
 }

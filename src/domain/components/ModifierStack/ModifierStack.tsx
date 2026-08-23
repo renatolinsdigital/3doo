@@ -1,5 +1,6 @@
 import type { Modifier, ModifierType } from '@kernel/index';
 import { NumberField, Panel, Select, Toggle } from '@shared/components';
+import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
 import { useActiveObject, useEditorStore } from '@store/index';
 
 import './ModifierStack.scss';
@@ -36,6 +37,7 @@ export function ModifierStack() {
         <Select
           label="Add modifier"
           hideLabel
+          hint="Add a non-destructive modifier to the stack"
           value={'' as ModifierType | ''}
           options={[{ value: '' as const, label: '+ ADD' }, ...MODIFIER_OPTIONS]}
           onChange={(value) => {
@@ -55,36 +57,36 @@ export function ModifierStack() {
               <header className="modifiers__header">
                 <span className="modifiers__name">{modifier.name}</span>
                 <div className="modifiers__controls">
-                  <button
-                    type="button"
-                    aria-label={`Move ${modifier.name} up`}
+                  <ModifierIconButton
+                    label={`Move ${modifier.name} up`}
+                    hint="Move this modifier earlier in the stack"
                     disabled={index === 0}
                     onClick={() => moveModifier(modifier.id, -1)}
                   >
                     ▲
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Move ${modifier.name} down`}
+                  </ModifierIconButton>
+                  <ModifierIconButton
+                    label={`Move ${modifier.name} down`}
+                    hint="Move this modifier later in the stack"
                     disabled={index === object.modifiers.length - 1}
                     onClick={() => moveModifier(modifier.id, 1)}
                   >
                     ▼
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Apply ${modifier.name}`}
+                  </ModifierIconButton>
+                  <ModifierIconButton
+                    label={`Apply ${modifier.name}`}
+                    hint="Bake this modifier into the base mesh and remove it from the stack"
                     onClick={() => applyModifier(modifier.id)}
                   >
                     ✓
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`Remove ${modifier.name}`}
+                  </ModifierIconButton>
+                  <ModifierIconButton
+                    label={`Remove ${modifier.name}`}
+                    hint="Discard this modifier without applying it"
                     onClick={() => removeModifier(modifier.id)}
                   >
                     ✕
-                  </button>
+                  </ModifierIconButton>
                 </div>
               </header>
 
@@ -92,6 +94,7 @@ export function ModifierStack() {
                 <Toggle
                   label="ENABLED"
                   checked={modifier.enabled}
+                  hint="Include this modifier when the mesh is displayed and exported"
                   onChange={(enabled) => updateModifier(modifier.id, { enabled })}
                 />
                 <ModifierFields
@@ -104,6 +107,24 @@ export function ModifierStack() {
         </ul>
       )}
     </Panel>
+  );
+}
+
+interface ModifierIconButtonProps {
+  label: string;
+  hint: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: string;
+}
+
+/** The stack's reorder/apply/remove glyphs are too small for Button/IconButton's layout. */
+function ModifierIconButton({ label, hint, disabled, onClick, children }: ModifierIconButtonProps) {
+  const tooltip = useTooltipTrigger(hint);
+  return (
+    <button type="button" aria-label={label} disabled={disabled} onClick={onClick} {...tooltip}>
+      {children}
+    </button>
   );
 }
 
@@ -121,12 +142,14 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
             key={axis}
             label={`AXIS ${axis.toUpperCase()}`}
             checked={modifier.axes[axis]}
+            hint={`Mirror geometry across the ${axis.toUpperCase()} axis`}
             onChange={(checked) => onChange({ axes: { ...modifier.axes, [axis]: checked } })}
           />
         ))}
         <Toggle
           label="MERGE"
           checked={modifier.merge}
+          hint="Weld the seam where the mirrored halves meet"
           onChange={(merge) => onChange({ merge })}
         />
         <NumberField
@@ -135,16 +158,19 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
           step={0.001}
           min={0}
           precision={4}
+          hint="Maximum gap across the seam that still gets welded"
           onChange={(mergeThreshold) => onChange({ mergeThreshold })}
         />
         <Toggle
           label="CLIPPING"
           checked={modifier.clipping}
+          hint="Snap vertices near the mirror plane onto it"
           onChange={(clipping) => onChange({ clipping })}
         />
         <Toggle
           label="BISECT"
           checked={modifier.bisect}
+          hint="Discard the half that would overlap its own reflection"
           onChange={(bisect) => onChange({ bisect })}
         />
       </>
@@ -161,11 +187,13 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
           min={1}
           max={128}
           precision={0}
+          hint="How many copies to place, including the original"
           onChange={(count) => onChange({ count: Math.round(count) })}
         />
         <Toggle
           label="RELATIVE"
           checked={modifier.useRelative}
+          hint="Offset each copy as a fraction of the mesh's own bounding box"
           onChange={(useRelative) => onChange({ useRelative })}
         />
         {(['x', 'y', 'z'] as const).map((axis) => (
@@ -175,6 +203,7 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
             value={modifier.relativeOffset[axis]}
             step={0.1}
             disabled={!modifier.useRelative}
+            hint={`Relative offset per copy along ${axis.toUpperCase()}`}
             onChange={(value) =>
               onChange({ relativeOffset: { ...modifier.relativeOffset, [axis]: value } })
             }
@@ -183,6 +212,7 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
         <Toggle
           label="CONSTANT"
           checked={modifier.useConstant}
+          hint="Offset each copy by a fixed distance, on top of the relative offset"
           onChange={(useConstant) => onChange({ useConstant })}
         />
         {(['x', 'y', 'z'] as const).map((axis) => (
@@ -192,12 +222,18 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
             value={modifier.constantOffset[axis]}
             step={0.1}
             disabled={!modifier.useConstant}
+            hint={`Constant offset per copy along ${axis.toUpperCase()}`}
             onChange={(value) =>
               onChange({ constantOffset: { ...modifier.constantOffset, [axis]: value } })
             }
           />
         ))}
-        <Toggle label="MERGE" checked={modifier.merge} onChange={(merge) => onChange({ merge })} />
+        <Toggle
+          label="MERGE"
+          checked={modifier.merge}
+          hint="Weld vertices where consecutive copies touch"
+          onChange={(merge) => onChange({ merge })}
+        />
       </>
     );
   }
@@ -209,16 +245,19 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
           label="THICKNESS"
           value={modifier.thickness}
           step={0.01}
+          hint="How far to extrude the shell along vertex normals"
           onChange={(thickness) => onChange({ thickness })}
         />
         <Toggle
           label="EVEN OFFSET"
           checked={modifier.evenOffset}
+          hint="Split the thickness evenly to either side of the surface"
           onChange={(evenOffset) => onChange({ evenOffset })}
         />
         <Toggle
           label="RIM FILL"
           checked={modifier.rimFill}
+          hint="Close the open edge of the shell with rim faces"
           onChange={(rimFill) => onChange({ rimFill })}
         />
       </>
@@ -233,6 +272,7 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
         step={0.001}
         min={0}
         precision={4}
+        hint="Vertices closer than this are merged together"
         onChange={(threshold) => onChange({ threshold })}
       />
     );
@@ -247,6 +287,7 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
         min={0}
         max={3}
         precision={0}
+        hint="How many Catmull-Clark subdivision passes to apply"
         onChange={(levels) => onChange({ levels: Math.round(levels) })}
       />
       <NumberField
@@ -255,6 +296,7 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
         step={0.1}
         min={0}
         max={1}
+        hint="Blend toward the limit surface versus the flat cage"
         onChange={(smooth) => onChange({ smooth })}
       />
     </>

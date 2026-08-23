@@ -84,7 +84,14 @@ export interface Toast {
   message: string;
 }
 
-export type DialogId = 'export' | 'shortcuts' | 'merge' | null;
+export type DialogId = 'export' | 'shortcuts' | 'merge' | 'preferences' | null;
+
+export interface HintState {
+  text: string;
+  /** Viewport-relative; the host is `position: fixed` so no portal is needed. */
+  x: number;
+  y: number;
+}
 
 export interface LastOperator {
   name: string;

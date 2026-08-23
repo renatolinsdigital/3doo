@@ -5,6 +5,7 @@ import {
   degToRad,
 } from '@kernel/index';
 import { Button, FieldRow, NumberField, Panel, Toggle } from '@shared/components';
+import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
 import { useActiveObject, useEditorStore } from '@store/index';
 
 import './PropertiesPanel.scss';
@@ -18,6 +19,17 @@ const PARAM_LABELS: Record<keyof PrimitiveParams, string> = {
   rings: 'RINGS',
   subdivisions: 'SUBDIV',
   capFill: 'CAPS',
+};
+
+const PARAM_HINTS: Record<keyof PrimitiveParams, string> = {
+  size: 'Overall edge length of the shape',
+  radius: 'Distance from the center to the surface',
+  radius2: 'Radius of the tube swept around the ring',
+  height: 'Distance from base to tip along the local Y axis',
+  segments: 'Number of divisions around the shape',
+  rings: 'Number of divisions from pole to pole, or around the tube',
+  subdivisions: 'How many times to split the base icosahedron',
+  capFill: 'Fill the open ends with a face instead of leaving them open',
 };
 
 export function PropertiesPanel() {
@@ -50,6 +62,7 @@ export function PropertiesPanel() {
             label={axis.toUpperCase()}
             value={transform.position[axis]}
             step={0.1}
+            hint={`World-space ${axis.toUpperCase()} position; drag the label to scrub`}
             onChange={(value) =>
               setObjectTransform(object.id, {
                 position: { ...transform.position, [axis]: value },
@@ -67,6 +80,7 @@ export function PropertiesPanel() {
             value={Number(radToDeg(transform.rotation[axis]).toFixed(2))}
             step={1}
             suffix="°"
+            hint={`Rotation around the ${axis.toUpperCase()} axis, in degrees`}
             onChange={(value) =>
               setObjectTransform(object.id, {
                 rotation: { ...transform.rotation, [axis]: degToRad(value) },
@@ -83,6 +97,7 @@ export function PropertiesPanel() {
             label={axis.toUpperCase()}
             value={transform.scale[axis]}
             step={0.05}
+            hint={`Scale factor along the ${axis.toUpperCase()} axis`}
             onChange={(value) =>
               setObjectTransform(object.id, {
                 scale: { ...transform.scale, [axis]: value },
@@ -100,6 +115,7 @@ export function PropertiesPanel() {
                 key={field}
                 label={PARAM_LABELS[field]}
                 checked={object.primitive?.params.capFill ?? true}
+                hint={PARAM_HINTS[field]}
                 onChange={(checked) => updatePrimitiveParams({ capFill: checked })}
               />
             ) : (
@@ -109,6 +125,7 @@ export function PropertiesPanel() {
                 value={object.primitive?.params[field] as number}
                 step={field === 'segments' || field === 'rings' || field === 'subdivisions' ? 1 : 0.1}
                 min={field === 'segments' || field === 'rings' ? 3 : 0}
+                hint={PARAM_HINTS[field]}
                 onChange={(value) => updatePrimitiveParams({ [field]: value })}
               />
             ),
@@ -122,35 +139,28 @@ export function PropertiesPanel() {
       <FieldRow legend="MATERIALS" columns={1}>
         <ul className="properties__materials">
           {object.materials.map((material, index) => (
-            <li key={material.id} className="properties__material">
-              <button
-                type="button"
-                className={`properties__material-slot${
-                  index === object.activeMaterial ? ' properties__material-slot--active' : ''
-                }`}
-                aria-pressed={index === object.activeMaterial}
-                onClick={() => setActiveMaterial(index)}
-              >
-                {material.name}
-              </button>
-              <input
-                className="properties__swatch"
-                type="color"
-                aria-label={`${material.name} colour`}
-                value={toHex(material.color)}
-                onChange={(event) =>
-                  updateMaterial(index, { color: fromHex(event.target.value) })
-                }
-              />
-            </li>
+            <MaterialRow
+              key={material.id}
+              name={material.name}
+              active={index === object.activeMaterial}
+              color={material.color}
+              onSelect={() => setActiveMaterial(index)}
+              onColorChange={(color) => updateMaterial(index, { color })}
+            />
           ))}
         </ul>
         <div className="properties__material-actions">
-          <Button label="ADD SLOT" variant="secondary" onClick={addMaterial} />
+          <Button
+            label="ADD SLOT"
+            variant="secondary"
+            hint="Add another material slot to this object"
+            onClick={addMaterial}
+          />
           <Button
             label="ASSIGN"
             variant="secondary"
             disabled={mode !== 'edit'}
+            hint="Assign the active material slot to the selected faces"
             onClick={assignMaterial}
           />
         </div>
@@ -160,14 +170,62 @@ export function PropertiesPanel() {
         <FieldRow legend="NORMALS" columns={2}>
           <Button
             label="RECALC"
+            hint="Make winding consistent and point normals outward"
             onClick={() => exec('recalculateNormals', { outside: true }, 'Recalculate normals')}
           />
-          <Button label="FLIP" onClick={() => exec('flipNormals', {}, 'Flip normals')} />
-          <Button label="SHADE SMOOTH" onClick={() => exec('shade', { smooth: true }, 'Shade smooth')} />
-          <Button label="SHADE FLAT" onClick={() => exec('shade', { smooth: false }, 'Shade flat')} />
+          <Button
+            label="FLIP"
+            hint="Reverse the winding of the selected (or all) faces"
+            onClick={() => exec('flipNormals', {}, 'Flip normals')}
+          />
+          <Button
+            label="SHADE SMOOTH"
+            hint="Interpolate normals across faces for a rounded look"
+            onClick={() => exec('shade', { smooth: true }, 'Shade smooth')}
+          />
+          <Button
+            label="SHADE FLAT"
+            hint="Use one flat normal per face"
+            onClick={() => exec('shade', { smooth: false }, 'Shade flat')}
+          />
         </FieldRow>
       ) : null}
     </Panel>
+  );
+}
+
+interface MaterialRowProps {
+  name: string;
+  active: boolean;
+  color: { r: number; g: number; b: number };
+  onSelect: () => void;
+  onColorChange: (color: { r: number; g: number; b: number }) => void;
+}
+
+function MaterialRow({ name, active, color, onSelect, onColorChange }: MaterialRowProps) {
+  const slotTooltip = useTooltipTrigger('Make this the active material slot for Assign');
+  const swatchTooltip = useTooltipTrigger(`${name} colour`);
+
+  return (
+    <li className="properties__material">
+      <button
+        type="button"
+        className={`properties__material-slot${active ? ' properties__material-slot--active' : ''}`}
+        aria-pressed={active}
+        onClick={onSelect}
+        {...slotTooltip}
+      >
+        {name}
+      </button>
+      <input
+        className="properties__swatch"
+        type="color"
+        aria-label={`${name} colour`}
+        value={toHex(color)}
+        onChange={(event) => onColorChange(fromHex(event.target.value))}
+        {...swatchTooltip}
+      />
+    </li>
   );
 }
 

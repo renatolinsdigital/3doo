@@ -47,15 +47,23 @@ export function OperationsPanel() {
   return (
     <Panel title="OPERATIONS" className="operations">
       <FieldRow legend="EXTRUDE" columns={1}>
-        <NumberField label="OFFSET" value={extrudeOffset} step={0.1} onChange={setExtrudeOffset} />
+        <NumberField
+          label="OFFSET"
+          value={extrudeOffset}
+          step={0.1}
+          hint="Distance to push the new geometry along the normal"
+          onChange={setExtrudeOffset}
+        />
         <Toggle
           label="INDIVIDUAL"
           checked={extrudeIndividual}
+          hint="Extrude each selected face along its own normal"
           onChange={setExtrudeIndividual}
         />
         <Button
           label="EXTRUDE"
           variant="primary"
+          hint="Pull the selected faces or edges out into new geometry (E)"
           onClick={() =>
             exec('extrude', { offset: extrudeOffset, individual: extrudeIndividual }, 'Extrude')
           }
@@ -68,17 +76,32 @@ export function OperationsPanel() {
           value={insetThickness}
           step={0.05}
           min={0}
+          hint="Width of the border ring left around the inset face"
           onChange={setInsetThickness}
         />
-        <NumberField label="DEPTH" value={insetDepth} step={0.05} onChange={setInsetDepth} />
+        <NumberField
+          label="DEPTH"
+          value={insetDepth}
+          step={0.05}
+          hint="Push the inset face along the normal while insetting"
+          onChange={setInsetDepth}
+        />
         <Button
           label="INSET"
+          hint="Shrink the selected faces inward, keeping the border (I)"
           onClick={() => exec('inset', { thickness: insetThickness, depth: insetDepth }, 'Inset')}
         />
       </FieldRow>
 
       <FieldRow legend="BEVEL" columns={1}>
-        <NumberField label="WIDTH" value={bevelWidth} step={0.02} min={0} onChange={setBevelWidth} />
+        <NumberField
+          label="WIDTH"
+          value={bevelWidth}
+          step={0.02}
+          min={0}
+          hint="How far the chamfer eats into the adjacent faces"
+          onChange={setBevelWidth}
+        />
         <NumberField
           label="SEGMENTS"
           value={bevelSegments}
@@ -86,10 +109,12 @@ export function OperationsPanel() {
           min={1}
           max={12}
           precision={0}
+          hint="More segments round the chamfer instead of leaving it flat"
           onChange={(value) => setBevelSegments(Math.round(value))}
         />
         <Button
           label="BEVEL"
+          hint="Chamfer the selected edges (Ctrl+B)"
           onClick={() =>
             exec('bevel', { width: bevelWidth, segments: bevelSegments }, 'Bevel')
           }
@@ -104,9 +129,14 @@ export function OperationsPanel() {
           min={1}
           max={32}
           precision={0}
+          hint="How many evenly spaced loops to insert at once"
           onChange={(value) => setLoopCuts(Math.round(value))}
         />
-        <Button label="LOOP CUT" onClick={() => exec('loopCut', { cuts: loopCuts }, 'Loop cut')} />
+        <Button
+          label="LOOP CUT"
+          hint="Insert a new edge loop across the selected edge's quad ring (Ctrl+R)"
+          onClick={() => exec('loopCut', { cuts: loopCuts }, 'Loop cut')}
+        />
       </FieldRow>
 
       <FieldRow legend="SUBDIVIDE" columns={1}>
@@ -117,6 +147,7 @@ export function OperationsPanel() {
           min={1}
           max={4}
           precision={0}
+          hint="How many times to split each selected face"
           onChange={(value) => setSubdivideCuts(Math.round(value))}
         />
         <NumberField
@@ -125,10 +156,12 @@ export function OperationsPanel() {
           step={0.1}
           min={0}
           max={1}
+          hint="Blend toward the Catmull-Clark limit surface"
           onChange={setSubdivideSmooth}
         />
         <Button
           label="SUBDIVIDE"
+          hint="Split each selected face into four smaller faces"
           onClick={() =>
             exec('subdivide', { cuts: subdivideCuts, smooth: subdivideSmooth }, 'Subdivide')
           }
@@ -136,10 +169,26 @@ export function OperationsPanel() {
       </FieldRow>
 
       <FieldRow legend="CLEAN UP" columns={1}>
-        <Button label="MERGE BY DISTANCE…" onClick={() => openDialog('merge')} />
-        <Button label="MERGE AT CENTER" onClick={() => exec('merge', { mode: 'center' }, 'Merge')} />
-        <Button label="TRIANGULATE" onClick={() => exec('triangulate', {}, 'Triangulate')} />
-        <Button label="TRIS TO QUADS" onClick={() => exec('trisToQuads', {}, 'Tris to quads')} />
+        <Button
+          label="MERGE BY DISTANCE…"
+          hint="Weld nearby vertices together, with a live preview count"
+          onClick={() => openDialog('merge')}
+        />
+        <Button
+          label="MERGE AT CENTER"
+          hint="Collapse the selected vertices to their shared center"
+          onClick={() => exec('merge', { mode: 'center' }, 'Merge')}
+        />
+        <Button
+          label="TRIANGULATE"
+          hint="Split every face into triangles"
+          onClick={() => exec('triangulate', {}, 'Triangulate')}
+        />
+        <Button
+          label="TRIS TO QUADS"
+          hint="Merge adjacent, near-coplanar triangle pairs back into quads"
+          onClick={() => exec('trisToQuads', {}, 'Tris to quads')}
+        />
       </FieldRow>
 
       <FieldRow legend="DELETE" columns={1}>
@@ -147,11 +196,13 @@ export function OperationsPanel() {
           label="MODE"
           value={deleteMode}
           options={DELETE_MODES}
+          hint="What kind of element the Delete button removes"
           onChange={setDeleteMode}
         />
         <Button
           label="DELETE"
           variant="danger"
+          hint="Remove the selected geometry outright (X)"
           onClick={() => exec('delete', { mode: deleteMode }, `Delete ${deleteMode}`)}
         />
       </FieldRow>
@@ -161,25 +212,44 @@ export function OperationsPanel() {
           label="MODE"
           value={dissolveMode}
           options={DISSOLVE_MODES}
+          hint="What kind of element the Dissolve button removes"
           onChange={setDissolveMode}
         />
         <Button
           label="DISSOLVE"
+          hint="Remove topology while keeping the surrounding surface intact"
           onClick={() => exec('dissolve', { mode: dissolveMode }, `Dissolve ${dissolveMode}`)}
         />
       </FieldRow>
 
       <FieldRow legend="TOPOLOGY" columns={2}>
-        <Button label="FILL" onClick={() => exec('fill', {}, 'Fill')} />
-        <Button label="BRIDGE" onClick={() => exec('bridge', {}, 'Bridge')} />
-        <Button label="GROW" onClick={() => exec('growSelection', {}, 'Grow selection')} />
-        <Button label="SHRINK" onClick={() => exec('shrinkSelection', {}, 'Shrink selection')} />
+        <Button
+          label="FILL"
+          hint="Fill a selected open boundary loop with a new face (F)"
+          onClick={() => exec('fill', {}, 'Fill')}
+        />
+        <Button
+          label="BRIDGE"
+          hint="Connect two open edge loops with a band of quads"
+          onClick={() => exec('bridge', {}, 'Bridge')}
+        />
+        <Button
+          label="GROW"
+          hint="Extend the selection to adjacent geometry"
+          onClick={() => exec('growSelection', {}, 'Grow selection')}
+        />
+        <Button
+          label="SHRINK"
+          hint="Remove the border from the current selection"
+          onClick={() => exec('shrinkSelection', {}, 'Shrink selection')}
+        />
       </FieldRow>
 
       <FieldRow legend="PROPORTIONAL EDIT" columns={1}>
         <Toggle
           label="ENABLED"
           checked={proportional.enabled}
+          hint="Spread transforms to nearby unselected geometry"
           onChange={(enabled) => setProportional({ enabled })}
         />
         <NumberField
@@ -188,12 +258,14 @@ export function OperationsPanel() {
           step={0.1}
           min={0}
           disabled={!proportional.enabled}
+          hint="How far the falloff reaches from the selection"
           onChange={(radius) => setProportional({ radius })}
         />
         <Select
           label="FALLOFF"
           value={proportional.falloff}
           disabled={!proportional.enabled}
+          hint="The curve used to blend influence toward the edge of the radius"
           options={[
             { value: 'smooth', label: 'SMOOTH' },
             { value: 'sphere', label: 'SPHERE' },

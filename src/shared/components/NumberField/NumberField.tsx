@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
+import { useTooltipTrigger } from '../../hooks/useTooltipTrigger';
+
 import './NumberField.scss';
 
 export interface NumberFieldProps {
@@ -13,6 +15,7 @@ export interface NumberFieldProps {
   precision?: number;
   suffix?: string;
   disabled?: boolean;
+  hint?: string;
 }
 
 function clamp(value: number, min?: number, max?: number): number {
@@ -37,11 +40,13 @@ export function NumberField({
   precision = 3,
   suffix,
   disabled = false,
+  hint,
 }: NumberFieldProps) {
   const id = useId();
   const [draft, setDraft] = useState(() => String(value));
   const [editing, setEditing] = useState(false);
   const scrubbing = useRef<{ startX: number; startValue: number } | null>(null);
+  const tooltip = useTooltipTrigger(hint);
 
   useEffect(() => {
     if (!editing) setDraft(formatValue(value, precision));
@@ -74,7 +79,7 @@ export function NumberField({
   };
 
   return (
-    <div className="number-field">
+    <div className="number-field" {...tooltip}>
       <label
         className="number-field__label"
         htmlFor={id}

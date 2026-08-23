@@ -1,6 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { useEditorStore } from '@store/index';
 
 import { SegmentedControl } from './SegmentedControl';
 
@@ -11,6 +13,10 @@ const options = [
 ] as const;
 
 describe('SegmentedControl', () => {
+  beforeEach(() => {
+    useEditorStore.setState({ hint: null, tooltipsEnabled: true });
+  });
+
   it('marks only the selected option as pressed', () => {
     render(
       <SegmentedControl label="Select mode" options={options} value="edge" onChange={() => {}} />,
@@ -37,5 +43,15 @@ describe('SegmentedControl', () => {
     );
 
     expect(screen.getByRole('group', { name: 'Select mode' })).toBeInTheDocument();
+  });
+
+  it('shows the shortcut as a hint on focus', () => {
+    render(
+      <SegmentedControl label="Select mode" options={options} value="vertex" onChange={() => {}} />,
+    );
+
+    fireEvent.focus(screen.getByRole('button', { name: 'EDGE' }));
+
+    expect(useEditorStore.getState().hint?.text).toBe('EDGE (2)');
   });
 });

@@ -48,4 +48,24 @@
     background: var(--bone-shade);
     border: 1px solid var(--void);
   }
+
+  &__credit {
+    @include mono-value;
+
+    padding-top: var(--space-4);
+    border-top: var(--border-width) solid var(--void);
+    color: var(--ink-muted);
+    text-align: center;
+
+    a {
+      @include brutal-focus;
+
+      color: var(--red);
+      text-decoration: underline;
+
+      &:hover {
+        color: var(--rust);
+      }
+    }
+  }
 }

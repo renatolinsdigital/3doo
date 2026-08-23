@@ -50,16 +50,64 @@ export function TopBar() {
       </div>
 
       <div className="top-bar__actions">
-        <Button label="NEW" variant="ghost" onClick={resetScene} />
-        <Button label="OPEN" variant="ghost" onClick={() => void openProject()} />
-        <Button label="SAVE" variant="ghost" onClick={saveProject} />
-        <Button label="IMPORT" variant="ghost" onClick={() => void importMesh()} />
+        <Button
+          label="NEW"
+          variant="ghost"
+          hint="Start a blank project, discarding unsaved changes"
+          onClick={resetScene}
+        />
+        <Button
+          label="OPEN"
+          variant="ghost"
+          hint="Load a .3doo.json project file from disk"
+          onClick={() => void openProject()}
+        />
+        <Button
+          label="SAVE"
+          variant="ghost"
+          hint="Download the current project as a .3doo.json file"
+          onClick={saveProject}
+        />
+        <Button
+          label="IMPORT"
+          variant="ghost"
+          hint="Import geometry from an OBJ file as a new object"
+          onClick={() => void importMesh()}
+        />
         <span className="top-bar__divider" aria-hidden="true" />
-        <Button label="UNDO" variant="ghost" disabled={!canUndo} onClick={undo} />
-        <Button label="REDO" variant="ghost" disabled={!canRedo} onClick={redo} />
+        <Button
+          label="UNDO"
+          variant="ghost"
+          disabled={!canUndo}
+          hint="Undo the last action (Ctrl+Z)"
+          onClick={undo}
+        />
+        <Button
+          label="REDO"
+          variant="ghost"
+          disabled={!canRedo}
+          hint="Redo the last undone action (Ctrl+Shift+Z)"
+          onClick={redo}
+        />
         <span className="top-bar__divider" aria-hidden="true" />
-        <Button label="?" variant="ghost" onClick={() => openDialog('shortcuts')} />
-        <Button label="EXPORT" variant="primary" onClick={() => openDialog('export')} />
+        <Button
+          label="PREFS"
+          variant="ghost"
+          hint="Preferences, including turning hint tooltips on or off"
+          onClick={() => openDialog('preferences')}
+        />
+        <Button
+          label="?"
+          variant="ghost"
+          hint="Keyboard shortcuts (Shift+?)"
+          onClick={() => openDialog('shortcuts')}
+        />
+        <Button
+          label="EXPORT"
+          variant="primary"
+          hint="Export the scene as OBJ or ASCII FBX (Ctrl+E)"
+          onClick={() => openDialog('export')}
+        />
       </div>
     </header>
   );

@@ -62,6 +62,17 @@ export function ShortcutOverlay() {
           </dl>
         </section>
       </div>
+
+      <p className="shortcuts__credit">
+        Developed by{' '}
+        <a
+          href="https://www.linkedin.com/in/renatolinsdigital/"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Renato Lins
+        </a>
+      </p>
     </Modal>
   );
 }

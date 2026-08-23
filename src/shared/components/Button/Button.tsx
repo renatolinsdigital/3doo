@@ -1,5 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
+import { useTooltipTrigger } from '../../hooks/useTooltipTrigger';
+
 import './Button.scss';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'danger' | 'ghost';
@@ -10,6 +12,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon?: ReactNode;
   active?: boolean;
   fullWidth?: boolean;
+  /** Shown on hover/focus after a short delay; off when the user disables tooltips. */
+  hint?: string;
 }
 
 export function Button({
@@ -18,10 +22,12 @@ export function Button({
   icon,
   active = false,
   fullWidth = false,
+  hint,
   className,
   type = 'button',
   ...rest
 }: ButtonProps) {
+  const tooltip = useTooltipTrigger(hint);
   const classes = [
     'button',
     `button--${variant}`,
@@ -33,7 +39,13 @@ export function Button({
     .join(' ');
 
   return (
-    <button type={type} className={classes} aria-pressed={active || undefined} {...rest}>
+    <button
+      type={type}
+      className={classes}
+      aria-pressed={active || undefined}
+      {...rest}
+      {...tooltip}
+    >
       {icon ? (
         <span className="button__icon" aria-hidden="true">
           {icon}

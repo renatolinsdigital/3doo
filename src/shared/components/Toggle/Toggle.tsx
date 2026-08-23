@@ -1,5 +1,7 @@
 import { useId } from 'react';
 
+import { useTooltipTrigger } from '../../hooks/useTooltipTrigger';
+
 import './Toggle.scss';
 
 export interface ToggleProps {
@@ -7,13 +9,15 @@ export interface ToggleProps {
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
+  hint?: string;
 }
 
-export function Toggle({ label, checked, onChange, disabled = false }: ToggleProps) {
+export function Toggle({ label, checked, onChange, disabled = false, hint }: ToggleProps) {
   const id = useId();
+  const tooltip = useTooltipTrigger(hint);
 
   return (
-    <div className="toggle">
+    <div className="toggle" {...tooltip}>
       <input
         id={id}
         className="toggle__input"

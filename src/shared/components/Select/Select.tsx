@@ -1,5 +1,7 @@
 import { useId } from 'react';
 
+import { useTooltipTrigger } from '../../hooks/useTooltipTrigger';
+
 import './Select.scss';
 
 export interface SelectOption<T extends string> {
@@ -15,6 +17,7 @@ export interface SelectProps<T extends string> {
   disabled?: boolean;
   /** Keeps the accessible name but drops the visible label cell. */
   hideLabel?: boolean;
+  hint?: string;
 }
 
 export function Select<T extends string>({
@@ -24,11 +27,13 @@ export function Select<T extends string>({
   onChange,
   disabled = false,
   hideLabel = false,
+  hint,
 }: SelectProps<T>) {
   const id = useId();
+  const tooltip = useTooltipTrigger(hint);
 
   return (
-    <div className={`select${hideLabel ? ' select--bare' : ''}`}>
+    <div className={`select${hideLabel ? ' select--bare' : ''}`} {...tooltip}>
       <label
         className={hideLabel ? 'u-visually-hidden' : 'select__label'}
         htmlFor={id}

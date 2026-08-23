@@ -27,6 +27,15 @@ export function useKeymap(): void {
         return;
       }
 
+      // Ctrl/Cmd+A is deliberately a no-op over the viewport: the browser
+      // default is "select all page text", which breaks the 3D immersion the
+      // moment someone reaches for the wrong modifier. Plain "A" still selects
+      // all geometry/objects below.
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+        event.preventDefault();
+        return;
+      }
+
       const state = useEditorStore.getState();
       const binding = matchBinding(event, state.mode);
       if (!binding) return;
@@ -95,6 +104,7 @@ export function useKeymap(): void {
 
         case 'selectAll':
           if (state.mode === 'edit') state.exec('selectAll', {}, 'Select all');
+          else state.selectAllObjects();
           break;
         case 'deselectAll':
           if (state.mode === 'edit') state.exec('deselectAll', {}, 'Deselect all');

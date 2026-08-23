@@ -1,5 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
+import { useTooltipTrigger } from '../../hooks/useTooltipTrigger';
+
 import './IconButton.scss';
 
 export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
@@ -8,6 +10,8 @@ export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>
   icon: ReactNode;
   active?: boolean;
   shortcut?: string;
+  /** Overrides the default "label (shortcut)" tooltip with a fuller description. */
+  hint?: string;
 }
 
 export function IconButton({
@@ -15,10 +19,13 @@ export function IconButton({
   icon,
   active = false,
   shortcut,
+  hint,
   className,
   type = 'button',
   ...rest
 }: IconButtonProps) {
+  const tooltipText = hint ?? (shortcut ? `${label} (${shortcut})` : label);
+  const tooltip = useTooltipTrigger(tooltipText);
   const classes = ['icon-button', active ? 'icon-button--active' : '', className ?? '']
     .filter(Boolean)
     .join(' ');
@@ -27,10 +34,10 @@ export function IconButton({
     <button
       type={type}
       className={classes}
-      title={shortcut ? `${label} (${shortcut})` : label}
       aria-label={label}
       aria-pressed={active || undefined}
       {...rest}
+      {...tooltip}
     >
       <span className="icon-button__glyph" aria-hidden="true">
         {icon}
