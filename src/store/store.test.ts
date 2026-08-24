@@ -254,4 +254,46 @@ describe('editor store', () => {
     expect(store().selectedObjectIds).toEqual([]);
     expect(store().activeObjectId).toBeNull();
   });
+
+  it('patches several objects in a single call, for a multi-object gizmo drag', () => {
+    store().addPrimitive('box');
+    const first = store().objects[0].id;
+    store().addPrimitive('cylinder');
+    const second = store().objects[1].id;
+    const versionBefore = store().meshVersion;
+
+    store().setObjectTransforms([
+      { id: first, transform: { position: { x: 1, y: 2, z: 3 } } },
+      { id: second, transform: { position: { x: -1, y: -2, z: -3 } } },
+    ]);
+
+    const objects = store().objects;
+    expect(objects.find((o) => o.id === first)?.transform.position).toEqual({ x: 1, y: 2, z: 3 });
+    expect(objects.find((o) => o.id === second)?.transform.position).toEqual({
+      x: -1,
+      y: -2,
+      z: -3,
+    });
+    // One store update for the whole batch, not one per object.
+    expect(store().meshVersion).toBe(versionBefore + 1);
+  });
+
+  it('ignores a patch for an object that is not in the scene', () => {
+    store().addPrimitive('box');
+    const id = store().objects[0].id;
+    const originalPosition = store().objects[0].transform.position;
+
+    store().setObjectTransforms([{ id: 'not-a-real-id', transform: { position: { x: 9, y: 9, z: 9 } } }]);
+
+    expect(store().objects.find((o) => o.id === id)?.transform.position).toEqual(originalPosition);
+  });
+
+  it('does nothing on an empty patch list', () => {
+    store().addPrimitive('box');
+    const versionBefore = store().meshVersion;
+
+    store().setObjectTransforms([]);
+
+    expect(store().meshVersion).toBe(versionBefore);
+  });
 });

@@ -41,6 +41,26 @@ describe('NumberField', () => {
     expect(onChange).toHaveBeenLastCalledWith(1.5);
   });
 
+  it('rounds a typed fraction when the field is an integer', async () => {
+    const onChange = vi.fn();
+    render(<NumberField label="SEGMENTS" value={24} integer onChange={onChange} />);
+
+    const input = screen.getByLabelText('SEGMENTS');
+    await userEvent.clear(input);
+    await userEvent.type(input, '10.286{Enter}');
+
+    expect(onChange).toHaveBeenLastCalledWith(10);
+  });
+
+  it('steps an integer field by whole numbers', async () => {
+    const onChange = vi.fn();
+    render(<NumberField label="RINGS" value={12} integer onChange={onChange} />);
+
+    await userEvent.type(screen.getByLabelText('RINGS'), '{ArrowUp}');
+
+    expect(onChange).toHaveBeenLastCalledWith(13);
+  });
+
   it('ignores non-numeric input and restores the value', async () => {
     const onChange = vi.fn();
     render(<NumberField label="RADIUS" value={3} onChange={onChange} />);

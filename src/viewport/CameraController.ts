@@ -3,6 +3,12 @@ import * as THREE from 'three';
 import type { NavigationPreset } from '@store/types';
 
 /**
+ * Hard clamp on how far the orbit can zoom out. Shared with the viewport so it
+ * can decide when the scene has scrolled out of comfortable view.
+ */
+export const MAX_ORBIT_DISTANCE = 5000;
+
+/**
  * Orbit / pan / zoom with configurable bindings.
  *
  * Written by hand rather than using OrbitControls because the two presets bind
@@ -101,7 +107,11 @@ export class CameraController {
 
   onWheel(event: WheelEvent): void {
     const factor = Math.exp(event.deltaY * this.zoomSpeed);
-    this.spherical.radius = THREE.MathUtils.clamp(this.spherical.radius * factor, 0.05, 5000);
+    this.spherical.radius = THREE.MathUtils.clamp(
+      this.spherical.radius * factor,
+      0.05,
+      MAX_ORBIT_DISTANCE,
+    );
     this.apply();
   }
 

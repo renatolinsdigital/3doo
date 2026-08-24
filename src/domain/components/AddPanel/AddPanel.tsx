@@ -14,6 +14,7 @@ const PRIMITIVE_ORDER: PrimitiveKind[] = [
   'icoSphere',
   'cylinder',
   'cone',
+  'capsule',
   'torus',
 ];
 
@@ -26,6 +27,7 @@ const PRIMITIVE_HINTS: Record<PrimitiveKind, string> = {
   icoSphere: 'Adds a sphere built from subdivided triangles',
   cylinder: 'Adds a capped or open cylindrical tube',
   cone: 'Adds a cone tapering to a single apex vertex',
+  capsule: 'Adds a cylinder closed off with a rounded dome at each end',
   torus: 'Adds a ring swept around a tube radius',
 };
 
@@ -60,6 +62,7 @@ export function AddPanel() {
   const frameAll = useEditorStore((state) => state.frameAll);
   const orthographic = useEditorStore((state) => state.orthographic);
   const setViewportSetting = useEditorStore((state) => state.setViewportSetting);
+  const viewLost = useEditorStore((state) => state.viewLost);
 
   return (
     <Panel title={mode === 'object' ? 'ADD / SCENE' : 'SELECT / VIEW'} className="add-panel">
@@ -165,7 +168,16 @@ export function AddPanel() {
           hint="Frame the camera on the current selection (.)"
           onClick={frameSelected}
         />
-        <Button label="FRAME ALL" hint="Frame the camera on the whole scene" onClick={frameAll} />
+        <Button
+          label="FRAME ALL"
+          className={viewLost ? 'add-panel__frame-all--tremble' : undefined}
+          hint={
+            viewLost
+              ? "You've zoomed out past your scene — click to come back"
+              : 'Frame the camera on the whole scene'
+          }
+          onClick={frameAll}
+        />
       </FieldRow>
     </Panel>
   );

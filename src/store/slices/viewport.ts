@@ -7,6 +7,8 @@ export interface ViewportSlice extends ViewportSettings {
   /** Incremented to ask the viewport to frame geometry; it is not camera state. */
   frameRequest: { target: 'selected' | 'all'; nonce: number } | null;
   axisViewRequest: { axis: 'x' | 'y' | 'z'; negative: boolean; nonce: number } | null;
+  /** True once the camera has orbited far enough that the scene is hard to make out. */
+  viewLost: boolean;
 
   setShading: (shading: ShadingMode) => void;
   setOverlay: (patch: Partial<OverlaySettings>) => void;
@@ -15,6 +17,7 @@ export interface ViewportSlice extends ViewportSettings {
   frameSelected: () => void;
   frameAll: () => void;
   setAxisView: (axis: 'x' | 'y' | 'z', negative?: boolean) => void;
+  setViewLost: (lost: boolean) => void;
 }
 
 let nonce = 0;
@@ -41,6 +44,7 @@ export const createViewportSlice: StateCreator<
   navigation: 'blender',
   frameRequest: null,
   axisViewRequest: null,
+  viewLost: false,
 
   setShading: (shading) => set({ shading, status: `Shading: ${shading}` }),
 
@@ -56,4 +60,6 @@ export const createViewportSlice: StateCreator<
 
   setAxisView: (axis, negative = false) =>
     set({ axisViewRequest: { axis, negative, nonce: ++nonce } }),
+
+  setViewLost: (viewLost) => set({ viewLost }),
 });

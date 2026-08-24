@@ -105,12 +105,11 @@ export function OperationsPanel() {
         <NumberField
           label="SEGMENTS"
           value={bevelSegments}
-          step={1}
+          integer
           min={1}
           max={12}
-          precision={0}
           hint="More segments round the chamfer instead of leaving it flat"
-          onChange={(value) => setBevelSegments(Math.round(value))}
+          onChange={setBevelSegments}
         />
         <Button
           label="BEVEL"
@@ -125,12 +124,11 @@ export function OperationsPanel() {
         <NumberField
           label="CUTS"
           value={loopCuts}
-          step={1}
+          integer
           min={1}
           max={32}
-          precision={0}
           hint="How many evenly spaced loops to insert at once"
-          onChange={(value) => setLoopCuts(Math.round(value))}
+          onChange={setLoopCuts}
         />
         <Button
           label="LOOP CUT"
@@ -143,12 +141,11 @@ export function OperationsPanel() {
         <NumberField
           label="CUTS"
           value={subdivideCuts}
-          step={1}
+          integer
           min={1}
           max={4}
-          precision={0}
           hint="How many times to split each selected face"
-          onChange={(value) => setSubdivideCuts(Math.round(value))}
+          onChange={setSubdivideCuts}
         />
         <NumberField
           label="SMOOTH"

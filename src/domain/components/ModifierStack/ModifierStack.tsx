@@ -183,12 +183,11 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
         <NumberField
           label="COUNT"
           value={modifier.count}
-          step={1}
+          integer
           min={1}
           max={128}
-          precision={0}
           hint="How many copies to place, including the original"
-          onChange={(count) => onChange({ count: Math.round(count) })}
+          onChange={(count) => onChange({ count })}
         />
         <Toggle
           label="RELATIVE"
@@ -283,12 +282,11 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
       <NumberField
         label="LEVELS"
         value={modifier.levels}
-        step={1}
+        integer
         min={0}
         max={3}
-        precision={0}
         hint="How many Catmull-Clark subdivision passes to apply"
-        onChange={(levels) => onChange({ levels: Math.round(levels) })}
+        onChange={(levels) => onChange({ levels })}
       />
       <NumberField
         label="SMOOTH"

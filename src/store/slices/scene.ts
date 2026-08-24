@@ -8,6 +8,7 @@ import {
   type Vec3,
   DEFAULT_PRIMITIVE_PARAMS,
   History,
+  PRIMITIVE_DEFAULT_OVERRIDES,
   PRIMITIVE_LABELS,
   applyModifier,
   cloneMesh,
@@ -17,6 +18,7 @@ import {
   deserializeProject,
   evaluateModifiers,
   execOperator,
+  normalizePrimitiveParams,
   serializeProject,
   vec3,
 } from '@kernel/index';
@@ -74,6 +76,9 @@ export interface SceneSlice {
   deleteSelected: () => void;
   joinSelected: () => void;
   setObjectTransform: (id: string, transform: Partial<SceneObject['transform']>) => void;
+  setObjectTransforms: (
+    patches: { id: string; transform: Partial<SceneObject['transform']> }[],
+  ) => void;
   setCursor: (position: Vec3) => void;
 
   addMaterial: () => void;
@@ -131,7 +136,11 @@ export const createSceneSlice: StateCreator<
   addPrimitive: (kind, params) => {
     get().recordHistory(`Add ${PRIMITIVE_LABELS[kind]}`);
 
-    const resolved = { ...DEFAULT_PRIMITIVE_PARAMS, ...params };
+    const resolved = normalizePrimitiveParams({
+      ...DEFAULT_PRIMITIVE_PARAMS,
+      ...PRIMITIVE_DEFAULT_OVERRIDES[kind],
+      ...params,
+    });
     const mesh = createPrimitive(kind, resolved);
     const transform = createTransform();
     transform.position = { ...get().cursor };
@@ -189,7 +198,7 @@ export const createSceneSlice: StateCreator<
     const object = get().objects.find((candidate) => candidate.id === get().activeObjectId);
     if (!object?.primitive) return;
 
-    const resolved = { ...object.primitive.params, ...params };
+    const resolved = normalizePrimitiveParams({ ...object.primitive.params, ...params });
     get().patchActiveObject({
       mesh: createPrimitive(object.primitive.kind, resolved),
       primitive: { kind: object.primitive.kind, params: resolved },
@@ -333,6 +342,25 @@ export const createSceneSlice: StateCreator<
       objects: state.objects.map((object) =>
         object.id === id ? { ...object, transform: { ...object.transform, ...transform } } : object,
       ),
+      meshVersion: state.meshVersion + 1,
+    }));
+  },
+
+  /**
+   * Same as `setObjectTransform`, but for every dragged object in one `set`
+   * call. A multi-object gizmo drag patches every selected object on each
+   * pointer-move tick; batching keeps that one store update (and one
+   * `syncScene`) instead of N.
+   */
+  setObjectTransforms: (patches) => {
+    if (patches.length === 0) return;
+    const patchMap = new Map(patches.map((patch) => [patch.id, patch.transform]));
+
+    set((state) => ({
+      objects: state.objects.map((object) => {
+        const transform = patchMap.get(object.id);
+        return transform ? { ...object, transform: { ...object.transform, ...transform } } : object;
+      }),
       meshVersion: state.meshVersion + 1,
     }));
   },

@@ -4,4 +4,8 @@
     flex-direction: column;
     gap: var(--space-4);
   }
+
+  &__frame-all--tremble {
+    animation: tremble 0.4s ease-in-out infinite;
+  }
 }

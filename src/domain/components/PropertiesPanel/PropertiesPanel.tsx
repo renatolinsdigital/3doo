@@ -1,4 +1,5 @@
 import {
+  INTEGER_PARAMS,
   PRIMITIVE_FIELDS,
   type PrimitiveParams,
   radToDeg,
@@ -123,7 +124,7 @@ export function PropertiesPanel() {
                 key={field}
                 label={PARAM_LABELS[field]}
                 value={object.primitive?.params[field] as number}
-                step={field === 'segments' || field === 'rings' || field === 'subdivisions' ? 1 : 0.1}
+                integer={INTEGER_PARAMS.has(field)}
                 min={field === 'segments' || field === 'rings' ? 3 : 0}
                 hint={PARAM_HINTS[field]}
                 onChange={(value) => updatePrimitiveParams({ [field]: value })}

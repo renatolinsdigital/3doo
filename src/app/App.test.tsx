@@ -221,6 +221,18 @@ describe('App shell', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
+  it('trembles the Frame All button once the viewport reports the scene is out of view', () => {
+    render(<App />);
+    const frameAll = screen.getByRole('button', { name: 'FRAME ALL' });
+    expect(frameAll.className).not.toMatch(/tremble/);
+
+    act(() => useEditorStore.setState({ viewLost: true }));
+    expect(frameAll.className).toMatch(/tremble/);
+
+    act(() => useEditorStore.setState({ viewLost: false }));
+    expect(frameAll.className).not.toMatch(/tremble/);
+  });
+
   it('credits the developer in the shortcuts overlay with a LinkedIn link', async () => {
     render(<App />);
     await userEvent.click(screen.getByRole('button', { name: '?' }));

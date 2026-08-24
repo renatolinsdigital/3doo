@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
 import { vec3 } from '../math';
-import { createBox, createCylinder, createGrid, createUVSphere } from '../primitives';
+import {
+  createBox,
+  createCapsule,
+  createCylinder,
+  createGrid,
+  createUVSphere,
+} from '../primitives';
 
 import { BMesh } from './bmesh';
 import { cloneMesh, deserializeMesh, serializeMesh } from './serialize';
@@ -94,6 +100,7 @@ describe('primitives', () => {
   it.each([
     ['cylinder', () => createCylinder(1, 2, 12, true)],
     ['uv sphere', () => createUVSphere(1, 12, 6)],
+    ['capsule', () => createCapsule(1, 4, 12, 6)],
     ['grid', () => createGrid(2, 4)],
   ])('builds %s with valid topology', (_name, build) => {
     const mesh = build();
@@ -108,6 +115,34 @@ describe('primitives', () => {
       const outward =
         center.x * face.normal.x + center.y * face.normal.y + center.z * face.normal.z;
       expect(outward).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('capsule', () => {
+  it('spans the requested height and stays closed', () => {
+    const mesh = createCapsule(1, 5, 16, 8);
+    expect(mesh.validate()).toEqual([]);
+
+    const ys = [...mesh.verts.values()].map((vert) => vert.co.y);
+    expect(Math.max(...ys)).toBeCloseTo(2.5);
+    expect(Math.min(...ys)).toBeCloseTo(-2.5);
+
+    // A closed surface has no boundary: every edge is shared by two faces.
+    for (const edge of mesh.edges.values()) expect(edge.loops).toHaveLength(2);
+
+    for (const face of mesh.faces.values()) {
+      const center = mesh.faceCenter(face);
+      const outward =
+        center.x * face.normal.x + center.y * face.normal.y + center.z * face.normal.z;
+      expect(outward).toBeGreaterThan(0);
+    }
+  });
+
+  it('collapses to a sphere once the height drops to the diameter', () => {
+    const mesh = createCapsule(1, 2, 16, 8);
+    for (const vert of mesh.verts.values()) {
+      expect(Math.hypot(vert.co.x, vert.co.y, vert.co.z)).toBeCloseTo(1);
     }
   });
 });

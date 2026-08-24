@@ -1,18 +1,12 @@
 # 3DOO
 
-A brutalist mesh editor that runs in the browser and exports game-ready assets.
+3DOO is a browser-based 3D mesh editor designed to bring real modeling workflows to the web. Create and edit 3D meshes directly in your browser, use familiar modeling operations, and export your work as game-ready assets.
 
-3DOO is built around a **pure TypeScript BMesh kernel** — a half-edge mesh with
-real adjacency, so extrude, bevel, loop cut and dissolve behave the way they do
-in a desktop modeller rather than the way triangle-soup demos do. The kernel has
-no DOM and no rendering dependency, so every operation is unit tested headlessly:
-build a cube, extrude a face, assert the topology.
+At the heart of 3DOO is a pure TypeScript BMesh kernel: a half-edge mesh data structure with real topological relationships between vertices, edges, and faces. This is what allows modeling operations such as extrude, bevel, loop cut, and dissolve to behave like they do in traditional desktop 3D modeling software.
 
-```text
-Create a primitive → edit its topology → stack modifiers → export OBJ or ASCII FBX
-```
+The modeling engine is completely independent from the browser UI and rendering layer. The kernel has no DOM or rendering dependencies, which makes it easy to test, reason about, and potentially reuse in different environments.
 
-## Quick start
+## Development Quick start
 
 ```bash
 npm install
@@ -29,7 +23,7 @@ npm run lint
 
 | Area | Included |
 | --- | --- |
-| Primitives | Box, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, torus — with live parameters |
+| Primitives | Box, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule, torus — with live parameters |
 | Object mode | Transform gizmo, duplicate, linked duplicate, join, delete, outliner with rename / visibility / lock |
 | Selection | Vertex, edge and face modes; click, box select, Alt+click edge loops, grow / shrink / invert |
 | Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, subdivide (Catmull-Clark), merge by distance, delete, dissolve, fill, bridge, triangulate, tris-to-quads |

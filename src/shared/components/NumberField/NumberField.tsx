@@ -13,6 +13,8 @@ export interface NumberFieldProps {
   step?: number;
   /** Decimal places shown while the field is not being edited. */
   precision?: number;
+  /** Counts (segments, rings, subdivisions) that must never carry a fraction. */
+  integer?: boolean;
   suffix?: string;
   disabled?: boolean;
   hint?: string;
@@ -36,8 +38,9 @@ export function NumberField({
   onChange,
   min,
   max,
-  step = 0.1,
-  precision = 3,
+  step,
+  precision,
+  integer = false,
   suffix,
   disabled = false,
   hint,
@@ -48,14 +51,22 @@ export function NumberField({
   const scrubbing = useRef<{ startX: number; startValue: number } | null>(null);
   const tooltip = useTooltipTrigger(hint);
 
+  const resolvedStep = step ?? (integer ? 1 : 0.1);
+  const resolvedPrecision = integer ? 0 : (precision ?? 3);
+
+  // Every path that produces a value goes through here, so an integer field
+  // can never emit a fraction — not by typing, scrubbing, or arrow-stepping.
+  const quantize = (raw: number) =>
+    clamp(integer ? Math.round(raw) : Number(raw.toFixed(resolvedPrecision)), min, max);
+
   useEffect(() => {
-    if (!editing) setDraft(formatValue(value, precision));
-  }, [value, precision, editing]);
+    if (!editing) setDraft(formatValue(value, resolvedPrecision));
+  }, [value, resolvedPrecision, editing]);
 
   const commit = (raw: string) => {
     const parsed = Number(raw);
-    if (Number.isFinite(parsed)) onChange(clamp(parsed, min, max));
-    else setDraft(formatValue(value, precision));
+    if (Number.isFinite(parsed)) onChange(quantize(parsed));
+    else setDraft(formatValue(value, resolvedPrecision));
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLLabelElement>) => {
@@ -67,8 +78,8 @@ export function NumberField({
   const handlePointerMove = (event: React.PointerEvent<HTMLLabelElement>) => {
     const state = scrubbing.current;
     if (!state) return;
-    const delta = (event.clientX - state.startX) * step;
-    onChange(clamp(Number((state.startValue + delta).toFixed(precision)), min, max));
+    const delta = (event.clientX - state.startX) * resolvedStep;
+    onChange(quantize(state.startValue + delta));
   };
 
   const handlePointerUp = (event: React.PointerEvent<HTMLLabelElement>) => {
@@ -94,7 +105,7 @@ export function NumberField({
           id={id}
           className="number-field__input"
           type="text"
-          inputMode="decimal"
+          inputMode={integer ? 'numeric' : 'decimal'}
           value={draft}
           disabled={disabled}
           onFocus={() => setEditing(true)}
@@ -109,13 +120,13 @@ export function NumberField({
               event.currentTarget.blur();
             }
             if (event.key === 'Escape') {
-              setDraft(formatValue(value, precision));
+              setDraft(formatValue(value, resolvedPrecision));
               event.currentTarget.blur();
             }
             if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
               event.preventDefault();
               const direction = event.key === 'ArrowUp' ? 1 : -1;
-              onChange(clamp(Number((value + step * direction).toFixed(precision)), min, max));
+              onChange(quantize(value + resolvedStep * direction));
             }
           }}
         />

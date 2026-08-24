@@ -11,3 +11,4 @@ export * from './fill';
 export * from './normals';
 export * from './transform';
 export * from './select';
+export * from './pivotTransform';

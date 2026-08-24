@@ -11,6 +11,7 @@ export type PrimitiveKind =
   | 'icoSphere'
   | 'cylinder'
   | 'cone'
+  | 'capsule'
   | 'torus';
 
 export interface PrimitiveParams {
@@ -24,6 +25,9 @@ export interface PrimitiveParams {
   capFill: boolean;
 }
 
+/** Counts, not measurements: these can never hold a fraction. */
+export const INTEGER_PARAMS = new Set<keyof PrimitiveParams>(['segments', 'rings', 'subdivisions']);
+
 export const DEFAULT_PRIMITIVE_PARAMS: PrimitiveParams = {
   size: 2,
   radius: 1,
@@ -35,6 +39,27 @@ export const DEFAULT_PRIMITIVE_PARAMS: PrimitiveParams = {
   capFill: true,
 };
 
+/**
+ * Kinds whose sensible starting shape differs from the shared defaults.
+ *
+ * A capsule at the default height of 2 would be exactly a sphere, since its
+ * height spans the rounded caps too.
+ */
+export const PRIMITIVE_DEFAULT_OVERRIDES: Partial<Record<PrimitiveKind, Partial<PrimitiveParams>>> =
+  {
+    capsule: { height: 4 },
+  };
+
+/** Rounds the count params so the properties panel never shows "10.286" segments. */
+export function normalizePrimitiveParams(params: PrimitiveParams): PrimitiveParams {
+  return {
+    ...params,
+    segments: Math.round(params.segments),
+    rings: Math.round(params.rings),
+    subdivisions: Math.round(params.subdivisions),
+  };
+}
+
 /** Parameters each primitive actually consumes, used to drive the live panel. */
 export const PRIMITIVE_FIELDS: Record<PrimitiveKind, (keyof PrimitiveParams)[]> = {
   box: ['size'],
@@ -45,6 +70,7 @@ export const PRIMITIVE_FIELDS: Record<PrimitiveKind, (keyof PrimitiveParams)[]> 
   icoSphere: ['radius', 'subdivisions'],
   cylinder: ['radius', 'height', 'segments', 'capFill'],
   cone: ['radius', 'height', 'segments', 'capFill'],
+  capsule: ['radius', 'height', 'segments', 'rings'],
   torus: ['radius', 'radius2', 'segments', 'rings'],
 };
 
@@ -57,6 +83,7 @@ export const PRIMITIVE_LABELS: Record<PrimitiveKind, string> = {
   icoSphere: 'ICO SPHERE',
   cylinder: 'CYLINDER',
   cone: 'CONE',
+  capsule: 'CAPSULE',
   torus: 'TORUS',
 };
 
@@ -78,6 +105,8 @@ export function createPrimitive(kind: PrimitiveKind, params: PrimitiveParams): B
       return createCylinder(params.radius, params.height, params.segments, params.capFill);
     case 'cone':
       return createCone(params.radius, params.height, params.segments, params.capFill);
+    case 'capsule':
+      return createCapsule(params.radius, params.height, params.segments, params.rings);
     case 'torus':
       return createTorus(params.radius, params.radius2, params.segments, params.rings);
   }
@@ -211,6 +240,58 @@ export function createCone(radius = 1, height = 2, segments = 24, cap = true): B
     mesh.addFace([ring[(i + 1) % count], ring[i], apex]);
   }
   if (cap) mesh.addFace(ring);
+
+  mesh.computeNormals();
+  return mesh;
+}
+
+/**
+ * Cylinder with hemispherical caps.
+ *
+ * `height` is the full extent along Y, caps included, so the straight section
+ * collapses to nothing once the height drops to the diameter and the result is
+ * a plain sphere.
+ */
+export function createCapsule(radius = 1, height = 4, segments = 24, rings = 12): BMesh {
+  const mesh = new BMesh();
+  const columns = Math.max(3, Math.floor(segments));
+  const capRows = Math.max(1, Math.floor(Math.max(2, Math.floor(rings)) / 2));
+  const straightHalf = Math.max(0, height / 2 - radius);
+
+  const addRing = (y: number, ringRadius: number): Vert[] => {
+    const ring: Vert[] = [];
+    for (let column = 0; column < columns; column++) {
+      const theta = (column / columns) * Math.PI * 2;
+      ring.push(mesh.addVert(vec3(Math.cos(theta) * ringRadius, y, Math.sin(theta) * ringRadius)));
+    }
+    return ring;
+  };
+
+  const top = mesh.addVert(vec3(0, straightHalf + radius, 0));
+  const bottom = mesh.addVert(vec3(0, -straightHalf - radius, 0));
+  const grid: Vert[][] = [];
+
+  for (let row = 1; row <= capRows; row++) {
+    const phi = (row / capRows) * (Math.PI / 2);
+    grid.push(addRing(straightHalf + Math.cos(phi) * radius, Math.sin(phi) * radius));
+  }
+  for (let row = capRows; row >= 1; row--) {
+    const phi = (row / capRows) * (Math.PI / 2);
+    grid.push(addRing(-straightHalf - Math.cos(phi) * radius, Math.sin(phi) * radius));
+  }
+
+  for (let column = 0; column < columns; column++) {
+    const next = (column + 1) % columns;
+    mesh.addFace([top, grid[0][next], grid[0][column]]);
+    mesh.addFace([bottom, grid[grid.length - 1][column], grid[grid.length - 1][next]]);
+  }
+
+  for (let row = 0; row < grid.length - 1; row++) {
+    for (let column = 0; column < columns; column++) {
+      const next = (column + 1) % columns;
+      mesh.addFace([grid[row][column], grid[row][next], grid[row + 1][next], grid[row + 1][column]]);
+    }
+  }
 
   mesh.computeNormals();
   return mesh;

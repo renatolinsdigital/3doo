@@ -3,8 +3,14 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 
 import { ObjectView, VIEWPORT_COLORS } from '@bridge/index';
 import {
+  type PivotTool,
   type SelectMode,
+  type Transform,
+  type Vec3,
+  centroid,
   medianPoint,
+  mulVec,
+  pivotPosition,
   selectEdgeLoop,
   translateVerts,
   vec3,
@@ -12,9 +18,18 @@ import {
 import { evaluatedMesh, useEditorStore } from '@store/index';
 import type { SceneObject } from '@store/types';
 
-import { CameraController } from './CameraController';
+import { CameraController, MAX_ORBIT_DISTANCE } from './CameraController';
 import { ViewportGrid } from './grid';
 import { type BoxSelectRect, pickElement, pickInRectangle } from './picking';
+
+/** Beyond this multiple of the max zoom, the scene reads as empty rather than distant. */
+const VIEW_LOST_DISTANCE = MAX_ORBIT_DISTANCE * 0.45;
+
+interface GizmoBaseline {
+  position: THREE.Vector3;
+  quaternion: THREE.Quaternion;
+  scale: THREE.Vector3;
+}
 
 /**
  * Three.js owns everything in here: the renderer, camera, gizmo, picking and
@@ -44,7 +59,12 @@ export class Viewport {
 
   private dragStart: THREE.Vector2 | null = null;
   private dragCurrent: THREE.Vector2 | null = null;
-  private gizmoBaseline: THREE.Vector3 | null = null;
+  private gizmoBaseline: GizmoBaseline | null = null;
+  /** Ids of the selected, unlocked objects a group gizmo drag in object mode applies to. */
+  private transformGroup: string[] = [];
+  private readonly objectBaselines = new Map<string, Transform>();
+  private gizmoDragging = false;
+  private viewLostReported = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -114,6 +134,7 @@ export class Viewport {
     this.canvas.addEventListener('pointerup', this.handlePointerUp);
     this.canvas.addEventListener('wheel', this.handleWheel, { passive: false });
     this.canvas.addEventListener('contextmenu', this.handleContextMenu);
+    this.canvas.addEventListener('lostpointercapture', this.handleLostPointerCapture);
 
     this.gizmo.addEventListener('dragging-changed', this.handleGizmoDragging);
     this.gizmo.addEventListener('objectChange', this.handleGizmoChange);
@@ -252,97 +273,156 @@ export class Viewport {
 
   // -------------------------------------------------------------- gizmo
 
+  /**
+   * Re-seats the gizmo on the current selection.
+   *
+   * Never mid-drag: from pointer-down to pointer-up the proxy belongs to
+   * TransformControls, which drives it as `transform-at-drag-start + total
+   * pointer offset`. `syncScene()` calls this on every store change — including
+   * the ones a drag itself emits — so re-seating the proxy here would reset the
+   * baseline each tick and turn every absolute drag delta into a corrupted
+   * incremental one, leaving the dragged objects stuttering between two
+   * positions instead of following the pointer.
+   */
   private updateGizmo(): void {
+    if (this.gizmoDragging) return;
+
     const state = useEditorStore.getState();
-    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
     const modeMap = { move: 'translate', rotate: 'rotate', scale: 'scale' } as const;
     const gizmoMode = modeMap[state.activeTool as keyof typeof modeMap];
 
-    if (!object || object.locked || !gizmoMode) {
-      this.gizmo.detach();
-      this.gizmo.enabled = false;
-      this.gizmoHelper.visible = false;
+    if (!gizmoMode) {
+      this.detachGizmo();
+      return;
+    }
+
+    if (state.mode === 'object') {
+      this.updateObjectGizmo(state, gizmoMode);
+      return;
+    }
+
+    this.updateEditGizmo(state, gizmoMode);
+  }
+
+  private detachGizmo(): void {
+    this.gizmo.detach();
+    this.gizmo.enabled = false;
+    this.gizmoHelper.visible = false;
+    this.transformGroup = [];
+  }
+
+  /**
+   * Positions the gizmo for object mode.
+   *
+   * With one object selected it sits at that object's own transform, oriented
+   * to it, exactly as before. With several selected it sits at their median
+   * position with a neutral (world-aligned) orientation, and the resulting
+   * drag is applied to every one of them — Blender's median-point, global
+   * pivot default for multi-object transforms.
+   */
+  private updateObjectGizmo(state: ReturnType<typeof useEditorStore.getState>, gizmoMode: 'translate' | 'rotate' | 'scale'): void {
+    const selected = state.objects.filter((object) => state.selectedObjectIds.includes(object.id));
+    const transformable = selected.filter((object) => !object.locked);
+
+    if (transformable.length === 0) {
+      this.detachGizmo();
       return;
     }
 
     this.gizmo.setMode(gizmoMode);
     this.gizmo.enabled = true;
     this.gizmoHelper.visible = true;
+    this.transformGroup = transformable.map((object) => object.id);
 
-    if (state.mode === 'object') {
-      this.gizmoProxy.position.set(
-        object.transform.position.x,
-        object.transform.position.y,
-        object.transform.position.z,
-      );
-      this.gizmoProxy.rotation.set(
-        object.transform.rotation.x,
-        object.transform.rotation.y,
-        object.transform.rotation.z,
-      );
-      this.gizmoProxy.scale.set(
-        object.transform.scale.x,
-        object.transform.scale.y,
-        object.transform.scale.z,
-      );
+    if (transformable.length === 1) {
+      const { position, rotation, scale } = transformable[0].transform;
+      this.gizmoProxy.position.set(position.x, position.y, position.z);
+      this.gizmoProxy.rotation.set(rotation.x, rotation.y, rotation.z);
+      this.gizmoProxy.scale.set(scale.x, scale.y, scale.z);
     } else {
-      // In edit mode the gizmo drives the selection's median point, and the
-      // delta is applied to the selected vertices.
-      const selected = object.mesh.selectedVerts();
-      if (selected.length === 0) {
-        this.gizmo.detach();
-        this.gizmoHelper.visible = false;
-        return;
-      }
-      const median = medianPoint(selected);
-      const local = new THREE.Vector3(median.x, median.y, median.z).applyMatrix4(
-        this.views.get(object.id)?.group.matrix ?? new THREE.Matrix4(),
-      );
-      this.gizmoProxy.position.copy(local);
+      const pivot = centroid(transformable.map((object) => object.transform.position));
+      this.gizmoProxy.position.set(pivot.x, pivot.y, pivot.z);
       this.gizmoProxy.rotation.set(0, 0, 0);
       this.gizmoProxy.scale.set(1, 1, 1);
     }
 
-    this.gizmoBaseline = this.gizmoProxy.position.clone();
+    this.captureGizmoBaseline();
     this.gizmo.attach(this.gizmoProxy);
+  }
+
+  /** In edit mode the gizmo drives the selection's median point on the one active object. */
+  private updateEditGizmo(state: ReturnType<typeof useEditorStore.getState>, gizmoMode: 'translate' | 'rotate' | 'scale'): void {
+    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+    if (!object || object.locked) {
+      this.detachGizmo();
+      return;
+    }
+
+    const selected = object.mesh.selectedVerts();
+    if (selected.length === 0) {
+      this.detachGizmo();
+      return;
+    }
+
+    this.gizmo.setMode(gizmoMode);
+    this.gizmo.enabled = true;
+    this.gizmoHelper.visible = true;
+    this.transformGroup = [];
+
+    const median = medianPoint(selected);
+    const local = new THREE.Vector3(median.x, median.y, median.z).applyMatrix4(
+      this.views.get(object.id)?.group.matrix ?? new THREE.Matrix4(),
+    );
+    this.gizmoProxy.position.copy(local);
+    this.gizmoProxy.rotation.set(0, 0, 0);
+    this.gizmoProxy.scale.set(1, 1, 1);
+
+    this.captureGizmoBaseline();
+    this.gizmo.attach(this.gizmoProxy);
+  }
+
+  private captureGizmoBaseline(): void {
+    this.gizmoBaseline = {
+      position: this.gizmoProxy.position.clone(),
+      quaternion: this.gizmoProxy.quaternion.clone(),
+      scale: this.gizmoProxy.scale.clone(),
+    };
   }
 
   private handleGizmoDragging = (event: { value: unknown }): void => {
     const dragging = event.value === true;
+    this.gizmoDragging = dragging;
     const state = useEditorStore.getState();
 
     if (dragging) {
-      this.gizmoBaseline = this.gizmoProxy.position.clone();
+      this.captureGizmoBaseline();
+      this.objectBaselines.clear();
+      for (const object of state.objects) {
+        if (!this.transformGroup.includes(object.id)) continue;
+        this.objectBaselines.set(object.id, structuredClone(object.transform));
+      }
       state.recordHistory(state.mode === 'object' ? 'Transform object' : 'Move selection');
       return;
     }
+
+    // `gizmoDragging` is already false, so this resync is the one that re-seats
+    // the gizmo on where the selection actually landed.
     state.touchMesh();
   };
 
   private handleGizmoChange = (): void => {
     const state = useEditorStore.getState();
-    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
-    if (!object) return;
+    if (!this.gizmoBaseline) return;
 
     if (state.mode === 'object') {
-      state.setObjectTransform(object.id, {
-        position: vec3(
-          this.gizmoProxy.position.x,
-          this.gizmoProxy.position.y,
-          this.gizmoProxy.position.z,
-        ),
-        rotation: vec3(
-          this.gizmoProxy.rotation.x,
-          this.gizmoProxy.rotation.y,
-          this.gizmoProxy.rotation.z,
-        ),
-        scale: vec3(this.gizmoProxy.scale.x, this.gizmoProxy.scale.y, this.gizmoProxy.scale.z),
-      });
+      this.applyObjectGroupTransform(state);
       return;
     }
 
-    if (!this.gizmoBaseline) return;
-    const delta = this.gizmoProxy.position.clone().sub(this.gizmoBaseline);
+    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+    if (!object) return;
+
+    const delta = this.gizmoProxy.position.clone().sub(this.gizmoBaseline.position);
     if (delta.lengthSq() < 1e-12) return;
 
     // The gizmo drags in world space; the mesh edit is in object space, so undo
@@ -360,9 +440,81 @@ export class Viewport {
       vec3(localDelta.x, localDelta.y, localDelta.z),
       state.proportional,
     );
-    this.gizmoBaseline = this.gizmoProxy.position.clone();
+    this.captureGizmoBaseline();
     state.touchMesh();
   };
+
+  /**
+   * Applies a group gizmo drag to every object in `transformGroup`.
+   *
+   * The delta between the gizmo's current transform and its transform at drag
+   * start (not the previous tick) is what gets applied, computed against each
+   * object's own transform at drag start. That avoids compounding rounding
+   * error across many pointer-move ticks in a single drag, and is what makes a
+   * single object behave exactly as it did before this pivot moved to the
+   * group's median: for one object the pivot IS that object's own position, so
+   * the rotate/scale math below reduces to the previous direct-assignment
+   * behaviour.
+   */
+  private applyObjectGroupTransform(state: ReturnType<typeof useEditorStore.getState>): void {
+    if (!this.gizmoBaseline || this.transformGroup.length === 0) return;
+
+    const pivotProxy = this.gizmoBaseline.position;
+    const pivot = vec3(pivotProxy.x, pivotProxy.y, pivotProxy.z);
+    const tool = state.activeTool as PivotTool;
+
+    const deltaPosition = this.gizmoProxy.position.clone().sub(pivotProxy);
+    const translation = vec3(deltaPosition.x, deltaPosition.y, deltaPosition.z);
+
+    const deltaQuaternion = this.gizmoProxy.quaternion
+      .clone()
+      .multiply(this.gizmoBaseline.quaternion.clone().invert());
+    const { axis: rotationAxis, angle: rotationAngle } = quaternionToAxisAngle(deltaQuaternion);
+
+    const scaleRatio = vec3(
+      this.gizmoProxy.scale.x / (this.gizmoBaseline.scale.x || 1),
+      this.gizmoProxy.scale.y / (this.gizmoBaseline.scale.y || 1),
+      this.gizmoProxy.scale.z / (this.gizmoBaseline.scale.z || 1),
+    );
+
+    const patches = this.transformGroup.reduce<
+      { id: string; transform: Partial<SceneObject['transform']> }[]
+    >((accumulator, id) => {
+      const baseline = this.objectBaselines.get(id);
+      if (!baseline) return accumulator;
+
+      // The pivot arithmetic (offset from pivot, rotate/scale, add pivot back)
+      // is pure kernel math, unit tested in kernel/ops/pivotTransform.test.ts.
+      const position = pivotPosition(baseline.position, pivot, tool, {
+        translation,
+        rotationAxis,
+        rotationAngle,
+        scaleRatio,
+      });
+
+      let rotation = baseline.rotation;
+      let scale = baseline.scale;
+
+      if (tool === 'rotate') {
+        // The object's own orientation still needs a quaternion round-trip
+        // (Euler decomposition is fragile to hand-roll but THREE's is solid),
+        // so that part stays here rather than in the pure kernel function.
+        const baselineQuaternion = new THREE.Quaternion().setFromEuler(
+          new THREE.Euler(baseline.rotation.x, baseline.rotation.y, baseline.rotation.z, 'XYZ'),
+        );
+        const newQuaternion = deltaQuaternion.clone().multiply(baselineQuaternion);
+        const newEuler = new THREE.Euler().setFromQuaternion(newQuaternion, 'XYZ');
+        rotation = vec3(newEuler.x, newEuler.y, newEuler.z);
+      } else if (tool === 'scale') {
+        scale = mulVec(baseline.scale, scaleRatio);
+      }
+
+      accumulator.push({ id, transform: { position, rotation, scale } });
+      return accumulator;
+    }, []);
+
+    state.setObjectTransforms(patches);
+  }
 
   // ------------------------------------------------------------- pointer
 
@@ -419,6 +571,23 @@ export class Viewport {
 
   private handleContextMenu = (event: MouseEvent): void => {
     event.preventDefault();
+  };
+
+  /**
+   * Ends a gizmo drag whose pointer went away without a pointerup.
+   *
+   * TransformControls clears `dragging` only in its pointerup handler, so a
+   * capture dropped some other way — the pointer leaving the window, a release
+   * the page never sees, a cancelled touch — leaves the gizmo latched: the
+   * selection keeps following the bare cursor and viewport clicks are swallowed
+   * because they look like part of the drag. Clearing the flags goes through
+   * three's own `dragging-changed`, so the drag finishes on the normal path.
+   * On an ordinary pointerup this has already run and is a no-op.
+   */
+  private handleLostPointerCapture = (): void => {
+    if (!this.gizmoDragging) return;
+    this.gizmo.axis = null;
+    this.gizmo.dragging = false;
   };
 
   private pointerPosition(event: PointerEvent): THREE.Vector2 {
@@ -553,9 +722,47 @@ export class Viewport {
   private renderLoop = (): void => {
     if (this.disposed) return;
     this.frameHandle = requestAnimationFrame(this.renderLoop);
-    this.grid.update(this.controls.distance);
+
+    const distance = this.controls.distance;
+    this.grid.update(distance);
+    this.extendFarPlane(distance);
+    this.updateViewLost(distance);
     this.renderer.render(this.scene, this.camera);
   };
+
+  /**
+   * Keeps the far clipping plane ahead of the current zoom.
+   *
+   * The far plane used to be a fixed 2000 units (from `clipEnd`'s default),
+   * while the orbit can zoom out to `MAX_ORBIT_DISTANCE` (5000). Once the
+   * camera-to-target distance passed the fixed far plane, the target — and
+   * everything near it, grid included — fell outside the frustum and the
+   * whole viewport went blank well short of the actual zoom limit. Tracking
+   * the far plane against distance (with room to spare) means the grid keeps
+   * rendering for the entire zoom range instead of vanishing partway through.
+   * `clipEnd` still acts as a floor for users who raise it directly.
+   */
+  private extendFarPlane(distance: number): void {
+    const required = distance * 2 + 200;
+    const far = Math.max(useEditorStore.getState().clipEnd, required);
+
+    if (Math.abs(this.perspectiveCamera.far - far) > 1) {
+      this.perspectiveCamera.far = far;
+      this.perspectiveCamera.updateProjectionMatrix();
+    }
+    if (Math.abs(this.orthographicCamera.far - far) > 1) {
+      this.orthographicCamera.far = far;
+      this.orthographicCamera.updateProjectionMatrix();
+    }
+  }
+
+  /** Flags when the orbit has scrolled far enough out that Frame All should draw attention. */
+  private updateViewLost(distance: number): void {
+    const lost = useEditorStore.getState().objects.length > 0 && distance > VIEW_LOST_DISTANCE;
+    if (lost === this.viewLostReported) return;
+    this.viewLostReported = lost;
+    useEditorStore.getState().setViewLost(lost);
+  }
 
   dispose(): void {
     this.disposed = true;
@@ -567,6 +774,7 @@ export class Viewport {
     this.canvas.removeEventListener('pointerup', this.handlePointerUp);
     this.canvas.removeEventListener('wheel', this.handleWheel);
     this.canvas.removeEventListener('contextmenu', this.handleContextMenu);
+    this.canvas.removeEventListener('lostpointercapture', this.handleLostPointerCapture);
 
     for (const view of this.views.values()) view.dispose();
     this.views.clear();
@@ -655,4 +863,20 @@ function focalLengthToFov(focalLength: number): number {
 function shallowArrayEqual(a: readonly unknown[], b: readonly unknown[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((value, index) => Object.is(value, b[index]));
+}
+
+/**
+ * Standard quaternion → axis-angle conversion.
+ *
+ * Kept as a plain formula rather than reached for via a THREE helper: THREE's
+ * `Quaternion` has no built-in "get axis and angle" accessor, only conversions
+ * to/from Euler and rotation matrices. This is the few-line textbook version
+ * (angle from `w`, axis from the normalised imaginary part), which the kernel's
+ * `rotationMatrix(axis, angle)` then turns back into a rotation.
+ */
+function quaternionToAxisAngle(q: THREE.Quaternion): { axis: Vec3; angle: number } {
+  const angle = 2 * Math.acos(THREE.MathUtils.clamp(q.w, -1, 1));
+  const s = Math.sqrt(1 - q.w * q.w);
+  if (s < 1e-6) return { axis: vec3(0, 1, 0), angle: 0 };
+  return { axis: vec3(q.x / s, q.y / s, q.z / s), angle };
 }

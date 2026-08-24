@@ -34,6 +34,32 @@
   }
 }
 
+// A sharp, mechanical shake rather than a soft wobble, to stay on-brand with
+// the brutalist "loud and honest" direction. Used to draw the eye to Frame All
+// once the camera has scrolled the scene out of view.
+@keyframes tremble {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+
+  20% {
+    transform: translate(-2px, 1px) rotate(-2deg);
+  }
+
+  40% {
+    transform: translate(2px, -1px) rotate(2deg);
+  }
+
+  60% {
+    transform: translate(-2px, -1px) rotate(-1.5deg);
+  }
+
+  80% {
+    transform: translate(2px, 1px) rotate(1.5deg);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
