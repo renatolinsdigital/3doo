@@ -157,6 +157,19 @@ Kept as separate paths because they answer different questions.
 
 - **Delete** removes geometry outright, in five modes.
 - **Dissolve** removes topology while preserving the surrounding surface.
+  Dissolving *faces* merges a connected region into one n-gon, which means a
+  single selected face is a no-op: the region is torn down and rebuilt from the
+  same boundary ring. The operator guards that case rather than reporting
+  success, and otherwise reports counts taken from the mesh before and after, so
+  a status line never claims work the mesh did not actually do.
+
+The UI exposes them only as keys, not as panel sections: <kbd>X</kbd> deletes and
+<kbd>Delete</kbd> dissolves. Neither asks which element type to act on — the
+handler in `useKeymap` maps the active select mode onto the operator's `mode`
+param (vertex → `verts`, edge → `edges`, face → `faces`), so the keys always
+act on the elements the user can currently see highlighted. The operators still
+take every mode they support; only the two keyboard paths are constrained this
+way, and `exec('delete', { mode: 'onlyFaces' })` remains available to scripts.
 
 `dissolveEdge` merges the two faces sharing an edge by rotating both rings and
 splicing them. `dissolveFaces` does *not* dissolve interior edges one by one:

@@ -1,13 +1,26 @@
 import { useEffect } from 'react';
 
 import { useEditorStore } from '@store/index';
-import type { ShadingMode } from '@store/types';
+import type { SelectMode, ShadingMode } from '@store/types';
 
 import { matchBinding } from '../keymap/keymap';
 
 import { useProjectFiles } from './useProjectFiles';
 
 const SHADING_CYCLE: ShadingMode[] = ['solid', 'solidWire', 'wireframe', 'xray', 'matcap'];
+
+/**
+ * Which element type X (delete) and Delete (dissolve) act on.
+ *
+ * Both operators take an explicit mode, and the active select mode is the only
+ * honest answer to "whatever is selected" — picking anything else would delete
+ * elements the user cannot currently see highlighted.
+ */
+const ELEMENT_FOR_SELECT_MODE: Record<SelectMode, 'verts' | 'edges' | 'faces'> = {
+  vertex: 'verts',
+  edge: 'edges',
+  face: 'faces',
+};
 
 /** Wires the keymap table to store actions. */
 export function useKeymap(): void {
@@ -90,7 +103,15 @@ export function useKeymap(): void {
 
         case 'delete':
           if (state.mode === 'object') state.deleteSelected();
-          else state.exec('delete', { mode: 'verts' }, 'Delete');
+          else {
+            state.exec('delete', { mode: ELEMENT_FOR_SELECT_MODE[state.selectMode] }, 'Delete');
+          }
+          break;
+        case 'dissolve':
+          if (state.mode === 'object') state.deleteSelected();
+          else {
+            state.exec('dissolve', { mode: ELEMENT_FOR_SELECT_MODE[state.selectMode] }, 'Dissolve');
+          }
           break;
         case 'duplicate':
           if (state.mode === 'object') state.duplicateSelected(false);

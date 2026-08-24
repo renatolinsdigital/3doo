@@ -112,10 +112,28 @@ Blender defaults, because that is the muscle memory users arrive with. Press
 | `E` / `I` | Extrude / inset |
 | `Ctrl+B` / `Ctrl+R` | Bevel / loop cut |
 | `M` | Merge by distance |
-| `X` | Delete |
+| `X` | Delete — object mode: the object; edit mode: the selection, leaving a hole |
+| `Delete` | Object mode: the object; edit mode: dissolve the selection, keeping the surface |
 | `A` / `Alt+A` | Select all / deselect |
 | `.` | Frame selected |
 | `Ctrl+S` / `Ctrl+E` | Save / export |
+
+In edit mode both <kbd>X</kbd> and <kbd>Delete</kbd> act on whichever element
+type the current select mode targets — vertices in <kbd>1</kbd>, edges in
+<kbd>2</kbd>, faces in <kbd>3</kbd>. The difference is what they leave behind:
+delete removes the geometry outright and leaves a hole, dissolve removes the
+topology but keeps the surrounding surface intact. Dissolving faces merges
+adjacent ones into a single n-gon, so it needs two or more touching faces — a
+lone face has nothing to merge with and the status bar says so rather than
+reporting a no-op as a success.
+
+Because the keys cover both, the Operations panel has no Delete or Dissolve
+section; it offers Merge instead, which welds the selected vertices together at
+their center, or onto the first or last one selected. Merge is vertex-only and is
+disabled in edge and face mode. Object mode's panel likewise drops its Delete
+button — the same two keys cover it — and carries Recalculate Normals instead,
+which is otherwise unreachable outside edit mode and is most often wanted right
+after a Join.
 
 Navigation is <kbd>MMB</kbd> to orbit and <kbd>Shift</kbd>+<kbd>MMB</kbd> to pan
 by default; a Maya preset (<kbd>Alt</kbd>-based) is also available.

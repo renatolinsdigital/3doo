@@ -168,6 +168,45 @@ describe('editor store', () => {
     });
   });
 
+  it('refuses to "dissolve" a lone face instead of claiming a no-op succeeded', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    selectTopFace();
+
+    store().exec('dissolve', { mode: 'faces' }, 'Dissolve');
+
+    expect(activeObject().mesh.faces.size).toBe(6);
+    expect(store().status).toMatch(/two or more adjacent faces/i);
+  });
+
+  it('dissolves two adjacent faces into one and says how many went in', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+
+    const mesh = activeObject().mesh;
+    mesh.deselectAll();
+    for (const face of mesh.faces.values()) {
+      if (face.normal.y > 0.99 || face.normal.x > 0.99) face.selected = true;
+    }
+    mesh.flushSelection('face');
+
+    store().exec('dissolve', { mode: 'faces' }, 'Dissolve');
+
+    expect(activeObject().mesh.faces.size).toBe(5);
+    expect(store().status).toBe('Dissolved 2 faces');
+  });
+
+  it('does not claim a delete happened with an empty selection', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    activeObject().mesh.deselectAll();
+
+    store().exec('delete', { mode: 'faces' }, 'Delete');
+
+    expect(activeObject().mesh.faces.size).toBe(6);
+    expect(store().status).toMatch(/nothing selected/i);
+  });
+
   it('reports a failed operator without corrupting the scene', () => {
     store().addPrimitive('box');
     store().exec('doesNotExist', {}, 'Bogus');

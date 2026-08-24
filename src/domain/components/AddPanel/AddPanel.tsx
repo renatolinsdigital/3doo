@@ -52,8 +52,8 @@ export function AddPanel() {
   const setSelectMode = useEditorStore((state) => state.setSelectMode);
   const addPrimitive = useEditorStore((state) => state.addPrimitive);
   const duplicateSelected = useEditorStore((state) => state.duplicateSelected);
-  const deleteSelected = useEditorStore((state) => state.deleteSelected);
   const joinSelected = useEditorStore((state) => state.joinSelected);
+  const exec = useEditorStore((state) => state.exec);
   const shading = useEditorStore((state) => state.shading);
   const setShading = useEditorStore((state) => state.setShading);
   const overlays = useEditorStore((state) => state.overlays);
@@ -96,10 +96,9 @@ export function AddPanel() {
               onClick={joinSelected}
             />
             <Button
-              label="DELETE"
-              variant="danger"
-              hint="Remove the selected object(s) from the scene"
-              onClick={deleteSelected}
+              label="RECALC NORM"
+              hint="Make winding consistent and point normals outward (X / Delete removes the object)"
+              onClick={() => exec('recalculateNormals', { outside: true }, 'Recalculate normals')}
             />
           </FieldRow>
         </>

@@ -24,6 +24,15 @@ describe('keymap', () => {
     expect(matchBinding(keyEvent('e'), 'object')).toBeNull();
   });
 
+  it('splits X and Delete into delete and dissolve', () => {
+    expect(matchBinding(keyEvent('x'), 'edit')?.id).toBe('delete');
+    expect(matchBinding(keyEvent('Delete'), 'edit')?.id).toBe('dissolve');
+
+    // In object mode both keys remove the object, so they share one action.
+    expect(matchBinding(keyEvent('x'), 'object')?.id).toBe('delete');
+    expect(matchBinding(keyEvent('Delete'), 'object')?.id).toBe('dissolve');
+  });
+
   it('treats Meta as Ctrl for macOS users', () => {
     expect(matchBinding(keyEvent('z', { metaKey: true }), 'object')?.id).toBe('undo');
   });

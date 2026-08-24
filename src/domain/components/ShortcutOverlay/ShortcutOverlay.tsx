@@ -22,7 +22,10 @@ export function ShortcutOverlay() {
             <h3 className="shortcuts__heading">{group}</h3>
             <dl className="shortcuts__list">
               {bindings.map((binding) => (
-                <div key={`${binding.id}-${binding.key}`} className="shortcuts__row">
+                <div
+                  key={`${binding.id}-${binding.key}-${binding.mode ?? 'both'}`}
+                  className="shortcuts__row"
+                >
                   <dt className="shortcuts__keys">{formatBinding(binding)}</dt>
                   <dd className="shortcuts__action">
                     {binding.label}

@@ -5,18 +5,10 @@ import { useEditorStore } from '@store/index';
 
 import './OperationsPanel.scss';
 
-const DELETE_MODES = [
-  { value: 'verts', label: 'VERTICES' },
-  { value: 'edges', label: 'EDGES' },
-  { value: 'faces', label: 'FACES' },
-  { value: 'onlyFaces', label: 'ONLY FACES' },
-] as const;
-
-const DISSOLVE_MODES = [
-  { value: 'verts', label: 'VERTICES' },
-  { value: 'edges', label: 'EDGES' },
-  { value: 'faces', label: 'FACES' },
-  { value: 'limited', label: 'LIMITED' },
+const MERGE_MODES = [
+  { value: 'center', label: 'AT CENTER' },
+  { value: 'last', label: 'AT LAST' },
+  { value: 'first', label: 'AT FIRST' },
 ] as const;
 
 /**
@@ -30,6 +22,9 @@ export function OperationsPanel() {
   const openDialog = useEditorStore((state) => state.openDialog);
   const proportional = useEditorStore((state) => state.proportional);
   const setProportional = useEditorStore((state) => state.setProportional);
+  // Merging welds vertices together, so it has nothing to act on in the other
+  // two select modes.
+  const vertexMode = useEditorStore((state) => state.selectMode === 'vertex');
 
   const [extrudeOffset, setExtrudeOffset] = useState(1);
   const [extrudeIndividual, setExtrudeIndividual] = useState(false);
@@ -40,9 +35,7 @@ export function OperationsPanel() {
   const [loopCuts, setLoopCuts] = useState(1);
   const [subdivideCuts, setSubdivideCuts] = useState(1);
   const [subdivideSmooth, setSubdivideSmooth] = useState(0);
-  const [deleteMode, setDeleteMode] = useState<(typeof DELETE_MODES)[number]['value']>('verts');
-  const [dissolveMode, setDissolveMode] =
-    useState<(typeof DISSOLVE_MODES)[number]['value']>('edges');
+  const [mergeMode, setMergeMode] = useState<(typeof MERGE_MODES)[number]['value']>('center');
 
   return (
     <Panel title="OPERATIONS" className="operations">
@@ -172,11 +165,6 @@ export function OperationsPanel() {
           onClick={() => openDialog('merge')}
         />
         <Button
-          label="MERGE AT CENTER"
-          hint="Collapse the selected vertices to their shared center"
-          onClick={() => exec('merge', { mode: 'center' }, 'Merge')}
-        />
-        <Button
           label="TRIANGULATE"
           hint="Split every face into triangles"
           onClick={() => exec('triangulate', {}, 'Triangulate')}
@@ -188,34 +176,24 @@ export function OperationsPanel() {
         />
       </FieldRow>
 
-      <FieldRow legend="DELETE" columns={1}>
+      <FieldRow legend="MERGE" columns={1}>
         <Select
           label="MODE"
-          value={deleteMode}
-          options={DELETE_MODES}
-          hint="What kind of element the Delete button removes"
-          onChange={setDeleteMode}
+          value={mergeMode}
+          options={MERGE_MODES}
+          disabled={!vertexMode}
+          hint="Which vertex the others collapse onto"
+          onChange={setMergeMode}
         />
         <Button
-          label="DELETE"
-          variant="danger"
-          hint="Remove the selected geometry outright (X)"
-          onClick={() => exec('delete', { mode: deleteMode }, `Delete ${deleteMode}`)}
-        />
-      </FieldRow>
-
-      <FieldRow legend="DISSOLVE" columns={1}>
-        <Select
-          label="MODE"
-          value={dissolveMode}
-          options={DISSOLVE_MODES}
-          hint="What kind of element the Dissolve button removes"
-          onChange={setDissolveMode}
-        />
-        <Button
-          label="DISSOLVE"
-          hint="Remove topology while keeping the surrounding surface intact"
-          onClick={() => exec('dissolve', { mode: dissolveMode }, `Dissolve ${dissolveMode}`)}
+          label="MERGE"
+          disabled={!vertexMode}
+          hint={
+            vertexMode
+              ? 'Weld the selected vertices into one'
+              : 'Merging joins vertices — switch to vertex select mode (1)'
+          }
+          onClick={() => exec('merge', { mode: mergeMode }, `Merge at ${mergeMode}`)}
         />
       </FieldRow>
 

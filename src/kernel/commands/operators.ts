@@ -217,20 +217,47 @@ export const OPERATORS: Record<string, OperatorHandler> = {
       ['verts', 'edges', 'faces', 'onlyFaces', 'edgesAndFaces'] as const,
       'verts',
     );
+    const before = mesh.verts.size + mesh.edges.size + mesh.faces.size;
     deleteGeometry(mesh, selection(mesh), mode);
-    return { status: `Deleted ${mode}` };
+    const removed = before - (mesh.verts.size + mesh.edges.size + mesh.faces.size);
+
+    return { status: removed > 0 ? `Deleted ${mode}` : 'Nothing selected to delete' };
   },
 
   dissolve: ({ mesh }, params) => {
     const mode = readString(params, 'mode', ['verts', 'edges', 'faces', 'limited'] as const, 'edges');
     const { verts, edges, faces } = selection(mesh);
 
+    // Dissolving faces merges adjacent ones into a single n-gon, so one face on
+    // its own has nothing to merge with: it would be torn down and rebuilt from
+    // the same ring, leaving the mesh identical while reporting success.
+    if (mode === 'faces' && faces.length < 2) {
+      return { status: 'Select two or more adjacent faces to dissolve' };
+    }
+
+    const before = { verts: mesh.verts.size, edges: mesh.edges.size, faces: mesh.faces.size };
+
     if (mode === 'verts') dissolveVerts(mesh, verts);
     else if (mode === 'faces') dissolveFaces(mesh, faces);
     else if (mode === 'limited') limitedDissolve(mesh, readNumber(params, 'angle', 5));
     else dissolveEdges(mesh, edges);
 
-    return { status: `Dissolved ${mode}` };
+    if (mode === 'faces') {
+      // Two ways to end up here having changed nothing: disjoint islands that
+      // each rebuild themselves, and a fully closed region (every face of a
+      // cube) whose boundary ring is empty. Neither can collapse to one n-gon.
+      const merged = before.faces - mesh.faces.size;
+      return {
+        status:
+          merged > 0 ? `Dissolved ${faces.length} faces` : 'Those faces cannot merge into one',
+      };
+    }
+
+    const removed =
+      mode === 'verts' ? before.verts - mesh.verts.size : before.edges - mesh.edges.size;
+    const noun = mode === 'verts' ? 'vertices' : 'edges';
+
+    return { status: removed > 0 ? `Dissolved ${removed} ${noun}` : `No ${noun} to dissolve` };
   },
 
   fill: ({ mesh }, params) => {
