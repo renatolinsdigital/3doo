@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 import { type BMesh, composeMatrix } from '@kernel/index';
-import type { SceneObject, ShadingMode, ViewportSettings } from '@store/types';
+import type { SceneObject, SelectMode, ShadingMode, ViewportSettings } from '@store/types';
 
 import {
   VIEWPORT_COLORS,
@@ -17,6 +17,7 @@ import { buildMeshBuffers, buildNormalLines } from './meshBuffers';
 
 export interface ObjectViewState {
   mode: 'object' | 'edit';
+  selectMode: SelectMode;
   isActive: boolean;
   isSelected: boolean;
   settings: ViewportSettings;
@@ -183,7 +184,9 @@ export class ObjectView {
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
     this.replaceGeometry(this.points, geometry);
-    this.points.visible = state.mode === 'edit' && state.isActive;
+    // Only vertex mode can act on vertices, so drawing them in edge/face mode
+    // is noise sitting on top of the elements actually being selected.
+    this.points.visible = state.mode === 'edit' && state.isActive && state.selectMode === 'vertex';
   }
 
   private updateNormals(displayMesh: BMesh, state: ObjectViewState): void {

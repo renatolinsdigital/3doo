@@ -108,7 +108,7 @@ export function createWireMaterial(selected: boolean): THREE.LineBasicMaterial {
 
 export function createPointMaterial(): THREE.PointsMaterial {
   return new THREE.PointsMaterial({
-    size: 9,
+    size: 3,
     sizeAttenuation: false,
     vertexColors: true,
     depthTest: false,

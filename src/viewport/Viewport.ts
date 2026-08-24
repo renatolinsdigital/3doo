@@ -242,6 +242,7 @@ export class Viewport {
 
       view.update(object, evaluatedMesh(object), {
         mode: state.mode,
+        selectMode: state.selectMode,
         isActive: object.id === state.activeObjectId,
         isSelected: state.selectedObjectIds.includes(object.id),
         settings,
