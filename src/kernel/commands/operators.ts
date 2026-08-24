@@ -4,8 +4,10 @@ import type { SelectMode } from '../mesh/types';
 import {
   type FalloffCurve,
   type MergeMode,
+  DISSOLVE_ANGLE_LIMIT_DEGREES,
   bevelEdges,
   bridgeEdgeLoops,
+  connectVerts,
   deleteGeometry,
   dissolveEdges,
   dissolveFaces,
@@ -17,6 +19,7 @@ import {
   growSelection,
   insetFaces,
   invertSelection,
+  isDissolvableEdge,
   limitedDissolve,
   loopCut,
   medianPoint,
@@ -237,10 +240,23 @@ export const OPERATORS: Record<string, OperatorHandler> = {
 
     const before = { verts: mesh.verts.size, edges: mesh.edges.size, faces: mesh.faces.size };
 
+    // Edge dissolve is the one path that can silently fold a face, so the
+    // too-sharp edges are filtered here rather than in the kernel: vertex
+    // dissolve still has to merge a whole fan whatever its curvature, and a
+    // script calling dissolveEdges directly keeps the unconditional behaviour.
+    let skipped = 0;
     if (mode === 'verts') dissolveVerts(mesh, verts);
     else if (mode === 'faces') dissolveFaces(mesh, faces);
     else if (mode === 'limited') limitedDissolve(mesh, readNumber(params, 'angle', 5));
-    else dissolveEdges(mesh, edges);
+    else {
+      const limit = readNumber(params, 'angle', DISSOLVE_ANGLE_LIMIT_DEGREES);
+      // Boundary edges have no second face and were never dissolvable, so they
+      // are dropped quietly; only genuinely folded ones are worth reporting.
+      const interior = edges.filter((edge) => mesh.edgeFaces(edge).length === 2);
+      const flat = interior.filter((edge) => isDissolvableEdge(mesh, edge, limit));
+      skipped = interior.length - flat.length;
+      dissolveEdges(mesh, flat);
+    }
 
     if (mode === 'faces') {
       // Two ways to end up here having changed nothing: disjoint islands that
@@ -255,9 +271,34 @@ export const OPERATORS: Record<string, OperatorHandler> = {
 
     const removed =
       mode === 'verts' ? before.verts - mesh.verts.size : before.edges - mesh.edges.size;
-    const noun = mode === 'verts' ? 'vertices' : 'edges';
+    const noun = mode === 'verts' ? 'vertex(es)' : 'edge(s)';
+
+    if (skipped > 0) {
+      return {
+        status:
+          removed > 0
+            ? `Dissolved ${removed} edge(s), ${skipped} too sharp to merge`
+            : 'Those edges join faces at too sharp an angle to merge',
+      };
+    }
 
     return { status: removed > 0 ? `Dissolved ${removed} ${noun}` : `No ${noun} to dissolve` };
+  },
+
+  connect: ({ mesh, selectMode }) => {
+    const verts = mesh.selectedVerts();
+    if (verts.length !== 2) return { status: 'Select exactly two vertices to connect' };
+
+    const result = connectVerts(mesh, verts[0], verts[1]);
+    if (result.reason === 'connected') {
+      return { status: 'Those vertices already share an edge' };
+    }
+
+    mesh.flushSelection(selectMode);
+    return {
+      status:
+        result.reason === 'split' ? 'Connected, splitting the face in two' : 'Created an edge',
+    };
   },
 
   fill: ({ mesh }, params) => {

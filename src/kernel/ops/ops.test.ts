@@ -6,8 +6,9 @@ import type { Face } from '../mesh/types';
 import { createBox, createCylinder, createGrid, createPlane } from '../primitives';
 
 import { bevelEdges } from './bevel';
+import { connectVerts } from './connect';
 import { deleteGeometry } from './delete';
-import { dissolveEdges, dissolveFaces, limitedDissolve } from './dissolve';
+import { dissolveEdges, dissolveFaces, isDissolvableEdge, limitedDissolve } from './dissolve';
 import { extrudeFaces } from './extrude';
 import { bridgeEdgeLoops, fillHole } from './fill';
 import { insetFaces } from './inset';
@@ -339,6 +340,115 @@ describe('merge by distance', () => {
 
     expect(cube.verts.size).toBe(5);
     expect(cube.faces.size).toBe(5);
+    expect(cube.validate()).toEqual([]);
+  });
+});
+
+describe('dissolvable edges', () => {
+  it('rejects a cube edge, whose faces meet at 90 degrees', () => {
+    const cube = createBox(2);
+    for (const edge of cube.edges.values()) {
+      expect(isDissolvableEdge(cube, edge)).toBe(false);
+    }
+  });
+
+  it('accepts an edge between coplanar faces', () => {
+    const plane = createPlane(2);
+    const [a, , c] = plane.faceVerts([...plane.faces.values()][0]);
+    connectVerts(plane, a, c);
+
+    const seam = plane.findEdge(a, c);
+    expect(seam).not.toBeNull();
+    expect(seam && isDissolvableEdge(plane, seam)).toBe(true);
+  });
+
+  it("accepts a cylinder's gently folded side seams", () => {
+    const cylinder = createCylinder(1, 2, 24, true);
+    const side = [...cylinder.edges.values()].filter((edge) => {
+      const faces = cylinder.edgeFaces(edge);
+      return faces.length === 2 && faces.every((face) => Math.abs(face.normal.y) < 0.01);
+    });
+
+    expect(side.length).toBeGreaterThan(0);
+    for (const edge of side) expect(isDissolvableEdge(cylinder, edge)).toBe(true);
+  });
+
+  it('honours a caller-supplied limit', () => {
+    const cube = createBox(2);
+    const edge = [...cube.edges.values()][0];
+
+    expect(isDissolvableEdge(cube, edge, 95)).toBe(true);
+  });
+
+  it('leaves a boundary edge alone: it has no second face to merge with', () => {
+    const plane = createPlane(2);
+    const edge = [...plane.edges.values()][0];
+
+    expect(isDissolvableEdge(plane, edge)).toBe(false);
+  });
+});
+
+describe('connect verts', () => {
+  it('splits a face into two along the new edge', () => {
+    const plane = createPlane(2);
+    const [a, , c] = plane.faceVerts([...plane.faces.values()][0]);
+
+    const result = connectVerts(plane, a, c);
+
+    expect(result.reason).toBe('split');
+    // One quad becomes two triangles sharing the new edge.
+    expect(plane.faces.size).toBe(2);
+    expect(plane.findEdge(a, c)).not.toBeNull();
+    for (const face of plane.faces.values()) expect(plane.faceVerts(face)).toHaveLength(3);
+    expect(plane.validate()).toEqual([]);
+  });
+
+  it('keeps the parent winding on both halves', () => {
+    const plane = createPlane(2);
+    const original = [...plane.faces.values()][0].normal;
+    const [a, , c] = plane.faceVerts([...plane.faces.values()][0]);
+
+    connectVerts(plane, a, c);
+
+    for (const face of plane.faces.values()) {
+      const alignment =
+        face.normal.x * original.x + face.normal.y * original.y + face.normal.z * original.z;
+      expect(alignment).toBeGreaterThan(0.99);
+    }
+  });
+
+  it('adds a bare edge when the vertices share no face', () => {
+    const mesh = new BMesh();
+    const a = mesh.addVert(vec3(0, 0, 0));
+    const b = mesh.addVert(vec3(1, 0, 0));
+
+    const result = connectVerts(mesh, a, b);
+
+    expect(result.reason).toBe('bare');
+    expect(result.faces).toEqual([]);
+    expect(mesh.findEdge(a, b)).not.toBeNull();
+    expect(mesh.validate()).toEqual([]);
+  });
+
+  it('refuses vertices that an edge already joins', () => {
+    const plane = createPlane(2);
+    const [a, b] = plane.faceVerts([...plane.faces.values()][0]);
+
+    const result = connectVerts(plane, a, b);
+
+    expect(result.reason).toBe('connected');
+    expect(result.faces).toEqual([]);
+    expect(plane.faces.size).toBe(1);
+  });
+
+  it('splits only the shared face, leaving the rest of the mesh alone', () => {
+    const cube = createBox(2);
+    const top = faceAt(cube, vec3(0, 1, 0));
+    const [a, , c] = cube.faceVerts(top);
+
+    connectVerts(cube, a, c);
+
+    expect(cube.faces.size).toBe(7);
     expect(cube.validate()).toEqual([]);
   });
 });

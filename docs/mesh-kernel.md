@@ -151,6 +151,20 @@ affected face, dropping any that collapse below three distinct corners.
 lets the merge dialog show a live "N vertices will be removed" count that matches
 exactly what committing does.
 
+### Connect — `connect.ts`
+
+Runs an edge between two vertices (<kbd>J</kbd>). When both sit on the same face
+it *splits* that face rather than laying an edge across it: a bare edge through a
+face divides nothing, so the result would look cut while still shading and
+extruding as one surface. Walking the face ring both ways from one vertex to the
+other gives the two halves, and because each keeps the parent's vertex order the
+split faces inherit its winding for free.
+
+Vertices with no face in common — two loose verts, or corners of separate islands
+— get a plain edge instead, which is the only thing that can be meant there.
+Vertices an edge already joins are refused, and that covers ring neighbours too,
+since consecutive corners of a face always already have the edge between them.
+
 ### Delete and dissolve — `delete.ts`, `dissolve.ts`
 
 Kept as separate paths because they answer different questions.
@@ -170,6 +184,23 @@ param (vertex → `verts`, edge → `edges`, face → `faces`), so the keys alwa
 act on the elements the user can currently see highlighted. The operators still
 take every mode they support; only the two keyboard paths are constrained this
 way, and `exec('delete', { mode: 'onlyFaces' })` remains available to scripts.
+
+Dissolve is a *topology* edit, not a geometry one: the merged n-gon keeps every
+vertex exactly where it was. Merging two faces that meet at a sharp angle
+therefore produces a **folded** face, and nothing downstream can represent one —
+it gets a single averaged normal matching neither half, ear-clipping projects it
+onto a plane it does not lie near, and OBJ/FBX record it as one flat polygon.
+Dissolving a cube edge that way used to yield exactly that: a valid but folded
+six-vertex face whose shading looked broken.
+
+So the *operator* filters selected edges through `isDissolvableEdge` first,
+skipping any whose faces fold past `DISSOLVE_ANGLE_LIMIT_DEGREES` (40°, or the
+`angle` param) and saying how many it skipped. The limit sits at the operator
+boundary rather than in the kernel deliberately: `dissolveVerts` also calls
+`dissolveEdge` and has to merge a vertex's whole fan whatever its curvature, and
+a script calling `dissolveEdges` directly still gets the unconditional merge.
+Gentle curvature stays mergeable — a 24-segment cylinder's 15° side seams
+dissolve fine, which is what the operation is actually for.
 
 `dissolveEdge` merges the two faces sharing an edge by rotating both rings and
 splicing them. `dissolveFaces` does *not* dissolve interior edges one by one:

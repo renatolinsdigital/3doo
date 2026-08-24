@@ -112,6 +112,7 @@ Blender defaults, because that is the muscle memory users arrive with. Press
 | `E` / `I` | Extrude / inset |
 | `Ctrl+B` / `Ctrl+R` | Bevel / loop cut |
 | `M` | Merge by distance |
+| `J` | Connect two selected vertices with an edge |
 | `X` | Delete — object mode: the object; edit mode: the selection, leaving a hole |
 | `Delete` | Object mode: the object; edit mode: dissolve the selection, keeping the surface |
 | `A` / `Alt+A` | Select all / deselect |
@@ -125,12 +126,15 @@ delete removes the geometry outright and leaves a hole, dissolve removes the
 topology but keeps the surrounding surface intact. Dissolving faces merges
 adjacent ones into a single n-gon, so it needs two or more touching faces — a
 lone face has nothing to merge with and the status bar says so rather than
-reporting a no-op as a success.
+reporting a no-op as a success. Dissolving an edge likewise skips edges whose
+two faces meet at more than 40°: the merge keeps every vertex in place and so
+produces a folded face, which is what made dissolving a cube edge look broken.
 
 Because the keys cover both, the Operations panel has no Delete or Dissolve
 section; it offers Merge instead, which welds the selected vertices together at
 their center, or onto the first or last one selected. Merge is vertex-only and is
-disabled in edge and face mode. Object mode's panel likewise drops its Delete
+disabled in edge and face mode, as is Connect, which runs an edge between two
+selected vertices. Object mode's panel likewise drops its Delete
 button — the same two keys cover it — and carries Recalculate Normals instead,
 which is otherwise unreachable outside edit mode and is most often wanted right
 after a Join.

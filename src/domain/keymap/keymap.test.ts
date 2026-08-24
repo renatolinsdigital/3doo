@@ -33,6 +33,11 @@ describe('keymap', () => {
     expect(matchBinding(keyEvent('Delete'), 'object')?.id).toBe('dissolve');
   });
 
+  it('maps J to connect, in edit mode only', () => {
+    expect(matchBinding(keyEvent('j'), 'edit')?.id).toBe('connect');
+    expect(matchBinding(keyEvent('j'), 'object')).toBeNull();
+  });
+
   it('treats Meta as Ctrl for macOS users', () => {
     expect(matchBinding(keyEvent('z', { metaKey: true }), 'object')?.id).toBe('undo');
   });

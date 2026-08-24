@@ -32,6 +32,30 @@ export function dissolveEdge(mesh: BMesh, edge: Edge): Face | null {
   return face;
 }
 
+/**
+ * How far two faces may fold and still be worth merging.
+ *
+ * Dissolving is a topology edit, not a geometry one: the merged n-gon keeps
+ * every vertex where it was, so merging two faces that meet at a sharp angle
+ * produces a *folded* face. Nothing downstream can represent that — it gets one
+ * averaged normal that matches neither half, ear-clipping projects it onto a
+ * plane it does not lie near, and OBJ/FBX record it as a single flat polygon.
+ * Gentle curvature (a cylinder's 15° side seams) is fine and useful to merge;
+ * a cube's 90° corner is not.
+ */
+export const DISSOLVE_ANGLE_LIMIT_DEGREES = 40;
+
+/** Whether the two faces across `edge` are close enough to coplanar to merge. */
+export function isDissolvableEdge(
+  mesh: BMesh,
+  edge: Edge,
+  limitDegrees = DISSOLVE_ANGLE_LIMIT_DEGREES,
+): boolean {
+  const faces = mesh.edgeFaces(edge);
+  if (faces.length !== 2) return false;
+  return dot(faces[0].normal, faces[1].normal) >= Math.cos(degToRad(limitDegrees));
+}
+
 export function dissolveEdges(mesh: BMesh, edges: readonly Edge[]): Face[] {
   const merged: Face[] = [];
   for (const edge of edges) {

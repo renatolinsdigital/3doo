@@ -60,10 +60,11 @@ Unknown operator "extrud". Available: bevel, bridge, delete, deselectAll, ...
 
 | Name | Parameters |
 | --- | --- |
+| `connect` | — (acts on exactly two selected vertices) |
 | `mergeByDistance` | `threshold` |
 | `merge` | `mode`: `center` \| `cursor` \| `first` \| `last` \| `collapse` |
 | `delete` | `mode`: `verts` \| `edges` \| `faces` \| `onlyFaces` \| `edgesAndFaces` |
-| `dissolve` | `mode`: `verts` \| `edges` \| `faces` \| `limited`, `angle` |
+| `dissolve` | `mode`: `verts` \| `edges` \| `faces` \| `limited`, `angle` (edges: max fold in degrees, default 40; limited: default 5) |
 | `triangulate`, `trisToQuads` | `angle` (tris-to-quads only) |
 
 ### Topology and normals

@@ -8,6 +8,7 @@ export * from './merge';
 export * from './delete';
 export * from './dissolve';
 export * from './fill';
+export * from './connect';
 export * from './normals';
 export * from './transform';
 export * from './select';

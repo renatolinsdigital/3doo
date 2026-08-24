@@ -22,8 +22,8 @@ export function OperationsPanel() {
   const openDialog = useEditorStore((state) => state.openDialog);
   const proportional = useEditorStore((state) => state.proportional);
   const setProportional = useEditorStore((state) => state.setProportional);
-  // Merging welds vertices together, so it has nothing to act on in the other
-  // two select modes.
+  // Merge and connect both work on individual vertices, so they have nothing
+  // to act on in the other two select modes.
   const vertexMode = useEditorStore((state) => state.selectMode === 'vertex');
 
   const [extrudeOffset, setExtrudeOffset] = useState(1);
@@ -198,6 +198,16 @@ export function OperationsPanel() {
       </FieldRow>
 
       <FieldRow legend="TOPOLOGY" columns={2}>
+        <Button
+          label="CONNECT"
+          disabled={!vertexMode}
+          hint={
+            vertexMode
+              ? 'Run an edge between two selected vertices, splitting their face (J)'
+              : 'Connecting joins vertices — switch to vertex select mode (1)'
+          }
+          onClick={() => exec('connect', {}, 'Connect')}
+        />
         <Button
           label="FILL"
           hint="Fill a selected open boundary loop with a new face (F)"

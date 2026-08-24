@@ -100,6 +100,9 @@ export function useKeymap(): void {
         case 'fill':
           state.exec('fill', {}, 'Fill');
           break;
+        case 'connect':
+          state.exec('connect', {}, 'Connect');
+          break;
 
         case 'delete':
           if (state.mode === 'object') state.deleteSelected();

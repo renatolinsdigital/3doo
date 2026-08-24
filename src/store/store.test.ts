@@ -207,6 +207,48 @@ describe('editor store', () => {
     expect(store().status).toMatch(/nothing selected/i);
   });
 
+  it('refuses to fold a face when dissolving a sharp cube edge', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    store().setSelectMode('edge');
+
+    const mesh = activeObject().mesh;
+    mesh.deselectAll();
+    [...mesh.edges.values()][0].selected = true;
+    mesh.flushSelection('edge');
+
+    store().exec('dissolve', { mode: 'edges' }, 'Dissolve');
+
+    expect(activeObject().mesh.faces.size).toBe(6);
+    expect(store().status).toMatch(/too sharp/i);
+  });
+
+  it('still merges coplanar faces, which is what edge dissolve is for', () => {
+    store().addPrimitive('plane');
+    store().setMode('edit');
+    store().setSelectMode('vertex');
+
+    const mesh = activeObject().mesh;
+    const [a, , c] = mesh.faceVerts([...mesh.faces.values()][0]);
+    mesh.deselectAll();
+    a.selected = true;
+    c.selected = true;
+    mesh.flushSelection('vertex');
+    store().exec('connect', {}, 'Connect');
+    expect(activeObject().mesh.faces.size).toBe(2);
+
+    const seam = activeObject().mesh.findEdge(a, c);
+    activeObject().mesh.deselectAll();
+    if (seam) seam.selected = true;
+    activeObject().mesh.flushSelection('edge');
+    store().setSelectMode('edge');
+
+    store().exec('dissolve', { mode: 'edges' }, 'Dissolve');
+
+    expect(activeObject().mesh.faces.size).toBe(1);
+    expect(store().status).toBe('Dissolved 1 edge(s)');
+  });
+
   it('reports a failed operator without corrupting the scene', () => {
     store().addPrimitive('box');
     store().exec('doesNotExist', {}, 'Bogus');
