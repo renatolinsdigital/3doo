@@ -191,6 +191,14 @@ export class Viewport {
         (state) => state.activeTool,
         () => this.updateGizmo(),
       ),
+      // Locking is neither a geometry nor a selection change, so none of the
+      // subscriptions above would re-run — yet a locked object has to lose its
+      // gizmo, since dragging it is refused anyway.
+      store.subscribe(
+        (state) => state.objects.map((object) => object.locked),
+        () => this.updateGizmo(),
+        { equalityFn: shallowArrayEqual },
+      ),
       store.subscribe(
         (state) => state.frameRequest,
         (request) => {
