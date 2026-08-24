@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useEditorStore } from '@store/index';
 
@@ -68,5 +68,58 @@ describe('Outliner', () => {
     await userEvent.type(input, 'CHASSIS{Enter}');
 
     expect(useEditorStore.getState().objects[0].name).toBe('CHASSIS');
+  });
+
+  describe('locked-edit feedback', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('trembles the lock icon for 1s once a lockedAttempt reports this object, then settles', () => {
+      useEditorStore.getState().addPrimitive('box');
+      const id = useEditorStore.getState().objects[0].id;
+      render(<Outliner />);
+
+      expect(screen.getByRole('button', { name: 'Lock BOX' }).className).not.toMatch(/tremble/);
+
+      vi.useFakeTimers();
+      act(() => useEditorStore.setState({ lockedAttempt: { objectId: id, token: 1 } }));
+      expect(screen.getByRole('button', { name: 'Lock BOX' }).className).toMatch(/tremble/);
+
+      // Still shaking most of the way through the 1s run.
+      act(() => vi.advanceTimersByTime(900));
+      expect(screen.getByRole('button', { name: 'Lock BOX' }).className).toMatch(/tremble/);
+
+      act(() => vi.advanceTimersByTime(100));
+      expect(screen.getByRole('button', { name: 'Lock BOX' }).className).not.toMatch(/tremble/);
+    });
+
+    it('trembles when a locked object is clicked in the outliner', async () => {
+      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().toggleObjectLock(useEditorStore.getState().objects[0].id);
+      render(<Outliner />);
+
+      await userEvent.click(screen.getByRole('button', { name: 'BOX' }));
+
+      expect(screen.getByRole('button', { name: 'Unlock BOX' }).className).toMatch(/tremble/);
+      expect(useEditorStore.getState().status).toBe('Object is locked');
+    });
+
+    it('leaves an unlocked object alone when it is clicked', async () => {
+      useEditorStore.getState().addPrimitive('box');
+      render(<Outliner />);
+
+      await userEvent.click(screen.getByRole('button', { name: 'BOX' }));
+
+      expect(screen.getByRole('button', { name: 'Lock BOX' }).className).not.toMatch(/tremble/);
+    });
+
+    it('does not tremble for a lockedAttempt on a different object', () => {
+      useEditorStore.getState().addPrimitive('box');
+      render(<Outliner />);
+
+      const lockBtn = screen.getByRole('button', { name: 'Lock BOX' });
+      act(() => useEditorStore.setState({ lockedAttempt: { objectId: 'someone-else', token: 1 } }));
+
+      expect(lockBtn.className).not.toMatch(/tremble/);
+    });
   });
 });

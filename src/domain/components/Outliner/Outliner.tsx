@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Panel } from '@shared/components';
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
@@ -7,10 +7,14 @@ import type { SceneObject } from '@store/types';
 
 import './Outliner.scss';
 
+/** Must match the total run time of `.outliner__icon--tremble` in the stylesheet. */
+const TREMBLE_MS = 1000;
+
 export function Outliner() {
   const objects = useEditorStore((state) => state.objects);
   const activeObjectId = useEditorStore((state) => state.activeObjectId);
   const selectedObjectIds = useEditorStore((state) => state.selectedObjectIds);
+  const lockedAttempt = useEditorStore((state) => state.lockedAttempt);
   const setActiveObject = useEditorStore((state) => state.setActiveObject);
   const renameObject = useEditorStore((state) => state.renameObject);
   const toggleVisibility = useEditorStore((state) => state.toggleObjectVisibility);
@@ -31,6 +35,7 @@ export function Outliner() {
               isActive={object.id === activeObjectId}
               isSelected={selectedObjectIds.includes(object.id)}
               isEditing={editingId === object.id}
+              lockAttemptToken={lockedAttempt?.objectId === object.id ? lockedAttempt.token : null}
               onSelect={(additive) => setActiveObject(object.id, additive)}
               onStartRename={() => setEditingId(object.id)}
               onFinishRename={(name) => {
@@ -53,6 +58,8 @@ interface OutlinerRowProps {
   isActive: boolean;
   isSelected: boolean;
   isEditing: boolean;
+  /** Changes each time an edit is denied because this object is locked; drives the lock icon's tremble. */
+  lockAttemptToken: number | null;
   onSelect: (additive: boolean) => void;
   onStartRename: () => void;
   onFinishRename: (name: string) => void;
@@ -66,6 +73,7 @@ function OutlinerRow({
   isActive,
   isSelected,
   isEditing,
+  lockAttemptToken,
   onSelect,
   onStartRename,
   onFinishRename,
@@ -82,6 +90,17 @@ function OutlinerRow({
   const lockTooltip = useTooltipTrigger(
     object.locked ? 'Unlock to allow editing again' : 'Lock to prevent accidental edits',
   );
+
+  const [trembleToken, setTrembleToken] = useState<number | null>(null);
+
+  // Clicking (or failing to edit) this object bumps lockAttemptToken; shake the
+  // lock icon in response, rather than for as long as the object stays locked.
+  useEffect(() => {
+    if (lockAttemptToken === null) return;
+    setTrembleToken(lockAttemptToken);
+    const timer = window.setTimeout(() => setTrembleToken(null), TREMBLE_MS);
+    return () => window.clearTimeout(timer);
+  }, [lockAttemptToken]);
 
   return (
     <li
@@ -119,24 +138,103 @@ function OutlinerRow({
 
       <button
         type="button"
-        className="outliner__icon"
+        className={`outliner__icon${object.visible ? '' : ' outliner__icon--on'}`}
         aria-label={`${object.visible ? 'Hide' : 'Show'} ${object.name}`}
         aria-pressed={!object.visible}
         onClick={onToggleVisibility}
         {...visibilityTooltip}
       >
-        {object.visible ? '◉' : '◌'}
+        {object.visible ? <EyeIcon /> : <EyeOffIcon />}
       </button>
       <button
         type="button"
-        className="outliner__icon"
+        // Keyed on the token so a click during a shake remounts the button and
+        // restarts the animation, instead of leaving it frozen mid-run.
+        key={trembleToken ?? 'lock'}
+        className={[
+          'outliner__icon',
+          object.locked ? 'outliner__icon--on' : '',
+          trembleToken !== null ? 'outliner__icon--tremble' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
         aria-label={`${object.locked ? 'Unlock' : 'Lock'} ${object.name}`}
         aria-pressed={object.locked}
         onClick={onToggleLock}
         {...lockTooltip}
       >
-        {object.locked ? '▣' : '▢'}
+        {object.locked ? <LockIcon /> : <UnlockIcon />}
       </button>
     </li>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg
+      className="outliner__glyph"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M1 8C1 8 3.5 3 8 3s7 5 7 5-2.5 5-7 5-7-5-7-5Z" />
+      <circle cx="8" cy="8" r="2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg
+      className="outliner__glyph"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M1 8C1 8 3.5 3 8 3s7 5 7 5-2.5 5-7 5-7-5-7-5Z" />
+      <circle cx="8" cy="8" r="2" fill="currentColor" stroke="none" />
+      <line x1="1.5" y1="1.5" x2="14.5" y2="14.5" />
+    </svg>
+  );
+}
+
+function LockIcon() {
+  return (
+    <svg
+      className="outliner__glyph"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="7" width="10" height="7" />
+      <path d="M5 7V4.5a3 3 0 0 1 6 0V7" />
+    </svg>
+  );
+}
+
+function UnlockIcon() {
+  return (
+    <svg
+      className="outliner__glyph"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="7" width="10" height="7" />
+      <path d="M5 7V4.5a3 3 0 0 1 6 0" />
+    </svg>
   );
 }

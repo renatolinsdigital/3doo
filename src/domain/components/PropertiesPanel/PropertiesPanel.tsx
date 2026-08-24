@@ -63,7 +63,12 @@ export function PropertiesPanel() {
             label={axis.toUpperCase()}
             value={transform.position[axis]}
             step={0.1}
-            hint={`World-space ${axis.toUpperCase()} position; drag the label to scrub`}
+            disabled={object.locked}
+            hint={
+              object.locked
+                ? 'Unlock this object in the outliner to edit its transform'
+                : `World-space ${axis.toUpperCase()} position; drag the label to scrub`
+            }
             onChange={(value) =>
               setObjectTransform(object.id, {
                 position: { ...transform.position, [axis]: value },
@@ -81,7 +86,12 @@ export function PropertiesPanel() {
             value={Number(radToDeg(transform.rotation[axis]).toFixed(2))}
             step={1}
             suffix="°"
-            hint={`Rotation around the ${axis.toUpperCase()} axis, in degrees`}
+            disabled={object.locked}
+            hint={
+              object.locked
+                ? 'Unlock this object in the outliner to edit its transform'
+                : `Rotation around the ${axis.toUpperCase()} axis, in degrees`
+            }
             onChange={(value) =>
               setObjectTransform(object.id, {
                 rotation: { ...transform.rotation, [axis]: degToRad(value) },
@@ -98,7 +108,12 @@ export function PropertiesPanel() {
             label={axis.toUpperCase()}
             value={transform.scale[axis]}
             step={0.05}
-            hint={`Scale factor along the ${axis.toUpperCase()} axis`}
+            disabled={object.locked}
+            hint={
+              object.locked
+                ? 'Unlock this object in the outliner to edit its transform'
+                : `Scale factor along the ${axis.toUpperCase()} axis`
+            }
             onChange={(value) =>
               setObjectTransform(object.id, {
                 scale: { ...transform.scale, [axis]: value },

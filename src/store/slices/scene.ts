@@ -31,6 +31,7 @@ const history = new History(64);
 
 let objectCounter = 0;
 let materialCounter = 0;
+let lockAttemptCounter = 0;
 
 function nextObjectId(): string {
   objectCounter += 1;
@@ -58,6 +59,12 @@ export interface SceneSlice {
   canRedo: boolean;
   status: string;
   lastOperator: LastOperator | null;
+  /**
+   * Set whenever an edit is denied because its object is locked. The token
+   * bumps on every denial (even repeats on the same object) so a UI can react
+   * to the one denial event, rather than to the locked state itself.
+   */
+  lockedAttempt: { objectId: string; token: number } | null;
 
   addPrimitive: (kind: PrimitiveKind, params?: Partial<PrimitiveParams>) => void;
   updatePrimitiveParams: (params: Partial<PrimitiveParams>) => void;
@@ -72,6 +79,7 @@ export interface SceneSlice {
   renameObject: (id: string, name: string) => void;
   toggleObjectVisibility: (id: string) => void;
   toggleObjectLock: (id: string) => void;
+  noteLockedAttempt: (objectId: string) => void;
   duplicateSelected: (linked?: boolean) => void;
   deleteSelected: () => void;
   joinSelected: () => void;
@@ -120,6 +128,7 @@ export const createSceneSlice: StateCreator<
   canRedo: false,
   status: 'Ready',
   lastOperator: null,
+  lockedAttempt: null,
 
   touchMesh: () => set((state) => ({ meshVersion: state.meshVersion + 1 })),
 
@@ -219,6 +228,11 @@ export const createSceneSlice: StateCreator<
         : [id];
       return { activeObjectId: id, selectedObjectIds: selected };
     });
+
+    // Selecting a locked object is allowed, but nothing can be done with it —
+    // say so on the click rather than letting the user find out on a failed edit.
+    const object = get().objects.find((candidate) => candidate.id === id);
+    if (object?.locked) get().noteLockedAttempt(id);
   },
 
   /** The object-mode equivalent of "select all" in edit mode. */
@@ -251,6 +265,11 @@ export const createSceneSlice: StateCreator<
         object.id === id ? { ...object, locked: !object.locked } : object,
       ),
     }));
+  },
+
+  noteLockedAttempt: (objectId) => {
+    lockAttemptCounter += 1;
+    set({ status: 'Object is locked', lockedAttempt: { objectId, token: lockAttemptCounter } });
   },
 
   duplicateSelected: (linked = false) => {
@@ -338,9 +357,17 @@ export const createSceneSlice: StateCreator<
   },
 
   setObjectTransform: (id, transform) => {
+    const object = get().objects.find((candidate) => candidate.id === id);
+    if (object?.locked) {
+      get().noteLockedAttempt(object.id);
+      return;
+    }
+
     set((state) => ({
-      objects: state.objects.map((object) =>
-        object.id === id ? { ...object, transform: { ...object.transform, ...transform } } : object,
+      objects: state.objects.map((candidate) =>
+        candidate.id === id
+          ? { ...candidate, transform: { ...candidate.transform, ...transform } }
+          : candidate,
       ),
       meshVersion: state.meshVersion + 1,
     }));
@@ -351,6 +378,10 @@ export const createSceneSlice: StateCreator<
    * call. A multi-object gizmo drag patches every selected object on each
    * pointer-move tick; batching keeps that one store update (and one
    * `syncScene`) instead of N.
+   *
+   * Locked objects are skipped here too — the gizmo already excludes them
+   * from the drag group, but this keeps the guarantee at the one place state
+   * actually changes rather than trusting every future caller to filter first.
    */
   setObjectTransforms: (patches) => {
     if (patches.length === 0) return;
@@ -359,7 +390,9 @@ export const createSceneSlice: StateCreator<
     set((state) => ({
       objects: state.objects.map((object) => {
         const transform = patchMap.get(object.id);
-        return transform ? { ...object, transform: { ...object.transform, ...transform } } : object;
+        return transform && !object.locked
+          ? { ...object, transform: { ...object.transform, ...transform } }
+          : object;
       }),
       meshVersion: state.meshVersion + 1,
     }));
@@ -468,7 +501,7 @@ export const createSceneSlice: StateCreator<
       return;
     }
     if (object.locked) {
-      set({ status: `${object.name} is locked` });
+      get().noteLockedAttempt(object.id);
       return;
     }
 
@@ -555,6 +588,7 @@ export const createSceneSlice: StateCreator<
       canRedo: false,
       status: 'New project',
       lastOperator: null,
+      lockedAttempt: null,
       meshVersion: get().meshVersion + 1,
       // Edit mode with no object is not a reachable state, so a new scene has
       // to drop back to object mode along with the tool that was active.

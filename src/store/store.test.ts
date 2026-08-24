@@ -107,14 +107,65 @@ describe('editor store', () => {
 
   it('will not edit a locked object', () => {
     store().addPrimitive('box');
-    store().toggleObjectLock(activeObject().id);
+    const id = activeObject().id;
+    store().toggleObjectLock(id);
     store().setMode('edit');
     selectTopFace();
 
     store().exec('extrude', { offset: 1 }, 'Extrude');
 
     expect(activeObject().mesh.faces.size).toBe(6);
-    expect(store().status).toMatch(/locked/i);
+    expect(store().status).toBe('Object is locked');
+    expect(store().lockedAttempt).toEqual({ objectId: id, token: expect.any(Number) });
+  });
+
+  it('will not move a locked object via setObjectTransform', () => {
+    store().addPrimitive('box');
+    const id = activeObject().id;
+    const originalPosition = activeObject().transform.position;
+    store().toggleObjectLock(id);
+
+    store().setObjectTransform(id, { position: { x: 5, y: 5, z: 5 } });
+
+    expect(activeObject().transform.position).toEqual(originalPosition);
+    expect(store().status).toBe('Object is locked');
+    expect(store().lockedAttempt).toEqual({ objectId: id, token: expect.any(Number) });
+  });
+
+  it('bumps the lockedAttempt token on every repeated denial, even for the same object', () => {
+    store().addPrimitive('box');
+    const id = activeObject().id;
+    store().toggleObjectLock(id);
+
+    store().setObjectTransform(id, { position: { x: 1, y: 0, z: 0 } });
+    const firstToken = store().lockedAttempt?.token ?? 0;
+    store().setObjectTransform(id, { position: { x: 2, y: 0, z: 0 } });
+    const secondToken = store().lockedAttempt?.token ?? 0;
+
+    expect(firstToken).toBeGreaterThan(0);
+    expect(secondToken).toBeGreaterThan(firstToken);
+  });
+
+  it('skips locked objects in a batched setObjectTransforms call', () => {
+    store().addPrimitive('box');
+    const locked = store().objects[0].id;
+    const lockedPosition = store().objects[0].transform.position;
+    store().toggleObjectLock(locked);
+    store().addPrimitive('cylinder');
+    const unlocked = store().objects[1].id;
+
+    store().setObjectTransforms([
+      { id: locked, transform: { position: { x: 9, y: 9, z: 9 } } },
+      { id: unlocked, transform: { position: { x: 1, y: 2, z: 3 } } },
+    ]);
+
+    const objects = store().objects;
+    expect(objects.find((o) => o.id === locked)?.transform.position).toEqual(lockedPosition);
+    expect(objects.find((o) => o.id === unlocked)?.transform.position).toEqual({
+      x: 1,
+      y: 2,
+      z: 3,
+    });
   });
 
   it('reports a failed operator without corrupting the scene', () => {

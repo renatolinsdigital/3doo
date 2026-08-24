@@ -53,6 +53,7 @@
 
     min-width: 0;
     padding: var(--space-2) var(--space-3);
+    color: var(--void);
     background: var(--bone);
     border: none;
     outline: var(--border-thin) solid var(--cyan);
@@ -72,5 +73,32 @@
       background: var(--amber);
       color: var(--void);
     }
+
+    // Hidden/locked is a state a user needs to notice at a glance, not just
+    // on hover — the glyph alone (a 2px shackle gap) reads as identical to
+    // its counterpart at this size, so the fill carries the signal instead.
+    &--on {
+      background: var(--red);
+      color: var(--bone);
+
+      &:hover {
+        background: var(--rust);
+        color: var(--bone);
+      }
+    }
+
+    // Shakes when a locked object is clicked or an edit is denied, to point at
+    // why nothing happened. Only the glyph moves — shaking the whole button
+    // would drag its fill and border around with it. Five runs of the 0.2s
+    // keyframes; the total must stay in step with TREMBLE_MS in Outliner.tsx.
+    &--tremble .outliner__glyph {
+      animation: tremble-tight 0.2s ease-in-out 5;
+    }
+  }
+
+  &__glyph {
+    display: block;
+    width: 14px;
+    height: 14px;
   }
 }
