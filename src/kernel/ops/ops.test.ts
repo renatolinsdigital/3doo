@@ -3,19 +3,26 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { type Vec3, vec3 } from '../math';
 import { BMesh } from '../mesh';
 import type { Face } from '../mesh/types';
-import { createBox, createCylinder, createGrid, createPlane } from '../primitives';
+import { createBox, createCircle, createCylinder, createGrid, createPlane } from '../primitives';
 
 import { bevelEdges } from './bevel';
 import { connectVerts } from './connect';
 import { deleteGeometry } from './delete';
-import { dissolveEdges, dissolveFaces, isDissolvableEdge, limitedDissolve } from './dissolve';
+import {
+  dissolveEdges,
+  dissolveFaces,
+  dissolveVerts,
+  isDissolvableEdge,
+  isDissolvableVert,
+  limitedDissolve,
+} from './dissolve';
 import { extrudeFaces } from './extrude';
 import { bridgeEdgeLoops, fillHole } from './fill';
 import { insetFaces } from './inset';
 import { loopCut } from './loopcut';
 import { countMergeByDistance, mergeByDistance, mergeVerts } from './merge';
 import { flipNormals, recalculateNormals } from './normals';
-import { subdivideFaces, triangulateFaces, trisToQuads } from './subdivide';
+import { subdivideEdges, subdivideFaces, triangulateFaces, trisToQuads } from './subdivide';
 import { rotateVerts, scaleVerts, translateVerts } from './transform';
 import { selectEdgeLoop, selectEdgeRing, selectLinked } from './select';
 
@@ -344,6 +351,121 @@ describe('merge by distance', () => {
   });
 });
 
+describe('subdivide edges', () => {
+  it('puts a vertex on the midpoint and splices it into both faces', () => {
+    const cube = createBox(2);
+    const edge = [...cube.edges.values()][0];
+    const midpoint = vec3(
+      (edge.v0.co.x + edge.v1.co.x) / 2,
+      (edge.v0.co.y + edge.v1.co.y) / 2,
+      (edge.v0.co.z + edge.v1.co.z) / 2,
+    );
+
+    const added = subdivideEdges(cube, [edge]);
+
+    expect(added).toHaveLength(1);
+    expect(added[0].co).toEqual(midpoint);
+    expect(cube.verts.size).toBe(9);
+    expect(cube.faces.size).toBe(6);
+    // The two faces sharing the edge gain the vertex; the other four are untouched.
+    expect([...cube.faces.values()].map((face) => cube.faceVerts(face).length).sort()).toEqual([
+      4, 4, 4, 4, 5, 5,
+    ]);
+    expect(cube.validate()).toEqual([]);
+  });
+
+  it('keeps the surface closed', () => {
+    const cube = createBox(2);
+
+    subdivideEdges(cube, [...cube.edges.values()]);
+
+    expect(cube.verts.size - cube.edges.size + cube.faces.size).toBe(2);
+    expect(cube.validate()).toEqual([]);
+    for (const face of cube.faces.values()) expect(cube.faceVerts(face)).toHaveLength(8);
+  });
+
+  it('adds several evenly spaced vertices when asked for more cuts', () => {
+    const plane = createPlane(2);
+    const edge = [...plane.edges.values()][0];
+
+    const added = subdivideEdges(plane, [edge], 3);
+
+    expect(added).toHaveLength(3);
+    expect(plane.faceVerts([...plane.faces.values()][0])).toHaveLength(7);
+    expect(plane.validate()).toEqual([]);
+  });
+
+  it('splits a wire edge that has no face to rebuild', () => {
+    const ring = createCircle(1, 6, false);
+    expect(ring.faces.size).toBe(0);
+
+    subdivideEdges(ring, [[...ring.edges.values()][0]]);
+
+    expect(ring.verts.size).toBe(7);
+    expect(ring.edges.size).toBe(7);
+    expect(ring.validate()).toEqual([]);
+  });
+});
+
+describe('dissolving on an open mesh keeps it intact', () => {
+  // The region's boundary edges are the merged face's own ring. Pruning every
+  // edge left without a loop took those too whenever no face outside the region
+  // shared them, deleting the ring's vertices out from under the rebuilt face.
+  it('merges a whole open region without leaving edges on dead vertices', () => {
+    const grid = createGrid(2, 2);
+
+    dissolveFaces(grid, [...grid.faces.values()]);
+
+    expect(grid.validate()).toEqual([]);
+    expect(grid.faces.size).toBe(1);
+    expect(grid.verts.size).toBe(8);
+    expect(grid.faceVerts([...grid.faces.values()][0])).toHaveLength(8);
+  });
+
+  it('merges part of an open region without corrupting the rest', () => {
+    const grid = createGrid(2, 2);
+
+    dissolveFaces(grid, [...grid.faces.values()].slice(0, 2));
+
+    expect(grid.validate()).toEqual([]);
+    expect(grid.faces.size).toBe(3);
+  });
+
+  it('collapses a flat fan into one n-gon and drops the vertex', () => {
+    const grid = createGrid(2, 2);
+    const centre = [...grid.verts.values()].filter((vert) => grid.vertFaces(vert).length === 4);
+    expect(centre).toHaveLength(1);
+
+    dissolveVerts(grid, centre);
+
+    expect(grid.validate()).toEqual([]);
+    expect(grid.verts.has(centre[0].id)).toBe(false);
+    expect(grid.faces.size).toBe(1);
+    expect(grid.verts.size).toBe(8);
+  });
+
+  it('trims a boundary vertex out of the single face using it', () => {
+    const plane = createPlane(2);
+
+    dissolveVerts(plane, [[...plane.verts.values()][0]]);
+
+    expect(plane.validate()).toEqual([]);
+    expect(plane.verts.size).toBe(3);
+    expect(plane.faces.size).toBe(1);
+  });
+
+  it('removes a cube corner cleanly, leaving a closed surface', () => {
+    const cube = createBox(2);
+
+    dissolveVerts(cube, [[...cube.verts.values()][0]]);
+
+    expect(cube.validate()).toEqual([]);
+    // Euler characteristic of a closed genus-0 surface.
+    expect(cube.verts.size - cube.edges.size + cube.faces.size).toBe(2);
+    expect(cube.verts.size).toBe(7);
+  });
+});
+
 describe('dissolvable edges', () => {
   it('rejects a cube edge, whose faces meet at 90 degrees', () => {
     const cube = createBox(2);
@@ -378,6 +500,70 @@ describe('dissolvable edges', () => {
     const edge = [...cube.edges.values()][0];
 
     expect(isDissolvableEdge(cube, edge, 95)).toBe(true);
+  });
+
+  it('allows an edge midpoint however sharply its two faces meet', () => {
+    const cube = createBox(2);
+    const [midpoint] = subdivideEdges(cube, [[...cube.edges.values()][0]]);
+
+    // Two edges, so removing it merges nothing — the cube's 90° fold is irrelevant.
+    expect(midpoint.edges).toHaveLength(2);
+    expect(isDissolvableVert(cube, midpoint)).toBe(true);
+  });
+
+  it('round-trips: subdividing an edge then dissolving the midpoint restores the cube', () => {
+    const cube = createBox(2);
+    const [midpoint] = subdivideEdges(cube, [[...cube.edges.values()][0]]);
+    expect(cube.verts.size).toBe(9);
+
+    dissolveVerts(cube, [midpoint]);
+
+    expect(cube.verts.size).toBe(8);
+    expect(cube.edges.size).toBe(12);
+    expect(cube.faces.size).toBe(6);
+    // Every face is a quad again — the two 5-gons were trimmed, not merged.
+    for (const face of cube.faces.values()) expect(cube.faceVerts(face)).toHaveLength(4);
+    expect(cube.validate()).toEqual([]);
+  });
+
+  it('trims an edge midpoint out of the single face using it', () => {
+    const plane = createPlane(2);
+    const [midpoint] = subdivideEdges(plane, [[...plane.edges.values()][0]]);
+
+    dissolveVerts(plane, [midpoint]);
+
+    expect(plane.verts.size).toBe(4);
+    expect(plane.faces.size).toBe(1);
+    expect(plane.validate()).toEqual([]);
+  });
+
+  it('rejects a cube corner, where three perpendicular faces meet', () => {
+    const cube = createBox(2);
+    for (const vert of cube.verts.values()) {
+      expect(isDissolvableVert(cube, vert)).toBe(false);
+    }
+  });
+
+  it("accepts a flat grid's interior vertex, which is what vertex dissolve is for", () => {
+    const grid = createGrid(2, 2);
+    const interior = [...grid.verts.values()].filter((vert) => grid.vertFaces(vert).length === 4);
+
+    expect(interior).toHaveLength(1);
+    expect(isDissolvableVert(grid, interior[0])).toBe(true);
+  });
+
+  it('accepts a vertex with nothing around it to fold', () => {
+    const mesh = new BMesh();
+    const loose = mesh.addVert(vec3(0, 0, 0));
+
+    expect(isDissolvableVert(mesh, loose)).toBe(true);
+  });
+
+  it('honours a caller-supplied limit for vertices too', () => {
+    const cube = createBox(2);
+    const vert = [...cube.verts.values()][0];
+
+    expect(isDissolvableVert(cube, vert, 95)).toBe(true);
   });
 
   it('leaves a boundary edge alone: it has no second face to merge with', () => {

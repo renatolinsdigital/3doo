@@ -31,6 +31,83 @@ export function subdivideFaces(
   return current;
 }
 
+/**
+ * Splits each edge, adding `cuts` evenly spaced vertices along it.
+ *
+ * The vertices cannot just be dropped onto the edge: a face's ring is its own
+ * list of corners, so every face touching a split edge is rebuilt with the new
+ * points spliced into its ring. Without that the face would still span the old
+ * corners and the new vertex would sit on a seam that nothing references.
+ */
+export function subdivideEdges(mesh: BMesh, edges: readonly Edge[], cuts = 1): Vert[] {
+  const count = Math.max(1, Math.floor(cuts));
+  const live = edges.filter((edge) => mesh.edges.has(edge.id));
+  if (live.length === 0) return [];
+
+  // Points are stored running v0 -> v1, the edge's own direction.
+  const points = new Map<number, Vert[]>();
+  const created: Vert[] = [];
+  for (const edge of live) {
+    const inserted: Vert[] = [];
+    for (let i = 1; i <= count; i++) {
+      inserted.push(mesh.addVert(lerp(edge.v0.co, edge.v1.co, i / (count + 1))));
+    }
+    points.set(edge.id, inserted);
+    created.push(...inserted);
+  }
+
+  const affected = new Map<number, Face>();
+  for (const edge of live) {
+    for (const face of mesh.edgeFaces(edge)) affected.set(face.id, face);
+  }
+
+  interface RingSpec {
+    ring: Vert[];
+    materialIndex: number;
+    smooth: boolean;
+  }
+  const specs: RingSpec[] = [];
+  for (const face of affected.values()) {
+    const ring: Vert[] = [];
+    for (const loop of mesh.faceLoops(face)) {
+      ring.push(loop.vert);
+      const inserted = points.get(loop.edge.id);
+      if (!inserted) continue;
+      // A loop traverses its edge from loop.vert onwards, which is v1 -> v0 for
+      // half the faces sharing it, so those need the points in reverse.
+      ring.push(...(loop.edge.v0 === loop.vert ? inserted : [...inserted].reverse()));
+    }
+    specs.push({ ring, materialIndex: face.materialIndex, smooth: face.smooth });
+  }
+
+  const stale = new Set<Edge>();
+  for (const face of affected.values()) {
+    for (const edge of mesh.faceEdges(face)) stale.add(edge);
+    mesh.removeFace(face);
+  }
+
+  for (const spec of specs) {
+    if (spec.ring.length < 3) continue;
+    mesh.addFace(spec.ring, { materialIndex: spec.materialIndex, smooth: spec.smooth });
+  }
+
+  // A wire edge has no face to rebuild, so its own segments are chained instead.
+  for (const edge of live) {
+    if (!mesh.edges.has(edge.id) || edge.loops.length > 0) continue;
+    const chain = [edge.v0, ...(points.get(edge.id) ?? []), edge.v1];
+    mesh.removeEdge(edge);
+    for (let i = 0; i < chain.length - 1; i++) mesh.addEdge(chain[i], chain[i + 1]);
+  }
+
+  for (const edge of stale) {
+    if (mesh.edges.has(edge.id) && edge.loops.length === 0) mesh.removeEdge(edge);
+  }
+
+  for (const vert of created) vert.selected = true;
+  mesh.computeNormals();
+  return created;
+}
+
 function subdividePass(mesh: BMesh, faces: readonly Face[], smooth: number): Face[] {
   const selected = faces.filter((face) => mesh.faces.has(face.id));
   if (selected.length === 0) return [];

@@ -141,6 +141,17 @@ partial subdivision cannot distort the surrounding surface.
 Note that face points sit *on* the face centres, so subdividing a cube does not
 shrink its bounding box; what shrinks is the corners.
 
+### Subdivide edges — `subdivide.ts`
+
+`subdivideEdges` puts `cuts` evenly spaced vertices along each edge. The points
+cannot simply be dropped onto the edge: a face's ring is its own list of corners,
+so every face touching a split edge is rebuilt with the new points spliced into
+its ring — otherwise the face would still span the old corners and the vertex
+would sit on a seam nothing references. A loop traverses its edge from
+`loop.vert` onwards, which is `v1 -> v0` for one of the two faces sharing it, so
+that side takes the points reversed. Wire edges have no face to rebuild and are
+replaced by their own chain of segments instead.
+
 ### Merge by distance — `merge.ts`
 
 The primary automatic topology cleanup. A spatial hash buckets vertices by
@@ -193,12 +204,27 @@ onto a plane it does not lie near, and OBJ/FBX record it as one flat polygon.
 Dissolving a cube edge that way used to yield exactly that: a valid but folded
 six-vertex face whose shading looked broken.
 
-So the *operator* filters selected edges through `isDissolvableEdge` first,
+The same fold happens when dissolving a *vertex*, and more easily, since a
+corner gathers three or more faces at once — a cube corner's three mutually
+perpendicular faces collapse into one badly folded n-gon. `isDissolvableVert`
+applies the same limit across every pair in the fan.
+
+It exempts vertices with two edges or fewer, though, and that distinction is the
+whole point: a vertex only forces a merge when it sits at a *corner*, where
+dropping it would leave a hole. One lying along a path — the midpoint left by
+subdividing an edge — merges nothing. Every face using it simply drops it and
+keeps its own shape, so however sharply those faces meet is irrelevant. Guarding
+it by angle refused the most ordinary case there is: undoing an edge subdivision
+on a cube. `dissolveVerts` takes the matching path, trimming the vertex out of
+each face's ring instead of merging the faces together.
+
+So the *operator* filters selected edges through `isDissolvableEdge` and
+selected vertices through `isDissolvableVert` first,
 skipping any whose faces fold past `DISSOLVE_ANGLE_LIMIT_DEGREES` (40°, or the
 `angle` param) and saying how many it skipped. The limit sits at the operator
-boundary rather than in the kernel deliberately: `dissolveVerts` also calls
-`dissolveEdge` and has to merge a vertex's whole fan whatever its curvature, and
-a script calling `dissolveEdges` directly still gets the unconditional merge.
+boundary rather than in the kernel deliberately: the kernel primitives have to
+merge whatever they are handed — removing a vertex *means* merging its whole fan
+— and a script calling them directly still gets the unconditional merge.
 Gentle curvature stays mergeable — a 24-segment cylinder's 15° side seams
 dissolve fine, which is what the operation is actually for.
 
@@ -207,7 +233,18 @@ splicing them. `dissolveFaces` does *not* dissolve interior edges one by one:
 the last interior edge of a fan always ends up with both loops on the same face,
 which no pairwise merge can resolve. Instead it rebuilds each connected region's
 outline directly, chaining boundary loops in winding order so the result is
-correctly oriented for free.
+correctly oriented for free. `dissolveVerts` routes a vertex's fan through the
+same path for the same reason, and an interior vertex is not on the outline, so
+merging drops it from the ring for free; a vertex on an open boundary survives
+the merge and is trimmed out of the one face left instead.
+
+When pruning the region's now-unused edges, only the ones *interior* to it may
+go — its boundary edges are the merged face's own ring. Removing every edge left
+without a loop also took those whenever no face outside the region shared them,
+which on an open mesh (a grid, a plane) deleted the ring's vertices out from
+under the face about to be built from them, leaving edges pointing at dead
+vertices. The rebuilt face is added before loose vertices are swept, so the ring
+is never briefly orphaned.
 
 ### Normals — `normals.ts`
 

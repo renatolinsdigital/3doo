@@ -249,6 +249,98 @@ describe('editor store', () => {
     expect(store().status).toBe('Dissolved 1 edge(s)');
   });
 
+  it('refuses to fold a face when dissolving a cube corner vertex', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    store().setSelectMode('vertex');
+
+    const mesh = activeObject().mesh;
+    mesh.deselectAll();
+    [...mesh.verts.values()][0].selected = true;
+    mesh.flushSelection('vertex');
+
+    store().exec('dissolve', { mode: 'verts' }, 'Dissolve');
+
+    expect(activeObject().mesh.faces.size).toBe(6);
+    expect(activeObject().mesh.verts.size).toBe(8);
+    expect(store().status).toMatch(/too sharp/i);
+  });
+
+  it('still dissolves a vertex whose faces are coplanar', () => {
+    store().addPrimitive('grid', { segments: 2 });
+    store().setMode('edit');
+    store().setSelectMode('vertex');
+
+    const mesh = activeObject().mesh;
+    const interior = [...mesh.verts.values()].filter((vert) => mesh.vertFaces(vert).length === 4);
+    expect(interior).toHaveLength(1);
+    mesh.deselectAll();
+    interior[0].selected = true;
+    mesh.flushSelection('vertex');
+
+    store().exec('dissolve', { mode: 'verts' }, 'Dissolve');
+
+    expect(activeObject().mesh.verts.size).toBe(8);
+    expect(store().status).toBe('Dissolved 1 vertex(es)');
+  });
+
+  it('subdivides the selected edge in edge mode, where it used to refuse', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    store().setSelectMode('edge');
+
+    const mesh = activeObject().mesh;
+    mesh.deselectAll();
+    [...mesh.edges.values()][0].selected = true;
+    mesh.flushSelection('edge');
+
+    store().exec('subdivide', { cuts: 1, smooth: 0 }, 'Subdivide');
+
+    expect(activeObject().mesh.verts.size).toBe(9);
+    expect(activeObject().mesh.faces.size).toBe(6);
+    expect(store().status).toBe('Split 1 edge(s), adding 1 vertex(es)');
+  });
+
+  it('still subdivides faces in face mode', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    // Explicit: resetScene leaves selectMode as the previous test left it.
+    store().setSelectMode('face');
+    selectTopFace();
+
+    store().exec('subdivide', { cuts: 1, smooth: 0 }, 'Subdivide');
+
+    expect(activeObject().mesh.faces.size).toBe(9);
+    expect(store().status).toMatch(/Subdivided 1 face/);
+  });
+
+  it('dissolves a vertex sitting in the middle of an edge', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    store().setSelectMode('edge');
+
+    const mesh = activeObject().mesh;
+    mesh.deselectAll();
+    [...mesh.edges.values()][0].selected = true;
+    mesh.flushSelection('edge');
+    store().exec('subdivide', { cuts: 1 }, 'Subdivide');
+    expect(activeObject().mesh.verts.size).toBe(9);
+
+    const live = activeObject().mesh;
+    const midpoint = [...live.verts.values()].find((vert) => vert.edges.length === 2);
+    expect(midpoint).toBeDefined();
+    live.deselectAll();
+    if (midpoint) midpoint.selected = true;
+    live.flushSelection('vertex');
+    store().setSelectMode('vertex');
+
+    store().exec('dissolve', { mode: 'verts' }, 'Dissolve');
+
+    expect(activeObject().mesh.verts.size).toBe(8);
+    expect(activeObject().mesh.faces.size).toBe(6);
+    expect(store().status).toBe('Dissolved 1 vertex(es)');
+  });
+
   it('reports a failed operator without corrupting the scene', () => {
     store().addPrimitive('box');
     store().exec('doesNotExist', {}, 'Bogus');

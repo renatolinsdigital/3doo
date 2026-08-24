@@ -20,6 +20,7 @@ import {
   insetFaces,
   invertSelection,
   isDissolvableEdge,
+  isDissolvableVert,
   limitedDissolve,
   loopCut,
   medianPoint,
@@ -31,6 +32,7 @@ import {
   setShading,
   shrinkFatten,
   shrinkSelection,
+  subdivideEdges,
   subdivideFaces,
   translateVerts,
   triangulateFaces,
@@ -176,6 +178,19 @@ export const OPERATORS: Record<string, OperatorHandler> = {
   },
 
   subdivide: ({ mesh, selectMode }, params) => {
+    // In edge mode the selection is edges, so subdivide them: one vertex at
+    // each edge's midpoint. Cutting the faces instead would ignore what the
+    // user actually picked, and previously this just refused outright.
+    if (selectMode === 'edge') {
+      const edges = mesh.selectedEdges();
+      if (edges.length === 0) return { status: 'Select edges to subdivide' };
+
+      const added = subdivideEdges(mesh, edges, Math.round(readNumber(params, 'cuts', 1)));
+      mesh.flushSelection('vertex');
+      mesh.flushSelection(selectMode);
+      return { status: `Split ${edges.length} edge(s), adding ${added.length} vertex(es)` };
+    }
+
     const faces = mesh.selectedFaces();
     if (faces.length === 0) return { status: 'Select faces to subdivide' };
 
@@ -240,16 +255,21 @@ export const OPERATORS: Record<string, OperatorHandler> = {
 
     const before = { verts: mesh.verts.size, edges: mesh.edges.size, faces: mesh.faces.size };
 
-    // Edge dissolve is the one path that can silently fold a face, so the
-    // too-sharp edges are filtered here rather than in the kernel: vertex
-    // dissolve still has to merge a whole fan whatever its curvature, and a
-    // script calling dissolveEdges directly keeps the unconditional behaviour.
+    // Vertex and edge dissolve both merge the faces around what they remove, so
+    // both can silently fold one. They are filtered here rather than in the
+    // kernel: the kernel's dissolveVerts has to merge a whole fan whatever its
+    // curvature (that is what removing a vertex means), and a script calling
+    // either directly keeps the unconditional behaviour.
+    const limit = readNumber(params, 'angle', DISSOLVE_ANGLE_LIMIT_DEGREES);
     let skipped = 0;
-    if (mode === 'verts') dissolveVerts(mesh, verts);
-    else if (mode === 'faces') dissolveFaces(mesh, faces);
+
+    if (mode === 'verts') {
+      const flat = verts.filter((vert) => isDissolvableVert(mesh, vert, limit));
+      skipped = verts.length - flat.length;
+      dissolveVerts(mesh, flat);
+    } else if (mode === 'faces') dissolveFaces(mesh, faces);
     else if (mode === 'limited') limitedDissolve(mesh, readNumber(params, 'angle', 5));
     else {
-      const limit = readNumber(params, 'angle', DISSOLVE_ANGLE_LIMIT_DEGREES);
       // Boundary edges have no second face and were never dissolvable, so they
       // are dropped quietly; only genuinely folded ones are worth reporting.
       const interior = edges.filter((edge) => mesh.edgeFaces(edge).length === 2);
@@ -272,13 +292,14 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     const removed =
       mode === 'verts' ? before.verts - mesh.verts.size : before.edges - mesh.edges.size;
     const noun = mode === 'verts' ? 'vertex(es)' : 'edge(s)';
+    const plural = mode === 'verts' ? 'vertices' : 'edges';
 
     if (skipped > 0) {
       return {
         status:
           removed > 0
-            ? `Dissolved ${removed} edge(s), ${skipped} too sharp to merge`
-            : 'Those edges join faces at too sharp an angle to merge',
+            ? `Dissolved ${removed} ${noun}, ${skipped} too sharp to merge`
+            : `Those ${plural} join faces at too sharp an angle to merge`,
       };
     }
 

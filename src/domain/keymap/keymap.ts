@@ -32,7 +32,13 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
   { id: 'bevel', key: 'b', ctrl: true, label: 'Bevel', mode: 'edit', group: 'Modelling' },
   { id: 'loopCut', key: 'r', ctrl: true, label: 'Loop cut', mode: 'edit', group: 'Modelling' },
   { id: 'merge', key: 'm', label: 'Merge by distance', mode: 'edit', group: 'Modelling' },
-  { id: 'fill', key: 'f', label: 'Fill a boundary loop with a face', mode: 'edit', group: 'Modelling' },
+  {
+    id: 'fill',
+    key: 'f',
+    label: 'Fill a boundary loop with a face',
+    mode: 'edit',
+    group: 'Modelling',
+  },
   {
     id: 'connect',
     key: 'j',
@@ -40,7 +46,14 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
     label: 'Connect two vertices with an edge, splitting the face',
     group: 'Modelling',
   },
-  { id: 'subdivide', key: 'd', ctrl: true, label: 'Subdivide', mode: 'edit', group: 'Modelling' },
+  {
+    id: 'subdivide',
+    key: 'd',
+    ctrl: true,
+    mode: 'edit',
+    label: 'Subdivide — splits selected edges at their midpoint, or cuts up faces',
+    group: 'Modelling',
+  },
 
   { id: 'delete', key: 'x', mode: 'object', label: 'Delete the selected object(s)', group: 'Edit' },
   {

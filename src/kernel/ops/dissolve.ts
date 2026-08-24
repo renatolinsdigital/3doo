@@ -56,6 +56,39 @@ export function isDissolvableEdge(
   return dot(faces[0].normal, faces[1].normal) >= Math.cos(degToRad(limitDegrees));
 }
 
+/**
+ * Whether the fan around `vert` is flat enough to become a single face.
+ *
+ * Dissolving a vertex merges every face touching it, so the same fold that
+ * makes a sharp edge unmergeable applies here — and more easily, since a corner
+ * gathers three or more faces at once. A cube corner's three mutually
+ * perpendicular faces would collapse into one badly folded n-gon; the interior
+ * vertex of a flat grid, the case this operation is actually for, stays fine.
+ */
+export function isDissolvableVert(
+  mesh: BMesh,
+  vert: Vert,
+  limitDegrees = DISSOLVE_ANGLE_LIMIT_DEGREES,
+): boolean {
+  // A vertex with two edges or fewer sits along a path rather than at a corner:
+  // removing it merges nothing, it just drops out of the rings of the faces
+  // using it, which keep their own shape. That is true however sharply those
+  // faces meet — the midpoint of a cube's edge is the everyday case — so there
+  // is no fold to guard against.
+  if (vert.edges.length <= 2) return true;
+
+  const faces = mesh.vertFaces(vert);
+  if (faces.length < 2) return true;
+
+  const limit = Math.cos(degToRad(limitDegrees));
+  for (let i = 0; i < faces.length; i++) {
+    for (let j = i + 1; j < faces.length; j++) {
+      if (dot(faces[i].normal, faces[j].normal) < limit) return false;
+    }
+  }
+  return true;
+}
+
 export function dissolveEdges(mesh: BMesh, edges: readonly Edge[]): Face[] {
   const merged: Face[] = [];
   for (const edge of edges) {
@@ -82,10 +115,12 @@ export function dissolveFaces(mesh: BMesh, faces: readonly Face[]): Face[] {
     // Boundary loops always belong to a region face, so chaining them by
     // winding order gives a correctly oriented ring for free.
     const boundary = new Map<number, ReturnType<BMesh['faceLoops']>[number]>();
+    const interiorEdges = new Set<Edge>();
     for (const face of region) {
       for (const loop of mesh.faceLoops(face)) {
         const inside = mesh.edgeFaces(loop.edge).filter((f) => regionIds.has(f.id)).length;
         if (inside === 1) boundary.set(loop.vert.id, loop);
+        else if (inside === 2) interiorEdges.add(loop.edge);
       }
     }
     if (boundary.size < 3) continue;
@@ -104,19 +139,22 @@ export function dissolveFaces(mesh: BMesh, faces: readonly Face[]): Face[] {
     if (ring.length !== boundary.size) continue;
 
     const { materialIndex, smooth } = region[0];
-    const interiorEdges = new Set<Edge>();
-    for (const face of region) {
-      for (const edge of mesh.faceEdges(face)) interiorEdges.add(edge);
-      mesh.removeFace(face);
-    }
+    for (const face of region) mesh.removeFace(face);
+
+    // Only the edges *inside* the region go: its boundary edges are the new
+    // face's ring. Pruning every now-loop-less edge would take those too
+    // whenever no face outside the region shares them — on an open mesh that
+    // deleted the ring's own vertices and left the rebuilt face dangling.
     for (const edge of interiorEdges) {
       if (mesh.edges.has(edge.id) && edge.loops.length === 0) mesh.removeEdge(edge);
     }
-    mesh.removeLooseVerts();
 
     const face = mesh.addFace(ring, { materialIndex, smooth });
     face.selected = true;
     created.push(face);
+
+    // After the face exists, so the ring's vertices are never briefly orphaned.
+    mesh.removeLooseVerts();
   }
 
   mesh.computeNormals();
@@ -168,45 +206,59 @@ export function dissolveVerts(mesh: BMesh, verts: readonly Vert[]): void {
       continue;
     }
 
-    const interior: Edge[] = [];
-    for (const edge of vert.edges) {
-      if (edge.loops.length === 2) interior.push(edge);
-    }
-
-    let survivor: Face | null = null;
-    for (const edge of interior) {
-      if (!mesh.edges.has(edge.id)) continue;
-      survivor = dissolveEdge(mesh, edge) ?? survivor;
-    }
-
-    if (mesh.verts.has(vert.id) && vert.edges.length === 0) {
-      mesh.removeVert(vert);
+    // Two edges or fewer: the vertex lies along a path, so each face simply
+    // drops it and keeps its own shape. Merging here would be wrong — for the
+    // midpoint of a cube's edge it would fuse the two perpendicular faces.
+    if (vert.edges.length <= 2) {
+      for (const face of faces) {
+        if (mesh.faces.has(face.id)) trimVertFromFace(mesh, face, vert);
+      }
+      if (mesh.verts.has(vert.id) && mesh.vertFaces(vert).length === 0) mesh.removeVert(vert);
       continue;
     }
 
-    // The fan collapsed to one face; drop the now-interior vertex from its ring.
-    // Removing it can leave the spur edge's two sides adjacent, so dedupe too.
-    if (survivor && mesh.faces.has(survivor.id)) {
-      const ring: Vert[] = [];
-      for (const candidate of mesh.faceVerts(survivor)) {
-        if (candidate === vert) continue;
-        if (ring.length > 0 && ring[ring.length - 1] === candidate) continue;
-        ring.push(candidate);
-      }
-      while (ring.length > 1 && ring[0] === ring[ring.length - 1]) ring.pop();
+    // At a corner, dropping the vertex would leave a hole, so the fan has to
+    // become one face. Rebuilding its outline succeeds where dissolving the
+    // vertex's edges one at a time stalls: the fan's last interior edge ends up
+    // with both loops on the same face — the same reason dissolveFaces rebuilds
+    // regions directly. An interior vertex is not on the outline, so this also
+    // drops it from the ring for free.
+    if (faces.length > 1) dissolveFaces(mesh, faces);
 
-      if (ring.length >= 3) {
-        const { materialIndex, smooth } = survivor;
-        mesh.removeFace(survivor);
-        mesh.addFace(ring, { materialIndex, smooth }).selected = true;
-      }
+    // A vertex on an open boundary survives the merge, because its boundary
+    // edges keep it on the outline. Trim it out of the one face left instead.
+    if (mesh.verts.has(vert.id)) {
+      const remaining = mesh.vertFaces(vert);
+      if (remaining.length === 1) trimVertFromFace(mesh, remaining[0], vert);
     }
+
     if (mesh.verts.has(vert.id) && mesh.vertFaces(vert).length === 0) mesh.removeVert(vert);
   }
 
   mesh.removeWireEdges();
   mesh.removeLooseVerts();
   mesh.computeNormals();
+}
+
+/**
+ * Rebuilds `face` without `vert`.
+ *
+ * Dropping the vertex can leave a spur edge's two sides adjacent in the ring,
+ * so consecutive duplicates are collapsed as well.
+ */
+function trimVertFromFace(mesh: BMesh, face: Face, vert: Vert): void {
+  const ring: Vert[] = [];
+  for (const candidate of mesh.faceVerts(face)) {
+    if (candidate === vert) continue;
+    if (ring.length > 0 && ring[ring.length - 1] === candidate) continue;
+    ring.push(candidate);
+  }
+  while (ring.length > 1 && ring[0] === ring[ring.length - 1]) ring.pop();
+  if (ring.length < 3) return;
+
+  const { materialIndex, smooth } = face;
+  mesh.removeFace(face);
+  mesh.addFace(ring, { materialIndex, smooth }).selected = true;
 }
 
 /**

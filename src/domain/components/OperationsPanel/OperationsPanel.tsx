@@ -25,6 +25,9 @@ export function OperationsPanel() {
   // Merge and connect both work on individual vertices, so they have nothing
   // to act on in the other two select modes.
   const vertexMode = useEditorStore((state) => state.selectMode === 'vertex');
+  // Subdivide splits edges at their midpoint in edge mode; the Catmull-Clark
+  // smoothing only means anything when whole faces are being cut up.
+  const edgeMode = useEditorStore((state) => state.selectMode === 'edge');
 
   const [extrudeOffset, setExtrudeOffset] = useState(1);
   const [extrudeIndividual, setExtrudeIndividual] = useState(false);
@@ -137,7 +140,11 @@ export function OperationsPanel() {
           integer
           min={1}
           max={4}
-          hint="How many times to split each selected face"
+          hint={
+            edgeMode
+              ? 'How many vertices to add along each selected edge'
+              : 'How many times to split each selected face'
+          }
           onChange={setSubdivideCuts}
         />
         <NumberField
@@ -146,12 +153,21 @@ export function OperationsPanel() {
           step={0.1}
           min={0}
           max={1}
-          hint="Blend toward the Catmull-Clark limit surface"
+          disabled={edgeMode}
+          hint={
+            edgeMode
+              ? 'Smoothing applies when subdividing faces, not edges'
+              : 'Blend toward the Catmull-Clark limit surface'
+          }
           onChange={setSubdivideSmooth}
         />
         <Button
-          label="SUBDIVIDE"
-          hint="Split each selected face into four smaller faces"
+          label={edgeMode ? 'SUBDIVIDE EDGE' : 'SUBDIVIDE'}
+          hint={
+            edgeMode
+              ? 'Add a vertex at the midpoint of each selected edge (Ctrl+D)'
+              : 'Split each selected face into four smaller faces (Ctrl+D)'
+          }
           onClick={() =>
             exec('subdivide', { cuts: subdivideCuts, smooth: subdivideSmooth }, 'Subdivide')
           }

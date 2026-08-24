@@ -111,6 +111,7 @@ Blender defaults, because that is the muscle memory users arrive with. Press
 | `G` / `R` / `S` | Move / rotate / scale |
 | `E` / `I` | Extrude / inset |
 | `Ctrl+B` / `Ctrl+R` | Bevel / loop cut |
+| `Ctrl+D` | Subdivide — splits selected edges at their midpoint, or cuts up faces |
 | `M` | Merge by distance |
 | `J` | Connect two selected vertices with an edge |
 | `X` | Delete — object mode: the object; edit mode: the selection, leaving a hole |
@@ -118,6 +119,12 @@ Blender defaults, because that is the muscle memory users arrive with. Press
 | `A` / `Alt+A` | Select all / deselect |
 | `.` | Frame selected |
 | `Ctrl+S` / `Ctrl+E` | Save / export |
+
+<kbd>Ctrl</kbd>+<kbd>D</kbd> follows the select mode too: in edge mode it splits
+each selected edge, dropping a vertex at its midpoint and splicing it into the
+rings of both faces that share it, and the Operations panel's button relabels
+itself to Subdivide Edge. In vertex and face mode it keeps cutting whole faces
+up Catmull-Clark style, where the Smooth parameter applies.
 
 In edit mode both <kbd>X</kbd> and <kbd>Delete</kbd> act on whichever element
 type the current select mode targets — vertices in <kbd>1</kbd>, edges in
@@ -127,8 +134,12 @@ topology but keeps the surrounding surface intact. Dissolving faces merges
 adjacent ones into a single n-gon, so it needs two or more touching faces — a
 lone face has nothing to merge with and the status bar says so rather than
 reporting a no-op as a success. Dissolving an edge likewise skips edges whose
-two faces meet at more than 40°: the merge keeps every vertex in place and so
-produces a folded face, which is what made dissolving a cube edge look broken.
+two faces meet at more than 40°, and the same for a vertex at a *corner* whose
+surrounding faces do: the merge keeps every vertex in place and so produces a
+folded face, which is what made dissolving a cube edge or corner look broken. A
+vertex lying along a path rather than at a corner — the midpoint left by
+subdividing an edge — merges nothing and always dissolves, whatever angle its
+faces meet at.
 
 Because the keys cover both, the Operations panel has no Delete or Dissolve
 section; it offers Merge instead, which welds the selected vertices together at
