@@ -1,7 +1,7 @@
-import { type Axis, add, mul, sub, vec3 } from '../math';
+import { type Axis, add, lerp, mul, sub, vec3 } from '../math';
 import { BMesh, cloneMesh } from '../mesh';
-import type { Vert } from '../mesh/types';
-import { mergeByDistance } from '../ops/merge';
+import type { Face, Vert } from '../mesh/types';
+import { mergeByDistance, weldVerts } from '../ops/merge';
 import { subdivideFaces } from '../ops/subdivide';
 
 import type {
@@ -54,16 +54,21 @@ function applyMirror(mesh: BMesh, modifier: MirrorModifier): BMesh {
   if (modifier.axes.z) axes.push('z');
   if (axes.length === 0) return mesh;
 
+  const threshold = Math.max(0, modifier.mergeThreshold);
+
   for (const axis of axes) {
-    if (modifier.bisect) discardNegativeHalf(mesh, axis);
+    if (modifier.bisect) bisectHalf(mesh, axis, threshold);
     if (modifier.clipping) {
       for (const vert of mesh.verts.values()) {
-        if (Math.abs(vert.co[axis]) < modifier.mergeThreshold) vert.co = { ...vert.co, [axis]: 0 };
+        if (Math.abs(vert.co[axis]) < threshold) vert.co = { ...vert.co, [axis]: 0 };
       }
     }
 
     const originals = [...mesh.verts.values()];
     const originalFaces = [...mesh.faces.values()];
+    const originalWires = [...mesh.edges.values()]
+      .filter((edge) => edge.loops.length === 0)
+      .map((edge) => [edge.v0, edge.v1] as const);
     const reflection = new Map<number, Vert>();
 
     for (const vert of originals) {
@@ -80,8 +85,25 @@ function applyMirror(mesh: BMesh, modifier: MirrorModifier): BMesh {
       mesh.addFace(ring, { materialIndex: face.materialIndex, smooth: face.smooth });
     }
 
+    // Wire edges carry no loop for the face pass above to copy, so the mirrored
+    // half of edge-only geometry has to be rebuilt by hand.
+    for (const [v0, v1] of originalWires) {
+      const from = reflection.get(v0.id);
+      const to = reflection.get(v1.id);
+      if (from && to && from !== to) mesh.addEdge(from, to);
+    }
+
     if (modifier.merge) {
-      mergeByDistance(mesh, [...mesh.verts.values()], modifier.mergeThreshold);
+      // The merge limit is a distance from the mirror plane, not a general
+      // weld: only a vertex sitting on the seam absorbs its own reflection, so
+      // geometry that happens to be dense elsewhere is left intact.
+      const seam = new Map<number, Vert>();
+      for (const vert of originals) {
+        if (Math.abs(vert.co[axis]) > threshold) continue;
+        const image = reflection.get(vert.id);
+        if (image && image !== vert) seam.set(image.id, vert);
+      }
+      weldVerts(mesh, seam);
     }
   }
 
@@ -89,11 +111,80 @@ function applyMirror(mesh: BMesh, modifier: MirrorModifier): BMesh {
   return mesh;
 }
 
-function discardNegativeHalf(mesh: BMesh, axis: Axis): void {
-  const doomed = [...mesh.faces.values()].filter((face) => mesh.faceCenter(face)[axis] < 0);
+/**
+ * Cuts the mesh at the mirror plane and keeps the positive half.
+ *
+ * Faces that straddle the plane are split rather than kept or dropped whole,
+ * otherwise the reflection lands back on top of the uncut half and the result
+ * is doubled geometry with opposing winding.
+ */
+function bisectHalf(mesh: BMesh, axis: Axis, threshold: number): void {
+  const epsilon = Math.max(threshold, 1e-9);
+  const sideOf = (vert: Vert): number =>
+    vert.co[axis] > epsilon ? 1 : vert.co[axis] < -epsilon ? -1 : 0;
+
+  // Wires and isolated points that predate the cut are the caller's geometry;
+  // the sweep at the end is only for what this cut orphans.
+  const keptWires = new Set<number>();
+  for (const edge of mesh.edges.values()) if (edge.loops.length === 0) keptWires.add(edge.id);
+  const keptLoose = new Set<number>();
+  for (const vert of mesh.verts.values()) if (vert.edges.length === 0) keptLoose.add(vert.id);
+
+  // Cached per edge so both faces sharing it land on the same split vertex and
+  // the cut seam stays welded.
+  const splits = new Map<number, Vert>();
+  const splitOn = (a: Vert, b: Vert): Vert => {
+    const edge = mesh.findEdge(a, b);
+    const cached = edge ? splits.get(edge.id) : undefined;
+    if (cached) return cached;
+    const t = a.co[axis] / (a.co[axis] - b.co[axis]);
+    const vert = mesh.addVert({ ...lerp(a.co, b.co, t), [axis]: 0 });
+    if (edge) splits.set(edge.id, vert);
+    return vert;
+  };
+
+  const doomed: Face[] = [];
+  const rebuilt: { ring: Vert[]; materialIndex: number; smooth: boolean }[] = [];
+
+  for (const face of mesh.faces.values()) {
+    const ring = mesh.faceVerts(face);
+    const sides = ring.map(sideOf);
+    if (sides.every((side) => side >= 0)) continue;
+    doomed.push(face);
+    if (sides.every((side) => side <= 0)) continue;
+
+    const clipped: Vert[] = [];
+    const push = (vert: Vert) => {
+      if (clipped[clipped.length - 1] !== vert) clipped.push(vert);
+    };
+    for (let i = 0; i < ring.length; i++) {
+      const next = (i + 1) % ring.length;
+      if (sides[i] >= 0) push(ring[i]);
+      if (sides[i] * sides[next] < 0) push(splitOn(ring[i], ring[next]));
+    }
+    while (clipped.length > 1 && clipped[0] === clipped[clipped.length - 1]) clipped.pop();
+    if (clipped.length < 3) continue;
+    rebuilt.push({ ring: clipped, materialIndex: face.materialIndex, smooth: face.smooth });
+  }
+
   for (const face of doomed) mesh.removeFace(face);
-  mesh.removeWireEdges();
-  mesh.removeLooseVerts();
+  for (const spec of rebuilt) {
+    mesh.addFace(spec.ring, { materialIndex: spec.materialIndex, smooth: spec.smooth });
+  }
+
+  for (const edge of [...mesh.edges.values()]) {
+    if (edge.loops.length > 0) continue;
+    const side0 = sideOf(edge.v0);
+    if (side0 * sideOf(edge.v1) >= 0) continue;
+    const split = splitOn(edge.v0, edge.v1);
+    keptWires.add(mesh.addEdge(side0 > 0 ? edge.v0 : edge.v1, split).id);
+  }
+
+  for (const vert of [...mesh.verts.values()]) {
+    if (sideOf(vert) < 0) mesh.removeVert(vert);
+  }
+  mesh.removeWireEdges(keptWires);
+  mesh.removeLooseVerts(keptLoose);
 }
 
 function applyArray(mesh: BMesh, modifier: ArrayModifier): BMesh {

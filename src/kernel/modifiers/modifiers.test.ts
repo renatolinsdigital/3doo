@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { BMesh } from '../mesh';
 import { createBox, createPlane } from '../primitives';
 
 import { evaluateModifiers, createModifier } from './index';
@@ -60,6 +61,51 @@ describe('mirror modifier', () => {
       mirror({ axes: { x: false, y: false, z: false } }),
     ]);
     expect(result.faces.size).toBe(6);
+  });
+
+  it('mirrors wire edges, which carry no loop to copy', () => {
+    const mesh = new BMesh();
+    const a = mesh.addVert({ x: 1, y: 0, z: 0 });
+    const b = mesh.addVert({ x: 2, y: 1, z: 0 });
+    mesh.addEdge(a, b);
+
+    const result = evaluateModifiers(mesh, [mirror({ merge: false })]);
+
+    expect(result.verts.size).toBe(4);
+    expect(result.edges.size).toBe(2);
+    expect(result.boundingBox().min.x).toBeCloseTo(-2);
+  });
+
+  it('merges across the seam without welding the rest of the mesh', () => {
+    const plane = createPlane(2);
+    for (const vert of plane.verts.values()) vert.co = { ...vert.co, x: vert.co.x + 5 };
+    // A pair tighter than the threshold, but nowhere near the mirror plane.
+    const a = plane.addVert({ x: 5, y: 0, z: 0 });
+    const b = plane.addVert({ x: 5.0005, y: 0, z: 0 });
+    const c = plane.addVert({ x: 5, y: 2, z: 0 });
+    plane.addFace([a, b, c]);
+
+    const result = evaluateModifiers(plane, [mirror({ merge: true, mergeThreshold: 0.001 })]);
+
+    expect(result.verts.size).toBe(14);
+    expect(result.faces.size).toBe(4);
+    expect(result.validate()).toEqual([]);
+  });
+
+  it('bisects a straddling face instead of dropping it whole', () => {
+    const plane = createPlane(2);
+    // Spans -3..1, so the single face crosses the mirror plane.
+    for (const vert of plane.verts.values()) vert.co = { ...vert.co, x: vert.co.x * 2 - 1 };
+
+    const result = evaluateModifiers(plane, [
+      mirror({ bisect: true, merge: true, mergeThreshold: 0.001 }),
+    ]);
+    const box = result.boundingBox();
+
+    expect(box.min.x).toBeCloseTo(-1);
+    expect(box.max.x).toBeCloseTo(1);
+    expect(result.faces.size).toBe(2);
+    expect(result.validate()).toEqual([]);
   });
 });
 

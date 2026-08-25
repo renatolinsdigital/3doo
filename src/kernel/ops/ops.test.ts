@@ -328,6 +328,24 @@ describe('merge by distance', () => {
     expect(cube.verts.size).toBe(8);
   });
 
+  it('keeps wire edges and isolated points the weld did not orphan', () => {
+    const mesh = new BMesh();
+    const a = mesh.addVert(vec3(0, 0, 0));
+    const b = mesh.addVert(vec3(1, 0, 0));
+    const c = mesh.addVert(vec3(1.0001, 0, 0));
+    const d = mesh.addVert(vec3(2, 0, 0));
+    mesh.addEdge(a, b);
+    mesh.addEdge(c, d);
+    const island = mesh.addVert(vec3(9, 9, 9));
+
+    const result = mergeByDistance(mesh, [...mesh.verts.values()], 0.001);
+
+    expect(result.removed).toBe(1);
+    expect(mesh.edges.size).toBe(2);
+    expect(mesh.verts.has(island.id)).toBe(true);
+    expect(mesh.validate()).toEqual([]);
+  });
+
   it('drops faces that collapse to a sliver', () => {
     const cylinder = createCylinder(1, 2, 8, true);
     const before = cylinder.faces.size;

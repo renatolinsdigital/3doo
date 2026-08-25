@@ -5,13 +5,38 @@ import { useActiveObject, useEditorStore } from '@store/index';
 
 import './ModifierStack.scss';
 
-const MODIFIER_OPTIONS = [
-  { value: 'mirror', label: 'MIRROR' },
-  { value: 'array', label: 'ARRAY' },
-  { value: 'solidify', label: 'SOLIDIFY' },
-  { value: 'weld', label: 'WELD' },
-  { value: 'subdivide', label: 'SUBDIVISION' },
-] as const;
+const MODIFIER_INFO: Record<ModifierType, { label: string; description: string }> = {
+  mirror: {
+    label: 'MIRROR',
+    description:
+      'Reflects the mesh across the object origin on each enabled axis. Merge welds the two halves into one surface where they meet the mirror plane.',
+  },
+  array: {
+    label: 'ARRAY',
+    description:
+      'Repeats the mesh in a line. Each copy is offset by a fraction of the bounding box, a fixed distance, or both added together.',
+  },
+  solidify: {
+    label: 'SOLIDIFY',
+    description:
+      'Gives a flat surface thickness by extruding a second shell along the vertex normals and closing the gap around open edges.',
+  },
+  weld: {
+    label: 'WELD',
+    description:
+      'Collapses vertices that sit closer together than the distance into one, cleaning up split seams and duplicates.',
+  },
+  subdivide: {
+    label: 'SUBDIVISION',
+    description:
+      'Splits every face into smaller ones and pulls them toward the Catmull-Clark limit surface, rounding the shape off.',
+  },
+};
+
+const MODIFIER_OPTIONS = (Object.keys(MODIFIER_INFO) as ModifierType[]).map((type) => ({
+  value: type,
+  label: MODIFIER_INFO[type].label,
+}));
 
 export function ModifierStack() {
   const object = useActiveObject();
@@ -91,6 +116,7 @@ export function ModifierStack() {
               </header>
 
               <div className="modifiers__body">
+                <p className="modifiers__description">{MODIFIER_INFO[modifier.type].description}</p>
                 <Toggle
                   label="ENABLED"
                   checked={modifier.enabled}
@@ -158,19 +184,19 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
           step={0.001}
           min={0}
           precision={4}
-          hint="Maximum gap across the seam that still gets welded"
+          hint="How close to the mirror plane a vertex must sit to absorb its own reflection"
           onChange={(mergeThreshold) => onChange({ mergeThreshold })}
         />
         <Toggle
           label="CLIPPING"
           checked={modifier.clipping}
-          hint="Snap vertices near the mirror plane onto it"
+          hint="Snap vertices within the threshold of the mirror plane onto it"
           onChange={(clipping) => onChange({ clipping })}
         />
         <Toggle
           label="BISECT"
           checked={modifier.bisect}
-          hint="Discard the half that would overlap its own reflection"
+          hint="Cut the mesh at the mirror plane and keep only the positive half"
           onChange={(bisect) => onChange({ bisect })}
         />
       </>

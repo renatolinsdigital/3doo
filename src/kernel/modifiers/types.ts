@@ -11,9 +11,9 @@ export interface MirrorModifier extends ModifierBase {
   axes: { x: boolean; y: boolean; z: boolean };
   merge: boolean;
   mergeThreshold: number;
-  /** Clamp vertices that cross the mirror plane back onto it. */
+  /** Snap vertices within `mergeThreshold` of the mirror plane onto it. */
   clipping: boolean;
-  /** Discard the half that would overlap its own reflection. */
+  /** Cut the mesh at the mirror plane and keep only the positive half. */
   bisect: boolean;
 }
 

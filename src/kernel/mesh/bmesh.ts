@@ -142,11 +142,17 @@ export class BMesh {
     this.verts.delete(vert.id);
   }
 
-  /** Drops vertices that no longer belong to any edge. */
-  removeLooseVerts(): number {
+  /**
+   * Drops vertices that no longer belong to any edge.
+   *
+   * `keep` spares ids the caller recorded as already loose beforehand, so a
+   * cleanup pass sweeps up its own debris without deleting isolated points the
+   * mesh legitimately holds.
+   */
+  removeLooseVerts(keep?: ReadonlySet<number>): number {
     let removed = 0;
     for (const vert of [...this.verts.values()]) {
-      if (vert.edges.length === 0) {
+      if (vert.edges.length === 0 && !keep?.has(vert.id)) {
         this.verts.delete(vert.id);
         removed++;
       }
@@ -154,11 +160,11 @@ export class BMesh {
     return removed;
   }
 
-  /** Drops edges that no longer border any face. */
-  removeWireEdges(): number {
+  /** Drops edges that no longer border any face, sparing the ids in `keep`. */
+  removeWireEdges(keep?: ReadonlySet<number>): number {
     let removed = 0;
     for (const edge of [...this.edges.values()]) {
-      if (edge.loops.length === 0) {
+      if (edge.loops.length === 0 && !keep?.has(edge.id)) {
         this.removeEdge(edge);
         removed++;
       }

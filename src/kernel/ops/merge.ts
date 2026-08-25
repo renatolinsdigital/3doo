@@ -44,12 +44,24 @@ export function weldVerts(mesh: BMesh, mapping: ReadonlyMap<number, Vert>): numb
   }
 
   // Wire edges have no face to carry them, so re-create them explicitly.
+  // Survivors and rewired copies alike are remembered in `keptWires`: the sweep
+  // at the end exists to clear edges this weld stripped of faces, and would
+  // otherwise delete standalone wire geometry the mesh legitimately holds.
+  const keptWires = new Set<number>();
   const wirePairs: [Vert, Vert][] = [];
   for (const edge of mesh.edges.values()) {
     if (edge.loops.length > 0) continue;
     const a = resolve(edge.v0);
     const b = resolve(edge.v1);
-    if (a !== b && (a !== edge.v0 || b !== edge.v1)) wirePairs.push([a, b]);
+    if (a === b) continue;
+    if (a === edge.v0 && b === edge.v1) keptWires.add(edge.id);
+    else wirePairs.push([a, b]);
+  }
+
+  // Same reasoning for isolated points: only the ones this weld orphans go.
+  const keptLoose = new Set<number>();
+  for (const vert of mesh.verts.values()) {
+    if (vert.edges.length === 0 && !mapping.has(vert.id)) keptLoose.add(vert.id);
   }
 
   for (const face of doomedFaces) mesh.removeFace(face);
@@ -60,7 +72,7 @@ export function weldVerts(mesh: BMesh, mapping: ReadonlyMap<number, Vert>): numb
     });
     face.selected = spec.selected;
   }
-  for (const [a, b] of wirePairs) mesh.addEdge(a, b);
+  for (const [a, b] of wirePairs) keptWires.add(mesh.addEdge(a, b).id);
 
   let removed = 0;
   for (const vertId of mapping.keys()) {
@@ -70,8 +82,8 @@ export function weldVerts(mesh: BMesh, mapping: ReadonlyMap<number, Vert>): numb
     removed++;
   }
 
-  mesh.removeWireEdges();
-  mesh.removeLooseVerts();
+  mesh.removeWireEdges(keptWires);
+  mesh.removeLooseVerts(keptLoose);
   mesh.computeNormals();
   return removed;
 }
