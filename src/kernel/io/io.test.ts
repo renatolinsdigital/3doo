@@ -329,6 +329,22 @@ describe('operator registry', () => {
     expect(mesh.validate()).toEqual([]);
   });
 
+  it('leaves only the new loop selected after a cut', () => {
+    const mesh = createBox(2);
+    const start = [...mesh.edges.values()][0];
+    start.selected = true;
+    mesh.flushSelection('edge');
+
+    execOperator({ mesh, selectMode: 'edge', cursor: vec3() }, 'loopCut', { cuts: 1 });
+
+    // The edge the cut ran across used to stay selected alongside the loop, so
+    // the next scale dragged two box corners in with it and speared the faces
+    // between them. A ring cut through a box is four edges and four vertices.
+    expect(mesh.selectedEdges()).toHaveLength(4);
+    expect(mesh.selectedVerts()).toHaveLength(4);
+    expect(mesh.selectedVerts().every((vert) => vert.id >= 8)).toBe(true);
+  });
+
   it('reports unknown operators with the available list', () => {
     const mesh = createBox(2);
     expect(() =>

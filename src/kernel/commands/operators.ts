@@ -172,7 +172,7 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     return { status: `Bevelled ${edges.length} edge(s) into ${result.faces.length} face(s)` };
   },
 
-  loopCut: ({ mesh }, params) => {
+  loopCut: ({ mesh, selectMode }, params) => {
     const edges = mesh.selectedEdges();
     const start = edges[0];
     if (!start) return { status: 'Select an edge to cut across' };
@@ -181,6 +181,15 @@ export const OPERATORS: Record<string, OperatorHandler> = {
       cuts: Math.round(readNumber(params, 'cuts', 1)),
       slide: readNumber(params, 'slide', 0),
     });
+
+    // The edge the cut ran across is still selected at this point, and its two
+    // corners are corners of the box. Left in, the next transform drags them
+    // along with the new loop and stretches the faces between them.
+    mesh.deselectAll();
+    for (const edge of result.edges) edge.selected = true;
+    mesh.flushSelection('edge');
+    mesh.flushSelection(selectMode);
+
     return { status: `Inserted ${result.verts.length} vertices` };
   },
 
