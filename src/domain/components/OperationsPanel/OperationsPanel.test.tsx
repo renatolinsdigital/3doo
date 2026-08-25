@@ -48,6 +48,7 @@ describe('OperationsPanel', () => {
       'BRIDGE',
       'GROW',
       'SHRINK',
+      'FACE LOOP',
     ]) {
       expect(button(name)).toHaveAttribute('aria-disabled', 'true');
     }
@@ -88,6 +89,31 @@ describe('OperationsPanel', () => {
     });
 
     expect(button('CONNECT')).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('offers a face loop only once two faces are selected in face mode', () => {
+    render(<OperationsPanel />);
+
+    act(() => {
+      const mesh = activeMesh();
+      mesh.deselectAll();
+      const [first, second] = [...mesh.faces.values()];
+      first.selected = true;
+      second.selected = true;
+      mesh.flushSelection('face');
+      useEditorStore.getState().setSelectMode('face');
+      useEditorStore.getState().touchMesh();
+    });
+
+    expect(button('FACE LOOP')).not.toHaveAttribute('aria-disabled');
+
+    // A face loop is named by two adjacent faces; the other modes have no pair
+    // of faces to read it from.
+    act(() => {
+      useEditorStore.getState().setSelectMode('edge');
+    });
+
+    expect(button('FACE LOOP')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('still shows the hint of a disabled operation, saying what to select', () => {

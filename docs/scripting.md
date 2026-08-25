@@ -85,6 +85,7 @@ Unknown operator "extrud". Available: bevel, bridge, delete, deselectAll, ...
 | `rotate` | `axis`, `angle` (degrees) |
 | `scale` | `scale: {x, y, z}` |
 | `selectAll`, `deselectAll`, `invertSelection`, `growSelection`, `shrinkSelection` | — |
+| `selectFaceLoop` | — (needs two adjacent selected faces to name the loop) |
 
 ## Driving the kernel from a test
 

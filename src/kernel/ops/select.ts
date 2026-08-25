@@ -56,6 +56,39 @@ export function selectEdgeRing(mesh: BMesh, start: Edge): Edge[] {
   return [...ring.values()];
 }
 
+/**
+ * The face loop running through a pair of adjacent selected faces.
+ *
+ * Two adjacent faces are what name a loop. The edge they share is the one a
+ * loop cut would run across, so the ring of quads through it — the same walk
+ * `loopCut` uses — is the loop the user pointed at. One face alone names
+ * nothing: four loops run through it and there is no way to tell which.
+ *
+ * Every adjacent pair in the selection contributes its loop, so three faces in
+ * a row give the one loop they share while an L of three gives both. That keeps
+ * the result the same whatever order the faces were picked in, which matters
+ * because faces carry no click-order stamp to break the tie with.
+ */
+export function selectFaceLoop(mesh: BMesh, faces: readonly Face[]): Face[] {
+  const selected = new Set(faces.map((face) => face.id));
+  const walked = new Set<number>();
+  const loop = new Map<number, Face>();
+
+  for (const face of faces) {
+    for (const edge of mesh.faceEdges(face)) {
+      if (walked.has(edge.id)) continue;
+      const shared = mesh.edgeFaces(edge).some((other) => other !== face && selected.has(other.id));
+      if (!shared) continue;
+
+      walked.add(edge.id);
+      // Empty at a triangle or an n-gon, which have no loop to run along.
+      for (const step of collectEdgeRing(mesh, edge)) loop.set(step.face.id, step.face);
+    }
+  }
+
+  return [...loop.values()];
+}
+
 /** Flood-fills the selection across connected geometry. */
 export function selectLinked(mesh: BMesh, seeds: readonly Vert[]): Vert[] {
   const visited = new Set<number>();

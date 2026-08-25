@@ -29,6 +29,7 @@ import {
   recalculateNormals,
   rotateVerts,
   scaleVerts,
+  selectFaceLoop,
   setShading,
   shrinkFatten,
   shrinkSelection,
@@ -429,6 +430,25 @@ export const OPERATORS: Record<string, OperatorHandler> = {
   invertSelection: ({ mesh, selectMode }) => {
     invertSelection(mesh, selectMode);
     return { status: 'Inverted selection' };
+  },
+
+  selectFaceLoop: ({ mesh, selectMode }) => {
+    const faces = mesh.selectedFaces();
+    if (faces.length < 2) return { status: 'Select two adjacent faces to name a loop' };
+
+    const loop = selectFaceLoop(mesh, faces);
+    if (loop.length === 0) {
+      return { status: 'No loop runs through those faces — they must be adjacent quads' };
+    }
+
+    // Added to the selection rather than replacing it: the loop already
+    // contains the faces that named it, and anything else the user picked was
+    // picked on purpose.
+    for (const face of loop) face.selected = true;
+    mesh.flushSelection('face');
+    mesh.flushSelection(selectMode);
+
+    return { status: `Selected a face loop of ${loop.length}` };
   },
 
   growSelection: ({ mesh }) => {

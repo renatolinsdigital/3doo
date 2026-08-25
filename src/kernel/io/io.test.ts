@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { History } from '../commands/history';
 import { execOperator } from '../commands/operators';
-import { createTransform, vec3 } from '../math';
+import { createTransform, dot, vec3 } from '../math';
 import { createBox, createPlane } from '../primitives';
 
 import { exportFBXAscii } from './fbx-ascii';
@@ -343,6 +343,46 @@ describe('operator registry', () => {
     expect(mesh.selectedEdges()).toHaveLength(4);
     expect(mesh.selectedVerts()).toHaveLength(4);
     expect(mesh.selectedVerts().every((vert) => vert.id >= 8)).toBe(true);
+  });
+
+  it('runs a face loop out from two adjacent faces', () => {
+    const mesh = createBox(2);
+    const [first] = [...mesh.faces.values()];
+    const neighbour = mesh
+      .faceEdges(first)
+      .flatMap((edge) => mesh.edgeFaces(edge))
+      .find((face) => face !== first);
+    first.selected = true;
+    if (neighbour) neighbour.selected = true;
+    mesh.flushSelection('face');
+
+    const result = execOperator({ mesh, selectMode: 'face', cursor: vec3() }, 'selectFaceLoop', {});
+
+    // The two faces share one edge, and the band of quads through it wraps the
+    // cube in four.
+    expect(result.status).toContain('face loop of 4');
+    expect(mesh.selectedFaces()).toHaveLength(4);
+  });
+
+  it('refuses a face loop that no pair of adjacent faces names', () => {
+    const mesh = createBox(2);
+    const [first] = [...mesh.faces.values()];
+    first.selected = true;
+    mesh.flushSelection('face');
+
+    const single = execOperator({ mesh, selectMode: 'face', cursor: vec3() }, 'selectFaceLoop', {});
+    expect(single.status).toMatch(/two adjacent faces/);
+    expect(mesh.selectedFaces()).toHaveLength(1);
+
+    const opposite = [...mesh.faces.values()].find(
+      (face) => dot(face.normal, first.normal) < -0.99,
+    );
+    if (opposite) opposite.selected = true;
+    mesh.flushSelection('face');
+
+    const apart = execOperator({ mesh, selectMode: 'face', cursor: vec3() }, 'selectFaceLoop', {});
+    expect(apart.status).toMatch(/adjacent quads/);
+    expect(mesh.selectedFaces()).toHaveLength(2);
   });
 
   it('reports unknown operators with the available list', () => {

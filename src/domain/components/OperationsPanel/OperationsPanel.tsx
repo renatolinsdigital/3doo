@@ -29,6 +29,9 @@ export function OperationsPanel() {
   // Subdivide splits edges at their midpoint in edge mode; the Catmull-Clark
   // smoothing only means anything when whole faces are being cut up.
   const edgeMode = useEditorStore((state) => state.selectMode === 'edge');
+  // A face loop is named by two adjacent faces, so it has nothing to read in
+  // the modes that select vertices and edges.
+  const faceMode = useEditorStore((state) => state.selectMode === 'face');
 
   // Every operator below refuses outright when the selection cannot feed it —
   // the button is disabled to match, and its hint says what to select instead.
@@ -299,6 +302,18 @@ export function OperationsPanel() {
               : 'Nothing is selected for the selection to shrink back from'
           }
           onClick={() => exec('shrinkSelection', {}, 'Shrink selection')}
+        />
+        <Button
+          label="FACE LOOP"
+          disabled={!faceMode || selection.faces < 2}
+          hint={
+            !faceMode
+              ? 'Face loops run through faces — switch to face select mode (3)'
+              : selection.faces < 2
+                ? 'Select two adjacent faces for the loop to run through'
+                : 'Extend the selection along the whole loop those faces sit in'
+          }
+          onClick={() => exec('selectFaceLoop', {}, 'Select face loop')}
         />
       </FieldRow>
 
