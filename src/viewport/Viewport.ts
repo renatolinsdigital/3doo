@@ -524,6 +524,19 @@ export class Viewport {
     this.updateEditGizmo(state, gizmoMode);
   }
 
+  /**
+   * Stands the handles down for a scale that draws its own line.
+   *
+   * Hiding the helper is not enough on its own: three raycasts its picker
+   * meshes whether or not they are drawn, so a handle nobody can see would
+   * still highlight and still take a drag. Disabling the controls is what puts
+   * the whole gizmo out of reach until the scale ends.
+   */
+  private standDownGizmo(): void {
+    this.gizmo.enabled = false;
+    this.gizmoHelper.visible = false;
+  }
+
   private detachGizmo(): void {
     this.gizmo.detach();
     this.gizmo.enabled = false;
@@ -566,8 +579,8 @@ export class Viewport {
     }
 
     this.gizmo.setMode(gizmoMode);
-    this.gizmo.enabled = true;
-    this.gizmoHelper.visible = true;
+    this.gizmo.enabled = !this.scaleLine.visible;
+    this.gizmoHelper.visible = !this.scaleLine.visible;
     this.transformGroup = transformable.map((object) => object.id);
 
     if (state.pivot === 'cursor') {
@@ -609,8 +622,8 @@ export class Viewport {
     }
 
     this.gizmo.setMode(gizmoMode);
-    this.gizmo.enabled = true;
-    this.gizmoHelper.visible = true;
+    this.gizmo.enabled = !this.scaleLine.visible;
+    this.gizmoHelper.visible = !this.scaleLine.visible;
     this.transformGroup = [];
 
     const median = medianPoint(selected);
@@ -705,6 +718,12 @@ export class Viewport {
     // handle already shows where the drag is going, and a line out to the
     // pointer only crosses the model.
     this.scaleLine.visible = modal !== null || axis === 'XYZ';
+
+    // With the line up the handles say nothing the line does not, and they sit
+    // over the very geometry being scaled. They come back through updateGizmo
+    // when the scale ends.
+    if (this.scaleLine.visible) this.standDownGizmo();
+
     this.updateScaleLine();
   }
 
@@ -1361,6 +1380,7 @@ export class Viewport {
     this.extendFarPlane(distance);
     this.updateViewLost(distance);
     this.updateCursor();
+    if (this.scaleLine.visible) this.standDownGizmo();
     this.expireRecentVerts();
     this.renderer.render(this.scene, this.camera);
   };
