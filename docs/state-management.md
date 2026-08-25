@@ -1,6 +1,6 @@
 # State management
 
-Zustand, four slices, one store.
+Zustand, five slices, one store.
 
 ## Why Zustand rather than Redux or Context
 
@@ -19,6 +19,7 @@ export const useEditorStore = create<EditorStore>()(
     ...createToolSlice(...args),
     ...createViewportSlice(...args),
     ...createUiSlice(...args),
+    ...createPreferencesSlice(...args),
   })),
 );
 ```
@@ -31,6 +32,7 @@ export const useEditorStore = create<EditorStore>()(
 | `tool` | Editor mode, select mode, active tool, pivot, snapping, proportional editing, modal transform |
 | `viewport` | Shading, overlays, camera settings, navigation preset, framing requests |
 | `ui` | Toasts, open dialog, export options, merge preview |
+| `preferences` | Tooltips, selection line width and colour — the fields persisted to localStorage |
 
 Splitting into files is organisation. What actually prevents wasted renders is
 **selecting narrowly at the call site**:
@@ -42,6 +44,61 @@ const shading = useEditorStore((state) => state.shading);
 // Bad: re-renders on every store update.
 const { shading } = useEditorStore();
 ```
+
+## User preferences
+
+Preferences are the settings that belong to the **person**, not the project:
+tooltips on or off, how thick and what colour the selection outline is. They are
+deliberately not part of a `.3doo.json` — opening a file someone sent you must
+not repaint your viewport.
+
+They live in `slices/preferences.ts` and persist to a single localStorage key:
+
+```
+3doo:preferences → {"tooltipsEnabled":true,"selectionLineWidth":2.0,"selectionLineColor":"#e5342a"}
+```
+
+One key holding one JSON object, rather than a key per setting. That is what
+makes export and import a one-liner, and what stops a half-written settings
+change from leaving the app in a state no version ever shipped.
+
+The fields sit **flat on the store**, not nested under a `preferences` object, so
+a component still selects one value and re-renders on one value:
+
+```ts
+const width = useEditorStore((state) => state.selectionLineWidth);
+```
+
+`currentPreferences()` gathers just those fields back up when the whole set is
+needed — writing to storage, and the export button.
+
+### Every write goes through `coercePreferences`
+
+Storage read, `setPreferences`, reset and import all funnel through the same
+validator:
+
+```ts
+setPreferences: (patch) => apply(coercePreferences({ ...get().currentPreferences(), ...patch })),
+```
+
+Each field falls back to its own default independently, so a hand-edited blob or
+a file from an older build cannot cost the user the rest of their settings, and a
+width outside the slider's range cannot reach the renderer as a hairline or a
+slab. Storage access is wrapped in `try`/`catch` throughout, because private
+browsing throws on `localStorage` rather than returning `null`; a blocked read
+means preferences do not persist, never that the editor refuses to start.
+
+### Import and export
+
+The preferences dialog writes `currentPreferences()` out with the same
+`downloadText` / `pickTextFile` pair the project files use, so a settings file is
+just JSON the user can carry to another browser.
+
+Validation lives in the store, presentation in the dialog:
+`importPreferences(text)` throws with a message worth showing, and the dialog
+turns it into a toast. A file with none of the known keys is rejected rather than
+silently applied as "all defaults", which is what stops dropping the wrong JSON
+in from quietly wiping your settings.
 
 ## `meshVersion`, and why it exists
 

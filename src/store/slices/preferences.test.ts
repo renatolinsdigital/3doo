@@ -1,0 +1,137 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { DEFAULT_PREFERENCES, coercePreferences } from './preferences';
+
+const STORAGE_KEY = '3doo:preferences';
+
+/**
+ * Preferences are read once, when the store module first evaluates.
+ * `resetModules` plus a dynamic import gives each test a fresh store, which is
+ * the only way to exercise that read path deterministically.
+ */
+async function freshStore() {
+  const { useEditorStore } = await import('../useEditorStore');
+  return useEditorStore;
+}
+
+describe('preference storage', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('starts from the defaults when nothing is stored', async () => {
+    const store = await freshStore();
+    expect(store.getState().currentPreferences()).toEqual(DEFAULT_PREFERENCES);
+  });
+
+  it('reads a previously stored set on load', async () => {
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({
+        tooltipsEnabled: false,
+        selectionLineWidth: 6,
+        selectionLineColor: '#3de0d0',
+      }),
+    );
+
+    const store = await freshStore();
+
+    expect(store.getState().currentPreferences()).toEqual({
+      tooltipsEnabled: false,
+      selectionLineWidth: 6,
+      selectionLineColor: '#3de0d0',
+    });
+  });
+
+  it('falls back to the defaults when the stored blob is unreadable', async () => {
+    window.localStorage.setItem(STORAGE_KEY, 'not json');
+
+    const store = await freshStore();
+
+    expect(store.getState().currentPreferences()).toEqual(DEFAULT_PREFERENCES);
+  });
+
+  it('persists a change straight away', async () => {
+    const store = await freshStore();
+
+    store.getState().setPreferences({ selectionLineWidth: 4 });
+
+    expect(store.getState().selectionLineWidth).toBe(4);
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}').selectionLineWidth).toBe(4);
+  });
+
+  it('puts everything back on reset', async () => {
+    const store = await freshStore();
+    store.getState().setPreferences({ selectionLineWidth: 7, selectionLineColor: '#000000' });
+
+    store.getState().resetPreferences();
+
+    expect(store.getState().currentPreferences()).toEqual(DEFAULT_PREFERENCES);
+  });
+});
+
+describe('coercePreferences', () => {
+  it('keeps the defaults for anything missing', () => {
+    expect(coercePreferences({ selectionLineWidth: 3 })).toEqual({
+      ...DEFAULT_PREFERENCES,
+      selectionLineWidth: 3,
+    });
+  });
+
+  it('clamps a width that would render as a hairline or a slab', () => {
+    expect(coercePreferences({ selectionLineWidth: 0 }).selectionLineWidth).toBe(1);
+    expect(coercePreferences({ selectionLineWidth: 999 }).selectionLineWidth).toBe(8);
+  });
+
+  it('rejects a colour that is not #rrggbb', () => {
+    expect(coercePreferences({ selectionLineColor: 'red' }).selectionLineColor).toBe(
+      DEFAULT_PREFERENCES.selectionLineColor,
+    );
+    expect(coercePreferences({ selectionLineColor: '#3DE0D0' }).selectionLineColor).toBe('#3de0d0');
+  });
+
+  it('does not let one bad value cost the user the rest', () => {
+    expect(coercePreferences({ tooltipsEnabled: false, selectionLineWidth: 'wide' })).toEqual({
+      ...DEFAULT_PREFERENCES,
+      tooltipsEnabled: false,
+    });
+  });
+});
+
+describe('importing a preferences file', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    vi.resetModules();
+  });
+
+  it('round-trips what the export button writes', async () => {
+    const store = await freshStore();
+    store.getState().setPreferences({ selectionLineWidth: 5, selectionLineColor: '#f2a03d' });
+    const exported = JSON.stringify(store.getState().currentPreferences());
+
+    store.getState().resetPreferences();
+    store.getState().importPreferences(exported);
+
+    expect(store.getState().currentPreferences()).toEqual({
+      tooltipsEnabled: true,
+      selectionLineWidth: 5,
+      selectionLineColor: '#f2a03d',
+    });
+  });
+
+  it('refuses a file that is not preferences, leaving the current set alone', async () => {
+    const store = await freshStore();
+    store.getState().setPreferences({ selectionLineWidth: 5 });
+
+    expect(() => store.getState().importPreferences('{"objects":[]}')).toThrow(
+      'holds no preferences',
+    );
+    expect(() => store.getState().importPreferences('v 0 0 0')).toThrow('not valid JSON');
+    expect(store.getState().selectionLineWidth).toBe(5);
+  });
+});

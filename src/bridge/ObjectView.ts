@@ -1,12 +1,17 @@
 import * as THREE from 'three';
+import type { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 
-import { type BMesh, composeMatrix } from '@kernel/index';
+import { type BMesh, type Vec3, composeMatrix, inverseTransformPoint } from '@kernel/index';
+import { DEFAULT_PREFERENCES } from '@store/index';
 import type { SceneObject, SelectMode, ShadingMode, ViewportSettings } from '@store/types';
 
 import {
   VIEWPORT_COLORS,
   createFaceOrientationMaterial,
   createNormalsMaterial,
+  createOutlineMaterial,
   createPointMaterial,
   createRecentPointMaterial,
   createSelectionOverlayMaterial,
@@ -14,13 +19,26 @@ import {
   createWireMaterial,
   disposeMaterial,
 } from './materials';
-import { buildMeshBuffers, buildNormalLines } from './meshBuffers';
+import { buildMeshBuffers, buildNormalLines, buildSilhouetteEdges } from './meshBuffers';
+
+/**
+ * How much the outline darkens on a selected object that is not the active one.
+ *
+ * Derived from the chosen colour rather than being a second preference: the
+ * point is only that a multi-object selection still says which one the
+ * operations will run on.
+ */
+const INACTIVE_OUTLINE_TINT = 0.68;
 
 export interface ObjectViewState {
   mode: 'object' | 'edit';
   selectMode: SelectMode;
   isActive: boolean;
   isSelected: boolean;
+  /** The camera, in world space, for the selection outline's silhouette. */
+  eye: Vec3;
+  /** Colour and pixel width of the object-mode outline, from the user's preferences. */
+  selectionLine: { color: string; width: number };
   settings: ViewportSettings;
   /** Kernel ids of vertices to flash as just-created; empty most of the time. */
   recentVerts?: ReadonlySet<number>;
@@ -52,10 +70,13 @@ export class ObjectView {
   private readonly points = new THREE.Points();
   private readonly recentPoints = new THREE.Points();
   private readonly normals = new THREE.LineSegments();
-  private readonly outline = new THREE.LineSegments();
+  private readonly outline = new LineSegments2();
 
   /** What the surface materials were last built from; see `updateSolid`. */
   private solidMaterialKey = '';
+
+  /** Held for `refreshOutline`, which re-traces the silhouette as the camera moves. */
+  private outlined: { mesh: BMesh; object: SceneObject } | null = null;
 
   /** Triangle index to kernel face id, for raycast picking. */
   triangleFaceIds: Int32Array = new Int32Array(0);
@@ -68,6 +89,7 @@ export class ObjectView {
     this.group.name = objectId;
     this.solid.name = `${objectId}:solid`;
     this.solid.userData.objectId = objectId;
+    this.outline.name = `${objectId}:outline`;
 
     this.backfaces.material = createFaceOrientationMaterial();
     this.wire.material = createWireMaterial(false);
@@ -76,8 +98,12 @@ export class ObjectView {
     this.points.material = createPointMaterial();
     this.recentPoints.material = createRecentPointMaterial();
     this.normals.material = createNormalsMaterial();
-    this.outline.material = new THREE.LineBasicMaterial({ color: VIEWPORT_COLORS.amber });
+    this.outline.material = createOutlineMaterial({
+      color: DEFAULT_PREFERENCES.selectionLineColor,
+      width: DEFAULT_PREFERENCES.selectionLineWidth,
+    });
 
+    this.outline.renderOrder = 1;
     this.selectedFaces.renderOrder = 2;
     this.selectedEdges.renderOrder = 3;
     this.points.renderOrder = 4;
@@ -101,7 +127,12 @@ export class ObjectView {
     this.group.matrixAutoUpdate = false;
     this.group.matrix.fromArray(composeMatrix(object.transform) as number[]);
     this.group.matrixWorldNeedsUpdate = true;
-    if (!object.visible) return;
+    if (!object.visible) {
+      // Nothing of a hidden object is drawn, outline included, and dropping it
+      // here is what stops the camera re-tracing a silhouette nobody can see.
+      this.outlined = null;
+      return;
+    }
 
     const buffers = buildMeshBuffers(displayMesh);
     this.triangleFaceIds = buffers.solid.triangleFaceIds;
@@ -112,6 +143,7 @@ export class ObjectView {
 
     this.updateSolid(object, buffers.solid, state);
     this.updateWireframe(buffers.edges, state);
+    this.updateOutline(object, displayMesh, state);
     this.updatePoints(buffers.points, state);
     this.updateRecentPoints(buffers.points, state);
     this.updateNormals(displayMesh, state);
@@ -191,9 +223,65 @@ export class ObjectView {
     this.selectedEdges.visible =
       state.mode === 'edit' && state.isActive && edges.selectedPositions.length > 0;
 
-    // In object mode the whole object is outlined instead of per-element.
-    this.replaceGeometry(this.outline, geometry.clone());
+  }
+
+  /**
+   * Traces the object's outline, the way Blender marks a selection.
+   *
+   * Only the silhouette, not every edge: the wireframe already says where the
+   * geometry runs, and an outline is about which object you are holding. The
+   * active one is redder than the rest of the selection, so a multi-object
+   * selection still says which one the operations will run on.
+   */
+  private updateOutline(object: SceneObject, mesh: BMesh, state: ObjectViewState): void {
     this.outline.visible = state.mode === 'object' && state.isSelected;
+    this.outlined = this.outline.visible ? { mesh, object } : null;
+    if (!this.outline.visible) return;
+
+    const material = this.outline.material as LineMaterial;
+    material.color.set(state.selectionLine.color);
+    if (!state.isActive) material.color.multiplyScalar(INACTIVE_OUTLINE_TINT);
+    material.linewidth = state.selectionLine.width;
+    this.traceOutline(state.eye);
+  }
+
+  /**
+   * Tells the outline shader how large the viewport is, in CSS pixels.
+   *
+   * A pixel width means nothing to a vertex shader working in clip space, so
+   * `LineMaterial` divides by this. Left at its `(1, 1)` default the outline
+   * comes out wider than the screen.
+   */
+  setResolution(width: number, height: number): void {
+    (this.outline.material as LineMaterial).resolution.set(width, height);
+  }
+
+  /**
+   * Re-traces the outline from a new camera position.
+   *
+   * A silhouette depends on where it is seen from, so orbiting changes which
+   * edges are on it even when nothing in the scene has moved.
+   */
+  refreshOutline(eye: Vec3): void {
+    if (!this.outlined) return;
+    this.traceOutline(eye);
+  }
+
+  private traceOutline(eye: Vec3): void {
+    const outlined = this.outlined;
+    if (!outlined) return;
+
+    const positions = buildSilhouetteEdges(
+      outlined.mesh,
+      inverseTransformPoint(outlined.object.transform, eye),
+    );
+
+    const geometry = new LineSegmentsGeometry();
+    geometry.setPositions(positions);
+    this.replaceGeometry(this.outline, geometry);
+    // A mesh with no faces has no silhouette, and an empty instanced geometry
+    // has no bounding sphere for the frustum check to work with.
+    this.outline.visible = positions.length > 0;
   }
 
   private updatePoints(

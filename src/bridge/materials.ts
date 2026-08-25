@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 
 import type { ShadingMode } from '@store/types';
 
@@ -104,6 +105,29 @@ export function createWireMaterial(selected: boolean): THREE.LineBasicMaterial {
     opacity: selected ? 1 : 0.55,
     depthTest: !selected,
   });
+}
+
+export interface OutlineMaterialOptions {
+  color: THREE.ColorRepresentation;
+  /** Screen pixels. Needs `resolution` set before it means anything on screen. */
+  width: number;
+}
+
+/**
+ * The line tracing a selected object's silhouette.
+ *
+ * `LineMaterial` rather than `LineBasicMaterial` because WebGL ignores
+ * `linewidth` — every plain line is one pixel whatever it asks for — and this
+ * one is user-adjustable, so it has to be drawn as instanced quads instead.
+ * The cost is `resolution`: the shader turns a pixel width into clip space
+ * itself, so it must be told the viewport size (see `ObjectView.setResolution`).
+ *
+ * Drawn over everything, like the rest of the selection overlays: the line sits
+ * exactly on the surface it traces, so depth testing would leave it fighting
+ * the very geometry it is drawing around.
+ */
+export function createOutlineMaterial({ color, width }: OutlineMaterialOptions): LineMaterial {
+  return new LineMaterial({ color, linewidth: width, depthTest: false });
 }
 
 export function createPointMaterial(): THREE.PointsMaterial {

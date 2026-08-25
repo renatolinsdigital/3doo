@@ -14,7 +14,7 @@ npm run dev      # http://localhost:5173
 ```
 
 ```bash
-npm test         # 296 tests
+npm test         # 351 tests
 npm run build    # typecheck + production bundle
 npm run lint
 ```
@@ -33,6 +33,7 @@ npm run lint
 | Proportional editing | Six falloff curves |
 | Viewport | Orbit / pan / zoom (Blender and Maya presets), solid / wireframe / x-ray / matcap, adaptive grid, normals overlay |
 | Files | Save and load JSON projects, autosave to IndexedDB with crash recovery, OBJ import |
+| Preferences | Tooltips, selection outline thickness and colour — kept in localStorage per device, with import / export |
 | Export | OBJ + MTL, **ASCII FBX 7.4**, with Unity / Unreal / Blender / Maya axis and unit presets |
 | Undo | Snapshot history capped at 64 steps |
 

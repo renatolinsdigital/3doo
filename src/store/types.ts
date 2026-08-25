@@ -101,6 +101,20 @@ export interface ViewportSettings {
   navigation: NavigationPreset;
 }
 
+/**
+ * Settings that belong to the person rather than the project.
+ *
+ * Persisted to localStorage as one blob and deliberately kept out of
+ * `.3doo.json`: opening someone else's project must not repaint your viewport.
+ */
+export interface Preferences {
+  tooltipsEnabled: boolean;
+  /** Width of the object-mode selection outline, in screen pixels. */
+  selectionLineWidth: number;
+  /** `#rrggbb`. The active object wears it; the rest of the selection a darker mix. */
+  selectionLineColor: string;
+}
+
 export interface Toast {
   id: string;
   variant: 'success' | 'error' | 'warning' | 'info';

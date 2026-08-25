@@ -68,6 +68,33 @@ The object's transform is applied as a matrix on the group with
 `matrixAutoUpdate = false`, so it is written once per sync rather than
 recomputed every frame.
 
+### The selection outline is not a plain line
+
+WebGL ignores `LineBasicMaterial.linewidth`. Whatever a plain line asks for, it
+is drawn one pixel wide — which is why the outline is a `LineSegments2` with a
+`LineMaterial` instead: that pair expands each segment into a quad in the vertex
+shader, so a width above 1 actually renders. The width and colour are user
+preferences (see [state-management.md](state-management.md#user-preferences)),
+and a preference that could not be honoured would not be worth offering.
+
+The cost of that shader is `resolution`. It converts a width in **screen pixels**
+into clip space itself, so it has to be told how large the viewport is:
+`Viewport.resize()` pushes the canvas size into every view's
+`setResolution`, and a view created after a resize is seeded from the size the
+viewport last saw. Left at its `(1, 1)` default, the outline comes out wider than
+the screen.
+
+Only the active object wears the chosen colour; the rest of the selection gets a
+darkened mix of it, so a multi-object selection still says which one the
+operations will run on. That is derived rather than a second preference — the
+distinction only has to be visible, not configurable.
+
+Which edges are on a silhouette depends on where it is seen from, so the render
+loop re-traces the outline whenever the camera has actually moved. Views with
+nothing outlined return immediately, and a mesh with no faces has no silhouette
+at all — the outline hides itself rather than handing the frustum check an empty
+instanced geometry with no bounding sphere.
+
 ## Shading modes
 
 | Mode | Material |

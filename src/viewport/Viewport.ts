@@ -93,6 +93,10 @@ export class Viewport {
   /** Blender's dashed scale line: pivot to pointer, drawn only mid-drag. */
   private readonly scaleLine: THREE.Line;
   private pointerPixels = new THREE.Vector2();
+  /** Where the camera stood when the selection outlines were last traced. */
+  private readonly outlineEye = new THREE.Vector3(Number.NaN, 0, 0);
+  /** Canvas size in CSS pixels; the outline material sizes its line against it. */
+  private readonly outlineResolution = new THREE.Vector2(1, 1);
   private scaleDrag: {
     pivot: THREE.Vector3;
     pivotPixels: THREE.Vector2;
@@ -320,6 +324,11 @@ export class Viewport {
         { equalityFn: shallowArrayEqual },
       ),
       store.subscribe(
+        (state) => [state.selectionLineWidth, state.selectionLineColor] as const,
+        () => this.syncScene(),
+        { equalityFn: shallowArrayEqual },
+      ),
+      store.subscribe(
         (state) => [state.overlays.grid, state.overlays.axes] as const,
         ([grid, axes]) => this.grid.setVisibility(grid, axes),
         { equalityFn: shallowArrayEqual, fireImmediately: true },
@@ -434,6 +443,7 @@ export class Viewport {
       let view = this.views.get(object.id);
       if (!view) {
         view = new ObjectView(object.id);
+        view.setResolution(this.outlineResolution.x, this.outlineResolution.y);
         this.views.set(object.id, view);
         this.scene.add(view.group);
       }
@@ -445,6 +455,8 @@ export class Viewport {
         recentVerts: this.recentVerts?.objectId === object.id ? this.recentVerts.ids : undefined,
         isActive: object.id === state.activeObjectId,
         isSelected: state.selectedObjectIds.includes(object.id),
+        eye: vec3(this.camera.position.x, this.camera.position.y, this.camera.position.z),
+        selectionLine: { color: state.selectionLineColor, width: state.selectionLineWidth },
         settings,
       });
 
@@ -1367,6 +1379,9 @@ export class Viewport {
     if (width === 0 || height === 0) return;
 
     this.renderer.setSize(width, height, false);
+    this.outlineResolution.set(width, height);
+    for (const view of this.views.values()) view.setResolution(width, height);
+
     const aspect = width / height;
     this.perspectiveCamera.aspect = aspect;
     this.perspectiveCamera.updateProjectionMatrix();
@@ -1386,10 +1401,27 @@ export class Viewport {
     this.extendFarPlane(distance);
     this.updateViewLost(distance);
     this.updateCursor();
+    this.updateSelectionOutlines();
     if (this.scaleLine.visible) this.standDownGizmo();
     this.expireRecentVerts();
     this.renderer.render(this.scene, this.camera);
   };
+
+  /**
+   * Re-traces the selection outlines when the camera has moved.
+   *
+   * Which edges are on a silhouette depends on where it is seen from, so an
+   * orbit changes the outline even though nothing in the scene did. Views with
+   * nothing outlined return immediately, so this costs nothing when there is no
+   * selection.
+   */
+  private updateSelectionOutlines(): void {
+    if (this.camera.position.distanceToSquared(this.outlineEye) < 1e-10) return;
+    this.outlineEye.copy(this.camera.position);
+
+    const eye = vec3(this.camera.position.x, this.camera.position.y, this.camera.position.z);
+    for (const view of this.views.values()) view.refreshOutline(eye);
+  }
 
   /**
    * Keeps the far clipping plane ahead of the current zoom.

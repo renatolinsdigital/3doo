@@ -61,7 +61,7 @@ picking, grid. Created once against a canvas ref and never re-rendered by React.
 
 ### `/src/store`
 
-Zustand, split into four slices. See [state-management.md](state-management.md).
+Zustand, split into five slices. See [state-management.md](state-management.md).
 
 ### `/src/shared`
 
