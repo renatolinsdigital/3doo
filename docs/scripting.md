@@ -53,7 +53,7 @@ Unknown operator "extrud". Available: bevel, bridge, delete, deselectAll, ...
 | `inset` | `thickness`, `depth`, `individual` | |
 | `bevel` | `width`, `segments`, `clampOverlap` | Needs an edge selection |
 | `loopCut` | `cuts`, `slide` | Starts from the first selected edge |
-| `subdivide` | `cuts`, `smooth` | Splits edges in edge select mode, faces otherwise |
+| `subdivide` | `cuts`, `smooth` | Splits edges in edge select mode, faces otherwise; reports the new vertices |
 | `shrinkFatten` | `distance` | Moves along vertex normals |
 
 ### Cleanup

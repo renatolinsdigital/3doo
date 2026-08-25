@@ -35,6 +35,19 @@ Faces are visited in material order and each run becomes a `BufferGeometry`
 group, so a mesh with three material slots draws in three calls with three
 materials rather than one flat colour.
 
+### Just-created vertices
+
+An operator can report the vertices it made through `OperatorResult.createdVerts`;
+`exec` copies them into the store's transient `recentVerts`, and the viewport
+flashes them for `RECENT_VERTS_MS`. It exists because a new vertex is easy to
+lose: the midpoint of a subdivided edge lands exactly on the line it split, and
+in edge mode the points object is hidden entirely, so nothing would show at all.
+
+The flash is its own `THREE.Points` inside `ObjectView` rather than a recolour
+of the existing one, precisely so it can ignore that select-mode rule. Its
+expiry is checked in the render loop instead of by a `setTimeout`, so it cannot
+fire after the viewport is disposed.
+
 ## `ObjectView`
 
 One per scene object. It holds every Three.js object for that mesh — solid,

@@ -51,6 +51,13 @@ export type OperatorParams = Record<string, unknown>;
 export interface OperatorResult {
   /** Short human-readable summary shown in the status bar. */
   status: string;
+  /**
+   * Vertices the operator just created, for the viewport to flash briefly.
+   * A new vertex is easy to lose track of — the midpoint of a subdivided edge
+   * lands exactly on the line it split, and in edge mode vertices are not drawn
+   * at all — so the viewport marks them until the user's next action.
+   */
+  createdVerts?: number[];
 }
 
 type OperatorHandler = (context: OperatorContext, params: OperatorParams) => OperatorResult;
@@ -188,7 +195,10 @@ export const OPERATORS: Record<string, OperatorHandler> = {
       const added = subdivideEdges(mesh, edges, Math.round(readNumber(params, 'cuts', 1)));
       mesh.flushSelection('vertex');
       mesh.flushSelection(selectMode);
-      return { status: `Split ${edges.length} edge(s), adding ${added.length} vertex(es)` };
+      return {
+        status: `Split ${edges.length} edge(s), adding ${added.length} vertex(es)`,
+        createdVerts: added.map((vert) => vert.id),
+      };
     }
 
     const faces = mesh.selectedFaces();

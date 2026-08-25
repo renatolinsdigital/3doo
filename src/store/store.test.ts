@@ -341,6 +341,40 @@ describe('editor store', () => {
     expect(store().status).toBe('Dissolved 1 vertex(es)');
   });
 
+  it('flags the vertices an edge subdivide just created', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    store().setSelectMode('edge');
+
+    const mesh = activeObject().mesh;
+    mesh.deselectAll();
+    [...mesh.edges.values()][0].selected = true;
+    mesh.flushSelection('edge');
+    const before = new Set([...mesh.verts.values()].map((vert) => vert.id));
+
+    store().exec('subdivide', { cuts: 2 }, 'Subdivide');
+
+    const flagged = store().recentVerts;
+    expect(flagged?.objectId).toBe(activeObject().id);
+    expect(flagged?.vertIds).toHaveLength(2);
+    // Exactly the new ones, not anything that was already there.
+    for (const id of flagged?.vertIds ?? []) expect(before.has(id)).toBe(false);
+
+    store().clearRecentVerts();
+    expect(store().recentVerts).toBeNull();
+  });
+
+  it('leaves the flag empty for operators that create no vertices', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    store().setSelectMode('face');
+    selectTopFace();
+
+    store().exec('shade', { smooth: true }, 'Shade smooth');
+
+    expect(store().recentVerts).toBeNull();
+  });
+
   it('reports a failed operator without corrupting the scene', () => {
     store().addPrimitive('box');
     store().exec('doesNotExist', {}, 'Bogus');

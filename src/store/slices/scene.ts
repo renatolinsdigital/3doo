@@ -32,6 +32,7 @@ const history = new History(64);
 let objectCounter = 0;
 let materialCounter = 0;
 let lockAttemptCounter = 0;
+let recentVertsCounter = 0;
 
 function nextObjectId(): string {
   objectCounter += 1;
@@ -65,6 +66,11 @@ export interface SceneSlice {
    * to the one denial event, rather than to the locked state itself.
    */
   lockedAttempt: { objectId: string; token: number } | null;
+  /**
+   * Vertices an operator just created, for the viewport to flash briefly. The
+   * token bumps on every run so repeating one re-triggers the flash.
+   */
+  recentVerts: { objectId: string; vertIds: number[]; token: number } | null;
 
   addPrimitive: (kind: PrimitiveKind, params?: Partial<PrimitiveParams>) => void;
   updatePrimitiveParams: (params: Partial<PrimitiveParams>) => void;
@@ -80,6 +86,7 @@ export interface SceneSlice {
   toggleObjectVisibility: (id: string) => void;
   toggleObjectLock: (id: string) => void;
   noteLockedAttempt: (objectId: string) => void;
+  clearRecentVerts: () => void;
   duplicateSelected: (linked?: boolean) => void;
   deleteSelected: () => void;
   joinSelected: () => void;
@@ -129,6 +136,7 @@ export const createSceneSlice: StateCreator<
   status: 'Ready',
   lastOperator: null,
   lockedAttempt: null,
+  recentVerts: null,
 
   touchMesh: () => set((state) => ({ meshVersion: state.meshVersion + 1 })),
 
@@ -266,6 +274,8 @@ export const createSceneSlice: StateCreator<
       ),
     }));
   },
+
+  clearRecentVerts: () => set({ recentVerts: null }),
 
   noteLockedAttempt: (objectId) => {
     lockAttemptCounter += 1;
@@ -521,6 +531,9 @@ export const createSceneSlice: StateCreator<
         ),
         meshVersion: state.meshVersion + 1,
         status: result.status,
+        recentVerts: result.createdVerts?.length
+          ? { objectId: object.id, vertIds: result.createdVerts, token: ++recentVertsCounter }
+          : null,
         lastOperator: { name, label: label ?? name, params },
       }));
     } catch (error) {
@@ -589,6 +602,7 @@ export const createSceneSlice: StateCreator<
       status: 'New project',
       lastOperator: null,
       lockedAttempt: null,
+      recentVerts: null,
       meshVersion: get().meshVersion + 1,
       // Edit mode with no object is not a reachable state, so a new scene has
       // to drop back to object mode along with the tool that was active.

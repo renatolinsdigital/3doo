@@ -25,6 +25,9 @@ import { type BoxSelectRect, pickElement, pickInRectangle } from './picking';
 /** Beyond this multiple of the max zoom, the scene reads as empty rather than distant. */
 const VIEW_LOST_DISTANCE = MAX_ORBIT_DISTANCE * 0.45;
 
+/** How long freshly created vertices stay flagged in the viewport. */
+const RECENT_VERTS_MS = 1600;
+
 interface GizmoBaseline {
   position: THREE.Vector3;
   quaternion: THREE.Quaternion;
@@ -65,6 +68,7 @@ export class Viewport {
   private readonly objectBaselines = new Map<string, Transform>();
   private gizmoDragging = false;
   private viewLostReported = false;
+  private recentVerts: { objectId: string; ids: Set<number>; expiresAt: number } | null = null;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -191,6 +195,22 @@ export class Viewport {
         (state) => state.activeTool,
         () => this.updateGizmo(),
       ),
+      // An operator reporting new vertices flags them for a moment. The expiry
+      // is checked in the render loop rather than by a timer, so the flash
+      // cannot outlive the viewport or fire after it is disposed.
+      store.subscribe(
+        (state) => state.recentVerts,
+        (recent) => {
+          this.recentVerts = recent
+            ? {
+                objectId: recent.objectId,
+                ids: new Set(recent.vertIds),
+                expiresAt: performance.now() + RECENT_VERTS_MS,
+              }
+            : null;
+          this.syncScene();
+        },
+      ),
       // Locking is neither a geometry nor a selection change, so none of the
       // subscriptions above would re-run — yet a locked object has to lose its
       // gizmo, since dragging it is refused anyway.
@@ -243,6 +263,7 @@ export class Viewport {
       view.update(object, evaluatedMesh(object), {
         mode: state.mode,
         selectMode: state.selectMode,
+        recentVerts: this.recentVerts?.objectId === object.id ? this.recentVerts.ids : undefined,
         isActive: object.id === state.activeObjectId,
         isSelected: state.selectedObjectIds.includes(object.id),
         settings,
@@ -256,6 +277,14 @@ export class Viewport {
     }
 
     this.updateGizmo();
+  }
+
+  /** Drops the just-created-vertex flash once its moment has passed. */
+  private expireRecentVerts(): void {
+    if (!this.recentVerts || performance.now() < this.recentVerts.expiresAt) return;
+    this.recentVerts = null;
+    useEditorStore.getState().clearRecentVerts();
+    this.syncScene();
   }
 
   private applyCameraSettings(): void {
@@ -736,6 +765,7 @@ export class Viewport {
     this.grid.update(distance);
     this.extendFarPlane(distance);
     this.updateViewLost(distance);
+    this.expireRecentVerts();
     this.renderer.render(this.scene, this.camera);
   };
 

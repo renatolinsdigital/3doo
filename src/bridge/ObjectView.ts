@@ -8,6 +8,7 @@ import {
   createFaceOrientationMaterial,
   createNormalsMaterial,
   createPointMaterial,
+  createRecentPointMaterial,
   createSelectionOverlayMaterial,
   createSurfaceMaterial,
   createWireMaterial,
@@ -21,6 +22,8 @@ export interface ObjectViewState {
   isActive: boolean;
   isSelected: boolean;
   settings: ViewportSettings;
+  /** Kernel ids of vertices to flash as just-created; empty most of the time. */
+  recentVerts?: ReadonlySet<number>;
 }
 
 /**
@@ -39,6 +42,7 @@ export class ObjectView {
   private readonly selectedFaces = new THREE.Mesh();
   private readonly selectedEdges = new THREE.LineSegments();
   private readonly points = new THREE.Points();
+  private readonly recentPoints = new THREE.Points();
   private readonly normals = new THREE.LineSegments();
   private readonly outline = new THREE.LineSegments();
 
@@ -59,12 +63,14 @@ export class ObjectView {
     this.selectedEdges.material = createWireMaterial(true);
     this.selectedFaces.material = createSelectionOverlayMaterial();
     this.points.material = createPointMaterial();
+    this.recentPoints.material = createRecentPointMaterial();
     this.normals.material = createNormalsMaterial();
     this.outline.material = new THREE.LineBasicMaterial({ color: VIEWPORT_COLORS.amber });
 
     this.selectedFaces.renderOrder = 2;
     this.selectedEdges.renderOrder = 3;
     this.points.renderOrder = 4;
+    this.recentPoints.renderOrder = 5;
 
     this.group.add(
       this.solid,
@@ -73,6 +79,7 @@ export class ObjectView {
       this.selectedFaces,
       this.selectedEdges,
       this.points,
+      this.recentPoints,
       this.normals,
       this.outline,
     );
@@ -95,6 +102,7 @@ export class ObjectView {
     this.updateSolid(object, buffers.solid, state);
     this.updateWireframe(buffers.edges, state);
     this.updatePoints(buffers.points, state);
+    this.updateRecentPoints(buffers.points, state);
     this.updateNormals(displayMesh, state);
   }
 
@@ -187,6 +195,32 @@ export class ObjectView {
     // Only vertex mode can act on vertices, so drawing them in edge/face mode
     // is noise sitting on top of the elements actually being selected.
     this.points.visible = state.mode === 'edit' && state.isActive && state.selectMode === 'vertex';
+  }
+
+  /**
+   * Marks the vertices an operator just made.
+   *
+   * Kept separate from `points` rather than recoloured inside it, because it
+   * has to show in edge and face mode too, where that object is hidden.
+   */
+  private updateRecentPoints(
+    points: ReturnType<typeof buildMeshBuffers>['points'],
+    state: ObjectViewState,
+  ): void {
+    const recent = state.recentVerts;
+    this.recentPoints.visible = state.mode === 'edit' && state.isActive && !!recent?.size;
+    if (!this.recentPoints.visible || !recent) return;
+
+    const positions: number[] = [];
+    for (let i = 0; i < points.vertIds.length; i++) {
+      if (!recent.has(points.vertIds[i])) continue;
+      positions.push(points.positions[i * 3], points.positions[i * 3 + 1], points.positions[i * 3 + 2]);
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+    this.replaceGeometry(this.recentPoints, geometry);
+    this.recentPoints.visible = positions.length > 0;
   }
 
   private updateNormals(displayMesh: BMesh, state: ObjectViewState): void {

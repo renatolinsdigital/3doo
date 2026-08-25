@@ -115,6 +115,24 @@ export function createPointMaterial(): THREE.PointsMaterial {
   });
 }
 
+/**
+ * Marks vertices an operator just created.
+ *
+ * Deliberately larger and a different hue from both the idle and the selected
+ * point: it has to read at a glance against geometry the user is already
+ * looking at, and it shows in every select mode, including the ones that draw
+ * no points at all.
+ */
+export function createRecentPointMaterial(): THREE.PointsMaterial {
+  return new THREE.PointsMaterial({
+    size: 11,
+    sizeAttenuation: false,
+    color: VIEWPORT_COLORS.cyan,
+    depthTest: false,
+    transparent: true,
+  });
+}
+
 export function createSelectionOverlayMaterial(): THREE.Material {
   return new THREE.MeshBasicMaterial({
     color: VIEWPORT_COLORS.red,
