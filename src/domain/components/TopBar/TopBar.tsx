@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import { Button, SegmentedControl } from '@shared/components';
 import { useEditorStore } from '@store/index';
 import type { EditorMode } from '@store/types';
@@ -11,7 +13,17 @@ const MODE_OPTIONS = [
   { value: 'edit', label: 'EDIT', shortcut: 'Tab' },
 ] as const;
 
-export function TopBar() {
+export interface TopBarProps {
+  /**
+   * The brand plate, passed in rather than imported.
+   *
+   * The switcher belongs to the app shell, which sits above this layer — and
+   * dependencies here point inward, never back up at it.
+   */
+  brand: ReactNode;
+}
+
+export function TopBar({ brand }: TopBarProps) {
   const mode = useEditorStore((state) => state.mode);
   const setMode = useEditorStore((state) => state.setMode);
   const projectName = useEditorStore((state) => state.projectName);
@@ -28,7 +40,7 @@ export function TopBar() {
   return (
     <header className="top-bar">
       <div className="top-bar__brand">
-        <span className="top-bar__logo">3DOO</span>
+        {brand}
         <label className="top-bar__project">
           <span className="u-visually-hidden">Project name</span>
           <input

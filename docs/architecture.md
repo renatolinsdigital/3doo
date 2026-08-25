@@ -11,7 +11,7 @@ what rate.
 
 | Layer | Changes at | Owns |
 | --- | --- | --- |
-| React UI | User interaction | Panels, forms, toolbars, outliner, dialogs, status |
+| React UI | User interaction | Modules, panels, forms, toolbars, outliner, dialogs, status |
 | Zustand | Per action | Scene objects, tool state, viewport settings, UI state |
 | Three.js | Per frame | Rendering, camera, gizmos, picking, GPU resources |
 | Kernel | Per operation | Topology, modifiers, import/export, commands |
@@ -21,11 +21,11 @@ what rate.
 Dependencies point inward. The kernel knows nothing about anything else.
 
 ```text
-app ──► domain ──► shared ──► global-styles
- │         │
- │         └──► store ──► kernel
- │                 ▲
- └──► viewport ────┘──► bridge ──► kernel
+app ──► modules ──► domain ──► shared ──► global-styles
+            │          │
+            │          └──► store ──► kernel
+            │                  ▲
+            └──► viewport ─────┘──► bridge ──► kernel
 ```
 
 The rule that matters most: **the kernel must never import React, Three.js, the
@@ -74,6 +74,44 @@ only barrel.
 
 Everything that knows what the application *is*: panels, the keymap, autosave,
 file services, and the hooks that hold behaviour so components stay declarative.
+
+### `/src/modules` and `/src/app`
+
+A **module** is one whole area of the application, reachable at its own path:
+
+| Module | Path | Is |
+| --- | --- | --- |
+| `home` | `/` | The landing page |
+| `modeling` | `/modeling` | The mesh editor — the shell that was once `App` |
+| `docs` | `/docs` | The user manual, with its own left-hand contents menu |
+
+`/src/app` holds only what all of them share: the registry in `modules.ts`, the
+router, the `ModuleSwitcher` brand plate, and an `App` whose entire job is to read
+the path and hand the screen to one module.
+
+Each module owns its own layout **and its own lifecycle hooks**. `useKeymap` and
+`useAutosave` are mounted inside `ModelingModule`, not in `App`, which is what
+stops <kbd>X</kbd> deleting geometry while someone is reading the docs. It is
+also what keeps the landing page cheap: nothing imports the viewport until the
+modeling module mounts, so no WebGL context is created to show a hero heading.
+
+Adding sculpting later is one entry in `APP_MODULES` and one branch in `App`.
+
+The arrow from `app` runs one way only. `TopBar` does not import the switcher —
+it takes the brand plate as a `brand` prop, and `ModelingModule` passes it in.
+A domain component reaching back up into `/src/app` would invert the rule this
+whole diagram rests on.
+
+#### Routing
+
+There is no router dependency. `app/router.ts` is a `useSyncExternalStore` over
+`history.pushState` and `popstate` — about thirty lines. Nested routes, params
+and loaders would all go unused, because the registry already says which path
+maps to which area; the docs module's sections are a URL fragment, not a route.
+
+The one deployment requirement this creates: `/modeling` and `/docs` must serve
+`index.html`. Vite's dev server and `preview` already do; a static host needs its
+SPA fallback turned on.
 
 ## Data flow of one operation
 

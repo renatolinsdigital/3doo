@@ -17,6 +17,9 @@ vi.mock('@viewport/index', () => ({
 
 describe('App shell', () => {
   beforeEach(() => {
+    // The editor is a module now, not the whole app, so the tests below have to
+    // be standing on its route for it to render at all.
+    window.history.pushState(null, '', '/modeling');
     useEditorStore.getState().resetScene();
     useEditorStore.setState({ tooltipsEnabled: true, hint: null });
   });
@@ -28,7 +31,7 @@ describe('App shell', () => {
   it('renders the full brutalist layout', () => {
     render(<App />);
 
-    expect(screen.getByText('3DOO')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /3DOO - MODELING/ })).toBeInTheDocument();
     expect(screen.getByRole('group', { name: 'Editor mode' })).toBeInTheDocument();
     expect(screen.getByRole('navigation', { name: 'Tools' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'OUTLINER' })).toBeInTheDocument();

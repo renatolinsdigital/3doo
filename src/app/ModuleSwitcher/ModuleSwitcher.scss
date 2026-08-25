@@ -1,0 +1,80 @@
+@use '@global-styles/helpers' as *;
+
+.module-switcher {
+  position: relative;
+  flex: 0 0 auto;
+
+  &__brand {
+    @include display-text;
+    @include brutal-focus;
+
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-lg);
+    color: var(--bone);
+    background: var(--void);
+    cursor: pointer;
+  }
+
+  &__caret {
+    font-size: var(--text-sm);
+    color: var(--bone-shade);
+  }
+
+  &__menu {
+    @include brutal-border;
+    @include brutal-shadow;
+
+    position: absolute;
+    top: calc(100% + var(--space-2));
+    left: 0;
+    z-index: var(--z-overlay);
+    display: flex;
+    flex-direction: column;
+    min-width: 260px;
+    background: var(--bone);
+  }
+
+  &__item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-3) var(--space-4);
+    text-align: left;
+    cursor: pointer;
+    border-bottom: var(--border-thin) solid var(--void);
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    &:hover,
+    &:focus-visible {
+      background: var(--bone-dim);
+      outline: none;
+    }
+
+    // The current module is marked by a filled bar as well as the fill, so it
+    // never rests on colour alone.
+    &[aria-current] {
+      @include active-indicator(var(--red));
+
+      background: var(--bone-dim);
+    }
+  }
+
+  &__item-label {
+    @include label-text;
+
+    color: var(--void);
+  }
+
+  &__item-summary {
+    @include mono-value;
+
+    font-size: var(--text-xs);
+    color: var(--ink-muted);
+  }
+}

@@ -1,5 +1,5 @@
 export { ViewportCanvas } from './ViewportCanvas/ViewportCanvas';
-export { TopBar } from './TopBar/TopBar';
+export { TopBar, type TopBarProps } from './TopBar/TopBar';
 export { ToolRail } from './ToolRail/ToolRail';
 export { Outliner } from './Outliner/Outliner';
 export { PropertiesPanel } from './PropertiesPanel/PropertiesPanel';

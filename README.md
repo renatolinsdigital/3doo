@@ -14,10 +14,24 @@ npm run dev      # http://localhost:5173
 ```
 
 ```bash
-npm test         # 351 tests
+npm test         # 363 tests
 npm run build    # typecheck + production bundle
 npm run lint
 ```
+
+## Modules
+
+The app is split into modules, switched from the brand plate in the top-left
+corner. Each has its own path and owns its own layout and lifecycle.
+
+| Module | Path | Is |
+| --- | --- | --- |
+| Home | `/` | Landing page |
+| Modeling | `/modeling` | The mesh editor |
+| Docs | `/docs` | The user manual, with a left-hand contents menu |
+
+Sculpting is the next module planned. See
+[architecture.md](docs/architecture.md) for how one is added.
 
 ## What the MVP does
 

@@ -1,0 +1,160 @@
+@use '@global-styles/helpers' as *;
+@use '@global-styles/responsive-mixins' as *;
+
+.home {
+  @include scrollbar;
+
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  overflow-y: auto;
+  background: var(--ash);
+
+  &__bar {
+    display: flex;
+    align-items: center;
+    padding: var(--space-3) var(--space-4);
+    background: var(--bone);
+    border-bottom: var(--border-width) solid var(--void);
+  }
+
+  &__main {
+    display: flex;
+    flex-direction: column;
+    gap: var(--panel-gap);
+    flex: 1;
+    padding: var(--panel-gap);
+  }
+
+  &__hero {
+    @include brutal-border;
+
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-5);
+    padding: var(--space-6);
+    background: var(--bone);
+  }
+
+  &__eyebrow {
+    @include label-text;
+
+    padding: var(--space-2) var(--space-3);
+    color: var(--bone);
+    background: var(--oxblood);
+  }
+
+  &__title {
+    @include display-text;
+
+    font-size: clamp(32px, 7vw, 72px);
+    line-height: 1.05;
+    color: var(--void);
+  }
+
+  &__lede {
+    @include mono-value;
+
+    max-width: 60ch;
+    font-size: var(--text-md);
+    line-height: 1.6;
+    color: var(--ink-muted);
+  }
+
+  &__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  &__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--panel-gap);
+  }
+
+  &__card {
+    @include brutal-border;
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-5);
+    background: var(--bone);
+  }
+
+  &__card-title {
+    @include label-text;
+
+    padding-bottom: var(--space-2);
+    color: var(--void);
+    border-bottom: var(--border-thin) solid var(--void);
+  }
+
+  &__card-body {
+    @include mono-value;
+
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--ink-muted);
+  }
+
+  &__next {
+    @include brutal-border;
+
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-5);
+    color: var(--bone);
+    background: var(--void);
+  }
+
+  &__next-title {
+    @include display-text;
+
+    font-size: var(--text-lg);
+  }
+
+  &__next-body {
+    @include mono-value;
+
+    max-width: 70ch;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--bone-shade);
+  }
+
+  &__footer {
+    @include label-text;
+
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    color: var(--bone);
+    background: var(--oxblood);
+  }
+
+  // The overlay's credit sits on bone and uses red; this one sits on oxblood,
+  // where red has almost no contrast left against it.
+  &__credit-link {
+    @include brutal-focus;
+
+    color: var(--bone);
+    text-decoration: underline;
+
+    &:hover {
+      color: var(--amber);
+    }
+  }
+
+  @include mobile {
+    &__grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+}

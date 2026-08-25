@@ -1,70 +1,28 @@
-import { useRef } from 'react';
+import { useEffect } from 'react';
 
-import { ToastHost, TooltipHost } from '@shared/components';
-import { useEditorStore } from '@store/index';
+import { DocsModule } from '../modules/docs/DocsModule';
+import { HomeModule } from '../modules/home/HomeModule';
+import { ModelingModule } from '../modules/modeling/ModelingModule';
 
-import {
-  AddPanel,
-  ExportDialog,
-  MergeDialog,
-  ModifierStack,
-  OperationsPanel,
-  Outliner,
-  PreferencesDialog,
-  PropertiesPanel,
-  ShortcutOverlay,
-  StatusBar,
-  ToolRail,
-  TopBar,
-  ViewportCanvas,
-} from '@domain/components';
-import { useAutosave } from '@domain/hooks/useAutosave';
-import { useKeymap } from '@domain/hooks/useKeymap';
-
-import './App.scss';
+import { moduleForPath } from './modules';
+import { usePathname } from './router';
 
 /**
  * Application shell.
  *
- * Reads as a declarative summary of the layout: all behaviour lives in the
- * hooks above and in the store the panels talk to.
+ * One job: read the path and hand the screen to a module. Everything a module
+ * needs — layout, shortcuts, autosave — belongs to that module, which is what
+ * keeps the editor's keymap from firing while someone is reading the docs, and
+ * what leaves room for sculpting to arrive as one more entry here.
  */
 export function App() {
-  useKeymap();
-  useAutosave();
+  const active = moduleForPath(usePathname());
 
-  const mode = useEditorStore((state) => state.mode);
-  const mainRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    document.title = `${active.brand} — ${active.summary}`;
+  }, [active]);
 
-  return (
-    <div className="app-shell">
-      <TopBar />
-
-      <div className="app-shell__main" ref={mainRef}>
-        <ToolRail />
-
-        <div className="app-shell__left">
-          <AddPanel />
-          {mode === 'edit' ? <OperationsPanel /> : null}
-        </div>
-
-        <ViewportCanvas />
-
-        <div className="app-shell__right">
-          <Outliner />
-          <PropertiesPanel />
-          <ModifierStack />
-        </div>
-      </div>
-
-      <StatusBar />
-
-      <ExportDialog />
-      <MergeDialog />
-      <PreferencesDialog />
-      <ShortcutOverlay />
-      <ToastHost />
-      <TooltipHost bounds={mainRef} />
-    </div>
-  );
+  if (active.id === 'modeling') return <ModelingModule />;
+  if (active.id === 'docs') return <DocsModule />;
+  return <HomeModule />;
 }
