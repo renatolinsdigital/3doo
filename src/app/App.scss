@@ -27,12 +27,19 @@
     gap: var(--panel-gap);
     min-height: 0;
     overflow-y: auto;
+
+    // Panels keep their own height and the column scrolls as one. Letting them
+    // shrink instead handed every panel a scrollbar of its own and squeezed the
+    // tallest one — the modifier stack — down to a couple of visible rows.
+    > * {
+      flex: 0 0 auto;
+    }
   }
 
   &__right {
-    // The outliner takes what it needs, properties and modifiers share the rest.
+    // The outliner scrolls inside itself rather than pushing the panels below
+    // it out of reach as the scene grows.
     > :first-child {
-      flex: 0 0 auto;
       max-height: 30%;
     }
   }

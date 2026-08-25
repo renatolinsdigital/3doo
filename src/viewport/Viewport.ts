@@ -33,7 +33,7 @@ const VIEW_LOST_DISTANCE = MAX_ORBIT_DISTANCE * 0.45;
 const RECENT_VERTS_MS = 1600;
 
 /** Screen radius of the 3D cursor's ring, in pixels. It holds this at any zoom. */
-const CURSOR_RADIUS_PX = 11;
+const CURSOR_RADIUS_PX = 9;
 
 interface GizmoBaseline {
   position: THREE.Vector3;
@@ -172,7 +172,9 @@ export class Viewport {
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
       const lines = new THREE.LineSegments(
         geometry,
-        new THREE.LineBasicMaterial({ color, depthTest: false }),
+        // Slightly translucent, so the cursor reads as an overlay over whatever
+        // it is sitting on rather than as an object in the scene.
+        new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true, opacity: 0.8 }),
       );
       // Depth testing is off, so the cursor is only reliably on top if it also
       // draws after the geometry: renderOrder has to sit on the lines

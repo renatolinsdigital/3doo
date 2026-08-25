@@ -40,50 +40,50 @@ export function CursorMenu() {
   const entries: ContextMenuEntry[] = [
     snap(
       'point',
-      'PLACE HERE',
+      'PLACE CURSOR HERE',
       menu.targets.point,
-      'Put the cursor exactly where you clicked',
+      'Put the cursor exactly where you clicked (CTRL+SHIFT+C)',
       'Nothing under the pointer to place the cursor on',
     ),
     snap(
       'vertex',
-      'TO VERTEX',
+      'CURSOR TO VERTEX',
       menu.targets.vertex,
-      'Snap the cursor onto the vertex under the pointer',
+      'Snap the cursor onto the vertex under the pointer (CTRL+SHIFT+V)',
       'No vertex close enough to the pointer',
     ),
     snap(
       'edge',
-      'TO EDGE CENTRE',
+      'CURSOR TO EDGE CENTRE',
       menu.targets.edge,
-      'Snap the cursor to the midpoint of the edge under the pointer',
+      'Snap the cursor to the midpoint of the edge under the pointer (CTRL+SHIFT+E)',
       'No edge close enough to the pointer',
     ),
     snap(
       'face',
-      'TO FACE CENTRE',
+      'CURSOR TO FACE CENTRE',
       menu.targets.face,
-      'Snap the cursor to the centre of the face under the pointer',
+      'Snap the cursor to the centre of the face under the pointer (CTRL+SHIFT+F)',
       'No face under the pointer',
     ),
     { id: 'rule-1', separator: true },
     {
       id: 'cursor-to-selection',
-      label: 'TO SELECTION',
-      hint: 'Move the cursor onto the middle of what is selected',
+      label: 'CURSOR TO SELECTION',
+      hint: 'Move the cursor onto the middle of what is selected (CTRL+SHIFT+V)',
       onSelect: cursorToSelection,
     },
     {
       id: 'selection-to-cursor',
-      label: 'SELECTION HERE',
-      hint: 'Move the selection so it lands on the cursor',
+      label: 'SELECTION TO CURSOR',
+      hint: 'Move the selection so it lands on the cursor (CTRL+SHIFT+S)',
       onSelect: selectionToCursor,
     },
     { id: 'rule-2', separator: true },
     {
       id: 'world-origin',
-      label: 'TO WORLD ORIGIN',
-      hint: 'Send the cursor back to 0, 0, 0',
+      label: 'CURSOR TO WORLD ORIGIN',
+      hint: 'Send the cursor back to 0, 0, 0 (CTRL+SHIFT+O)',
       onSelect: () => setCursor({ x: 0, y: 0, z: 0 }, 'Cursor to world origin'),
     },
     {
@@ -92,8 +92,8 @@ export function CursorMenu() {
       // Hiding only drops the overlay: the snap entries above still move the
       // cursor, and the pivot still uses wherever it was left.
       hint: cursorVisible
-        ? 'Stop drawing the cursor without moving it'
-        : 'Draw the cursor in the viewport again',
+        ? 'Stop showing the cursor without moving it (CTRL+SHIFT+H)'
+        : 'Shows the cursor in the viewport again (CTRL+SHIFT+H)',
       onSelect: () => setOverlay({ cursor: !cursorVisible }),
     },
   ];

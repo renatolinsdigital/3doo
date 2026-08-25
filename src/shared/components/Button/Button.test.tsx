@@ -1,10 +1,16 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { useEditorStore } from '@store/index';
 
 import { Button } from './Button';
 
 describe('Button', () => {
+  beforeEach(() => {
+    useEditorStore.setState({ hint: null, tooltipsEnabled: true });
+  });
+
   it('renders its label', () => {
     render(<Button label="EXTRUDE" onClick={() => {}} />);
     expect(screen.getByRole('button', { name: 'EXTRUDE' })).toBeInTheDocument();
@@ -44,5 +50,19 @@ describe('Button', () => {
 
     button.focus();
     expect(button).toHaveFocus();
+  });
+
+  it('drops its hint when pressed, instead of leaving it over the panel', async () => {
+    render(<Button label="BEVEL" hint="Round off the selected edges" onClick={() => {}} />);
+    const button = screen.getByRole('button', { name: 'BEVEL' });
+
+    fireEvent.focus(button);
+    expect(useEditorStore.getState().hint?.text).toBe('Round off the selected edges');
+
+    // The press focuses the button as well, and that focus must not raise the
+    // hint again while the pointer is still sitting on the control.
+    await userEvent.click(button);
+
+    expect(useEditorStore.getState().hint).toBeNull();
   });
 });

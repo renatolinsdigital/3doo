@@ -1,3 +1,5 @@
+import { useRef } from 'react';
+
 import { ToastHost, TooltipHost } from '@shared/components';
 import { useEditorStore } from '@store/index';
 
@@ -32,12 +34,13 @@ export function App() {
   useAutosave();
 
   const mode = useEditorStore((state) => state.mode);
+  const mainRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="app-shell">
       <TopBar />
 
-      <div className="app-shell__main">
+      <div className="app-shell__main" ref={mainRef}>
         <ToolRail />
 
         <div className="app-shell__left">
@@ -61,7 +64,7 @@ export function App() {
       <PreferencesDialog />
       <ShortcutOverlay />
       <ToastHost />
-      <TooltipHost />
+      <TooltipHost bounds={mainRef} />
     </div>
   );
 }

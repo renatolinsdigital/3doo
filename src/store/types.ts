@@ -114,6 +114,8 @@ export interface HintState {
   /** Viewport-relative; the host is `position: fixed` so no portal is needed. */
   x: number;
   y: number;
+  /** Top of the anchor, so the tooltip can flip above it near the bottom of its area. */
+  anchorTop: number;
 }
 
 export interface LastOperator {

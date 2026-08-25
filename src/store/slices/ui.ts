@@ -97,7 +97,7 @@ export const createUiSlice: StateCreator<
 
   showHint: (text, anchor) => {
     if (!get().tooltipsEnabled) return;
-    set({ hint: { text, x: anchor.left, y: anchor.bottom } });
+    set({ hint: { text, x: anchor.left, y: anchor.bottom, anchorTop: anchor.top } });
   },
 
   hideHint: () => set({ hint: null }),

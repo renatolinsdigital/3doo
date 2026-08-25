@@ -38,7 +38,7 @@ describe('tooltip preferences', () => {
 
   it('clears any visible hint the moment tooltips are turned off', async () => {
     const { useEditorStore } = await import('../useEditorStore');
-    useEditorStore.setState({ hint: { text: 'hi', x: 0, y: 0 } });
+    useEditorStore.setState({ hint: { text: 'hi', x: 0, y: 0, anchorTop: 0 } });
 
     useEditorStore.getState().setTooltipsEnabled(false);
 
@@ -58,6 +58,11 @@ describe('tooltip preferences', () => {
     const { useEditorStore } = await import('../useEditorStore');
     useEditorStore.getState().showHint('Extrude', { left: 10, top: 20, bottom: 40 });
 
-    expect(useEditorStore.getState().hint).toEqual({ text: 'Extrude', x: 10, y: 40 });
+    expect(useEditorStore.getState().hint).toEqual({
+      text: 'Extrude',
+      x: 10,
+      y: 40,
+      anchorTop: 20,
+    });
   });
 });

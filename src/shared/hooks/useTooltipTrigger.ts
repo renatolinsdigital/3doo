@@ -10,6 +10,7 @@ type Anchor = { getBoundingClientRect: () => Rect };
 export interface TooltipTriggerHandlers {
   onMouseEnter?: (event: React.MouseEvent<Anchor>) => void;
   onMouseLeave?: () => void;
+  onPointerDown?: () => void;
   onFocus?: (event: React.FocusEvent<Anchor>) => void;
   onBlur?: () => void;
 }
@@ -28,6 +29,7 @@ export function useTooltipTrigger(text?: string): TooltipTriggerHandlers {
   const hideHint = useEditorStore((state) => state.hideHint);
   const timerRef = useRef<number | undefined>(undefined);
   const showingRef = useRef(false);
+  const pressedRef = useRef(false);
 
   useEffect(
     () => () => {
@@ -58,11 +60,33 @@ export function useTooltipTrigger(text?: string): TooltipTriggerHandlers {
   return {
     onMouseEnter: (event) => {
       const rect = event.currentTarget.getBoundingClientRect();
+      pressedRef.current = false;
       window.clearTimeout(timerRef.current);
       timerRef.current = window.setTimeout(() => show(rect), HOVER_DELAY_MS);
     },
-    onMouseLeave: hide,
-    onFocus: (event) => show(event.currentTarget.getBoundingClientRect()),
-    onBlur: hide,
+    onMouseLeave: () => {
+      pressedRef.current = false;
+      hide();
+    },
+    // Pressing a control dismisses its hint, the way Blender's do: you have
+    // read it by the time you click, and it otherwise sits over the panel or
+    // the status bar for as long as the pointer stays put.
+    onPointerDown: () => {
+      pressedRef.current = true;
+      hide();
+    },
+    onFocus: (event) => {
+      // A press focuses the control too, and that focus would put the hint
+      // straight back on screen — only keyboard focus should raise it.
+      if (pressedRef.current) {
+        pressedRef.current = false;
+        return;
+      }
+      show(event.currentTarget.getBoundingClientRect());
+    },
+    onBlur: () => {
+      pressedRef.current = false;
+      hide();
+    },
   };
 }
