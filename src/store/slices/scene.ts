@@ -22,6 +22,7 @@ import {
   deserializeProject,
   evaluateModifiers,
   execOperator,
+  flipNormals,
   inverseTransformPoint,
   medianPoint,
   normalizePrimitiveParams,
@@ -98,7 +99,7 @@ export interface SceneSlice {
   clearRecentVerts: () => void;
   duplicateSelected: (linked?: boolean) => void;
   deleteSelected: () => void;
-  joinSelected: () => void;
+  applyTransformToSelected: () => void;
   setObjectTransform: (id: string, transform: Partial<SceneObject['transform']>) => void;
   setObjectTransforms: (
     patches: { id: string; transform: Partial<SceneObject['transform']> }[],
@@ -342,38 +343,63 @@ export const createSceneSlice: StateCreator<
     });
   },
 
-  joinSelected: () => {
-    const { objects, selectedObjectIds, activeObjectId } = get();
-    if (selectedObjectIds.length < 2) return;
-    get().recordHistory('Join');
+  /**
+   * Bakes rotation and scale into the mesh and resets them to identity.
+   *
+   * Position is deliberately left alone: the object stays exactly where it
+   * sits, and only the numbers behind it change. Everything that reads the raw
+   * mesh rather than the world matrix — modifier thickness, bevel width, export
+   * — then works on the shape you actually see.
+   */
+  applyTransformToSelected: () => {
+    const { objects, selectedObjectIds } = get();
+    const targets = objects.filter(
+      (object) => selectedObjectIds.includes(object.id) && !object.locked,
+    );
+    if (targets.length === 0) return;
 
-    const target = objects.find((object) => object.id === activeObjectId);
-    if (!target) return;
+    // A linked duplicate shares its mesh instance, so baking one object's
+    // rotation and scale into it would drag every other user of that mesh out
+    // of shape alongside it.
+    const single = targets.filter(
+      (object) => objects.filter((other) => other.mesh === object.mesh).length === 1,
+    );
+    if (single.length === 0) {
+      set({ status: 'Linked meshes have to be made single-user first' });
+      return;
+    }
 
-    for (const object of objects) {
-      if (object.id === target.id || !selectedObjectIds.includes(object.id)) continue;
-      const merged = cloneMesh(object.mesh);
-      const map = new Map<number, ReturnType<typeof target.mesh.addVert>>();
-      for (const vert of merged.verts.values()) map.set(vert.id, target.mesh.addVert(vert.co));
-      for (const face of merged.faces.values()) {
-        const ring = merged.faceVerts(face).map((vert) => map.get(vert.id));
-        if (ring.every(Boolean)) {
-          target.mesh.addFace(ring as NonNullable<(typeof ring)[number]>[], {
-            materialIndex: face.materialIndex,
-            smooth: face.smooth,
-          });
-        }
+    get().recordHistory('Apply transform');
+
+    for (const object of single) {
+      const { rotation, scale } = object.transform;
+      const matrix = composeMatrix({ position: vec3(), rotation, scale });
+      for (const vert of object.mesh.verts.values()) vert.co = transformPoint(matrix, vert.co);
+
+      // A negative scale mirrors the mesh. Once it is baked in there is no
+      // scale left to flip the winding back, so the faces are turned instead.
+      if (scale.x * scale.y * scale.z < 0) {
+        flipNormals(object.mesh, [...object.mesh.faces.values()]);
+      } else {
+        object.mesh.computeNormals();
       }
     }
-    target.mesh.computeNormals();
 
+    const applied = new Set(single.map((object) => object.id));
     set((state) => ({
-      objects: state.objects.filter(
-        (object) => object.id === target.id || !selectedObjectIds.includes(object.id),
+      objects: state.objects.map((object) =>
+        applied.has(object.id)
+          ? {
+              ...object,
+              transform: { ...object.transform, rotation: vec3(), scale: vec3(1, 1, 1) },
+              // The primitive parameters described the mesh as it was before
+              // the bake; editing them now would regenerate it unrotated.
+              primitive: null,
+            }
+          : object,
       ),
-      selectedObjectIds: [target.id],
       meshVersion: state.meshVersion + 1,
-      status: `Joined ${selectedObjectIds.length} objects`,
+      status: `Applied rotation and scale to ${single.length} object(s)`,
     }));
   },
 

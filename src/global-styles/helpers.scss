@@ -30,6 +30,27 @@
   }
 }
 
+/// Focus for a field that already draws a hard border: recolour that border
+/// instead of ringing it. An outline on top of a hard border reads as a second
+/// frame around one control; the caret is the cue that does not rely on colour.
+///
+/// Goes on the row wrapping the label cell and the input, since those two share
+/// a single border between them and lighting up half of it reads as a partial
+/// highlight.
+@mixin brutal-focus-field($color: var(--red)) {
+  &:focus-within {
+    // Left on, the browser's own ring sits inside the recoloured border as a
+    // second, competing highlight.
+    :focus {
+      outline: none;
+    }
+
+    > * {
+      border-color: $color;
+    }
+  }
+}
+
 @mixin label-text {
   font-family: var(--font-mono);
   font-size: var(--text-xs);

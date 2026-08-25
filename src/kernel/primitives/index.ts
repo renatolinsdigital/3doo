@@ -28,11 +28,20 @@ export interface PrimitiveParams {
 /** Counts, not measurements: these can never hold a fraction. */
 export const INTEGER_PARAMS = new Set<keyof PrimitiveParams>(['segments', 'rings', 'subdivisions']);
 
+/**
+ * Params that are a length rather than a count or a flag.
+ *
+ * One editor unit is one metre — the same metre the export presets mean by
+ * "meters" and the ground grid counts in — so these are the fields the UI
+ * marks with a unit.
+ */
+export const METRE_PARAMS = new Set<keyof PrimitiveParams>(['size', 'radius', 'radius2', 'height']);
+
 export const DEFAULT_PRIMITIVE_PARAMS: PrimitiveParams = {
-  size: 2,
-  radius: 1,
-  radius2: 0.4,
-  height: 2,
+  size: 1,
+  radius: 0.5,
+  radius2: 0.2,
+  height: 1,
   segments: 24,
   rings: 12,
   subdivisions: 2,
@@ -42,12 +51,13 @@ export const DEFAULT_PRIMITIVE_PARAMS: PrimitiveParams = {
 /**
  * Kinds whose sensible starting shape differs from the shared defaults.
  *
- * A capsule at the default height of 2 would be exactly a sphere, since its
- * height spans the rounded caps too.
+ * A capsule at the default height of 1 would be exactly a sphere, since its
+ * height spans the rounded caps too — so it gets twice the height instead,
+ * which is the one primitive that cannot come in at 1 m all round.
  */
 export const PRIMITIVE_DEFAULT_OVERRIDES: Partial<Record<PrimitiveKind, Partial<PrimitiveParams>>> =
   {
-    capsule: { height: 4 },
+    capsule: { height: 2 },
   };
 
 /** Rounds the count params so the properties panel never shows "10.286" segments. */
@@ -112,7 +122,7 @@ export function createPrimitive(kind: PrimitiveKind, params: PrimitiveParams): B
   }
 }
 
-export function createBox(size = 2): BMesh {
+export function createBox(size = 1): BMesh {
   const mesh = new BMesh();
   const h = size / 2;
   const v = [
@@ -137,7 +147,7 @@ export function createBox(size = 2): BMesh {
   return mesh;
 }
 
-export function createPlane(size = 2): BMesh {
+export function createPlane(size = 1): BMesh {
   const mesh = new BMesh();
   const h = size / 2;
   const verts = [
@@ -151,7 +161,7 @@ export function createPlane(size = 2): BMesh {
   return mesh;
 }
 
-export function createGrid(size = 2, segments = 8): BMesh {
+export function createGrid(size = 1, segments = 8): BMesh {
   const mesh = new BMesh();
   const divisions = Math.max(1, Math.floor(segments));
   const step = size / divisions;
@@ -176,7 +186,7 @@ export function createGrid(size = 2, segments = 8): BMesh {
   return mesh;
 }
 
-export function createCircle(radius = 1, segments = 24, fill = true): BMesh {
+export function createCircle(radius = 0.5, segments = 24, fill = true): BMesh {
   const mesh = new BMesh();
   const count = Math.max(3, Math.floor(segments));
   const ring: Vert[] = [];
@@ -195,7 +205,7 @@ export function createCircle(radius = 1, segments = 24, fill = true): BMesh {
   return mesh;
 }
 
-export function createCylinder(radius = 1, height = 2, segments = 24, caps = true): BMesh {
+export function createCylinder(radius = 0.5, height = 1, segments = 24, caps = true): BMesh {
   const mesh = new BMesh();
   const count = Math.max(3, Math.floor(segments));
   const h = height / 2;
@@ -224,7 +234,7 @@ export function createCylinder(radius = 1, height = 2, segments = 24, caps = tru
   return mesh;
 }
 
-export function createCone(radius = 1, height = 2, segments = 24, cap = true): BMesh {
+export function createCone(radius = 0.5, height = 1, segments = 24, cap = true): BMesh {
   const mesh = new BMesh();
   const count = Math.max(3, Math.floor(segments));
   const h = height / 2;
@@ -252,7 +262,7 @@ export function createCone(radius = 1, height = 2, segments = 24, cap = true): B
  * collapses to nothing once the height drops to the diameter and the result is
  * a plain sphere.
  */
-export function createCapsule(radius = 1, height = 4, segments = 24, rings = 12): BMesh {
+export function createCapsule(radius = 0.5, height = 2, segments = 24, rings = 12): BMesh {
   const mesh = new BMesh();
   const columns = Math.max(3, Math.floor(segments));
   const capRows = Math.max(1, Math.floor(Math.max(2, Math.floor(rings)) / 2));
@@ -297,7 +307,7 @@ export function createCapsule(radius = 1, height = 4, segments = 24, rings = 12)
   return mesh;
 }
 
-export function createUVSphere(radius = 1, segments = 24, rings = 12): BMesh {
+export function createUVSphere(radius = 0.5, segments = 24, rings = 12): BMesh {
   const mesh = new BMesh();
   const columns = Math.max(3, Math.floor(segments));
   const rows = Math.max(2, Math.floor(rings));
@@ -337,7 +347,7 @@ export function createUVSphere(radius = 1, segments = 24, rings = 12): BMesh {
   return mesh;
 }
 
-export function createIcoSphere(radius = 1, subdivisions = 2): BMesh {
+export function createIcoSphere(radius = 0.5, subdivisions = 2): BMesh {
   const t = (1 + Math.sqrt(5)) / 2;
   const basePoints: Vec3[] = [
     vec3(-1, t, 0),
@@ -402,7 +412,7 @@ export function createIcoSphere(radius = 1, subdivisions = 2): BMesh {
   return mesh;
 }
 
-export function createTorus(radius = 1, tubeRadius = 0.4, segments = 24, rings = 12): BMesh {
+export function createTorus(radius = 0.5, tubeRadius = 0.2, segments = 24, rings = 12): BMesh {
   const mesh = new BMesh();
   const major = Math.max(3, Math.floor(segments));
   const minor = Math.max(3, Math.floor(rings));

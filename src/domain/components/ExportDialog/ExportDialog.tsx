@@ -59,7 +59,8 @@ export function ExportDialog() {
           onChange={(preset) => setExportOptions({ preset })}
         />
         <p className="export-dialog__hint">
-          Presets set the axis and unit conventions for you. Pick the engine you are importing into.
+          The editor models in metres — one unit is one metre. Presets set the axis and unit
+          conventions for you; pick the engine you are importing into.
         </p>
       </FieldRow>
 
@@ -76,6 +77,7 @@ export function ExportDialog() {
           />
           <Select<UnitPreset>
             label="UNITS"
+            hint="Metres leaves coordinates as modelled; centimetres multiplies them by 100 on the way out"
             value={options.unit}
             options={[
               { value: 'meters', label: 'METERS' },

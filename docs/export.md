@@ -12,8 +12,9 @@ is wrong in OBJ, the bug is in the kernel, not the writer.
 
 ## Axis and unit presets
 
-The user should not have to understand coordinate conventions to produce a valid
-export. Picking a target engine sets everything:
+The editor models in metres: one unit is one metre, which is what a fresh
+primitive measures across. The user should not have to understand coordinate
+conventions to produce a valid export — picking a target engine sets everything:
 
 | Preset | Up axis | Units | Scale |
 | --- | --- | --- | --- |

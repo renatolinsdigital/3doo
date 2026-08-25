@@ -1,4 +1,11 @@
-import { PRIMITIVE_LABELS, type PrimitiveKind } from '@kernel/index';
+import {
+  DEFAULT_PRIMITIVE_PARAMS,
+  METRE_PARAMS,
+  PRIMITIVE_DEFAULT_OVERRIDES,
+  PRIMITIVE_FIELDS,
+  PRIMITIVE_LABELS,
+  type PrimitiveKind,
+} from '@kernel/index';
 import { Button, FieldRow, Panel, SegmentedControl, Toggle } from '@shared/components';
 import { useEditorStore } from '@store/index';
 import type { PivotMode, SelectMode, ShadingMode } from '@store/types';
@@ -18,17 +25,40 @@ const PRIMITIVE_ORDER: PrimitiveKind[] = [
   'torus',
 ];
 
+/** How each measured param reads inside a hint. */
+const MEASURE_WORDS: Record<string, string> = {
+  size: 'size',
+  radius: 'radius',
+  radius2: 'tube',
+  height: 'height',
+};
+
+/**
+ * The size a fresh primitive comes in at, as "radius 1 m, height 2 m".
+ *
+ * Read off the same defaults the add action uses so the figures quoted in the
+ * hints cannot drift away from the shapes the buttons actually make. Every
+ * length in the editor is metres — one unit is one metre.
+ */
+function measures(kind: PrimitiveKind): string {
+  const params = { ...DEFAULT_PRIMITIVE_PARAMS, ...PRIMITIVE_DEFAULT_OVERRIDES[kind] };
+  return PRIMITIVE_FIELDS[kind]
+    .filter((field) => METRE_PARAMS.has(field))
+    .map((field) => `${MEASURE_WORDS[field]} ${params[field]} m`)
+    .join(', ');
+}
+
 const PRIMITIVE_HINTS: Record<PrimitiveKind, string> = {
-  box: 'Adds a six-sided cube at the 3D cursor',
-  plane: 'Adds a single flat quad at the 3D cursor',
-  circle: 'Adds a flat n-gon or an open ring of edges',
-  grid: 'Adds a subdivided flat plane, useful as a base mesh',
-  uvSphere: 'Adds a sphere built from latitude/longitude rings',
-  icoSphere: 'Adds a sphere built from subdivided triangles',
-  cylinder: 'Adds a capped or open cylindrical tube',
-  cone: 'Adds a cone tapering to a single apex vertex',
-  capsule: 'Adds a cylinder closed off with a rounded dome at each end',
-  torus: 'Adds a ring swept around a tube radius',
+  box: `Adds a six-sided cube at the 3D cursor (${measures('box')})`,
+  plane: `Adds a single flat quad at the 3D cursor (${measures('plane')})`,
+  circle: `Adds a flat n-gon or an open ring of edges (${measures('circle')})`,
+  grid: `Adds a subdivided flat plane, useful as a base mesh (${measures('grid')})`,
+  uvSphere: `Adds a sphere built from latitude/longitude rings (${measures('uvSphere')})`,
+  icoSphere: `Adds a sphere built from subdivided triangles (${measures('icoSphere')})`,
+  cylinder: `Adds a capped or open cylindrical tube (${measures('cylinder')})`,
+  cone: `Adds a cone tapering to a single apex vertex (${measures('cone')})`,
+  capsule: `Adds a cylinder closed off with a rounded dome at each end (${measures('capsule')})`,
+  torus: `Adds a ring swept around a tube radius (${measures('torus')})`,
 };
 
 const SELECT_MODE_OPTIONS = [
@@ -52,7 +82,7 @@ export function AddPanel() {
   const setSelectMode = useEditorStore((state) => state.setSelectMode);
   const addPrimitive = useEditorStore((state) => state.addPrimitive);
   const duplicateSelected = useEditorStore((state) => state.duplicateSelected);
-  const joinSelected = useEditorStore((state) => state.joinSelected);
+  const applyTransform = useEditorStore((state) => state.applyTransformToSelected);
   const exec = useEditorStore((state) => state.exec);
   const shading = useEditorStore((state) => state.shading);
   const setShading = useEditorStore((state) => state.setShading);
@@ -81,24 +111,24 @@ export function AddPanel() {
             ))}
           </FieldRow>
 
-          <FieldRow legend="OBJECT" columns={2}>
+          <FieldRow legend="OBJECT" columns={1}>
             <Button
               label="DUPLICATE"
               hint="Copy the selected object(s) with an independent mesh"
               onClick={() => duplicateSelected(false)}
             />
             <Button
-              label="LINKED DUP"
+              label="LINKED DUPLICATE"
               hint="Copy the selected object(s) sharing the same mesh data"
               onClick={() => duplicateSelected(true)}
             />
             <Button
-              label="JOIN"
-              hint="Merge the selected objects into the active one"
-              onClick={joinSelected}
+              label="APPLY TRANSFORM"
+              hint="Bake rotation and scale into the mesh so modifiers and exports see the real shape"
+              onClick={applyTransform}
             />
             <Button
-              label="RECALC NORM"
+              label="RECALCULATE NORMALS"
               hint="Make winding consistent and point normals outward (X / Delete removes the object)"
               onClick={() => exec('recalculateNormals', { outside: true }, 'Recalculate normals')}
             />
@@ -148,7 +178,7 @@ export function AddPanel() {
         <Toggle
           label="GRID"
           checked={overlays.grid}
-          hint="Show the ground grid in the viewport"
+          hint="Show the ground grid — 1 m squares at normal zoom, rescaled by ten as you pull back"
           onChange={(grid) => setOverlay({ grid })}
         />
         <Toggle

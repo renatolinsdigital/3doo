@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { exportFBXAscii, exportOBJ, parseProject, stringifyProject } from '@kernel/index';
+import { dot, exportFBXAscii, exportOBJ, parseProject, stringifyProject } from '@kernel/index';
 
 import { displayCenter, evaluatedMesh } from './slices/scene';
 import { useEditorStore } from './useEditorStore';
@@ -423,18 +423,53 @@ describe('editor store', () => {
     expect(activeObject().mesh === original.mesh).toBe(true);
   });
 
-  it('joins two objects into one mesh', () => {
+  it('bakes rotation and scale into the mesh, leaving the object where it sits', () => {
     store().addPrimitive('box');
-    const first = activeObject().id;
+    const id = activeObject().id;
+    store().setObjectTransform(id, { scale: { x: 2, y: 2, z: 2 }, position: { x: 3, y: 0, z: 0 } });
+    useEditorStore.setState({ selectedObjectIds: [id] });
+
+    store().applyTransformToSelected();
+
+    const object = activeObject();
+    expect(object.transform.scale).toEqual({ x: 1, y: 1, z: 1 });
+    expect(object.transform.position).toEqual({ x: 3, y: 0, z: 0 });
+    // The default box spans ±0.5, so twice that once the scale lives in the mesh.
+    const xs = [...object.mesh.verts.values()].map((vert) => vert.co.x);
+    expect(Math.max(...xs)).toBeCloseTo(1);
+  });
+
+  it('flips the winding when a mirrored scale is baked in', () => {
     store().addPrimitive('box');
-    store().setActiveObject(first);
-    store().setActiveObject(activeObject().id, false);
+    const id = activeObject().id;
+    store().setObjectTransform(id, { scale: { x: -1, y: 1, z: 1 } });
+    useEditorStore.setState({ selectedObjectIds: [id] });
 
-    useEditorStore.setState({ selectedObjectIds: store().objects.map((object) => object.id) });
-    store().joinSelected();
+    store().applyTransformToSelected();
 
-    expect(store().objects).toHaveLength(1);
-    expect(store().objects[0].mesh.faces.size).toBe(12);
+    // Mirroring reverses the winding, so without the flip every face of the
+    // box would end up pointing into it. The box sits on the origin, so an
+    // outward normal is one that agrees with its own face centre.
+    const mesh = activeObject().mesh;
+    const outward = [...mesh.faces.values()].every(
+      (face) => dot(face.normal, mesh.faceCenter(face)) > 0,
+    );
+    expect(outward).toBe(true);
+  });
+
+  it('refuses to bake into a mesh that two objects share', () => {
+    store().addPrimitive('box');
+    store().setActiveObject(activeObject().id);
+    store().duplicateSelected(true);
+
+    const ids = store().objects.map((object) => object.id);
+    for (const id of ids) store().setObjectTransform(id, { scale: { x: 2, y: 2, z: 2 } });
+    useEditorStore.setState({ selectedObjectIds: ids });
+
+    store().applyTransformToSelected();
+
+    expect(store().objects.every((object) => object.transform.scale.x === 2)).toBe(true);
+    expect(store().status).toContain('single-user');
   });
 
   it('evaluates modifiers without touching the base mesh', () => {
@@ -453,9 +488,9 @@ describe('editor store', () => {
 
     store().addModifier('array');
 
-    // Default array is 3 copies of a 2-unit box along +X, spanning -1..5.
+    // Default array is 3 copies of a 1 m box along +X, spanning -0.5..2.5.
     const after = displayCenter(activeObject(), evaluatedMesh(activeObject()));
-    expect(after.x).toBeCloseTo(2);
+    expect(after.x).toBeCloseTo(1);
     expect(after.y).toBeCloseTo(0);
     expect(after.z).toBeCloseTo(0);
   });
@@ -469,7 +504,7 @@ describe('editor store', () => {
     ]);
 
     const center = displayCenter(activeObject(), evaluatedMesh(activeObject()));
-    expect(center.x).toBeCloseTo(12);
+    expect(center.x).toBeCloseTo(11);
   });
 
   it('moves the cursor onto the selection and the selection back onto it', () => {
@@ -505,9 +540,9 @@ describe('editor store', () => {
     const modifier = activeObject().modifiers[0];
     store().updateModifier(modifier.id, { origin: 'cursor' });
 
-    // Box spans -1..1; reflected across x = 5 the copy lands at 9..11.
+    // Box spans -0.5..0.5; reflected across x = 5 the copy lands at 9.5..10.5.
     const display = evaluatedMesh(activeObject(), store().cursor);
-    expect(display.boundingBox().max.x).toBeCloseTo(11);
+    expect(display.boundingBox().max.x).toBeCloseTo(10.5);
   });
 
   it('bakes a modifier into the mesh on apply', () => {
@@ -631,7 +666,9 @@ describe('editor store', () => {
     const id = store().objects[0].id;
     const originalPosition = store().objects[0].transform.position;
 
-    store().setObjectTransforms([{ id: 'not-a-real-id', transform: { position: { x: 9, y: 9, z: 9 } } }]);
+    store().setObjectTransforms([
+      { id: 'not-a-real-id', transform: { position: { x: 9, y: 9, z: 9 } } },
+    ]);
 
     expect(store().objects.find((o) => o.id === id)?.transform.position).toEqual(originalPosition);
   });

@@ -1,5 +1,6 @@
 import {
   INTEGER_PARAMS,
+  METRE_PARAMS,
   PRIMITIVE_FIELDS,
   type PrimitiveParams,
   radToDeg,
@@ -22,11 +23,13 @@ const PARAM_LABELS: Record<keyof PrimitiveParams, string> = {
   capFill: 'CAPS',
 };
 
+// Lengths say metres outright: the value carries an "m" beside it, but the
+// hint is what gets read when a number's meaning is not obvious.
 const PARAM_HINTS: Record<keyof PrimitiveParams, string> = {
-  size: 'Overall edge length of the shape',
-  radius: 'Distance from the center to the surface',
-  radius2: 'Radius of the tube swept around the ring',
-  height: 'Distance from base to tip along the local Y axis',
+  size: 'Overall edge length of the shape, in metres',
+  radius: 'Distance from the centre to the surface, in metres',
+  radius2: 'Radius of the tube swept around the ring, in metres',
+  height: 'Distance from base to tip along the local Y axis, in metres',
   segments: 'Number of divisions around the shape',
   rings: 'Number of divisions from pole to pole, or around the tube',
   subdivisions: 'How many times to split the base icosahedron',
@@ -63,11 +66,12 @@ export function PropertiesPanel() {
             label={axis.toUpperCase()}
             value={transform.position[axis]}
             step={0.1}
+            suffix="m"
             disabled={object.locked}
             hint={
               object.locked
                 ? 'Unlock this object in the outliner to edit its transform'
-                : `World-space ${axis.toUpperCase()} position; drag the label to scrub`
+                : `World-space ${axis.toUpperCase()} position in metres; drag the label to scrub`
             }
             onChange={(value) =>
               setObjectTransform(object.id, {
@@ -112,7 +116,7 @@ export function PropertiesPanel() {
             hint={
               object.locked
                 ? 'Unlock this object in the outliner to edit its transform'
-                : `Scale factor along the ${axis.toUpperCase()} axis`
+                : `Scale multiplier along the ${axis.toUpperCase()} axis — 1 keeps the modelled size`
             }
             onChange={(value) =>
               setObjectTransform(object.id, {
@@ -140,6 +144,7 @@ export function PropertiesPanel() {
                 label={PARAM_LABELS[field]}
                 value={object.primitive?.params[field] as number}
                 integer={INTEGER_PARAMS.has(field)}
+                suffix={METRE_PARAMS.has(field) ? 'm' : undefined}
                 min={field === 'segments' || field === 'rings' ? 3 : 0}
                 hint={PARAM_HINTS[field]}
                 onChange={(value) => updatePrimitiveParams({ [field]: value })}
