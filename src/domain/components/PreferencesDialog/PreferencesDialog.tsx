@@ -1,7 +1,13 @@
 import { Button, FieldRow, Modal, NumberField, Toggle } from '@shared/components';
 import { MAX_SELECTION_LINE_WIDTH, MIN_SELECTION_LINE_WIDTH, useEditorStore } from '@store/index';
 
-import { downloadText, pickTextFile } from '../../services/download';
+import {
+  PREFERENCES_FILE,
+  pickTextFile,
+  saveResultToast,
+  saveTextFile,
+  wrongKindMessage,
+} from '../../services/download';
 
 import './PreferencesDialog.scss';
 
@@ -14,21 +20,30 @@ export function PreferencesDialog() {
   const setPreferences = useEditorStore((state) => state.setPreferences);
   const resetPreferences = useEditorStore((state) => state.resetPreferences);
 
-  const exportPreferences = () => {
+  const exportPreferences = async () => {
     const state = useEditorStore.getState();
-    downloadText(
-      '3doo-preferences.json',
+    const result = await saveTextFile(
+      `3doo${PREFERENCES_FILE.extension}`,
       JSON.stringify(state.currentPreferences(), null, 2),
-      'application/json',
+      PREFERENCES_FILE,
     );
-    state.pushToast('success', 'Preferences exported');
+
+    const toast = saveResultToast(result);
+    if (toast) state.pushToast(toast.variant, toast.message);
   };
 
   const importPreferences = async () => {
-    const file = await pickTextFile('.json,application/json');
+    const file = await pickTextFile(PREFERENCES_FILE);
     if (!file) return;
 
     const state = useEditorStore.getState();
+
+    const wrongKind = wrongKindMessage(file.name, PREFERENCES_FILE);
+    if (wrongKind) {
+      state.pushToast('error', wrongKind);
+      return;
+    }
+
     try {
       state.importPreferences(file.text);
       state.pushToast('success', `Preferences loaded from ${file.name}`);
@@ -52,12 +67,12 @@ export function PreferencesDialog() {
           <Button
             label="IMPORT"
             onClick={importPreferences}
-            hint="Load preferences from a JSON file"
+            hint="Load preferences from a .pref file"
           />
           <Button
             label="EXPORT"
             onClick={exportPreferences}
-            hint="Save these preferences to a JSON file"
+            hint="Save these preferences to a .pref file"
           />
           <Button label="DONE" variant="primary" onClick={closeDialog} />
         </>
@@ -107,7 +122,7 @@ export function PreferencesDialog() {
 
       <p className="preferences-dialog__hint bottom">
         Preferences are stored on this device, separately from your project. Export writes them to a
-        JSON file you can carry to another browser.
+        .pref file you can carry to another browser.
       </p>
     </Modal>
   );

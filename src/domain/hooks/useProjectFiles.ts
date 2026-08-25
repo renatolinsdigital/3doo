@@ -10,42 +10,77 @@ import {
 } from '@kernel/index';
 import { evaluatedMesh, useEditorStore } from '@store/index';
 
-import { downloadText, pickTextFile } from '../services/download';
+import {
+  MESH_FILE,
+  PROJECT_FILE,
+  downloadText,
+  pickTextFile,
+  saveResultToast,
+  saveTextFile,
+  savedToDownloads,
+  wrongKindMessage,
+} from '../services/download';
 
-/** Save / load / import / export, kept out of the components that trigger them. */
+/** New / save / load / import / export, kept out of the components that trigger them. */
 export function useProjectFiles() {
-  const saveProject = useCallback(() => {
+  const newProject = useCallback(() => {
     const state = useEditorStore.getState();
-    downloadText(
-      `${state.projectName || 'untitled'}.3doo.json`,
+    state.resetScene();
+    // Discarding the scene is the one project action that used to happen in
+    // silence, which reads identically to a button that did nothing at all.
+    state.pushToast('info', 'Started a new project');
+  }, []);
+
+  const saveProject = useCallback(async () => {
+    const state = useEditorStore.getState();
+    const filename = `${state.projectName || 'untitled'}${PROJECT_FILE.extension}`;
+
+    const result = await saveTextFile(
+      filename,
       stringifyProject(state.snapshotDocument()),
-      'application/json',
+      PROJECT_FILE,
     );
-    state.pushToast('success', 'Project saved');
+
+    const toast = saveResultToast(result);
+    if (toast) state.pushToast(toast.variant, toast.message);
   }, []);
 
   const openProject = useCallback(async () => {
     const state = useEditorStore.getState();
-    const file = await pickTextFile('.json,application/json');
+    const file = await pickTextFile(PROJECT_FILE);
     if (!file) return;
+
+    const wrongKind = wrongKindMessage(file.name, PROJECT_FILE);
+    if (wrongKind) {
+      state.pushToast('error', wrongKind);
+      return;
+    }
 
     try {
       state.loadProjectDocument(parseProject(file.text));
-      state.pushToast('success', `Loaded ${file.name}`);
+      state.pushToast('success', `Opened ${file.name}`);
     } catch (error) {
-      state.pushToast('error', (error as Error).message);
+      // Named, because a bare parser message never says which file it came from
+      // and the picker has already closed by the time it lands.
+      state.pushToast('error', `Could not open ${file.name}: ${(error as Error).message}`);
     }
   }, []);
 
   const importMesh = useCallback(async () => {
     const state = useEditorStore.getState();
-    const file = await pickTextFile('.obj');
+    const file = await pickTextFile(MESH_FILE);
     if (!file) return;
+
+    const wrongKind = wrongKindMessage(file.name, MESH_FILE);
+    if (wrongKind) {
+      state.pushToast('error', wrongKind);
+      return;
+    }
 
     try {
       const imported = importOBJ(file.text);
       if (imported.length === 0) {
-        state.pushToast('warning', 'No geometry found in that file');
+        state.pushToast('warning', `No geometry found in ${file.name}`);
         return;
       }
 
@@ -61,9 +96,9 @@ export function useProjectFiles() {
         object.primitive = null;
       }
       useEditorStore.getState().touchMesh();
-      state.pushToast('success', `Imported ${imported.length} object(s)`);
+      state.pushToast('success', `Imported ${imported.length} object(s) from ${file.name}`);
     } catch (error) {
-      state.pushToast('error', `Import failed: ${(error as Error).message}`);
+      state.pushToast('error', `Could not import ${file.name}: ${(error as Error).message}`);
     }
   }, []);
 
@@ -87,7 +122,14 @@ export function useProjectFiles() {
       const objects = collectExportObjects(selectionOnly);
 
       if (objects.length === 0) {
-        state.pushToast('warning', 'Nothing to export');
+        // Hidden objects are filtered out too, so "nothing to export" on a scene
+        // that visibly has objects in it is otherwise baffling.
+        state.pushToast(
+          'warning',
+          selectionOnly
+            ? 'Nothing selected to export'
+            : 'Nothing to export — the scene is empty or every object is hidden',
+        );
         return;
       }
 
@@ -97,12 +139,14 @@ export function useProjectFiles() {
           const { obj, mtl } = exportOBJ(objects, state.exportOptions);
           downloadText(`${name}.obj`, obj, 'text/plain');
           downloadText(`${name}.mtl`, mtl, 'text/plain');
-          state.pushToast('success', `Exported ${name}.obj`);
+          // Both files are named: an OBJ arrives with a material file beside it,
+          // and someone who only knows about the .obj leaves the .mtl behind.
+          state.pushToast('success', savedToDownloads(`${name}.obj`, `${name}.mtl`));
           return;
         }
 
         downloadText(`${name}.fbx`, exportFBXAscii(objects, state.exportOptions), 'text/plain');
-        state.pushToast('success', `Exported ${name}.fbx`);
+        state.pushToast('success', savedToDownloads(`${name}.fbx`));
       } catch (error) {
         state.pushToast('error', `Export failed: ${(error as Error).message}`);
       }
@@ -110,5 +154,5 @@ export function useProjectFiles() {
     [collectExportObjects],
   );
 
-  return { saveProject, openProject, importMesh, exportModel };
+  return { newProject, saveProject, openProject, importMesh, exportModel };
 }

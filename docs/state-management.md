@@ -49,7 +49,7 @@ const { shading } = useEditorStore();
 
 Preferences are the settings that belong to the **person**, not the project:
 tooltips on or off, how thick and what colour the selection outline is. They are
-deliberately not part of a `.3doo.json` — opening a file someone sent you must
+deliberately not part of a `.3doo` file — opening one someone sent you must
 not repaint your viewport.
 
 They live in `slices/preferences.ts` and persist to a single localStorage key:
@@ -93,6 +93,13 @@ means preferences do not persist, never that the editor refuses to start.
 The preferences dialog writes `currentPreferences()` out with the same
 `downloadText` / `pickTextFile` pair the project files use, so a settings file is
 just JSON the user can carry to another browser.
+
+Each of those takes a `FileKind` — `.pref` here, `.3doo` for projects,
+`.obj` for meshes — which is both what the picker filters on and what the
+selection is checked against afterwards. `accept` only filters the dialog; every
+browser offers a route around it, and one that does not recognise a compound
+suffix may not filter on it at all. Checking the name again on the way back is
+what turns "unexpected token" into a sentence naming the extension expected.
 
 Validation lives in the store, presentation in the dialog:
 `importPreferences(text)` throws with a message worth showing, and the dialog

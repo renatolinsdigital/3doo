@@ -105,7 +105,7 @@ export interface ViewportSettings {
  * Settings that belong to the person rather than the project.
  *
  * Persisted to localStorage as one blob and deliberately kept out of
- * `.3doo.json`: opening someone else's project must not repaint your viewport.
+ * `.3doo`: opening someone else's project must not repaint your viewport.
  */
 export interface Preferences {
   tooltipsEnabled: boolean;

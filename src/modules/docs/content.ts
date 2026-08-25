@@ -347,7 +347,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'Save (Ctrl+S)',
-            'Downloads the whole project — objects, transforms, modifiers, materials — as a .3doo.json file.',
+            'Downloads the whole project — objects, transforms, modifiers, materials — as a .3doo file (JSON inside, whatever the suffix says).',
           ],
           ['Open (Ctrl+O)', 'Loads one of those files back, replacing the current scene.'],
           ['Import', 'Reads an OBJ file in as new objects alongside what is already there.'],
@@ -378,7 +378,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'EXPORT writes your preferences to a JSON file and IMPORT reads one back, which is how you carry them to another browser or machine. RESET puts everything back to the defaults.',
+        text: 'EXPORT writes your preferences to a .pref file and IMPORT reads one back, which is how you carry them to another browser or machine. RESET puts everything back to the defaults.',
       },
     ],
   },

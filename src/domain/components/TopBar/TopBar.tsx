@@ -33,9 +33,8 @@ export function TopBar({ brand }: TopBarProps) {
   const undo = useEditorStore((state) => state.undo);
   const redo = useEditorStore((state) => state.redo);
   const openDialog = useEditorStore((state) => state.openDialog);
-  const resetScene = useEditorStore((state) => state.resetScene);
 
-  const { saveProject, openProject, importMesh } = useProjectFiles();
+  const { newProject, saveProject, openProject, importMesh } = useProjectFiles();
 
   return (
     <header className="top-bar">
@@ -66,19 +65,19 @@ export function TopBar({ brand }: TopBarProps) {
           label="NEW"
           variant="ghost"
           hint="Start a blank project, discarding unsaved changes"
-          onClick={resetScene}
+          onClick={newProject}
         />
         <Button
           label="OPEN"
           variant="ghost"
-          hint="Load a .3doo.json project file from disk"
+          hint="Load a .3doo project file from disk"
           onClick={() => void openProject()}
         />
         <Button
           label="SAVE"
           variant="ghost"
-          hint="Download the current project as a .3doo.json file"
-          onClick={saveProject}
+          hint="Save the current project as a .3doo file"
+          onClick={() => void saveProject()}
         />
         <Button
           label="IMPORT"

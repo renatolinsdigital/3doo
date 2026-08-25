@@ -201,7 +201,7 @@ export function useKeymap(): void {
         }
 
         case 'save':
-          saveProject();
+          void saveProject();
           break;
         case 'open':
           void openProject();
