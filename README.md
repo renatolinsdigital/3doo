@@ -113,7 +113,11 @@ Blender defaults, because that is the muscle memory users arrive with. Press
 | `E` / `I` | Extrude / inset |
 | `Ctrl+B` / `Ctrl+R` | Bevel / loop cut |
 | `Ctrl+D` | Subdivide — splits selected edges at their midpoint, or cuts up faces |
-| `M` | Merge by distance |
+| `M` | Object mode: merge the selected objects; edit mode: merge by distance |
+| `Shift+D` / `Alt+D` | Duplicate / linked duplicate, the copy sharing the mesh data |
+| `P` | Separate the loose parts into an object each |
+| `Ctrl+A` | Apply rotation and scale into the mesh |
+| `Shift+N` | Recalculate normals, pointing them outward |
 | `J` | Connect two selected vertices with an edge |
 | `X` | Delete — object mode: the object; edit mode: the selection, leaving a hole |
 | `Delete` | Object mode: the object; edit mode: dissolve the selection, keeping the surface |

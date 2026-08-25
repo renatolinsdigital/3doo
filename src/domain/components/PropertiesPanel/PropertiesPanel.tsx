@@ -191,7 +191,7 @@ export function PropertiesPanel() {
         <FieldRow legend="NORMALS" columns={2}>
           <Button
             label="RECALC"
-            hint="Make winding consistent and point normals outward"
+            hint="Make winding consistent and point normals outward (Shift+N)"
             onClick={() => exec('recalculateNormals', { outside: true }, 'Recalculate normals')}
           />
           <Button

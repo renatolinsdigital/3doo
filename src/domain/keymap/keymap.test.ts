@@ -40,6 +40,25 @@ describe('keymap', () => {
     expect(matchBinding(keyEvent('m'), 'edit')?.label).toMatch(/by distance/);
   });
 
+  it('binds the object operations that had no key of their own', () => {
+    expect(matchBinding(keyEvent('p'), 'object')?.id).toBe('separate');
+    expect(matchBinding(keyEvent('a', { ctrlKey: true }), 'object')?.id).toBe('applyTransform');
+    expect(matchBinding(keyEvent('d', { altKey: true }), 'object')?.id).toBe('linkedDuplicate');
+    expect(matchBinding(keyEvent('n', { shiftKey: true }), 'object')?.id).toBe(
+      'recalculateNormals',
+    );
+
+    // Three of them are object operations, so edit mode leaves those keys free.
+    expect(matchBinding(keyEvent('p'), 'edit')).toBeNull();
+    expect(matchBinding(keyEvent('a', { ctrlKey: true }), 'edit')).toBeNull();
+    expect(matchBinding(keyEvent('d', { altKey: true }), 'edit')).toBeNull();
+  });
+
+  it('keeps plain A and Alt+A on selection, beside the new Ctrl+A', () => {
+    expect(matchBinding(keyEvent('a'), 'object')?.id).toBe('selectAll');
+    expect(matchBinding(keyEvent('a', { altKey: true }), 'object')?.id).toBe('deselectAll');
+  });
+
   it('maps J to connect, in edit mode only', () => {
     expect(matchBinding(keyEvent('j'), 'edit')?.id).toBe('connect');
     expect(matchBinding(keyEvent('j'), 'object')).toBeNull();

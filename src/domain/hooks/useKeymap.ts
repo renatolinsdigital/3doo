@@ -40,13 +40,12 @@ export function useKeymap(): void {
         return;
       }
 
-      // Ctrl/Cmd+A is deliberately a no-op over the viewport: the browser
-      // default is "select all page text", which breaks the 3D immersion the
-      // moment someone reaches for the wrong modifier. Plain "A" still selects
-      // all geometry/objects below.
+      // Ctrl/Cmd+A never reaches the browser, whether or not it is bound here:
+      // its default is "select all page text", which breaks the 3D immersion the
+      // moment someone reaches for the wrong modifier. Object mode applies the
+      // transform with it; plain "A" still selects all geometry/objects.
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
         event.preventDefault();
-        return;
       }
 
       const state = useEditorStore.getState();
@@ -133,6 +132,18 @@ export function useKeymap(): void {
           break;
         case 'duplicate':
           if (state.mode === 'object') state.duplicateSelected(false);
+          break;
+        case 'linkedDuplicate':
+          if (state.mode === 'object') state.duplicateSelected(true);
+          break;
+        case 'separate':
+          if (state.mode === 'object') state.separateLooseParts();
+          break;
+        case 'applyTransform':
+          if (state.mode === 'object') state.applyTransformToSelected();
+          break;
+        case 'recalculateNormals':
+          state.exec('recalculateNormals', { outside: true }, 'Recalculate normals');
           break;
         case 'undo':
           state.undo();

@@ -10,7 +10,7 @@ import {
 } from '../primitives';
 
 import { BMesh } from './bmesh';
-import { cloneMesh, deserializeMesh, serializeMesh } from './serialize';
+import { cloneMesh, deserializeMesh, serializeMesh, splitLooseParts } from './serialize';
 import { triangulatePolygon } from './triangulate';
 
 describe('BMesh', () => {
@@ -241,6 +241,58 @@ describe('serialization', () => {
 
     expect(restored.edges.size).toBe(1);
     expect(restored.verts.size).toBe(2);
+  });
+
+  it('leaves a mesh that is all one piece alone', () => {
+    expect(splitLooseParts(createBox(1))).toHaveLength(1);
+  });
+
+  it('splits a mesh into one part per loose shell', () => {
+    const mesh = createBox(1);
+    // A quad off on its own: touching nothing, so a part of its own.
+    const a = mesh.addVert(vec3(5, 0, 0));
+    const b = mesh.addVert(vec3(6, 0, 0));
+    const c = mesh.addVert(vec3(6, 1, 0));
+    const d = mesh.addVert(vec3(5, 1, 0));
+    mesh.addFace([a, b, c, d], { materialIndex: 2, smooth: true });
+
+    const parts = splitLooseParts(mesh);
+
+    expect(parts).toHaveLength(2);
+    expect(parts.map((part) => part.faces.size).sort()).toEqual([1, 6]);
+    expect(parts.map((part) => part.verts.size).sort((x, y) => x - y)).toEqual([4, 8]);
+
+    // The loose quad keeps what it was carrying: slot and shading come across.
+    const quad = parts.find((part) => part.faces.size === 1);
+    const face = [...(quad?.faces.values() ?? [])][0];
+    expect(face.materialIndex).toBe(2);
+    expect(face.smooth).toBe(true);
+    for (const part of parts) expect(part.validate()).toEqual([]);
+  });
+
+  it('counts a vertex joined by nothing as its own part', () => {
+    const mesh = createBox(1);
+    mesh.addVert(vec3(9, 9, 9));
+
+    const parts = splitLooseParts(mesh);
+
+    expect(parts).toHaveLength(2);
+    expect(parts.some((part) => part.verts.size === 1 && part.faces.size === 0)).toBe(true);
+  });
+
+  it('keeps a wire edge with the shell it joins', () => {
+    const mesh = new BMesh();
+    const a = mesh.addVert(vec3(0, 0, 0));
+    const b = mesh.addVert(vec3(1, 0, 0));
+    mesh.addEdge(a, b);
+    const c = mesh.addVert(vec3(5, 0, 0));
+    const d = mesh.addVert(vec3(6, 0, 0));
+    mesh.addEdge(c, d);
+
+    const parts = splitLooseParts(mesh);
+
+    expect(parts).toHaveLength(2);
+    for (const part of parts) expect(part.edges.size).toBe(1);
   });
 
   it('produces an independent copy', () => {

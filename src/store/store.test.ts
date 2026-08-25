@@ -503,6 +503,47 @@ describe('editor store', () => {
     expect(activeObject().materials).toHaveLength(1);
   });
 
+  it('separates a merged mesh back into one object per loose part', () => {
+    store().addPrimitive('box');
+    const first = activeObject().id;
+    store().addPrimitive('box');
+    const second = activeObject().id;
+    store().setObjectTransform(second, { position: { x: 3, y: 0, z: 0 } });
+    useEditorStore.setState({ selectedObjectIds: [first, second], activeObjectId: first });
+    store().mergeSelected();
+
+    store().separateLooseParts();
+
+    expect(store().objects).toHaveLength(2);
+    for (const object of store().objects) expect(object.mesh.faces.size).toBe(6);
+    // The two boxes were 3 m apart when merged and stay 3 m apart after: the
+    // parts come out where the geometry sits, not stacked on the origin.
+    const centres = store().objects.map((object) => object.mesh.boundingBox().min.x);
+    expect(Math.abs(centres[0] - centres[1])).toBeCloseTo(3);
+    expect(store().selectedObjectIds).toHaveLength(2);
+  });
+
+  it('says so rather than acting when the mesh is one piece', () => {
+    store().addPrimitive('box');
+    const before = store().objects.length;
+
+    store().separateLooseParts();
+
+    expect(store().objects).toHaveLength(before);
+    expect(store().status).toMatch(/one connected piece/);
+  });
+
+  it('refuses to separate a mesh another object shares', () => {
+    store().addPrimitive('box');
+    store().setActiveObject(activeObject().id);
+    store().duplicateSelected(true);
+
+    store().separateLooseParts();
+
+    expect(store().objects).toHaveLength(2);
+    expect(store().status).toContain('single-user');
+  });
+
   it('leaves objects outside the merge unchanged when they share the mesh', () => {
     store().addPrimitive('box');
     const original = activeObject().id;

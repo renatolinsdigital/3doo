@@ -33,6 +33,13 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
   { id: 'loopCut', key: 'r', ctrl: true, label: 'Loop cut', mode: 'edit', group: 'Modelling' },
   { id: 'merge', key: 'm', label: 'Merge by distance', mode: 'edit', group: 'Modelling' },
   {
+    id: 'recalculateNormals',
+    key: 'n',
+    shift: true,
+    label: 'Recalculate normals, pointing them outward',
+    group: 'Modelling',
+  },
+  {
     id: 'merge',
     key: 'm',
     mode: 'object',
@@ -85,6 +92,29 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
     group: 'Edit',
   },
   { id: 'duplicate', key: 'd', shift: true, label: 'Duplicate', mode: 'object', group: 'Edit' },
+  {
+    id: 'linkedDuplicate',
+    key: 'd',
+    alt: true,
+    mode: 'object',
+    label: 'Linked duplicate — the copy shares the original mesh data',
+    group: 'Edit',
+  },
+  {
+    id: 'separate',
+    key: 'p',
+    mode: 'object',
+    label: 'Separate the loose parts into an object each',
+    group: 'Edit',
+  },
+  {
+    id: 'applyTransform',
+    key: 'a',
+    ctrl: true,
+    mode: 'object',
+    label: 'Apply rotation and scale into the mesh',
+    group: 'Edit',
+  },
   { id: 'undo', key: 'z', ctrl: true, label: 'Undo', group: 'Edit' },
   { id: 'redo', key: 'z', ctrl: true, shift: true, label: 'Redo', group: 'Edit' },
 

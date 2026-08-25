@@ -158,3 +158,105 @@ export function deserializeMesh(data: MeshData): BMesh {
 export function cloneMesh(mesh: BMesh): BMesh {
   return deserializeMesh(serializeMesh(mesh));
 }
+
+/**
+ * Splits a mesh into one mesh per loose part.
+ *
+ * A loose part is a set of vertices reachable from one another through faces or
+ * wire edges — the shells a mesh falls into when nothing joins them. Always
+ * returns at least one mesh, so a caller reads "nothing to separate" as a
+ * length of one.
+ *
+ * Going through `MeshData` rather than the half-edge graph is what carries UVs,
+ * sharp edges, smoothing, material slots and the selection across for free:
+ * every part is rebuilt the same way a saved file is.
+ */
+export function splitLooseParts(mesh: BMesh): BMesh[] {
+  const data = serializeMesh(mesh);
+  const vertexCount = data.positions.length / 3;
+
+  // Union-find over vertex indices: it does not care whether two vertices are
+  // joined through a face or a bare wire edge, and needs no adjacency map.
+  const parent = Array.from({ length: vertexCount }, (_, index) => index);
+  const find = (index: number): number => {
+    let root = index;
+    while (parent[root] !== root) root = parent[root];
+    for (let walk = index; parent[walk] !== root; ) {
+      const next = parent[walk];
+      parent[walk] = root;
+      walk = next;
+    }
+    return root;
+  };
+  const union = (a: number, b: number): void => {
+    const rootA = find(a);
+    const rootB = find(b);
+    if (rootA !== rootB) parent[rootB] = rootA;
+  };
+
+  for (const face of data.faces) {
+    for (let i = 1; i < face.length; i++) union(face[0], face[i]);
+  }
+  for (const [a, b] of data.wireEdges) union(a, b);
+
+  const groups = new Map<number, number[]>();
+  for (let index = 0; index < vertexCount; index++) {
+    const root = find(index);
+    const group = groups.get(root);
+    if (group) group.push(index);
+    else groups.set(root, [index]);
+  }
+
+  if (groups.size <= 1) return [deserializeMesh(data)];
+
+  return [...groups.values()].map((vertices) => {
+    const remap = new Map(vertices.map((index, position) => [index, position]));
+    const inPart = (index: number): boolean => remap.has(index);
+    const at = (index: number): number => remap.get(index) as number;
+
+    const positions: number[] = [];
+    for (const index of vertices) {
+      positions.push(
+        data.positions[index * 3],
+        data.positions[index * 3 + 1],
+        data.positions[index * 3 + 2],
+      );
+    }
+
+    const faces: number[][] = [];
+    const materialIndices: number[] = [];
+    const smooth: boolean[] = [];
+    const uvs: number[][] = [];
+    const kept: number[] = [];
+
+    data.faces.forEach((face, faceIndex) => {
+      if (!inPart(face[0])) return;
+      faces.push(face.map(at));
+      materialIndices.push(data.materialIndices[faceIndex] ?? 0);
+      smooth.push(data.smooth[faceIndex] ?? false);
+      uvs.push(data.uvs[faceIndex] ?? []);
+      kept.push(faceIndex);
+    });
+
+    const facePosition = new Map(kept.map((faceIndex, position) => [faceIndex, position]));
+
+    return deserializeMesh({
+      version: 1,
+      positions,
+      faces,
+      materialIndices,
+      smooth,
+      uvs,
+      wireEdges: data.wireEdges.filter(([a]) => inPart(a)).map(([a, b]) => [at(a), at(b)]),
+      sharpEdges: data.sharpEdges.filter(([a]) => inPart(a)).map(([a, b]) => [at(a), at(b)]),
+      selection: {
+        verts: data.selection.verts.filter(inPart).map(at),
+        edges: data.selection.edges.filter(([a]) => inPart(a)).map(([a, b]) => [at(a), at(b)]),
+        faces: data.selection.faces
+          .filter((faceIndex) => facePosition.has(faceIndex))
+          .map((faceIndex) => facePosition.get(faceIndex) as number),
+        vertOrder: data.selection.vertOrder?.filter(inPart).map(at),
+      },
+    });
+  });
+}

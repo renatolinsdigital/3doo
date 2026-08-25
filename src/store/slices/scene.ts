@@ -23,6 +23,7 @@ import {
   evaluateModifiers,
   execOperator,
   flipNormals,
+  splitLooseParts,
   inverseTransformPoint,
   medianPoint,
   normalizePrimitiveParams,
@@ -99,6 +100,7 @@ export interface SceneSlice {
   clearRecentVerts: () => void;
   duplicateSelected: (linked?: boolean) => void;
   mergeSelected: () => void;
+  separateLooseParts: () => void;
   deleteSelected: () => void;
   applyTransformToSelected: () => void;
   setObjectTransform: (id: string, transform: Partial<SceneObject['transform']>) => void;
@@ -433,6 +435,66 @@ export const createSceneSlice: StateCreator<
       activeObjectId: target.id,
       meshVersion: state.meshVersion + 1,
       status: `Merged ${sources.length + 1} objects`,
+    }));
+  },
+
+  /**
+   * Breaks the active object's loose parts out into objects of their own.
+   *
+   * The inverse of a merge, and the reason a merge is not lossy: a part is a
+   * shell nothing joins to the rest, so the split is decided by the geometry
+   * rather than by the selection. Each part keeps the object's transform,
+   * material slots and modifier stack, so nothing moves or re-shades.
+   */
+  separateLooseParts: () => {
+    const { objects, activeObjectId } = get();
+    const object = objects.find((candidate) => candidate.id === activeObjectId);
+    if (!object) return;
+    if (object.locked) {
+      get().noteLockedAttempt(object.id);
+      return;
+    }
+
+    // Separating rewrites the mesh this object holds, which every other user of
+    // a linked mesh would be dragged along by.
+    if (objects.some((other) => other.id !== object.id && other.mesh === object.mesh)) {
+      set({ status: 'Linked meshes have to be made single-user first' });
+      return;
+    }
+
+    const parts = splitLooseParts(object.mesh);
+    if (parts.length < 2) {
+      set({ status: `${object.name} is one connected piece` });
+      return;
+    }
+
+    get().recordHistory('Separate');
+
+    const [first, ...rest] = parts;
+    const separated = rest.map((mesh, index) => ({
+      ...object,
+      id: nextObjectId(),
+      name: `${object.name}.PART.${index + 2}`,
+      mesh,
+      transform: structuredClone(object.transform),
+      materials: structuredClone(object.materials),
+      modifiers: structuredClone(object.modifiers),
+      // The parameters described the whole shape, not this piece of it.
+      primitive: null,
+    }));
+
+    set((state) => ({
+      objects: state.objects.flatMap((candidate) =>
+        candidate.id === object.id
+          ? [
+              { ...candidate, mesh: first, name: `${object.name}.PART.1`, primitive: null },
+              ...separated,
+            ]
+          : [candidate],
+      ),
+      selectedObjectIds: [object.id, ...separated.map((part) => part.id)],
+      meshVersion: state.meshVersion + 1,
+      status: `Separated ${parts.length} loose parts`,
     }));
   },
 
