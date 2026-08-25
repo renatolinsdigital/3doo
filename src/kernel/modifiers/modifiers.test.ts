@@ -63,6 +63,52 @@ describe('mirror modifier', () => {
     expect(result.faces.size).toBe(6);
   });
 
+  it('mirrors about the 3D cursor when the origin points at it', () => {
+    const plane = createPlane(2);
+    for (const vert of plane.verts.values()) vert.co = { ...vert.co, x: vert.co.x + 2 };
+
+    // Cursor at x = 4, so the copy lands at 5..7 rather than -3..-1.
+    const result = evaluateModifiers(plane, [mirror({ merge: false, origin: 'cursor' })], {
+      cursor: { x: 4, y: 0, z: 0 },
+    });
+
+    expect(result.faces.size).toBe(2);
+    expect(result.boundingBox().min.x).toBeCloseTo(1);
+    expect(result.boundingBox().max.x).toBeCloseTo(7);
+    expect(result.validate()).toEqual([]);
+  });
+
+  it('falls back to the object origin when no cursor is supplied', () => {
+    const plane = createPlane(2);
+    for (const vert of plane.verts.values()) vert.co = { ...vert.co, x: vert.co.x + 2 };
+
+    const result = evaluateModifiers(plane, [mirror({ merge: false, origin: 'cursor' })]);
+
+    expect(result.boundingBox().min.x).toBeCloseTo(-3);
+    expect(result.boundingBox().max.x).toBeCloseTo(3);
+  });
+
+  it('welds and bisects against the cursor plane too', () => {
+    const plane = createPlane(2);
+    // Spans 1..3, straddling nothing; the cursor plane at x = 2 cuts it in half.
+    for (const vert of plane.verts.values()) vert.co = { ...vert.co, x: vert.co.x + 2 };
+
+    const result = evaluateModifiers(
+      plane,
+      [mirror({ origin: 'cursor', bisect: true, merge: true, mergeThreshold: 0.001 })],
+      { cursor: { x: 2, y: 0, z: 0 } },
+    );
+    const box = result.boundingBox();
+
+    // The cut keeps 2..3, the reflection rebuilds 1..2, and the seam at the
+    // cursor plane is welded rather than left as a doubled edge.
+    expect(box.min.x).toBeCloseTo(1);
+    expect(box.max.x).toBeCloseTo(3);
+    expect(result.faces.size).toBe(2);
+    expect(result.verts.size).toBe(6);
+    expect(result.validate()).toEqual([]);
+  });
+
   it('mirrors wire edges, which carry no loop to copy', () => {
     const mesh = new BMesh();
     const a = mesh.addVert({ x: 1, y: 0, z: 0 });

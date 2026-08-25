@@ -131,7 +131,7 @@ describe('App shell', () => {
     ).toBeInTheDocument();
     // Role query, not getByLabelText: the label also holds the checked glyph.
     expect(within(modifiers).getByRole('checkbox', { name: 'AXIS X' })).toBeChecked();
-    expect(within(modifiers).getByText(/Reflects the mesh across the object origin/i)).toBeInTheDocument();
+    expect(within(modifiers).getByText(/Reflects the mesh across a plane/i)).toBeInTheDocument();
   });
 
   it('removes a modifier from the stack', async () => {

@@ -1,0 +1,43 @@
+@use '@global-styles/helpers' as *;
+
+.context-menu {
+  @include brutal-border;
+  @include brutal-shadow;
+
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: var(--space-1) 0;
+  background: var(--bone);
+}
+
+.context-menu__item {
+  @include label-text;
+  @include brutal-focus;
+
+  display: flex;
+  align-items: center;
+  min-height: var(--hit-target);
+  padding: var(--space-2) var(--space-4);
+  color: var(--void);
+  text-align: left;
+
+  &:hover:not([aria-disabled='true']) {
+    background: var(--red);
+    color: var(--bone);
+  }
+
+  &[aria-disabled='true'] {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+}
+
+.context-menu__rule {
+  height: var(--border-thin);
+  margin: var(--space-1) 0;
+  background: var(--void);
+  border: none;
+}

@@ -66,3 +66,37 @@ describe('keymap', () => {
     }
   });
 });
+
+describe('3D cursor bindings', () => {
+  function press(key: string, modifiers: { ctrl?: boolean; shift?: boolean } = {}) {
+    return matchBinding(
+      new KeyboardEvent('keydown', {
+        key,
+        ctrlKey: modifiers.ctrl ?? false,
+        shiftKey: modifiers.shift ?? false,
+      }),
+      'object',
+    );
+  }
+
+  it('resolves every cursor shortcut from the character the browser reports', () => {
+    // Shift over a letter reports the upper case of the same key; over
+    // punctuation it reports a different character entirely, which is why the
+    // pivot toggle is on Ctrl.
+    expect(press('C', { shift: true })?.id).toBe('cursorToWorldOrigin');
+    expect(press('C', { ctrl: true, shift: true })?.id).toBe('cursorToSelection');
+    expect(press('V', { shift: true })?.id).toBe('selectionToCursor');
+    expect(press('.', { ctrl: true })?.id).toBe('togglePivot');
+  });
+
+  it('leaves the unmodified keys they sit on alone', () => {
+    expect(press('.')?.id).toBe('frameSelected');
+  });
+
+  it('binds nothing to a shifted punctuation key, which never arrives as itself', () => {
+    const unreachable = DEFAULT_KEYMAP.filter(
+      (binding) => binding.shift && binding.key.length === 1 && !/[a-z0-9]/.test(binding.key),
+    );
+    expect(unreachable.map((binding) => binding.id)).toEqual(['shortcuts']);
+  });
+});

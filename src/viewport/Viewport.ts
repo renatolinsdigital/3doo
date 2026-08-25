@@ -8,15 +8,19 @@ import {
   type Transform,
   type Vec3,
   centroid,
+  inverseTransformDirection,
+  inverseTransformPoint,
   medianPoint,
   mulVec,
   pivotPosition,
+  rotateVerts,
+  scaleVerts,
   selectEdgeLoop,
   translateVerts,
   vec3,
 } from '@kernel/index';
 import { displayCenter, evaluatedMesh, useEditorStore } from '@store/index';
-import type { SceneObject } from '@store/types';
+import type { CursorSnapTargets, SceneObject } from '@store/types';
 
 import { CameraController, MAX_ORBIT_DISTANCE } from './CameraController';
 import { ViewportGrid } from './grid';
@@ -179,8 +183,26 @@ export class Viewport {
         { equalityFn: shallowArrayEqual, fireImmediately: true },
       ),
       store.subscribe(
+        (state) => state.overlays.cursor,
+        (visible) => {
+          this.cursor.visible = visible;
+        },
+        { fireImmediately: true },
+      ),
+      // The pivot decides where the gizmo sits, so moving the cursor has to
+      // re-seat it — but only while the cursor is what it is anchored to.
+      store.subscribe(
+        (state) => state.pivot,
+        () => this.updateGizmo(),
+      ),
+      store.subscribe(
         (state) => state.cursor,
-        (cursor) => this.cursor.position.set(cursor.x, cursor.y, cursor.z),
+        (cursor) => {
+          this.cursor.position.set(cursor.x, cursor.y, cursor.z);
+          // A mirror anchored to the cursor changes shape when it moves, so the
+          // whole scene is rebuilt rather than just the crosshair.
+          this.syncScene();
+        },
         { fireImmediately: true },
       ),
       store.subscribe(
@@ -265,7 +287,7 @@ export class Viewport {
         this.scene.add(view.group);
       }
 
-      const display = evaluatedMesh(object);
+      const display = evaluatedMesh(object, state.cursor);
       view.update(object, display, {
         mode: state.mode,
         selectMode: state.selectMode,
@@ -397,7 +419,14 @@ export class Viewport {
     this.gizmoHelper.visible = true;
     this.transformGroup = transformable.map((object) => object.id);
 
-    if (transformable.length === 1) {
+    if (state.pivot === 'cursor') {
+      // World-aligned on purpose: orbiting a point outside the object around
+      // the object's own axes is not what "about the cursor" means.
+      const { cursor } = state;
+      this.gizmoProxy.position.set(cursor.x, cursor.y, cursor.z);
+      this.gizmoProxy.rotation.set(0, 0, 0);
+      this.gizmoProxy.scale.set(1, 1, 1);
+    } else if (transformable.length === 1) {
       const { rotation, scale } = transformable[0].transform;
       const anchor = this.objectGizmoAnchor(transformable[0]);
       this.gizmoProxy.position.set(anchor.x, anchor.y, anchor.z);
@@ -434,10 +463,13 @@ export class Viewport {
     this.transformGroup = [];
 
     const median = medianPoint(selected);
-    const local = new THREE.Vector3(median.x, median.y, median.z).applyMatrix4(
-      this.views.get(object.id)?.group.matrix ?? new THREE.Matrix4(),
-    );
-    this.gizmoProxy.position.copy(local);
+    const anchor =
+      state.pivot === 'cursor'
+        ? new THREE.Vector3(state.cursor.x, state.cursor.y, state.cursor.z)
+        : new THREE.Vector3(median.x, median.y, median.z).applyMatrix4(
+            this.views.get(object.id)?.group.matrix ?? new THREE.Matrix4(),
+          );
+    this.gizmoProxy.position.copy(anchor);
     this.gizmoProxy.rotation.set(0, 0, 0);
     this.gizmoProxy.scale.set(1, 1, 1);
 
@@ -465,7 +497,10 @@ export class Viewport {
         if (!this.transformGroup.includes(object.id)) continue;
         this.objectBaselines.set(object.id, structuredClone(object.transform));
       }
-      state.recordHistory(state.mode === 'object' ? 'Transform object' : 'Move selection');
+      const tool = state.activeTool === 'select' ? 'move' : state.activeTool;
+      state.recordHistory(
+        state.mode === 'object' ? 'Transform object' : `${tool} selection`.toUpperCase(),
+      );
       return;
     }
 
@@ -486,27 +521,81 @@ export class Viewport {
     const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
     if (!object) return;
 
-    const delta = this.gizmoProxy.position.clone().sub(this.gizmoBaseline.position);
+    this.applyEditTransform(state, object);
+  };
+
+  /**
+   * Applies a gizmo drag to the selected vertices of the object being edited.
+   *
+   * Rotate and scale turn about wherever the gizmo was seated — the selection's
+   * median, or the 3D cursor when that is the pivot — which is why the pivot
+   * comes back through the object's own frame rather than being read off the
+   * mesh. Move ignores the pivot, because a translation is the same wherever
+   * you measure it from.
+   */
+  private applyEditTransform(
+    state: ReturnType<typeof useEditorStore.getState>,
+    object: SceneObject,
+  ): void {
+    const baseline = this.gizmoBaseline;
+    if (!baseline) return;
+
+    const selected = object.mesh.selectedVerts();
+    if (selected.length === 0) return;
+
+    const tool = state.activeTool as PivotTool;
+    const worldPivot = vec3(baseline.position.x, baseline.position.y, baseline.position.z);
+    const pivot = inverseTransformPoint(object.transform, worldPivot);
+
+    if (tool === 'rotate') {
+      const deltaQuaternion = this.gizmoProxy.quaternion
+        .clone()
+        .multiply(baseline.quaternion.clone().invert());
+      const { axis, angle } = quaternionToAxisAngle(deltaQuaternion);
+      if (Math.abs(angle) < 1e-6) return;
+
+      rotateVerts(
+        object.mesh,
+        selected,
+        inverseTransformDirection(object.transform, axis),
+        angle,
+        pivot,
+        state.proportional,
+      );
+      this.captureGizmoBaseline();
+      state.touchMesh();
+      return;
+    }
+
+    if (tool === 'scale') {
+      const ratio = vec3(
+        this.gizmoProxy.scale.x / (baseline.scale.x || 1),
+        this.gizmoProxy.scale.y / (baseline.scale.y || 1),
+        this.gizmoProxy.scale.z / (baseline.scale.z || 1),
+      );
+      if (Math.abs(ratio.x - 1) + Math.abs(ratio.y - 1) + Math.abs(ratio.z - 1) < 1e-9) return;
+
+      scaleVerts(object.mesh, selected, ratio, pivot, state.proportional);
+      this.captureGizmoBaseline();
+      state.touchMesh();
+      return;
+    }
+
+    const delta = this.gizmoProxy.position.clone().sub(baseline.position);
     if (delta.lengthSq() < 1e-12) return;
 
     // The gizmo drags in world space; the mesh edit is in object space, so undo
     // the object's scale before applying the delta to the vertices.
     const scale = object.transform.scale;
-    const localDelta = new THREE.Vector3(
-      delta.x / (scale.x || 1),
-      delta.y / (scale.y || 1),
-      delta.z / (scale.z || 1),
-    );
-
     translateVerts(
       object.mesh,
-      object.mesh.selectedVerts(),
-      vec3(localDelta.x, localDelta.y, localDelta.z),
+      selected,
+      vec3(delta.x / (scale.x || 1), delta.y / (scale.y || 1), delta.z / (scale.z || 1)),
       state.proportional,
     );
     this.captureGizmoBaseline();
     state.touchMesh();
-  };
+  }
 
   /**
    * Applies a group gizmo drag to every object in `transformGroup`.
@@ -634,8 +723,92 @@ export class Viewport {
     this.controls.onWheel(event);
   };
 
+  /**
+   * Right-click opens the 3D cursor menu on whatever is under the pointer.
+   *
+   * The snap targets are resolved here rather than when a menu entry is picked:
+   * by then the pointer has moved onto the menu itself, and the geometry it was
+   * over is gone.
+   */
   private handleContextMenu = (event: MouseEvent): void => {
     event.preventDefault();
+    if (this.gizmo.dragging) return;
+
+    const rect = this.canvas.getBoundingClientRect();
+    const pointer = new THREE.Vector2(event.clientX - rect.left, event.clientY - rect.top);
+    useEditorStore.getState().openCursorMenu({
+      x: pointer.x,
+      y: pointer.y,
+      targets: this.resolveCursorTargets(pointer),
+    });
+  };
+
+  /**
+   * Finds everywhere the 3D cursor could land under the pointer.
+   *
+   * Every visible object is searched, not just the active one: placing the
+   * cursor is a scene-level act, and in object mode there is no edit target at
+   * all. The active object goes first so it wins ties.
+   */
+  private resolveCursorTargets(pointer: THREE.Vector2): CursorSnapTargets {
+    const state = useEditorStore.getState();
+    this.updateRaycaster(pointer);
+    const size = { width: this.canvas.clientWidth, height: this.canvas.clientHeight };
+    const targets: CursorSnapTargets = { point: null, vertex: null, edge: null, face: null };
+
+    const ordered = [...state.objects].sort(
+      (a, b) => Number(b.id === state.activeObjectId) - Number(a.id === state.activeObjectId),
+    );
+
+    let nearestHit = Infinity;
+    for (const object of ordered) {
+      if (!object.visible) continue;
+      const view = this.views.get(object.id);
+      if (!view) continue;
+
+      const mesh = evaluatedMesh(object, state.cursor);
+      const matrix = view.group.matrix;
+      const toWorld = (point: Vec3): Vec3 => {
+        const world = new THREE.Vector3(point.x, point.y, point.z).applyMatrix4(matrix);
+        return vec3(world.x, world.y, world.z);
+      };
+
+      const hit = this.raycaster.intersectObject(view.pickTarget, false)[0];
+      if (hit && hit.distance < nearestHit) {
+        nearestHit = hit.distance;
+        targets.point = vec3(hit.point.x, hit.point.y, hit.point.z);
+
+        const faceId = hit.faceIndex == null ? undefined : view.triangleFaceIds[hit.faceIndex];
+        const face = faceId === undefined ? undefined : mesh.faces.get(faceId);
+        if (face) targets.face = toWorld(mesh.faceCenter(face));
+      }
+
+      if (!targets.vertex) {
+        const pick = pickElement(view, mesh, 'vertex', pointer, this.camera, size, this.raycaster);
+        const vert = pick ? mesh.verts.get(pick.elementId) : undefined;
+        if (vert) targets.vertex = toWorld(vert.co);
+      }
+
+      if (!targets.edge) {
+        const pick = pickElement(view, mesh, 'edge', pointer, this.camera, size, this.raycaster);
+        const edge = pick ? mesh.edges.get(pick.elementId) : undefined;
+        if (edge) targets.edge = toWorld(mesh.edgeCenter(edge));
+      }
+    }
+
+    if (!targets.point) {
+      // Nothing under the pointer: slide along the view plane the cursor is
+      // already on, which is where Blender leaves it too.
+      const normal = this.camera.getWorldDirection(new THREE.Vector3()).negate();
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
+        normal,
+        new THREE.Vector3(state.cursor.x, state.cursor.y, state.cursor.z),
+      );
+      const hit = this.raycaster.ray.intersectPlane(plane, new THREE.Vector3());
+      if (hit) targets.point = vec3(hit.x, hit.y, hit.z);
+    }
+
+    return targets;
   };
 
   /**

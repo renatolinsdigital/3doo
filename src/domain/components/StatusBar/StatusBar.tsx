@@ -9,6 +9,7 @@ export function StatusBar() {
   const selectMode = useEditorStore((state) => state.selectMode);
   const snap = useEditorStore((state) => state.snap);
   const proportional = useEditorStore((state) => state.proportional);
+  const pivot = useEditorStore((state) => state.pivot);
   const modal = useEditorStore((state) => state.modal);
   const showStatistics = useEditorStore((state) => state.overlays.statistics);
 
@@ -46,6 +47,9 @@ export function StatusBar() {
       <div className="status-bar__section status-bar__section--flags">
         <span className={`status-bar__flag${mode === 'edit' ? ' status-bar__flag--on' : ''}`}>
           {mode === 'edit' ? `EDIT / ${selectMode.toUpperCase()}` : 'OBJECT'}
+        </span>
+        <span className={`status-bar__flag${pivot === 'cursor' ? ' status-bar__flag--on' : ''}`}>
+          PIVOT {pivot === 'cursor' ? 'CURSOR' : 'MEDIAN'}
         </span>
         <span className={`status-bar__flag${snap.enabled ? ' status-bar__flag--on' : ''}`}>
           SNAP {snap.enabled ? snap.mode.toUpperCase() : 'OFF'}

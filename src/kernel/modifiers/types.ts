@@ -6,9 +6,18 @@ export interface ModifierBase {
   enabled: boolean;
 }
 
+/** What a modifier measures from when it has a choice. */
+export type ModifierOrigin = 'object' | 'cursor';
+
 export interface MirrorModifier extends ModifierBase {
   type: 'mirror';
   axes: { x: boolean; y: boolean; z: boolean };
+  /**
+   * Where the mirror plane sits: through the object's own origin, or through
+   * the 3D cursor. Optional because projects saved before the choice existed
+   * carry no value at all, and those meshes were mirrored about the object.
+   */
+  origin?: ModifierOrigin;
   merge: boolean;
   mergeThreshold: number;
   /** Snap vertices within `mergeThreshold` of the mirror plane onto it. */
@@ -72,6 +81,7 @@ export function createModifier(type: ModifierType): Modifier {
         name: 'MIRROR',
         enabled: true,
         axes: { x: true, y: false, z: false },
+        origin: 'object',
         merge: true,
         mergeThreshold: 0.001,
         clipping: false,

@@ -35,6 +35,7 @@ export const createViewportSlice: StateCreator<
     normals: false,
     faceOrientation: false,
     statistics: true,
+    cursor: true,
   },
   backfaceCulling: false,
   orthographic: false,

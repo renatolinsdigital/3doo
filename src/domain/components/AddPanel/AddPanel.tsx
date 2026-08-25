@@ -1,7 +1,7 @@
 import { PRIMITIVE_LABELS, type PrimitiveKind } from '@kernel/index';
 import { Button, FieldRow, Panel, SegmentedControl, Toggle } from '@shared/components';
 import { useEditorStore } from '@store/index';
-import type { SelectMode, ShadingMode } from '@store/types';
+import type { PivotMode, SelectMode, ShadingMode } from '@store/types';
 
 import './AddPanel.scss';
 
@@ -63,6 +63,8 @@ export function AddPanel() {
   const orthographic = useEditorStore((state) => state.orthographic);
   const setViewportSetting = useEditorStore((state) => state.setViewportSetting);
   const viewLost = useEditorStore((state) => state.viewLost);
+  const pivot = useEditorStore((state) => state.pivot);
+  const setPivot = useEditorStore((state) => state.setPivot);
 
   return (
     <Panel title={mode === 'object' ? 'ADD / SCENE' : 'SELECT / VIEW'} className="add-panel">
@@ -122,6 +124,26 @@ export function AddPanel() {
         />
       </FieldRow>
 
+      <FieldRow legend="TRANSFORM" columns={1}>
+        <SegmentedControl
+          label="PIVOT"
+          value={pivot === 'cursor' ? 'cursor' : 'median'}
+          options={[
+            {
+              value: 'median',
+              label: 'MEDIAN',
+              hint: 'Rotate and scale around the middle of what is selected',
+            },
+            {
+              value: 'cursor',
+              label: 'CURSOR',
+              hint: 'Rotate and scale around the 3D cursor instead',
+            },
+          ]}
+          onChange={(value) => setPivot(value as PivotMode)}
+        />
+      </FieldRow>
+
       <FieldRow legend="OVERLAYS" columns={1}>
         <Toggle
           label="GRID"
@@ -134,6 +156,12 @@ export function AddPanel() {
           checked={overlays.axes}
           hint="Show the coloured X/Z axis lines"
           onChange={(axes) => setOverlay({ axes })}
+        />
+        <Toggle
+          label="3D CURSOR"
+          checked={overlays.cursor}
+          hint="Show the amber 3D cursor crosshair — hiding it does not move it"
+          onChange={(cursor) => setOverlay({ cursor })}
         />
         <Toggle
           label="NORMALS"

@@ -11,6 +11,7 @@ import {
   History,
   PRIMITIVE_DEFAULT_OVERRIDES,
   PRIMITIVE_LABELS,
+  add,
   applyModifier,
   centroid,
   cloneMesh,
@@ -21,9 +22,13 @@ import {
   deserializeProject,
   evaluateModifiers,
   execOperator,
+  inverseTransformPoint,
+  medianPoint,
   normalizePrimitiveParams,
   serializeProject,
+  sub,
   transformPoint,
+  translateVerts,
   vec3,
 } from '@kernel/index';
 
@@ -98,7 +103,9 @@ export interface SceneSlice {
   setObjectTransforms: (
     patches: { id: string; transform: Partial<SceneObject['transform']> }[],
   ) => void;
-  setCursor: (position: Vec3) => void;
+  setCursor: (position: Vec3, status?: string) => void;
+  cursorToSelection: () => void;
+  selectionToCursor: () => void;
 
   addMaterial: () => void;
   updateMaterial: (index: number, patch: Partial<Material>) => void;
@@ -412,7 +419,59 @@ export const createSceneSlice: StateCreator<
     }));
   },
 
-  setCursor: (position) => set({ cursor: { ...position } }),
+  setCursor: (position, status = 'Cursor placed') => set({ cursor: { ...position }, status }),
+
+  cursorToSelection: () => {
+    const anchor = selectionAnchor(get());
+    if (!anchor) {
+      set({ status: 'Nothing selected' });
+      return;
+    }
+    get().setCursor(anchor, 'Cursor to selection');
+  },
+
+  /**
+   * Moves the selection so it lands on the cursor, keeping the offsets between
+   * objects. Blender stacks every object origin on the cursor by default; here
+   * the group moves as a unit and lands on the point the gizmo is showing,
+   * which is what the user is actually looking at.
+   */
+  selectionToCursor: () => {
+    const state = get();
+    const anchor = selectionAnchor(state);
+    if (!anchor) {
+      set({ status: 'Nothing selected' });
+      return;
+    }
+
+    const offset = sub(state.cursor, anchor);
+    if (state.mode === 'edit') {
+      const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+      if (!object || object.locked) return;
+      state.recordHistory('Selection to cursor');
+      // The gizmo drags in world space but vertices live in object space, so
+      // the offset has to come back through the object's own frame.
+      const origin = inverseTransformPoint(object.transform, vec3());
+      const local = sub(inverseTransformPoint(object.transform, offset), origin);
+      translateVerts(object.mesh, object.mesh.selectedVerts(), local);
+      set((current) => ({ meshVersion: current.meshVersion + 1, status: 'Selection to cursor' }));
+      return;
+    }
+
+    const movable = state.objects.filter(
+      (object) => state.selectedObjectIds.includes(object.id) && !object.locked,
+    );
+    if (movable.length === 0) return;
+
+    state.recordHistory('Selection to cursor');
+    state.setObjectTransforms(
+      movable.map((object) => ({
+        id: object.id,
+        transform: { position: add(object.transform.position, offset) },
+      })),
+    );
+    set({ status: 'Selection to cursor' });
+  },
 
   addMaterial: () => {
     get().patchActiveObject(
@@ -499,7 +558,9 @@ export const createSceneSlice: StateCreator<
     get().recordHistory(`Apply ${modifier.name}`);
     get().patchActiveObject(
       {
-        mesh: applyModifier(cloneMesh(object.mesh), modifier),
+        mesh: applyModifier(cloneMesh(object.mesh), modifier, {
+          cursor: inverseTransformPoint(object.transform, get().cursor),
+        }),
         modifiers: object.modifiers.filter((candidate) => candidate.id !== id),
         primitive: null,
       },
@@ -618,10 +679,41 @@ export const createSceneSlice: StateCreator<
   },
 });
 
-/** Display mesh for an object: its base mesh run through the modifier stack. */
-export function evaluatedMesh(object: SceneObject) {
+/**
+ * The world-space point the current selection hangs off — the same point the
+ * gizmo sits on, so cursor snapping and the handles agree.
+ *
+ * Null when nothing is selected, which is what the callers report to the user
+ * rather than silently snapping to the origin.
+ */
+function selectionAnchor(state: EditorStore): Vec3 | null {
+  const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+
+  if (state.mode === 'edit') {
+    const selected = object?.mesh.selectedVerts() ?? [];
+    if (!object || selected.length === 0) return null;
+    return transformPoint(composeMatrix(object.transform), medianPoint(selected));
+  }
+
+  const selected = state.objects.filter((candidate) =>
+    state.selectedObjectIds.includes(candidate.id),
+  );
+  if (selected.length === 0) return null;
+  return centroid(selected.map((candidate) => displayCenter(candidate, evaluatedMesh(candidate, state.cursor))));
+}
+
+/**
+ * Display mesh for an object: its base mesh run through the modifier stack.
+ *
+ * The 3D cursor arrives in world space and is handed to the kernel in the
+ * object's own local frame, which is the only coordinate system a modifier
+ * knows about.
+ */
+export function evaluatedMesh(object: SceneObject, cursor: Vec3 = vec3()) {
   return object.modifiers.length > 0
-    ? evaluateModifiers(object.mesh, object.modifiers)
+    ? evaluateModifiers(object.mesh, object.modifiers, {
+        cursor: inverseTransformPoint(object.transform, cursor),
+      })
     : object.mesh;
 }
 

@@ -11,3 +11,4 @@ export { MergeDialog } from './MergeDialog/MergeDialog';
 export { ExportDialog } from './ExportDialog/ExportDialog';
 export { PreferencesDialog } from './PreferencesDialog/PreferencesDialog';
 export { ShortcutOverlay } from './ShortcutOverlay/ShortcutOverlay';
+export { CursorMenu } from './CursorMenu/CursorMenu';

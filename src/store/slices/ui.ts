@@ -3,7 +3,7 @@ import type { StateCreator } from 'zustand';
 import { type ExportOptions, DEFAULT_EXPORT_OPTIONS } from '@kernel/index';
 
 import type { EditorStore } from '../useEditorStore';
-import type { DialogId, HintState, Toast } from '../types';
+import type { CursorMenuState, DialogId, HintState, Toast } from '../types';
 
 const TOOLTIPS_STORAGE_KEY = '3doo:tooltips-enabled';
 
@@ -40,6 +40,8 @@ export interface UiSlice {
   tooltipsEnabled: boolean;
   /** The currently visible hover hint, or null when nothing is hovered. */
   hint: HintState | null;
+  /** The viewport's right-click cursor menu, or null when it is closed. */
+  cursorMenu: CursorMenuState | null;
 
   pushToast: (variant: Toast['variant'], message: string) => void;
   dismissToast: (id: string) => void;
@@ -50,6 +52,8 @@ export interface UiSlice {
   setTooltipsEnabled: (enabled: boolean) => void;
   showHint: (text: string, anchor: { left: number; bottom: number; top: number }) => void;
   hideHint: () => void;
+  openCursorMenu: (menu: CursorMenuState) => void;
+  closeCursorMenu: () => void;
 }
 
 let toastCounter = 0;
@@ -66,6 +70,7 @@ export const createUiSlice: StateCreator<
   mergePreview: null,
   tooltipsEnabled: readTooltipsPreference(),
   hint: null,
+  cursorMenu: null,
 
   pushToast: (variant, message) => {
     toastCounter += 1;
@@ -96,4 +101,10 @@ export const createUiSlice: StateCreator<
   },
 
   hideHint: () => set({ hint: null }),
+
+  // The hint is dismissed alongside: the pointer is about to be over a menu,
+  // and a tooltip left hanging behind it never clears.
+  openCursorMenu: (cursorMenu) => set({ cursorMenu, hint: null }),
+
+  closeCursorMenu: () => set({ cursorMenu: null }),
 });

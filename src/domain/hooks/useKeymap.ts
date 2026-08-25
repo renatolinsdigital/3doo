@@ -138,6 +138,18 @@ export function useKeymap(): void {
           if (state.mode === 'edit') state.exec('invertSelection', {}, 'Invert selection');
           break;
 
+        case 'cursorToWorldOrigin':
+          state.setCursor({ x: 0, y: 0, z: 0 }, 'Cursor to world origin');
+          break;
+        case 'cursorToSelection':
+          state.cursorToSelection();
+          break;
+        case 'selectionToCursor':
+          state.selectionToCursor();
+          break;
+        case 'togglePivot':
+          state.setPivot(state.pivot === 'cursor' ? 'median' : 'cursor');
+          break;
         case 'frameSelected':
           state.frameSelected();
           break;

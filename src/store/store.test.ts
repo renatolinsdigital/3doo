@@ -472,6 +472,44 @@ describe('editor store', () => {
     expect(center.x).toBeCloseTo(12);
   });
 
+  it('moves the cursor onto the selection and the selection back onto it', () => {
+    store().addPrimitive('box');
+    const id = activeObject().id;
+    store().setObjectTransforms([{ id, transform: { position: { x: 4, y: 1, z: -2 } } }]);
+
+    store().cursorToSelection();
+    expect(store().cursor.x).toBeCloseTo(4);
+    expect(store().cursor.y).toBeCloseTo(1);
+    expect(store().cursor.z).toBeCloseTo(-2);
+
+    store().setCursor({ x: 0, y: 5, z: 0 });
+    store().selectionToCursor();
+    expect(activeObject().transform.position.y).toBeCloseTo(5);
+    expect(activeObject().transform.position.x).toBeCloseTo(0);
+  });
+
+  it('says so rather than snapping to the origin when nothing is selected', () => {
+    store().addPrimitive('box');
+    store().setActiveObject(null);
+
+    store().cursorToSelection();
+
+    expect(store().cursor).toEqual({ x: 0, y: 0, z: 0 });
+    expect(store().status).toBe('Nothing selected');
+  });
+
+  it('mirrors about the cursor once the modifier is pointed at it', () => {
+    store().addPrimitive('box');
+    store().setCursor({ x: 5, y: 0, z: 0 });
+    store().addModifier('mirror');
+    const modifier = activeObject().modifiers[0];
+    store().updateModifier(modifier.id, { origin: 'cursor' });
+
+    // Box spans -1..1; reflected across x = 5 the copy lands at 9..11.
+    const display = evaluatedMesh(activeObject(), store().cursor);
+    expect(display.boundingBox().max.x).toBeCloseTo(11);
+  });
+
   it('bakes a modifier into the mesh on apply', () => {
     store().addPrimitive('box');
     store().addModifier('array');

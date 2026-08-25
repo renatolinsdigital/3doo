@@ -280,6 +280,11 @@ non-destructive. `applyModifier` bakes a single one into the mesh.
 
 Mirror reflects and reverses winding (reflection inverts handedness), and copies
 wire edges by hand since they carry no loop for the face pass to follow. Its
+plane passes through the object's own origin unless `origin` is `'cursor'`, in
+which case it passes through the 3D cursor — handed in through `ModifierContext`
+already converted to the object's local frame, because that is the only
+coordinate system the kernel knows. Clipping, bisect and the seam weld all
+measure from that same plane rather than from zero. Its
 merge limit is a distance from the *mirror plane*, not a general weld: only a
 vertex sitting on the seam absorbs its own reflection, so geometry that happens
 to be dense elsewhere is left intact. Bisect cuts the faces that straddle the

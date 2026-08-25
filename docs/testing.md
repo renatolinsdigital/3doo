@@ -1,6 +1,6 @@
 # Testing
 
-282 tests across the kernel, the store, the component library and the app shell.
+296 tests across the kernel, the store, the component library and the app shell.
 
 ```bash
 npm test              # everything
@@ -43,13 +43,14 @@ Good operation tests check four things, not just one:
 
 | Suite | Tests | Covers |
 | --- | --- | --- |
+| `kernel/math` | 5 | Inverting a transform for a point and for a direction, including a zeroed scale axis |
 | `kernel/mesh` | 21 | BMesh structure, radial sets, cascade deletion, triangulation, serialization |
 | `kernel/ops` | 79 | Extrude, inset, bevel, loop cut, subdivide, merge, delete, dissolve, fill, bridge, normals, transforms, selection walks, pivot arithmetic |
-| `kernel/modifiers` | 22 | Mirror (seam merge, bisect, wire edges), array, solidify, weld (split seams, array joints, non-transitivity), stack ordering, non-destructiveness |
+| `kernel/modifiers` | 25 | Mirror (seam merge, bisect, wire edges, mirroring about the 3D cursor), array, solidify, weld (split seams, array joints, non-transitivity), stack ordering, non-destructiveness |
 | `kernel/io` | 25 | OBJ round trip, FBX structure and index encoding, axis presets, project files, undo history, operator registry |
-| `store` | 48 | Add/duplicate/join, exec, undo/redo, modifiers, gizmo centring, project round trip, locked objects, tooltip and viewport preferences |
+| `store` | 51 | Add/duplicate/join, exec, undo/redo, modifiers, gizmo centring, cursor snapping, project round trip, locked objects, tooltip and viewport preferences |
 | `shared/components` | 36 | Rendering and behaviour of every shared component |
-| `domain` | 27 | Keymap resolution, outliner, status bar, operations panel availability |
+| `domain` | 30 | Keymap resolution (including which shifted keys actually reach the handler), outliner, status bar, operations panel availability |
 | `viewport` | 8 | The TransformControls drag contract the gizmo code rests on, and gizmo disposal |
 | `app` | 16 | Full shell mounted with the viewport mocked: add a primitive, enter edit mode, subdivide, undo, open dialogs |
 

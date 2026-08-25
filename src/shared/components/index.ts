@@ -14,3 +14,4 @@ export { Toast, type ToastProps, type ToastVariant } from './Toast/Toast';
 export { ToastHost } from './ToastHost/ToastHost';
 export { TooltipHost } from './TooltipHost/TooltipHost';
 export { FieldRow, type FieldRowProps } from './FieldRow/FieldRow';
+export { ContextMenu, type ContextMenuProps, type ContextMenuEntry, type ContextMenuItem } from './ContextMenu/ContextMenu';

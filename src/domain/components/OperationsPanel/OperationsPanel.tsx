@@ -7,6 +7,7 @@ import './OperationsPanel.scss';
 
 const MERGE_MODES = [
   { value: 'center', label: 'AT CENTER' },
+  { value: 'cursor', label: 'AT 3D CURSOR' },
   { value: 'last', label: 'AT LAST' },
   { value: 'first', label: 'AT FIRST' },
 ] as const;

@@ -85,6 +85,13 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
   { id: 'deselectAll', key: 'a', alt: true, label: 'Deselect all', group: 'Selection' },
   { id: 'invertSelection', key: 'i', ctrl: true, label: 'Invert selection', group: 'Selection' },
 
+  { id: 'cursorToWorldOrigin', key: 'c', shift: true, label: 'Cursor to world origin', group: 'Cursor' },
+  { id: 'cursorToSelection', key: 'c', ctrl: true, shift: true, label: 'Cursor to selection', group: 'Cursor' },
+  { id: 'selectionToCursor', key: 'v', shift: true, label: 'Selection to cursor', group: 'Cursor' },
+  // Ctrl rather than Shift: shifting a punctuation key changes the character
+  // the browser reports, so `Shift+.` arrives as `>` and never matches.
+  { id: 'togglePivot', key: '.', ctrl: true, label: 'Toggle median / cursor pivot', group: 'Cursor' },
+
   { id: 'frameSelected', key: '.', label: 'Frame selected', group: 'View' },
   { id: 'frameAll', key: 'home', label: 'Frame all', group: 'View' },
   { id: 'toggleOrtho', key: '5', label: 'Orthographic / perspective', group: 'View' },

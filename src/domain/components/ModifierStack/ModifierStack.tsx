@@ -9,7 +9,7 @@ const MODIFIER_INFO: Record<ModifierType, { label: string; description: string }
   mirror: {
     label: 'MIRROR',
     description:
-      'Reflects the mesh across the object origin on each enabled axis. Merge welds the two halves into one surface where they meet the mirror plane.',
+      'Reflects the mesh across a plane on each enabled axis — through the object\u2019s own origin, or through the 3D cursor if you point ORIGIN at it. Merge welds the two halves into one surface where they meet that plane.',
   },
   array: {
     label: 'ARRAY',
@@ -170,6 +170,16 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
   if (modifier.type === 'mirror') {
     return (
       <>
+        <Select
+          label="ORIGIN"
+          value={modifier.origin ?? 'object'}
+          options={[
+            { value: 'object', label: 'OBJECT' },
+            { value: 'cursor', label: '3D CURSOR' },
+          ]}
+          hint="Whether the mirror plane passes through the object's origin or the 3D cursor"
+          onChange={(origin) => onChange({ origin })}
+        />
         {(['x', 'y', 'z'] as const).map((axis) => (
           <Toggle
             key={axis}

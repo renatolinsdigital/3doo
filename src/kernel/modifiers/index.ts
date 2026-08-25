@@ -1,4 +1,4 @@
-import { type Axis, add, lerp, mul, sub, vec3 } from '../math';
+import { type Axis, type Vec3, add, lerp, mul, sub, vec3 } from '../math';
 import { BMesh, cloneMesh } from '../mesh';
 import type { Face, Vert } from '../mesh/types';
 import { mergeByDistance, weldVerts } from '../ops/merge';
@@ -16,26 +16,43 @@ import type {
 export * from './types';
 
 /**
+ * Scene state a modifier may measure from, expressed in the object's own local
+ * space so the kernel never has to know about world transforms.
+ */
+export interface ModifierContext {
+  /** The 3D cursor, in object-local coordinates. */
+  cursor?: Vec3;
+}
+
+/**
  * Runs the modifier stack and returns the display mesh.
  *
  * Modifiers are non-destructive: the base mesh is cloned once and each enabled
  * modifier rewrites the clone in order, so the object the user edits is never
  * touched.
  */
-export function evaluateModifiers(mesh: BMesh, modifiers: readonly Modifier[]): BMesh {
+export function evaluateModifiers(
+  mesh: BMesh,
+  modifiers: readonly Modifier[],
+  context: ModifierContext = {},
+): BMesh {
   const enabled = modifiers.filter((modifier) => modifier.enabled);
   if (enabled.length === 0) return mesh;
 
   let result = cloneMesh(mesh);
-  for (const modifier of enabled) result = applyModifier(result, modifier);
+  for (const modifier of enabled) result = applyModifier(result, modifier, context);
   return result;
 }
 
 /** Bakes a single modifier into a mesh, used both by the stack and by Apply. */
-export function applyModifier(mesh: BMesh, modifier: Modifier): BMesh {
+export function applyModifier(
+  mesh: BMesh,
+  modifier: Modifier,
+  context: ModifierContext = {},
+): BMesh {
   switch (modifier.type) {
     case 'mirror':
-      return applyMirror(mesh, modifier);
+      return applyMirror(mesh, modifier, context);
     case 'array':
       return applyArray(mesh, modifier);
     case 'solidify':
@@ -47,7 +64,7 @@ export function applyModifier(mesh: BMesh, modifier: Modifier): BMesh {
   }
 }
 
-function applyMirror(mesh: BMesh, modifier: MirrorModifier): BMesh {
+function applyMirror(mesh: BMesh, modifier: MirrorModifier, context: ModifierContext): BMesh {
   const axes: Axis[] = [];
   if (modifier.axes.x) axes.push('x');
   if (modifier.axes.y) axes.push('y');
@@ -55,12 +72,17 @@ function applyMirror(mesh: BMesh, modifier: MirrorModifier): BMesh {
   if (axes.length === 0) return mesh;
 
   const threshold = Math.max(0, modifier.mergeThreshold);
+  // The plane passes through the object's own origin unless the modifier is set
+  // to follow the 3D cursor, which arrives already converted to local space.
+  const plane: Vec3 =
+    modifier.origin === 'cursor' && context.cursor ? context.cursor : vec3();
 
   for (const axis of axes) {
-    if (modifier.bisect) bisectHalf(mesh, axis, threshold);
+    const at = plane[axis];
+    if (modifier.bisect) bisectHalf(mesh, axis, at, threshold);
     if (modifier.clipping) {
       for (const vert of mesh.verts.values()) {
-        if (Math.abs(vert.co[axis]) < threshold) vert.co = { ...vert.co, [axis]: 0 };
+        if (Math.abs(vert.co[axis] - at) < threshold) vert.co = { ...vert.co, [axis]: at };
       }
     }
 
@@ -72,7 +94,7 @@ function applyMirror(mesh: BMesh, modifier: MirrorModifier): BMesh {
     const reflection = new Map<number, Vert>();
 
     for (const vert of originals) {
-      reflection.set(vert.id, mesh.addVert({ ...vert.co, [axis]: -vert.co[axis] }));
+      reflection.set(vert.id, mesh.addVert({ ...vert.co, [axis]: 2 * at - vert.co[axis] }));
     }
 
     for (const face of originalFaces) {
@@ -99,7 +121,7 @@ function applyMirror(mesh: BMesh, modifier: MirrorModifier): BMesh {
       // geometry that happens to be dense elsewhere is left intact.
       const seam = new Map<number, Vert>();
       for (const vert of originals) {
-        if (Math.abs(vert.co[axis]) > threshold) continue;
+        if (Math.abs(vert.co[axis] - at) > threshold) continue;
         const image = reflection.get(vert.id);
         if (image && image !== vert) seam.set(image.id, vert);
       }
@@ -117,11 +139,17 @@ function applyMirror(mesh: BMesh, modifier: MirrorModifier): BMesh {
  * Faces that straddle the plane are split rather than kept or dropped whole,
  * otherwise the reflection lands back on top of the uncut half and the result
  * is doubled geometry with opposing winding.
+ *
+ * `at` is where the plane crosses `axis`, which is the object origin unless the
+ * modifier is following the 3D cursor.
  */
-function bisectHalf(mesh: BMesh, axis: Axis, threshold: number): void {
+function bisectHalf(mesh: BMesh, axis: Axis, at: number, threshold: number): void {
   const epsilon = Math.max(threshold, 1e-9);
-  const sideOf = (vert: Vert): number =>
-    vert.co[axis] > epsilon ? 1 : vert.co[axis] < -epsilon ? -1 : 0;
+  const signedDistance = (vert: Vert): number => vert.co[axis] - at;
+  const sideOf = (vert: Vert): number => {
+    const distance = signedDistance(vert);
+    return distance > epsilon ? 1 : distance < -epsilon ? -1 : 0;
+  };
 
   // Wires and isolated points that predate the cut are the caller's geometry;
   // the sweep at the end is only for what this cut orphans.
@@ -137,8 +165,8 @@ function bisectHalf(mesh: BMesh, axis: Axis, threshold: number): void {
     const edge = mesh.findEdge(a, b);
     const cached = edge ? splits.get(edge.id) : undefined;
     if (cached) return cached;
-    const t = a.co[axis] / (a.co[axis] - b.co[axis]);
-    const vert = mesh.addVert({ ...lerp(a.co, b.co, t), [axis]: 0 });
+    const t = signedDistance(a) / (signedDistance(a) - signedDistance(b));
+    const vert = mesh.addVert({ ...lerp(a.co, b.co, t), [axis]: at });
     if (edge) splits.set(edge.id, vert);
     return vert;
   };

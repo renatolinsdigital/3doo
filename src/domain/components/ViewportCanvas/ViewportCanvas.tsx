@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 
 import { Viewport } from '@viewport/index';
 
+import { CursorMenu } from '../CursorMenu/CursorMenu';
+
 import './ViewportCanvas.scss';
 
 /**
@@ -36,6 +38,7 @@ export function ViewportCanvas() {
     <div className="viewport-canvas" ref={containerRef}>
       <canvas className="viewport-canvas__surface" ref={canvasRef} />
       <div className="viewport-canvas__marquee" ref={overlayRef} />
+      <CursorMenu />
     </div>
   );
 }

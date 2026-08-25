@@ -65,6 +65,29 @@ export interface OverlaySettings {
   normals: boolean;
   faceOrientation: boolean;
   statistics: boolean;
+  /** The 3D cursor crosshair. Hiding it does not move or disable it. */
+  cursor: boolean;
+}
+
+/**
+ * Where the 3D cursor could go, resolved under the pointer at right-click.
+ *
+ * Each is world space, or null when the click found nothing of that kind — the
+ * menu disables those entries rather than hiding them, so the options stay in
+ * the same place every time.
+ */
+export interface CursorSnapTargets {
+  point: Vec3 | null;
+  vertex: Vec3 | null;
+  edge: Vec3 | null;
+  face: Vec3 | null;
+}
+
+export interface CursorMenuState {
+  /** Canvas-relative pixels; the menu anchors its top-left corner here. */
+  x: number;
+  y: number;
+  targets: CursorSnapTargets;
 }
 
 export interface ViewportSettings {

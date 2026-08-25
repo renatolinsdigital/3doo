@@ -14,7 +14,7 @@ npm run dev      # http://localhost:5173
 ```
 
 ```bash
-npm test         # 282 tests
+npm test         # 296 tests
 npm run build    # typecheck + production bundle
 npm run lint
 ```
@@ -29,6 +29,7 @@ npm run lint
 | Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, subdivide (Catmull-Clark), merge by distance, delete, dissolve, fill, bridge, triangulate, tris-to-quads |
 | Normals | Recalculate outside, flip, shade smooth / flat, face-orientation overlay |
 | Modifiers | Mirror, array, solidify, weld, subdivision — non-destructive, reorderable, with Apply |
+| 3D cursor | Right-click to place it on a point, vertex, edge or face; snap it to the selection or the selection to it; use it as the transform pivot or as a mirror plane |
 | Proportional editing | Six falloff curves |
 | Viewport | Orbit / pan / zoom (Blender and Maya presets), solid / wireframe / x-ray / matcap, adaptive grid, normals overlay |
 | Files | Save and load JSON projects, autosave to IndexedDB with crash recovery, OBJ import |
@@ -119,6 +120,10 @@ Blender defaults, because that is the muscle memory users arrive with. Press
 | `A` / `Alt+A` | Select all / deselect |
 | `.` | Frame selected |
 | `Ctrl+S` / `Ctrl+E` | Save / export |
+| `Shift+C` | 3D cursor to the world origin |
+| `Ctrl+Shift+C` | 3D cursor to the selection |
+| `Shift+V` | Selection to the 3D cursor |
+| `Ctrl+.` | Toggle the pivot between median and 3D cursor |
 
 <kbd>Ctrl</kbd>+<kbd>D</kbd> follows the select mode too: in edge mode it splits
 each selected edge, dropping a vertex at its midpoint and splicing it into the
@@ -140,6 +145,28 @@ folded face, which is what made dissolving a cube edge or corner look broken. A
 vertex lying along a path rather than at a corner — the midpoint left by
 subdividing an edge — merges nothing and always dissolves, whatever angle its
 faces meet at.
+
+### The 3D cursor
+
+The amber crosshair is where new primitives are born and, when you want it to
+be, what transforms turn around. Right-click anywhere in the viewport for its
+menu: **Place here** drops it on the surface under the pointer — or, over empty
+space, on the view plane it is already on — while **To vertex**, **To edge
+centre** and **To face centre** snap it onto the geometry the click landed near.
+Entries the click found nothing for are disabled rather than hidden, and say so
+on hover, so the menu keeps the same shape every time.
+
+The same menu moves the cursor **to selection**, moves the **selection here**
+(the group travels as a unit and lands on the point the gizmo is showing), and
+sends it back **to the world origin**. Hide the crosshair from
+**Overlays → 3D cursor**; hiding it does not move it or stop anything using it.
+
+Two things read the cursor once it is somewhere useful. **Transform → Pivot**
+switches move, rotate and scale between the median of the selection and the
+cursor, in both object and edit mode — the status bar carries the current
+choice. And the Mirror modifier's **Origin** chooses whether its plane passes
+through the object's own origin or through the cursor, which is how you mirror
+a limb about a point that is not the object's centre.
 
 Because the keys cover both, the Operations panel has no Delete or Dissolve
 section; it offers Merge instead, which welds the selected vertices together at
