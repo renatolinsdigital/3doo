@@ -27,6 +27,7 @@ export class BMesh {
   private nextEdgeId = 1;
   private nextLoopId = 1;
   private nextFaceId = 1;
+  private nextSelectSeq = 1;
 
   // ---------------------------------------------------------------- creation
 
@@ -36,6 +37,7 @@ export class BMesh {
       co: clone(co),
       edges: [],
       selected: false,
+      selectSeq: 0,
       normal: vec3(0, 1, 0),
     };
     this.verts.set(vert.id, vert);
@@ -304,6 +306,12 @@ export class BMesh {
 
   selectedVerts(): Vert[] {
     return [...this.verts.values()].filter((v) => v.selected);
+  }
+
+  /** Selects a vertex and stamps it with the current click-selection order. */
+  selectVert(vert: Vert): void {
+    vert.selected = true;
+    vert.selectSeq = this.nextSelectSeq++;
   }
 
   selectedEdges(): Edge[] {

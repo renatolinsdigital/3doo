@@ -5,6 +5,8 @@ export interface Vert {
   co: Vec3;
   edges: Edge[];
   selected: boolean;
+  /** Click-selection order stamp; lets ops like merge tell first-picked from last-picked. */
+  selectSeq: number;
   /** Cached area-weighted vertex normal; only valid after `computeNormals`. */
   normal: Vec3;
 }

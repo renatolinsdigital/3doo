@@ -867,7 +867,12 @@ function applySelection(
   for (const id of ids) {
     if (mode === 'vertex') {
       const vert = mesh.verts.get(id);
-      if (vert) vert.selected = options.additive ? !vert.selected : true;
+      if (!vert) continue;
+      if (options.additive && vert.selected) {
+        vert.selected = false;
+      } else {
+        mesh.selectVert(vert);
+      }
     } else if (mode === 'edge') {
       const edge = mesh.edges.get(id);
       if (!edge) continue;

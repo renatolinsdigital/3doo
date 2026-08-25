@@ -349,6 +349,28 @@ describe('merge by distance', () => {
     expect(cube.faces.size).toBe(5);
     expect(cube.validate()).toEqual([]);
   });
+
+  it('merges to the first- or last-selected vertex, independent of array order', () => {
+    const first = createBox(2);
+    const firstTop = faceAt(first, vec3(0, 1, 0));
+    const firstVerts = first.faceVerts(firstTop);
+    // Click-select every corner in reverse of array order: the last array
+    // entry is picked first, the first array entry is picked last.
+    for (const vert of [...firstVerts].reverse()) first.selectVert(vert);
+
+    mergeVerts(first, firstVerts, 'first');
+    expect(first.verts.has(firstVerts[firstVerts.length - 1].id)).toBe(true);
+    expect(first.verts.has(firstVerts[0].id)).toBe(false);
+
+    const last = createBox(2);
+    const lastTop = faceAt(last, vec3(0, 1, 0));
+    const lastVerts = last.faceVerts(lastTop);
+    for (const vert of [...lastVerts].reverse()) last.selectVert(vert);
+
+    mergeVerts(last, lastVerts, 'last');
+    expect(last.verts.has(lastVerts[0].id)).toBe(true);
+    expect(last.verts.has(lastVerts[lastVerts.length - 1].id)).toBe(false);
+  });
 });
 
 describe('subdivide edges', () => {
