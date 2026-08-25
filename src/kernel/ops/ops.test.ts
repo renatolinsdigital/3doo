@@ -350,26 +350,26 @@ describe('merge by distance', () => {
     expect(cube.validate()).toEqual([]);
   });
 
-  it('merges to the first- or last-selected vertex, independent of array order', () => {
-    const first = createBox(2);
-    const firstTop = faceAt(first, vec3(0, 1, 0));
-    const firstVerts = first.faceVerts(firstTop);
-    // Click-select every corner in reverse of array order: the last array
-    // entry is picked first, the first array entry is picked last.
-    for (const vert of [...firstVerts].reverse()) first.selectVert(vert);
+  it('merges to the first- or last-clicked vertex, not the mesh order', () => {
+    // Click the top corners newest-first, the reverse of the order the mesh
+    // created them, so a correct pick cannot coincide with iteration order.
+    const clickTopFace = (mesh: BMesh) => {
+      const corners = [...mesh.faceVerts(faceAt(mesh, vec3(0, 1, 0)))].sort((a, b) => b.id - a.id);
+      for (const vert of corners) mesh.selectVert(vert);
+      return corners;
+    };
 
-    mergeVerts(first, firstVerts, 'first');
-    expect(first.verts.has(firstVerts[firstVerts.length - 1].id)).toBe(true);
-    expect(first.verts.has(firstVerts[0].id)).toBe(false);
+    const first = createBox(2);
+    const firstClicks = clickTopFace(first);
+    mergeVerts(first, first.selectedVerts(), 'first');
+    expect(first.verts.has(firstClicks[0].id)).toBe(true);
+    expect(first.verts.has(firstClicks[firstClicks.length - 1].id)).toBe(false);
 
     const last = createBox(2);
-    const lastTop = faceAt(last, vec3(0, 1, 0));
-    const lastVerts = last.faceVerts(lastTop);
-    for (const vert of [...lastVerts].reverse()) last.selectVert(vert);
-
-    mergeVerts(last, lastVerts, 'last');
-    expect(last.verts.has(lastVerts[0].id)).toBe(true);
-    expect(last.verts.has(lastVerts[lastVerts.length - 1].id)).toBe(false);
+    const lastClicks = clickTopFace(last);
+    mergeVerts(last, last.selectedVerts(), 'last');
+    expect(last.verts.has(lastClicks[lastClicks.length - 1].id)).toBe(true);
+    expect(last.verts.has(lastClicks[0].id)).toBe(false);
   });
 });
 

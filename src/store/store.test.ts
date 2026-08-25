@@ -88,6 +88,32 @@ describe('editor store', () => {
     expect(activeObject().mesh.faces.size).toBe(10);
   });
 
+  it('still knows the first-selected vertex after an undo', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+
+    const mesh = activeObject().mesh;
+    mesh.deselectAll();
+    const top = [...mesh.faces.values()].find((face) => face.normal.y > 0.99);
+    if (!top) throw new Error('No top face');
+    // Click the corners newest-first, the reverse of the order the mesh
+    // created them, so merging at the first pick cannot coincide with the
+    // iteration order `selectedVerts()` hands the operator.
+    const picked = [...mesh.faceVerts(top)].sort((a, b) => b.id - a.id);
+    for (const vert of picked) mesh.selectVert(vert);
+    mesh.flushSelection('vertex');
+    const expected = { ...picked[0].co };
+
+    store().exec('merge', { mode: 'first' }, 'Merge');
+    expect(activeObject().mesh.selectedVerts()).toHaveLength(1);
+    expect(activeObject().mesh.selectedVerts()[0].co).toEqual(expected);
+
+    store().undo();
+    store().exec('merge', { mode: 'first' }, 'Merge');
+    expect(activeObject().mesh.selectedVerts()).toHaveLength(1);
+    expect(activeObject().mesh.selectedVerts()[0].co).toEqual(expected);
+  });
+
   it('undoes across several operations in order', () => {
     store().addPrimitive('box');
     store().setMode('edit');

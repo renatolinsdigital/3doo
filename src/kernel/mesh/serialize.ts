@@ -23,6 +23,13 @@ export interface MeshData {
     verts: number[];
     edges: [number, number][];
     faces: number[];
+    /**
+     * Click-selected vertices in selection order, so `merge at first/last`
+     * still knows what the user picked first after an undo or a file reload.
+     * Absent on projects written before this was recorded, and it lists only
+     * the vertices that carry an order — a box or select-all leaves none.
+     */
+    vertOrder?: number[];
   };
 }
 
@@ -30,14 +37,20 @@ export function serializeMesh(mesh: BMesh): MeshData {
   const vertIndex = new Map<number, number>();
   const positions: number[] = [];
   const selectedVerts: number[] = [];
+  const ordered: { index: number; seq: number }[] = [];
 
   let index = 0;
   for (const vert of mesh.verts.values()) {
     vertIndex.set(vert.id, index);
     positions.push(vert.co.x, vert.co.y, vert.co.z);
-    if (vert.selected) selectedVerts.push(index);
+    if (vert.selected) {
+      selectedVerts.push(index);
+      if (vert.selectSeq > 0) ordered.push({ index, seq: vert.selectSeq });
+    }
     index++;
   }
+
+  const vertOrder = ordered.sort((a, b) => a.seq - b.seq).map((entry) => entry.index);
 
   const faces: number[][] = [];
   const materialIndices: number[] = [];
@@ -77,7 +90,12 @@ export function serializeMesh(mesh: BMesh): MeshData {
     uvs,
     wireEdges,
     sharpEdges,
-    selection: { verts: selectedVerts, edges: selectedEdges, faces: selectedFaces },
+    selection: {
+      verts: selectedVerts,
+      edges: selectedEdges,
+      faces: selectedFaces,
+      vertOrder,
+    },
   };
 }
 
@@ -118,6 +136,12 @@ export function deserializeMesh(data: MeshData): BMesh {
 
   for (const vertexIndex of data.selection.verts) {
     if (verts[vertexIndex]) verts[vertexIndex].selected = true;
+  }
+  // Replaying through `selectVert` re-stamps the click order; the values are
+  // renumbered from 1, which is fine because only their order is ever read.
+  for (const vertexIndex of data.selection.vertOrder ?? []) {
+    const vert = verts[vertexIndex];
+    if (vert?.selected) mesh.selectVert(vert);
   }
   for (const [a, b] of data.selection.edges) {
     const edge = verts[a] && verts[b] ? mesh.findEdge(verts[a], verts[b]) : null;

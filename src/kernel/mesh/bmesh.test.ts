@@ -202,6 +202,35 @@ describe('serialization', () => {
     expect(restored.validate()).toEqual([]);
   });
 
+  it('round-trips vertex selection order', () => {
+    const mesh = createBox(2);
+    const face = [...mesh.faces.values()][2];
+    // Select the corners newest-first, the reverse of the order the mesh
+    // created them, so a restored click order cannot be confused with the
+    // iteration order the round-trip itself rebuilds.
+    const picked = [...mesh.faceVerts(face)].sort((a, b) => b.id - a.id);
+    for (const vert of picked) mesh.selectVert(vert);
+
+    const restored = deserializeMesh(serializeMesh(mesh));
+    const order = restored
+      .selectedVerts()
+      .sort((a, b) => a.selectSeq - b.selectSeq)
+      .map((vert) => vert.id);
+
+    expect(order).toEqual(picked.map((vert) => vert.id));
+    expect(restored.selectedVerts().every((vert) => vert.selectSeq > 0)).toBe(true);
+  });
+
+  it('leaves selection order unset for vertices that were never click-selected', () => {
+    const mesh = createBox(2);
+    for (const vert of mesh.verts.values()) vert.selected = true;
+
+    const restored = deserializeMesh(serializeMesh(mesh));
+
+    expect(restored.selectedVerts()).toHaveLength(mesh.verts.size);
+    expect(restored.selectedVerts().every((vert) => vert.selectSeq === 0)).toBe(true);
+  });
+
   it('preserves wire edges that belong to no face', () => {
     const mesh = new BMesh();
     const a = mesh.addVert(vec3(0, 0, 0));
