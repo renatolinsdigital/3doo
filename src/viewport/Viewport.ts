@@ -32,6 +32,9 @@ const VIEW_LOST_DISTANCE = MAX_ORBIT_DISTANCE * 0.45;
 /** How long freshly created vertices stay flagged in the viewport. */
 const RECENT_VERTS_MS = 1600;
 
+/** Screen radius of the 3D cursor's ring, in pixels. It holds this at any zoom. */
+const CURSOR_RADIUS_PX = 11;
+
 interface GizmoBaseline {
   position: THREE.Vector3;
   quaternion: THREE.Quaternion;
@@ -123,22 +126,86 @@ export class Viewport {
 
   // ------------------------------------------------------------------ setup
 
+  /**
+   * The 3D cursor, built the way Blender draws its own: a ring of alternating
+   * red and white dashes with four crosshair ticks just outside it. The two
+   * colours are what keep it legible over both the dark background and a lit
+   * surface, and the empty middle is what lets you see the point it marks.
+   *
+   * Unit radius; `updateCursor` scales it to a fixed pixel size every frame.
+   */
   private createCursor(): THREE.Object3D {
+    const dashes = 8;
+    const stepsPerDash = 5;
+    const arc = Math.PI / dashes;
+    const red: number[] = [];
+    const bone: number[] = [];
+
+    for (let dash = 0; dash < dashes * 2; dash += 1) {
+      const points = dash % 2 === 0 ? red : bone;
+      for (let step = 0; step < stepsPerDash; step += 1) {
+        const from = (dash + step / stepsPerDash) * arc;
+        const to = (dash + (step + 1) / stepsPerDash) * arc;
+        points.push(Math.cos(from), Math.sin(from), 0, Math.cos(to), Math.sin(to), 0);
+      }
+    }
+
+    const inner = 1.5;
+    const middle = 2.05;
+    const outer = 2.7;
+    for (const [x, y] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ] as const) {
+      red.push(x * inner, y * inner, 0, x * middle, y * middle, 0);
+      bone.push(x * middle, y * middle, 0, x * outer, y * outer, 0);
+    }
+
     const group = new THREE.Group();
-    const size = 0.35;
-    const positions = new Float32Array([
-      -size, 0, 0, size, 0, 0, 0, -size, 0, 0, size, 0, 0, 0, -size, 0, 0, size,
-    ]);
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    group.add(
-      new THREE.LineSegments(
+    for (const [color, points] of [
+      [VIEWPORT_COLORS.red, red],
+      [VIEWPORT_COLORS.bone, bone],
+    ] as const) {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+      const lines = new THREE.LineSegments(
         geometry,
-        new THREE.LineBasicMaterial({ color: VIEWPORT_COLORS.amber, depthTest: false }),
-      ),
-    );
+        new THREE.LineBasicMaterial({ color, depthTest: false }),
+      );
+      // Depth testing is off, so the cursor is only reliably on top if it also
+      // draws after the geometry: renderOrder has to sit on the lines
+      // themselves, since a group's is never inherited by its children.
+      lines.renderOrder = 10;
+      group.add(lines);
+    }
+
     group.renderOrder = 10;
     return group;
+  }
+
+  /**
+   * Keeps the cursor facing the camera at a constant size on screen.
+   *
+   * A fixed world size is a speck when zoomed out and swallows the model when
+   * zoomed in — the cursor is a screen-space marker, not a piece of the scene,
+   * so it is billboarded and rescaled per frame like Blender's.
+   */
+  private updateCursor(): void {
+    if (!this.cursor.visible) return;
+    const height = this.canvas.clientHeight;
+    if (height === 0) return;
+
+    this.cursor.quaternion.copy(this.camera.quaternion);
+    const worldPerPixel =
+      this.camera instanceof THREE.OrthographicCamera
+        ? (this.camera.top - this.camera.bottom) / height
+        : (2 *
+            Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2) *
+            this.camera.position.distanceTo(this.cursor.position)) /
+          height;
+    this.cursor.scale.setScalar(CURSOR_RADIUS_PX * worldPerPixel);
   }
 
   private bindEvents(): void {
@@ -965,6 +1032,7 @@ export class Viewport {
     this.grid.update(distance);
     this.extendFarPlane(distance);
     this.updateViewLost(distance);
+    this.updateCursor();
     this.expireRecentVerts();
     this.renderer.render(this.scene, this.camera);
   };

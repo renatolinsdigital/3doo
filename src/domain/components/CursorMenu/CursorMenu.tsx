@@ -16,6 +16,8 @@ export function CursorMenu() {
   const setCursor = useEditorStore((state) => state.setCursor);
   const cursorToSelection = useEditorStore((state) => state.cursorToSelection);
   const selectionToCursor = useEditorStore((state) => state.selectionToCursor);
+  const cursorVisible = useEditorStore((state) => state.overlays.cursor);
+  const setOverlay = useEditorStore((state) => state.setOverlay);
 
   if (!menu) return null;
 
@@ -84,15 +86,19 @@ export function CursorMenu() {
       hint: 'Send the cursor back to 0, 0, 0',
       onSelect: () => setCursor({ x: 0, y: 0, z: 0 }, 'Cursor to world origin'),
     },
+    {
+      id: 'visibility',
+      label: cursorVisible ? 'HIDE CURSOR' : 'SHOW CURSOR',
+      // Hiding only drops the overlay: the snap entries above still move the
+      // cursor, and the pivot still uses wherever it was left.
+      hint: cursorVisible
+        ? 'Stop drawing the cursor without moving it'
+        : 'Draw the cursor in the viewport again',
+      onSelect: () => setOverlay({ cursor: !cursorVisible }),
+    },
   ];
 
   return (
-    <ContextMenu
-      x={menu.x}
-      y={menu.y}
-      label="3D CURSOR"
-      entries={entries}
-      onClose={close}
-    />
+    <ContextMenu x={menu.x} y={menu.y} label="CURSOR MENU" entries={entries} onClose={close} />
   );
 }

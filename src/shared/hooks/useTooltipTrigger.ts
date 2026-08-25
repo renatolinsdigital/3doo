@@ -4,7 +4,8 @@ import { useEditorStore } from '@store/index';
 
 const HOVER_DELAY_MS = 450;
 
-type Anchor = { getBoundingClientRect: () => { left: number; top: number; bottom: number } };
+type Rect = { left: number; top: number; bottom: number };
+type Anchor = { getBoundingClientRect: () => Rect };
 
 export interface TooltipTriggerHandlers {
   onMouseEnter?: (event: React.MouseEvent<Anchor>) => void;
@@ -26,22 +27,42 @@ export function useTooltipTrigger(text?: string): TooltipTriggerHandlers {
   const showHint = useEditorStore((state) => state.showHint);
   const hideHint = useEditorStore((state) => state.hideHint);
   const timerRef = useRef<number | undefined>(undefined);
+  const showingRef = useRef(false);
 
-  useEffect(() => () => window.clearTimeout(timerRef.current), []);
+  useEffect(
+    () => () => {
+      window.clearTimeout(timerRef.current);
+      // A control can be unmounted by its own click — a menu entry, a dialog
+      // button — and then never receives the mouseleave that would clear its
+      // hint, leaving the tooltip stranded over the viewport. Only the trigger
+      // whose hint is actually up clears it, so a control unmounting elsewhere
+      // cannot wipe the hint of whatever the pointer has moved on to.
+      if (showingRef.current) useEditorStore.getState().hideHint();
+    },
+    [],
+  );
 
   if (!text) return {};
+
+  const show = (rect: Rect) => {
+    showingRef.current = true;
+    showHint(text, rect);
+  };
+
+  const hide = () => {
+    window.clearTimeout(timerRef.current);
+    showingRef.current = false;
+    hideHint();
+  };
 
   return {
     onMouseEnter: (event) => {
       const rect = event.currentTarget.getBoundingClientRect();
       window.clearTimeout(timerRef.current);
-      timerRef.current = window.setTimeout(() => showHint(text, rect), HOVER_DELAY_MS);
+      timerRef.current = window.setTimeout(() => show(rect), HOVER_DELAY_MS);
     },
-    onMouseLeave: () => {
-      window.clearTimeout(timerRef.current);
-      hideHint();
-    },
-    onFocus: (event) => showHint(text, event.currentTarget.getBoundingClientRect()),
-    onBlur: () => hideHint(),
+    onMouseLeave: hide,
+    onFocus: (event) => show(event.currentTarget.getBoundingClientRect()),
+    onBlur: hide,
   };
 }

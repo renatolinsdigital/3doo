@@ -160,7 +160,7 @@ export function AddPanel() {
         <Toggle
           label="3D CURSOR"
           checked={overlays.cursor}
-          hint="Show the amber 3D cursor crosshair — hiding it does not move it"
+          hint="Show the 3D cursor ring in the viewport — hiding it does not move it"
           onChange={(cursor) => setOverlay({ cursor })}
         />
         <Toggle

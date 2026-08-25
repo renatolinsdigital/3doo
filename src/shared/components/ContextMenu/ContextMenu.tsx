@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useId, useRef } from 'react';
 
 import { useTooltipTrigger } from '../../hooks/useTooltipTrigger';
 
@@ -18,6 +18,7 @@ export interface ContextMenuProps {
   /** Position within the menu's containing block, in pixels. */
   x: number;
   y: number;
+  /** Drawn as the menu's header strip and used as its accessible name. */
   label: string;
   entries: readonly ContextMenuEntry[];
   onClose: () => void;
@@ -37,6 +38,7 @@ function isSeparator(entry: ContextMenuEntry): entry is { id: string; separator:
  */
 export function ContextMenu({ x, y, label, entries, onClose }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
   useEffect(() => {
     const menu = ref.current;
@@ -77,11 +79,14 @@ export function ContextMenu({ x, y, label, entries, onClose }: ContextMenuProps)
     <div
       className="context-menu"
       role="menu"
-      aria-label={label}
+      aria-labelledby={titleId}
       ref={ref}
       tabIndex={-1}
       style={{ left: x, top: y }}
     >
+      <div className="context-menu__title" id={titleId}>
+        {label}
+      </div>
       {entries.map((entry) =>
         isSeparator(entry) ? (
           <hr key={entry.id} className="context-menu__rule" />
