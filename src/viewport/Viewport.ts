@@ -35,6 +35,36 @@ const RECENT_VERTS_MS = 1600;
 /** Screen radius of the 3D cursor's ring, in pixels. It holds this at any zoom. */
 const CURSOR_RADIUS_PX = 9;
 
+/**
+ * Softens a scale drag that starts close to the pivot.
+ *
+ * The factor is a ratio of two pointer distances, so a drag begun a few pixels
+ * out would multiply the object by tens on the very next move. Added to both
+ * ends it keeps the response continuous and still exactly 1 at the start.
+ */
+const SCALE_REFERENCE_PX = 60;
+
+/** What a single scale drag is allowed to multiply by, in either direction. */
+const MIN_SCALE_RATIO = 0.01;
+const MAX_SCALE_RATIO = 100;
+
+/**
+ * The factor a scale drag has reached, from pointer distances **on screen**.
+ *
+ * Measuring on screen rather than in the scene is what makes a scale drag feel
+ * the same at every zoom. Three's own ratio comes off the drag plane in world
+ * units, so zoomed out — where a few pixels cover metres — the object jumps
+ * between far too small and far too big, and it negates itself the moment the
+ * pointer crosses the pivot (`pointEnd.dot(pointStart) < 0`), mirroring the
+ * model inside out. Pixels have neither problem: the distance never collapses
+ * with zoom and cannot go negative.
+ */
+export function gizmoScaleRatio(pointerPx: number, referencePx: number): number {
+  const ratio = (pointerPx + SCALE_REFERENCE_PX) / (Math.max(referencePx, 0) + SCALE_REFERENCE_PX);
+  if (!Number.isFinite(ratio) || ratio <= 0) return MIN_SCALE_RATIO;
+  return Math.min(MAX_SCALE_RATIO, Math.max(MIN_SCALE_RATIO, ratio));
+}
+
 interface GizmoBaseline {
   position: THREE.Vector3;
   quaternion: THREE.Quaternion;
@@ -60,6 +90,21 @@ export class Viewport {
   private readonly gizmoProxy = new THREE.Object3D();
   private readonly grid = new ViewportGrid();
   private readonly cursor: THREE.Object3D;
+  /** Blender's dashed scale line: pivot to pointer, drawn only mid-drag. */
+  private readonly scaleLine: THREE.Line;
+  private pointerPixels = new THREE.Vector2();
+  private scaleDrag: {
+    pivot: THREE.Vector3;
+    pivotPixels: THREE.Vector2;
+    /** Pointer distance from the pivot when the drag started, in pixels. */
+    reference: number;
+    /** Which axes are being scaled: 'X', 'XY', 'XYZ', … */
+    axis: string;
+    /** Per axis, the factor already applied — edit mode scales by the step. */
+    applied: Vec3;
+    /** Set for a keyboard-started scale, which can be cancelled; null for a handle drag. */
+    modal: { restore: () => void; seeded: boolean } | null;
+  } | null = null;
   private readonly raycaster = new THREE.Raycaster();
 
   private readonly views = new Map<string, ObjectView>();
@@ -108,6 +153,8 @@ export class Viewport {
     this.scene.add(this.grid.group);
     this.cursor = this.createCursor();
     this.scene.add(this.cursor);
+    this.scaleLine = this.createScaleLine();
+    this.scene.add(this.scaleLine);
     this.scene.add(this.gizmoProxy);
 
     this.controls = new CameraController(this.camera, canvas);
@@ -210,6 +257,32 @@ export class Viewport {
     this.cursor.scale.setScalar(CURSOR_RADIUS_PX * worldPerPixel);
   }
 
+  /**
+   * The line a scale drag hangs off, from the pivot out to the pointer.
+   *
+   * Dashes are re-sized to the line's own length every frame: at a fixed world
+   * size they would collapse into one long dash zoomed out, and into a blur
+   * zoomed in.
+   */
+  private createScaleLine(): THREE.Line {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(6), 3));
+
+    const line = new THREE.Line(
+      geometry,
+      new THREE.LineDashedMaterial({
+        color: VIEWPORT_COLORS.bone,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.9,
+      }),
+    );
+    line.visible = false;
+    line.renderOrder = 11;
+    line.frustumCulled = false;
+    return line;
+  }
+
   private bindEvents(): void {
     this.canvas.addEventListener('pointerdown', this.handlePointerDown);
     this.canvas.addEventListener('pointermove', this.handlePointerMove);
@@ -290,6 +363,15 @@ export class Viewport {
       store.subscribe(
         (state) => state.activeTool,
         () => this.updateGizmo(),
+      ),
+      store.subscribe(
+        (state) => state.modal,
+        (modal) => {
+          if (modal?.kind === 'scale') this.beginModalScale();
+          // Cleared from somewhere else — a mode change, a reset — while a
+          // modal scale is still live: put everything back.
+          else if (!modal && this.scaleDrag?.modal) this.finishModalScale(true);
+        },
       ),
       // An operator reporting new vertices flags them for a moment. The expiry
       // is checked in the render loop rather than by a timer, so the flash
@@ -570,17 +652,260 @@ export class Viewport {
       state.recordHistory(
         state.mode === 'object' ? 'Transform object' : `${tool} selection`.toUpperCase(),
       );
+      // Vertices are about to move, which takes the mesh away from what the
+      // primitive's parameters describe: left live, a later tweak of one would
+      // regenerate the shape straight over this edit. Cleared once here rather
+      // than on every drag tick — moving the object itself changes nothing
+      // about the mesh, so object mode keeps its parameters.
+      if (state.mode === 'edit') {
+        state.patchActiveObject({ primitive: null }, { touchGeometry: false });
+      }
+      if (state.activeTool === 'scale') this.beginScaleDrag();
       return;
     }
+
+    this.endScaleDrag();
 
     // `gizmoDragging` is already false, so this resync is the one that re-seats
     // the gizmo on where the selection actually landed.
     state.touchMesh();
   };
 
+  /** Where a world point lands on the canvas, in the same pixels as the pointer. */
+  private projectToPixels(point: THREE.Vector3): THREE.Vector2 {
+    const ndc = point.clone().project(this.camera);
+    return new THREE.Vector2(
+      ((ndc.x + 1) / 2) * this.canvas.clientWidth,
+      ((1 - ndc.y) / 2) * this.canvas.clientHeight,
+    );
+  }
+
+  private beginScaleDrag(): void {
+    // Whichever handle was grabbed decides which axes the one factor lands on:
+    // the centre handle reports 'XYZ', a plane handle 'XY', and so on.
+    this.startScaleDrag(this.gizmo.axis ?? 'XYZ', null);
+  }
+
+  private startScaleDrag(
+    axis: string,
+    modal: { restore: () => void; seeded: boolean } | null,
+  ): void {
+    const pivotPixels = this.projectToPixels(this.gizmoProxy.position);
+    this.scaleDrag = {
+      pivot: this.gizmoProxy.position.clone(),
+      pivotPixels,
+      reference: this.pointerPixels.distanceTo(pivotPixels),
+      axis,
+      applied: vec3(1, 1, 1),
+      modal,
+    };
+
+    // The line belongs to a scale that has no direction of its own — the
+    // keyboard's, or the centre handle's. Along a single axis or in a plane the
+    // handle already shows where the drag is going, and a line out to the
+    // pointer only crosses the model.
+    this.scaleLine.visible = modal !== null || axis === 'XYZ';
+    this.updateScaleLine();
+  }
+
+  private endScaleDrag(): void {
+    this.scaleDrag = null;
+    this.scaleLine.visible = false;
+  }
+
+  /**
+   * Starts a scale that runs off the bare pointer, the way Blender's S does.
+   *
+   * No button is held, so it ends on a click, Enter or Escape instead of on
+   * pointerup — and because it can be cancelled, it captures how to put
+   * everything back before it touches anything.
+   */
+  private beginModalScale(): void {
+    if (this.scaleDrag) return;
+
+    const state = useEditorStore.getState();
+    const editing = state.mode === 'edit';
+    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+    const selected = editing && object ? object.mesh.selectedVerts() : [];
+
+    if (editing ? selected.length === 0 : this.transformGroup.length === 0) {
+      state.endModal();
+      return;
+    }
+
+    state.recordHistory(editing ? 'SCALE selection' : 'Transform object');
+    if (editing) state.patchActiveObject({ primitive: null }, { touchGeometry: false });
+
+    this.captureGizmoBaseline();
+    this.objectBaselines.clear();
+    for (const candidate of state.objects) {
+      if (!this.transformGroup.includes(candidate.id)) continue;
+      this.objectBaselines.set(candidate.id, structuredClone(candidate.transform));
+    }
+
+    const restorePoints = selected.map((vert) => ({ vert, co: { ...vert.co } }));
+    const restore = editing
+      ? () => {
+          for (const point of restorePoints) point.vert.co = point.co;
+          object?.mesh.computeNormals();
+          useEditorStore.getState().touchMesh();
+        }
+      : () => {
+          useEditorStore.getState().setObjectTransforms(
+            [...this.objectBaselines].map(([id, transform]) => ({ id, transform })),
+          );
+        };
+
+    this.startScaleDrag('XYZ', { restore, seeded: false });
+    window.addEventListener('keydown', this.handleModalKey, true);
+    window.addEventListener('pointerdown', this.handleModalPointer, true);
+    window.addEventListener('contextmenu', this.handleModalContextMenu, true);
+  }
+
+  private finishModalScale(cancelled: boolean): void {
+    const drag = this.scaleDrag;
+    if (!drag?.modal) return;
+
+    window.removeEventListener('keydown', this.handleModalKey, true);
+    window.removeEventListener('pointerdown', this.handleModalPointer, true);
+    window.removeEventListener('contextmenu', this.handleModalContextMenu, true);
+
+    const state = useEditorStore.getState();
+    if (cancelled) {
+      drag.modal.restore();
+      // The entry was recorded before anything moved, so with everything back
+      // where it was it would undo to the state the scene is already in.
+      state.discardHistory();
+    }
+
+    // Cleared before the store is told, so the modal subscription sees nothing
+    // left to cancel.
+    this.endScaleDrag();
+    state.endModal();
+    state.touchMesh();
+  }
+
+  private handleModalKey = (event: KeyboardEvent): void => {
+    const drag = this.scaleDrag;
+    if (!drag?.modal) return;
+
+    const key = event.key.toLowerCase();
+    if (key !== 'escape' && key !== 'enter' && key !== 'x' && key !== 'y' && key !== 'z') return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (key === 'escape') return this.finishModalScale(true);
+    if (key === 'enter') return this.finishModalScale(false);
+
+    // Pressing the same axis again lifts the constraint, as it does in Blender.
+    const axis = key.toUpperCase();
+    drag.axis = drag.axis === axis ? 'XYZ' : axis;
+    useEditorStore.getState().updateModal({ axis: drag.axis === 'XYZ' ? null : key });
+    this.applyScaleDrag();
+  };
+
+  private handleModalPointer = (event: PointerEvent): void => {
+    if (!this.scaleDrag?.modal) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.finishModalScale(event.button === 2);
+  };
+
+  /** Right-click cancels, so the menu it would otherwise open is swallowed. */
+  private handleModalContextMenu = (event: Event): void => {
+    if (!this.scaleDrag?.modal) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  /**
+   * Scales the selection to wherever the pointer has been dragged.
+   *
+   * Object mode applies the factor against each object's transform at drag
+   * start, so the drag never compounds; edit mode has no such baseline to
+   * measure against, so it applies the step since the last move instead.
+   */
+  private applyScaleDrag(): void {
+    const drag = this.scaleDrag;
+    if (!drag) return;
+
+    // A keypress carries no pointer position, so the distance it started from
+    // is only known once the pointer first moves. Seeding it here is what keeps
+    // the object from jumping on the first move of a modal scale.
+    if (drag.modal && !drag.modal.seeded) {
+      drag.reference = this.pointerPixels.distanceTo(drag.pivotPixels);
+      drag.modal.seeded = true;
+      this.updateScaleLine();
+      return;
+    }
+
+    this.updateScaleLine();
+
+    const factor = gizmoScaleRatio(this.pointerPixels.distanceTo(drag.pivotPixels), drag.reference);
+    const state = useEditorStore.getState();
+    const along = (axis: string) => (drag.axis.includes(axis) ? factor : 1);
+    const target = vec3(along('X'), along('Y'), along('Z'));
+
+    if (drag.modal) state.updateModal({ value: target });
+
+    if (state.mode === 'object') {
+      this.applyObjectGroupTransform(state, target);
+      drag.applied = target;
+      return;
+    }
+
+    // Edit mode has no baseline to re-apply against, so it scales by the step
+    // since the last move. Kept per axis so lifting an axis constraint mid-drag
+    // takes the other two back to where they were rather than stranding them.
+    const step = vec3(
+      target.x / drag.applied.x,
+      target.y / drag.applied.y,
+      target.z / drag.applied.z,
+    );
+    if (Math.abs(step.x - 1) + Math.abs(step.y - 1) + Math.abs(step.z - 1) < 1e-6) return;
+
+    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+    if (!object) return;
+
+    drag.applied = target;
+    this.applyEditTransform(state, object, step);
+  }
+
+  /** Redraws the dashed line from the pivot out to the pointer. */
+  private updateScaleLine(): void {
+    const drag = this.scaleDrag;
+    if (!drag || !this.scaleLine.visible) return;
+
+    // Unprojected at the pivot's own depth, so the line lands under the pointer
+    // whatever the projection is doing.
+    const depth = drag.pivot.clone().project(this.camera).z;
+    const pointer = new THREE.Vector3(
+      (this.pointerPixels.x / Math.max(this.canvas.clientWidth, 1)) * 2 - 1,
+      -(this.pointerPixels.y / Math.max(this.canvas.clientHeight, 1)) * 2 + 1,
+      depth,
+    ).unproject(this.camera);
+
+    const positions = this.scaleLine.geometry.getAttribute('position') as THREE.BufferAttribute;
+    positions.setXYZ(0, drag.pivot.x, drag.pivot.y, drag.pivot.z);
+    positions.setXYZ(1, pointer.x, pointer.y, pointer.z);
+    positions.needsUpdate = true;
+
+    const material = this.scaleLine.material as THREE.LineDashedMaterial;
+    // Guarded: a zero dash size divides by zero in the dash shader, and the
+    // line vanishes the moment the pointer sits on the pivot.
+    const length = Math.max(drag.pivot.distanceTo(pointer), 1e-4);
+    material.dashSize = length / 30;
+    material.gapSize = length / 45;
+    this.scaleLine.computeLineDistances();
+  }
+
   private handleGizmoChange = (): void => {
     const state = useEditorStore.getState();
     if (!this.gizmoBaseline) return;
+    // Scale is driven by the pointer in `applyScaleDrag`, not by three's own
+    // world-space ratio.
+    if (this.scaleDrag) return;
 
     if (state.mode === 'object') {
       this.applyObjectGroupTransform(state);
@@ -605,6 +930,7 @@ export class Viewport {
   private applyEditTransform(
     state: ReturnType<typeof useEditorStore.getState>,
     object: SceneObject,
+    scaleStep?: Vec3,
   ): void {
     const baseline = this.gizmoBaseline;
     if (!baseline) return;
@@ -637,15 +963,9 @@ export class Viewport {
     }
 
     if (tool === 'scale') {
-      const ratio = vec3(
-        this.gizmoProxy.scale.x / (baseline.scale.x || 1),
-        this.gizmoProxy.scale.y / (baseline.scale.y || 1),
-        this.gizmoProxy.scale.z / (baseline.scale.z || 1),
-      );
-      if (Math.abs(ratio.x - 1) + Math.abs(ratio.y - 1) + Math.abs(ratio.z - 1) < 1e-9) return;
+      if (!scaleStep) return;
 
-      scaleVerts(object.mesh, selected, ratio, pivot, state.proportional);
-      this.captureGizmoBaseline();
+      scaleVerts(object.mesh, selected, scaleStep, pivot, state.proportional);
       state.touchMesh();
       return;
     }
@@ -679,7 +999,10 @@ export class Viewport {
    * middle of the array, and each object's origin is carried around that point
    * rather than staying put.
    */
-  private applyObjectGroupTransform(state: ReturnType<typeof useEditorStore.getState>): void {
+  private applyObjectGroupTransform(
+    state: ReturnType<typeof useEditorStore.getState>,
+    scaleRatio: Vec3 = vec3(1, 1, 1),
+  ): void {
     if (!this.gizmoBaseline || this.transformGroup.length === 0) return;
 
     const pivotProxy = this.gizmoBaseline.position;
@@ -693,12 +1016,6 @@ export class Viewport {
       .clone()
       .multiply(this.gizmoBaseline.quaternion.clone().invert());
     const { axis: rotationAxis, angle: rotationAngle } = quaternionToAxisAngle(deltaQuaternion);
-
-    const scaleRatio = vec3(
-      this.gizmoProxy.scale.x / (this.gizmoBaseline.scale.x || 1),
-      this.gizmoProxy.scale.y / (this.gizmoBaseline.scale.y || 1),
-      this.gizmoProxy.scale.z / (this.gizmoBaseline.scale.z || 1),
-    );
 
     const patches = this.transformGroup.reduce<
       { id: string; transform: Partial<SceneObject['transform']> }[]
@@ -742,6 +1059,7 @@ export class Viewport {
   // ------------------------------------------------------------- pointer
 
   private handlePointerDown = (event: PointerEvent): void => {
+    this.pointerPixels = this.pointerPosition(event);
     if (this.gizmo.dragging) return;
     if (this.controls.onPointerDown(event)) return;
     if (event.button !== 0) return;
@@ -751,6 +1069,14 @@ export class Viewport {
   };
 
   private handlePointerMove = (event: PointerEvent): void => {
+    this.pointerPixels = this.pointerPosition(event);
+    // A scale drag is measured from the pointer itself, so it is driven here
+    // rather than from three's change event — that fires before this handler
+    // for the same move, and would always be working off the previous position.
+    if (this.scaleDrag) {
+      this.applyScaleDrag();
+      return;
+    }
     if (this.controls.onPointerMove(event)) return;
     if (!this.dragStart) return;
 

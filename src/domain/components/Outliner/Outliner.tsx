@@ -22,6 +22,11 @@ export function Outliner() {
 
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // Linked objects are one mesh behind several rows, which is otherwise
+  // indistinguishable from a plain copy: the count is what says so.
+  const meshUsers = new Map<SceneObject['mesh'], number>();
+  for (const object of objects) meshUsers.set(object.mesh, (meshUsers.get(object.mesh) ?? 0) + 1);
+
   return (
     <Panel title="OUTLINER" className="outliner">
       {objects.length === 0 ? (
@@ -32,6 +37,7 @@ export function Outliner() {
             <OutlinerRow
               key={object.id}
               object={object}
+              meshUsers={meshUsers.get(object.mesh) ?? 1}
               isActive={object.id === activeObjectId}
               isSelected={selectedObjectIds.includes(object.id)}
               isEditing={editingId === object.id}
@@ -55,6 +61,8 @@ export function Outliner() {
 
 interface OutlinerRowProps {
   object: SceneObject;
+  /** How many objects share this object's mesh, itself included. */
+  meshUsers: number;
   isActive: boolean;
   isSelected: boolean;
   isEditing: boolean;
@@ -70,6 +78,7 @@ interface OutlinerRowProps {
 
 function OutlinerRow({
   object,
+  meshUsers,
   isActive,
   isSelected,
   isEditing,
@@ -89,6 +98,11 @@ function OutlinerRow({
   );
   const lockTooltip = useTooltipTrigger(
     object.locked ? 'Unlock to allow editing again' : 'Lock to prevent accidental edits',
+  );
+  const linkTooltip = useTooltipTrigger(
+    meshUsers > 1
+      ? `Mesh data shared with ${meshUsers - 1} other object(s) — editing one edits them all`
+      : undefined,
   );
 
   const [trembleToken, setTrembleToken] = useState<number | null>(null);
@@ -136,6 +150,17 @@ function OutlinerRow({
         </button>
       )}
 
+      {meshUsers > 1 ? (
+        <span
+          className="outliner__badge"
+          aria-label={`Mesh shared with ${meshUsers - 1} other object(s)`}
+          {...linkTooltip}
+        >
+          <LinkIcon />
+          {meshUsers}
+        </span>
+      ) : null}
+
       <button
         type="button"
         className={`outliner__icon${object.visible ? '' : ' outliner__icon--on'}`}
@@ -166,6 +191,24 @@ function OutlinerRow({
         {object.locked ? <LockIcon /> : <UnlockIcon />}
       </button>
     </li>
+  );
+}
+
+function LinkIcon() {
+  return (
+    <svg
+      className="outliner__glyph"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      aria-hidden="true"
+    >
+      <path d="M9.5 4.5 11 3a3 3 0 0 1 4 4l-1.5 1.5" />
+      <path d="M6.5 11.5 5 13a3 3 0 0 1-4-4l1.5-1.5" />
+      <path d="M5.5 10.5 10.5 5.5" />
+    </svg>
   );
 }
 

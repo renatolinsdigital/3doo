@@ -78,8 +78,15 @@ export const createToolSlice: StateCreator<
 
   beginModal: (kind) => {
     set({
-      modal: { kind, axis: null, excludeAxis: false, typed: '', value: { x: 0, y: 0, z: 0 } },
-      status: `${kind.toUpperCase()}: move mouse, X/Y/Z to constrain, type a value, Enter to confirm`,
+      modal: {
+        kind,
+        axis: null,
+        excludeAxis: false,
+        typed: '',
+        // A scale of nothing is 1, and the status bar reads this out live.
+        value: kind === 'scale' ? { x: 1, y: 1, z: 1 } : { x: 0, y: 0, z: 0 },
+      },
+      status: `${kind.toUpperCase()}: move the mouse, X/Y/Z to constrain, click or Enter to confirm, Esc to cancel`,
     });
   },
 

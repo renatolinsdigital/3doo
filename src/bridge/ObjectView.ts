@@ -26,6 +26,14 @@ export interface ObjectViewState {
   recentVerts?: ReadonlySet<number>;
 }
 
+/** Everything the surface materials are built from, as one comparable string. */
+function solidMaterialKey(object: SceneObject, state: ObjectViewState): string {
+  const colours = object.materials.map(
+    (material) => `${material.color.r},${material.color.g},${material.color.b}`,
+  );
+  return [state.settings.shading, state.settings.backfaceCulling, ...colours].join('|');
+}
+
 /**
  * The Three.js side of one scene object.
  *
@@ -45,6 +53,9 @@ export class ObjectView {
   private readonly recentPoints = new THREE.Points();
   private readonly normals = new THREE.LineSegments();
   private readonly outline = new THREE.LineSegments();
+
+  /** What the surface materials were last built from; see `updateSolid`. */
+  private solidMaterialKey = '';
 
   /** Triangle index to kernel face id, for raycast picking. */
   triangleFaceIds: Int32Array = new Int32Array(0);
@@ -122,19 +133,29 @@ export class ObjectView {
       geometry.addGroup(group.start, group.count, group.materialIndex);
     }
 
-    const materials = (object.materials.length > 0 ? object.materials : [null]).map((material) =>
-      createSurfaceMaterial({
-        color: material
-          ? new THREE.Color(material.color.r, material.color.g, material.color.b)
-          : new THREE.Color(VIEWPORT_COLORS.bone),
-        shading: state.settings.shading,
-        backfaceCulling: state.settings.backfaceCulling,
-      }),
-    );
-
     this.replaceGeometry(this.solid, geometry);
-    disposeMaterial(this.solid.material);
-    this.solid.material = materials;
+
+    // Surfaces are re-materialised only when something they are built from
+    // changes. A gizmo drag runs this on every pointer move, and disposing a
+    // material drops three's cached shader program along with the last
+    // reference to it — so rebuilding them each tick made the renderer compile
+    // the shader again mid-drag, one stutter per frame.
+    const materialKey = solidMaterialKey(object, state);
+    if (materialKey !== this.solidMaterialKey) {
+      disposeMaterial(this.solid.material);
+      this.solid.material = (object.materials.length > 0 ? object.materials : [null]).map(
+        (material) =>
+          createSurfaceMaterial({
+            color: material
+              ? new THREE.Color(material.color.r, material.color.g, material.color.b)
+              : new THREE.Color(VIEWPORT_COLORS.bone),
+            shading: state.settings.shading,
+            backfaceCulling: state.settings.backfaceCulling,
+          }),
+      );
+      this.solidMaterialKey = materialKey;
+    }
+
     this.solid.visible = state.settings.shading !== 'wireframe';
 
     this.backfaces.visible = state.settings.overlays.faceOrientation;

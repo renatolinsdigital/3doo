@@ -35,6 +35,21 @@ describe('StatusBar', () => {
     expect(screen.getByText('EDIT / VERTEX')).toBeInTheDocument();
   });
 
+  it('reads out a live scale factor while S is running', () => {
+    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().beginModal('scale');
+
+    const { rerender } = render(<StatusBar />);
+    // Starts at the identity, not at zero.
+    expect(screen.getByRole('status')).toHaveTextContent('SCALE ×1.000');
+
+    act(() => useEditorStore.getState().updateModal({ axis: 'x', value: { x: 2, y: 1, z: 1 } }));
+    rerender(<StatusBar />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('SCALE X ×2.000');
+    expect(screen.getByRole('status')).toHaveTextContent('Esc cancel');
+  });
+
   it('shows snap state as text, not just colour', () => {
     render(<StatusBar />);
     expect(screen.getByText('SNAP OFF')).toBeInTheDocument();

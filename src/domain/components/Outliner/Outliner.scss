@@ -16,7 +16,7 @@
 
   &__row {
     display: grid;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: 1fr auto auto auto;
     align-items: stretch;
     border: var(--border-thin) solid var(--void);
     background: var(--bone);
@@ -57,6 +57,20 @@
     background: var(--bone);
     border: none;
     outline: var(--border-thin) solid var(--cyan);
+  }
+
+  // Reads as a plate rather than a control: it reports the link, it does not
+  // change it.
+  &__badge {
+    @include label-text;
+
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    padding: 0 var(--space-2);
+    color: inherit;
+    border-left: var(--border-thin) solid var(--void);
+    cursor: default;
   }
 
   &__icon {

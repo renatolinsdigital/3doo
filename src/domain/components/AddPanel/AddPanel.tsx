@@ -82,6 +82,7 @@ export function AddPanel() {
   const setSelectMode = useEditorStore((state) => state.setSelectMode);
   const addPrimitive = useEditorStore((state) => state.addPrimitive);
   const duplicateSelected = useEditorStore((state) => state.duplicateSelected);
+  const mergeSelected = useEditorStore((state) => state.mergeSelected);
   const applyTransform = useEditorStore((state) => state.applyTransformToSelected);
   const exec = useEditorStore((state) => state.exec);
   const shading = useEditorStore((state) => state.shading);
@@ -121,6 +122,11 @@ export function AddPanel() {
               label="LINKED DUPLICATE"
               hint="Copy the selected object(s) sharing the same mesh data"
               onClick={() => duplicateSelected(true)}
+            />
+            <Button
+              label="MERGE SELECTED"
+              hint="Merge the selected objects into the active one, each keeping where it sits (M)"
+              onClick={mergeSelected}
             />
             <Button
               label="APPLY TRANSFORM"

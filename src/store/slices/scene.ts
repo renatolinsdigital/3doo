@@ -98,6 +98,7 @@ export interface SceneSlice {
   noteLockedAttempt: (objectId: string) => void;
   clearRecentVerts: () => void;
   duplicateSelected: (linked?: boolean) => void;
+  mergeSelected: () => void;
   deleteSelected: () => void;
   applyTransformToSelected: () => void;
   setObjectTransform: (id: string, transform: Partial<SceneObject['transform']>) => void;
@@ -121,6 +122,8 @@ export interface SceneSlice {
 
   exec: (name: string, params?: Record<string, unknown>, label?: string) => void;
   recordHistory: (label: string) => void;
+  /** Forgets the last recorded entry, for an operation that was cancelled. */
+  discardHistory: () => void;
   undo: () => void;
   redo: () => void;
   touchMesh: () => void;
@@ -227,11 +230,23 @@ export const createSceneSlice: StateCreator<
     const object = get().objects.find((candidate) => candidate.id === get().activeObjectId);
     if (!object?.primitive) return;
 
+    const { kind } = object.primitive;
     const resolved = normalizePrimitiveParams({ ...object.primitive.params, ...params });
-    get().patchActiveObject({
-      mesh: createPrimitive(object.primitive.kind, resolved),
-      primitive: { kind: object.primitive.kind, params: resolved },
-    });
+    const mesh = createPrimitive(kind, resolved);
+    const previous = object.mesh;
+
+    set((state) => ({
+      objects: state.objects.map((candidate) => {
+        if (candidate.id === object.id) {
+          return { ...candidate, mesh, primitive: { kind, params: resolved } };
+        }
+        // Rebuilding a primitive replaces the instance rather than editing it,
+        // so anything linked to the old one is moved across too — otherwise a
+        // linked duplicate silently stops following the object it was cut from.
+        return candidate.mesh === previous ? { ...candidate, mesh } : candidate;
+      }),
+      meshVersion: state.meshVersion + 1,
+    }));
   },
 
   setActiveObject: (id, additive = false) => {
@@ -319,8 +334,105 @@ export const createSceneSlice: StateCreator<
       objects: [...state.objects, ...copies],
       selectedObjectIds: copies.map((object) => object.id),
       activeObjectId: copies[copies.length - 1]?.id ?? state.activeObjectId,
+      // A copy is made to be put somewhere else, and it lands exactly on top of
+      // its original: it arrives selected and already under the move gizmo,
+      // rather than invisible until the tool is switched by hand.
+      activeTool: 'move',
       meshVersion: state.meshVersion + 1,
       status: `Duplicated ${copies.length} object(s)`,
+    }));
+  },
+
+  /**
+   * Merges the selected objects into the active one, leaving a single object.
+   *
+   * Geometry travels through world space rather than being copied raw: every
+   * source sits somewhere of its own, and dropping its vertices straight into
+   * the target's local space would pile them all onto the target's origin.
+   * Modifiers on the sources are dropped with them; the target keeps its own.
+   */
+  mergeSelected: () => {
+    const { objects, selectedObjectIds, activeObjectId } = get();
+    const target = objects.find((candidate) => candidate.id === activeObjectId);
+    if (!target) return;
+    if (target.locked) {
+      get().noteLockedAttempt(target.id);
+      return;
+    }
+
+    const sources = objects.filter(
+      (object) =>
+        object.id !== target.id && selectedObjectIds.includes(object.id) && !object.locked,
+    );
+    if (sources.length === 0) {
+      set({ status: 'Select the objects to merge, then the one to merge them into' });
+      return;
+    }
+
+    get().recordHistory('Merge');
+
+    // Merging into a mesh that an object outside the merge also uses would
+    // reshape that object too, so the target takes a copy of its own first.
+    const shared = objects.some(
+      (object) =>
+        object.mesh === target.mesh && object.id !== target.id && !sources.includes(object),
+    );
+    const merged = shared ? cloneMesh(target.mesh) : target.mesh;
+    const materials = [...target.materials];
+
+    for (const source of sources) {
+      // Read the source out before anything is added: merging a linked
+      // duplicate into its own original walks the very mesh being written to.
+      const verts = [...source.mesh.verts.values()];
+      const rings = [...source.mesh.faces.values()].map((face) => ({
+        vertIds: source.mesh.faceVerts(face).map((vert) => vert.id),
+        materialIndex: face.materialIndex,
+        smooth: face.smooth,
+      }));
+
+      // Slots are merged by identity, so merging a duplicate does not leave two
+      // slots pointing at one material.
+      const slots = source.materials.map((material) => {
+        const existing = materials.findIndex((candidate) => candidate.id === material.id);
+        if (existing !== -1) return existing;
+        materials.push(structuredClone(material));
+        return materials.length - 1;
+      });
+
+      const matrix = composeMatrix(source.transform);
+      const map = new Map<number, ReturnType<typeof merged.addVert>>();
+      for (const vert of verts) {
+        const world = transformPoint(matrix, vert.co);
+        map.set(vert.id, merged.addVert(inverseTransformPoint(target.transform, world)));
+      }
+
+      for (const ring of rings) {
+        const face = ring.vertIds.map((id) => map.get(id));
+        if (face.every(Boolean)) {
+          merged.addFace(face as NonNullable<(typeof face)[number]>[], {
+            materialIndex: slots[ring.materialIndex] ?? 0,
+            smooth: ring.smooth,
+          });
+        }
+      }
+    }
+
+    merged.computeNormals();
+
+    const absorbed = new Set(sources.map((object) => object.id));
+    set((state) => ({
+      objects: state.objects
+        .filter((object) => !absorbed.has(object.id))
+        .map((object) =>
+          object.id === target.id
+            ? // The parameters described the target's own shape, not the merge.
+              { ...object, mesh: merged, materials, primitive: null }
+            : object,
+        ),
+      selectedObjectIds: [target.id],
+      activeObjectId: target.id,
+      meshVersion: state.meshVersion + 1,
+      status: `Merged ${sources.length + 1} objects`,
     }));
   },
 
@@ -534,6 +646,11 @@ export const createSceneSlice: StateCreator<
     for (const face of object.mesh.selectedFaces()) face.materialIndex = object.activeMaterial;
 
     set((state) => ({
+      // Per-face assignments are not something the parameters would rebuild, so
+      // the shape stops being live rather than losing them to the next tweak.
+      objects: state.objects.map((candidate) =>
+        candidate.id === object.id ? { ...candidate, primitive: null } : candidate,
+      ),
       meshVersion: state.meshVersion + 1,
       status: `Assigned ${object.materials[object.activeMaterial]?.name ?? 'material'}`,
     }));
@@ -631,6 +748,11 @@ export const createSceneSlice: StateCreator<
       set({ status: `${name} failed: ${(error as Error).message}` });
       get().pushToast('error', `${name} failed: ${(error as Error).message}`);
     }
+  },
+
+  discardHistory: () => {
+    history.drop();
+    set({ canUndo: history.canUndo, canRedo: history.canRedo });
   },
 
   undo: () => {

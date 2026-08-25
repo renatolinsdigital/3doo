@@ -28,6 +28,29 @@ describe('Outliner', () => {
     expect(screen.getByRole('button', { name: 'UV SPHERE' })).toBeInTheDocument();
   });
 
+  it('marks the rows that share one mesh, and only those', () => {
+    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().setActiveObject(useEditorStore.getState().objects[0].id);
+    useEditorStore.getState().duplicateSelected(true);
+    useEditorStore.getState().addPrimitive('uvSphere');
+
+    render(<Outliner />);
+
+    // Two rows on one mesh, the sphere on its own: a linked duplicate is
+    // otherwise indistinguishable from a plain copy.
+    expect(screen.getAllByLabelText(/shared with 1 other object/i)).toHaveLength(2);
+  });
+
+  it('leaves plain copies unmarked', () => {
+    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().setActiveObject(useEditorStore.getState().objects[0].id);
+    useEditorStore.getState().duplicateSelected(false);
+
+    render(<Outliner />);
+
+    expect(screen.queryByLabelText(/shared with/i)).not.toBeInTheDocument();
+  });
+
   it('makes a clicked object active', async () => {
     useEditorStore.getState().addPrimitive('box');
     useEditorStore.getState().addPrimitive('cylinder');

@@ -25,6 +25,18 @@ export class History {
     this.future = [];
   }
 
+  /**
+   * Forgets the newest entry.
+   *
+   * A modal transform records before it starts moving anything, because that is
+   * the only moment the document is still untouched. Cancelling it puts
+   * everything back, so the entry it recorded would undo to the state it is
+   * already in.
+   */
+  drop(): void {
+    this.past.pop();
+  }
+
   undo(current: ProjectDocument): HistoryEntry | null {
     const entry = this.past.pop();
     if (!entry) return null;

@@ -15,6 +15,17 @@ export interface SceneObjectData {
   modifiers: Modifier[];
   activeMaterial: number;
   mesh: MeshData;
+  /**
+   * Id of the object this one shares its mesh instance with.
+   *
+   * A linked duplicate is one mesh behind several objects, and a document is a
+   * flat list: without this the link is lost on every save — and on every undo,
+   * which snapshots through the same format — leaving the copies quietly
+   * independent. Each sharer still writes its own `mesh`, so a document whose
+   * owner has been dropped, or a reader that predates the field, still loads
+   * something valid.
+   */
+  meshLink?: string;
 }
 
 export interface ProjectDocument {
@@ -45,24 +56,32 @@ export function serializeProject(
   cursor: Vec3,
   activeObjectId: string | null,
 ): ProjectDocument {
+  const owners = new Map<BMesh, string>();
+
   return {
     version: 1,
     name,
     savedAt: new Date().toISOString(),
     cursor: { ...cursor },
     activeObjectId,
-    objects: objects.map((object) => ({
-      id: object.id,
-      name: object.name,
-      transform: structuredClone(object.transform),
-      visible: object.visible,
-      locked: object.locked,
-      parentId: object.parentId,
-      materials: structuredClone(object.materials),
-      modifiers: structuredClone(object.modifiers),
-      activeMaterial: object.activeMaterial,
-      mesh: serializeMesh(object.mesh),
-    })),
+    objects: objects.map((object) => {
+      const owner = owners.get(object.mesh);
+      if (owner === undefined) owners.set(object.mesh, object.id);
+
+      return {
+        id: object.id,
+        name: object.name,
+        transform: structuredClone(object.transform),
+        visible: object.visible,
+        locked: object.locked,
+        parentId: object.parentId,
+        materials: structuredClone(object.materials),
+        modifiers: structuredClone(object.modifiers),
+        activeMaterial: object.activeMaterial,
+        mesh: serializeMesh(object.mesh),
+        ...(owner === undefined ? {} : { meshLink: owner }),
+      };
+    }),
   };
 }
 
@@ -72,22 +91,32 @@ export function deserializeProject(document: ProjectDocument): {
   activeObjectId: string | null;
   objects: SceneObjectSnapshot[];
 } {
+  const meshes = new Map<string, BMesh>();
+
   return {
     name: document.name,
     cursor: document.cursor ?? vec3(),
     activeObjectId: document.activeObjectId ?? null,
-    objects: (document.objects ?? []).map((data) => ({
-      id: data.id,
-      name: data.name,
-      transform: data.transform ?? createTransform(),
-      visible: data.visible ?? true,
-      locked: data.locked ?? false,
-      parentId: data.parentId ?? null,
-      materials: data.materials ?? [],
-      modifiers: data.modifiers ?? [],
-      activeMaterial: data.activeMaterial ?? 0,
-      mesh: deserializeMesh(data.mesh),
-    })),
+    objects: (document.objects ?? []).map((data) => {
+      // A link to an object that is missing, or that has not been read yet,
+      // falls back to this object's own copy rather than failing the load.
+      const shared = data.meshLink === undefined ? undefined : meshes.get(data.meshLink);
+      const mesh = shared ?? deserializeMesh(data.mesh);
+      meshes.set(data.id, mesh);
+
+      return {
+        id: data.id,
+        name: data.name,
+        transform: data.transform ?? createTransform(),
+        visible: data.visible ?? true,
+        locked: data.locked ?? false,
+        parentId: data.parentId ?? null,
+        materials: data.materials ?? [],
+        modifiers: data.modifiers ?? [],
+        activeMaterial: data.activeMaterial ?? 0,
+        mesh,
+      };
+    }),
   };
 }
 

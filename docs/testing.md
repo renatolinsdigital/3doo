@@ -48,7 +48,7 @@ Good operation tests check four things, not just one:
 | `kernel/ops` | 79 | Extrude, inset, bevel, loop cut, subdivide, merge, delete, dissolve, fill, bridge, normals, transforms, selection walks, pivot arithmetic |
 | `kernel/modifiers` | 25 | Mirror (seam merge, bisect, wire edges, mirroring about the 3D cursor), array, solidify, weld (split seams, array joints, non-transitivity), stack ordering, non-destructiveness |
 | `kernel/io` | 25 | OBJ round trip, FBX structure and index encoding, axis presets, project files, undo history, operator registry |
-| `store` | 51 | Add/duplicate/join, exec, undo/redo, modifiers, gizmo centring, cursor snapping, project round trip, locked objects, tooltip and viewport preferences |
+| `store` | 51 | Add/duplicate/merge, exec, undo/redo, modifiers, gizmo centring, cursor snapping, project round trip, locked objects, tooltip and viewport preferences |
 | `shared/components` | 36 | Rendering and behaviour of every shared component |
 | `domain` | 30 | Keymap resolution (including which shifted keys actually reach the handler), outliner, status bar, operations panel availability |
 | `viewport` | 8 | The TransformControls drag contract the gizmo code rests on, and gizmo disposal |

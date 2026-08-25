@@ -33,6 +33,13 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
   { id: 'loopCut', key: 'r', ctrl: true, label: 'Loop cut', mode: 'edit', group: 'Modelling' },
   { id: 'merge', key: 'm', label: 'Merge by distance', mode: 'edit', group: 'Modelling' },
   {
+    id: 'merge',
+    key: 'm',
+    mode: 'object',
+    label: 'Merge the selected objects into the active one',
+    group: 'Edit',
+  },
+  {
     id: 'fill',
     key: 'f',
     label: 'Fill a boundary loop with a face',

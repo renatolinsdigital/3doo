@@ -1,6 +1,18 @@
 import { useEditorStore, useSceneStats } from '@store/index';
+import type { ModalTransform } from '@store/types';
 
 import './StatusBar.scss';
+
+/** "SCALE X ×1.420" — what the transform has reached so far. */
+function modalLabel(modal: ModalTransform): string {
+  const kind = modal.kind.toUpperCase();
+  const axis = modal.axis ? ` ${modal.axis.toUpperCase()}` : '';
+  if (modal.typed) return `${kind}${axis} ${modal.typed}`;
+  if (modal.kind !== 'scale') return `${kind}${axis}`;
+
+  const factor = modal.axis ? modal.value[modal.axis] : modal.value.x;
+  return `${kind}${axis} ×${factor.toFixed(3)}`;
+}
 
 export function StatusBar() {
   const stats = useSceneStats();
@@ -18,11 +30,7 @@ export function StatusBar() {
       <div className="status-bar__section status-bar__section--message">
         <span className="status-bar__label">STATUS</span>
         <span className="status-bar__value" role="status" aria-live="polite">
-          {modal
-            ? `${modal.kind.toUpperCase()}${modal.axis ? ` ${modal.axis.toUpperCase()}` : ''}${
-                modal.typed ? ` ${modal.typed}` : ''
-              } — LMB confirm, Esc cancel`
-            : status}
+          {modal ? `${modalLabel(modal)} — LMB confirm, Esc cancel` : status}
         </span>
       </div>
 

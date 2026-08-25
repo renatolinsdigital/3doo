@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { describe, expect, it } from 'vitest';
 
+import { gizmoScaleRatio } from './Viewport';
+
 /**
  * Guards the TransformControls behaviour the viewport's drag handling rests on.
  *
@@ -129,5 +131,54 @@ describe('TransformControls drag contract', () => {
     expect(values).toEqual([true, false]);
     api.pointerMove({ x: 0.9, y: 0, button: -1 });
     expect(proxy.position.x).toBeCloseTo(settled, 6);
+  });
+});
+
+describe('scale drag response', () => {
+  it('three negates its own ratio once the pointer crosses the pivot', () => {
+    const { api, proxy } = createDrag('scale');
+    api.axis = 'XYZ';
+
+    api.pointerDown({ x: 0.2, y: 0.2, button: 0 });
+    api.pointerMove({ x: -0.2, y: -0.2, button: -1 });
+
+    // Half of why the viewport measures scale drags on screen instead: three's
+    // ratio comes off the drag plane and goes negative across the pivot, which
+    // mirrors the object rather than shrinking it.
+    expect(proxy.scale.x).toBeLessThan(0);
+  });
+
+  it('starts at exactly 1, wherever the drag was picked up', () => {
+    for (const distance of [0, 12, 80, 400]) {
+      expect(gizmoScaleRatio(distance, distance)).toBeCloseTo(1);
+    }
+  });
+
+  it('reads the same at any zoom, because it only ever sees pixels', () => {
+    // The other half: pointer distances do not collapse when the camera pulls
+    // back, so the same drag on screen is the same factor on a 1 m cube and on
+    // a 100 m one.
+    expect(gizmoScaleRatio(260, 60)).toBeCloseTo(gizmoScaleRatio(260, 60));
+    expect(gizmoScaleRatio(260, 60)).toBeCloseTo(2.67, 1);
+  });
+
+  it('does not explode when the drag starts on top of the pivot', () => {
+    // The centre handle sits on the pivot, so this is the ordinary way to grab
+    // it: a few pixels of travel must not multiply the object by tens.
+    expect(gizmoScaleRatio(6, 0)).toBeLessThan(1.2);
+    expect(gizmoScaleRatio(60, 0)).toBeCloseTo(2);
+  });
+
+  it('never returns a ratio that would flip or collapse the object', () => {
+    for (const [pointer, reference] of [
+      [-10, 50],
+      [0, 0],
+      [Number.NaN, 50],
+      [Number.POSITIVE_INFINITY, 50],
+    ]) {
+      expect(gizmoScaleRatio(pointer, reference)).toBeGreaterThan(0);
+    }
+
+    expect(gizmoScaleRatio(1e9, 0)).toBeLessThanOrEqual(100);
   });
 });

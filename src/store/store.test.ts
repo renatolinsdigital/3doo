@@ -55,6 +55,31 @@ describe('editor store', () => {
     expect(activeObject().primitive).toBeNull();
   });
 
+  it('ends live parameters when a material is assigned to faces', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    selectTopFace();
+
+    store().assignMaterialToSelection();
+
+    // Rebuilding from the parameters would drop the per-face assignment, so the
+    // parameters are what gives way.
+    expect(activeObject().primitive).toBeNull();
+  });
+
+  it('keeps parameters live through anything that leaves the mesh alone', () => {
+    store().addPrimitive('box');
+    const id = activeObject().id;
+
+    store().setObjectTransform(id, { position: { x: 2, y: 0, z: 0 } });
+    store().addModifier('array');
+    store().renameObject(id, 'CRATE');
+
+    // Moving the object, stacking a modifier and renaming all leave the mesh
+    // exactly as the parameters describe it.
+    expect(activeObject().primitive?.kind).toBe('box');
+  });
+
   it('refuses edit mode with nothing selected', () => {
     store().setMode('edit');
     expect(store().mode).toBe('object');
@@ -421,6 +446,106 @@ describe('editor store', () => {
     store().setActiveObject(original.id);
     store().duplicateSelected(true);
     expect(activeObject().mesh === original.mesh).toBe(true);
+  });
+
+  it('holds a linked duplicate on one mesh through an undo', () => {
+    store().addPrimitive('box');
+    store().setActiveObject(activeObject().id);
+    store().duplicateSelected(true);
+
+    // Undo of something later, so both objects are still in the scene: history
+    // restores through the project format, which is where the link used to be
+    // dropped and the copy quietly went its own way.
+    store().exec('recalculateNormals', { outside: true }, 'Recalculate normals');
+    store().undo();
+
+    const [original, copy] = store().objects;
+    expect(store().objects).toHaveLength(2);
+    expect(original.mesh === copy.mesh).toBe(true);
+  });
+
+  it('merges the selection into one object, each part where it stood', () => {
+    store().addPrimitive('box');
+    const first = activeObject().id;
+    store().addPrimitive('box');
+    const second = activeObject().id;
+    store().setObjectTransform(second, { position: { x: 3, y: 0, z: 0 } });
+    useEditorStore.setState({ selectedObjectIds: [first, second], activeObjectId: first });
+
+    store().mergeSelected();
+
+    expect(store().objects).toHaveLength(1);
+    const joined = activeObject();
+    expect(joined.id).toBe(first);
+    expect(joined.mesh.faces.size).toBe(12);
+    // Carried through world space: the second box keeps its 3 m offset instead
+    // of landing back on the target's origin.
+    const box = joined.mesh.boundingBox();
+    expect(box.min.x).toBeCloseTo(-0.5);
+    expect(box.max.x).toBeCloseTo(3.5);
+  });
+
+  it('merges a linked duplicate into its own original', () => {
+    store().addPrimitive('box');
+    const original = activeObject().id;
+    store().setActiveObject(original);
+    store().duplicateSelected(true);
+    const copy = activeObject().id;
+    store().setObjectTransform(copy, { position: { x: 3, y: 0, z: 0 } });
+    useEditorStore.setState({ selectedObjectIds: [original, copy], activeObjectId: original });
+
+    store().mergeSelected();
+
+    // Source and target are one mesh instance here, so the copy has to be read
+    // out before the merge starts writing into it.
+    expect(store().objects).toHaveLength(1);
+    expect(activeObject().mesh.faces.size).toBe(12);
+    expect(activeObject().materials).toHaveLength(1);
+  });
+
+  it('leaves objects outside the merge unchanged when they share the mesh', () => {
+    store().addPrimitive('box');
+    const original = activeObject().id;
+    store().setActiveObject(original);
+    store().duplicateSelected(true);
+    const linked = activeObject().id;
+    store().addPrimitive('box');
+    const loner = activeObject().id;
+    store().setObjectTransform(loner, { position: { x: 3, y: 0, z: 0 } });
+
+    // Merge the loner into the original, which a third object still shares.
+    useEditorStore.setState({ selectedObjectIds: [original, loner], activeObjectId: original });
+    store().mergeSelected();
+
+    const untouched = store().objects.find((object) => object.id === linked);
+    expect(untouched?.mesh.faces.size).toBe(6);
+    expect(activeObject().mesh.faces.size).toBe(12);
+  });
+
+  it('carries linked objects along when a primitive is rebuilt', () => {
+    store().addPrimitive('box');
+    store().setActiveObject(activeObject().id);
+    store().duplicateSelected(true);
+    store().setActiveObject(store().objects[0].id);
+
+    store().updatePrimitiveParams({ size: 4 });
+
+    const [original, copy] = store().objects;
+    expect(original.mesh === copy.mesh).toBe(true);
+    expect(copy.mesh.boundingBox().max.x).toBeCloseTo(2);
+  });
+
+  it('leaves the copy selected and under the move gizmo', () => {
+    store().addPrimitive('box');
+    const original = activeObject().id;
+
+    store().duplicateSelected(false);
+
+    // The copy sits exactly on top of the original, so the gizmo it needs to be
+    // dragged off with has to be there without a tool change first.
+    expect(store().activeObjectId).not.toBe(original);
+    expect(store().selectedObjectIds).toEqual([store().activeObjectId]);
+    expect(store().activeTool).toBe('move');
   });
 
   it('bakes rotation and scale into the mesh, leaving the object where it sits', () => {

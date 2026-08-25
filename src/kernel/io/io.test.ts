@@ -216,6 +216,35 @@ describe('project files', () => {
     expect(restored.objects[0].mesh.validate()).toEqual([]);
   });
 
+  it('keeps two objects on one mesh across a round trip', () => {
+    const shared = createBox(2);
+    const [cube] = snapshot();
+    const document = serializeProject(
+      'Linked',
+      [
+        { ...cube, mesh: shared },
+        { ...cube, id: 'obj-2', name: 'Cube.COPY', mesh: shared },
+      ],
+      vec3(),
+      'obj-1',
+    );
+    const restored = deserializeProject(parseProject(stringifyProject(document)));
+
+    // Compared as a boolean on purpose: a failing identity assertion on a BMesh
+    // would make the reporter walk the cyclic half-edge graph to build a diff.
+    expect(restored.objects[0].mesh === restored.objects[1].mesh).toBe(true);
+  });
+
+  it('falls back to its own mesh when the link cannot be resolved', () => {
+    const [cube] = snapshot();
+    const document = serializeProject('Linked', [cube], vec3(), 'obj-1');
+    document.objects[0].meshLink = 'obj-gone';
+
+    const restored = deserializeProject(parseProject(stringifyProject(document)));
+
+    expect(restored.objects[0].mesh.faces.size).toBe(6);
+  });
+
   it('rejects malformed files with a readable message', () => {
     expect(() => parseProject('not json')).toThrow(/not valid JSON/);
     expect(() => parseProject('{"version":99}')).toThrow(/Unsupported project version/);
@@ -226,6 +255,20 @@ describe('project files', () => {
 
 describe('history', () => {
   const doc = (name: string) => serializeProject(name, [], vec3(), null);
+
+  it('drops the newest entry for a cancelled operation', () => {
+    const history = new History();
+    history.record('op1', doc('first'));
+    history.record('cancelled', doc('second'));
+
+    history.drop();
+
+    // What a cancelled modal transform leaves behind: nothing.
+    expect(history.undoLabel).toBe('op1');
+    history.drop();
+    expect(history.canUndo).toBe(false);
+    expect(() => history.drop()).not.toThrow();
+  });
 
   it('undoes and redoes in order', () => {
     const history = new History();

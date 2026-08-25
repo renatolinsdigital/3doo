@@ -50,6 +50,11 @@ export function useKeymap(): void {
       }
 
       const state = useEditorStore.getState();
+      // A live modal transform owns the keyboard: the viewport listens for its
+      // own confirm, cancel and axis keys, and the ordinary bindings would fire
+      // operations in the middle of it.
+      if (state.modal) return;
+
       const binding = matchBinding(event, state.mode);
       if (!binding) return;
 
@@ -75,9 +80,18 @@ export function useKeymap(): void {
         case 'rotate':
           state.setActiveTool('rotate');
           break;
-        case 'scale':
+        case 'scale': {
           state.setActiveTool('scale');
+          // Blender's S: the drag starts on the keypress, with no handle to
+          // find first. The viewport picks the modal up from here.
+          const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+          const ready =
+            state.mode === 'object'
+              ? state.selectedObjectIds.length > 0
+              : (object?.mesh.selectedVerts().length ?? 0) > 0;
+          if (ready) state.beginModal('scale');
           break;
+        }
 
         case 'extrude':
           state.exec('extrude', { offset: 1 }, 'Extrude');
@@ -95,7 +109,8 @@ export function useKeymap(): void {
           state.exec('subdivide', { cuts: 1 }, 'Subdivide');
           break;
         case 'merge':
-          state.openDialog('merge');
+          if (state.mode === 'object') state.mergeSelected();
+          else state.openDialog('merge');
           break;
         case 'fill':
           state.exec('fill', {}, 'Fill');

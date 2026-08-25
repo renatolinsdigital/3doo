@@ -24,7 +24,7 @@ npm run lint
 | Area | Included |
 | --- | --- |
 | Primitives | Box, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule, torus — with live parameters |
-| Object mode | Transform gizmo, duplicate, linked duplicate, join, delete, outliner with rename / visibility / lock |
+| Object mode | Transform gizmo, duplicate, linked duplicate, merge, apply transform, delete, outliner with rename / visibility / lock |
 | Selection | Vertex, edge and face modes; click, box select, Alt+click edge loops, grow / shrink / invert |
 | Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, subdivide (Catmull-Clark), merge by distance, delete, dissolve, fill, bridge, triangulate, tris-to-quads |
 | Normals | Recalculate outside, flip, shade smooth / flat, face-orientation overlay |

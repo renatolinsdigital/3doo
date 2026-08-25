@@ -33,6 +33,13 @@ describe('keymap', () => {
     expect(matchBinding(keyEvent('Delete'), 'object')?.id).toBe('dissolve');
   });
 
+  it('maps M to a merge in either mode, to a different one in each', () => {
+    // Same key and the same word, but the object-mode one folds objects
+    // together while the edit-mode one welds vertices by distance.
+    expect(matchBinding(keyEvent('m'), 'object')?.label).toMatch(/into the active one/);
+    expect(matchBinding(keyEvent('m'), 'edit')?.label).toMatch(/by distance/);
+  });
+
   it('maps J to connect, in edit mode only', () => {
     expect(matchBinding(keyEvent('j'), 'edit')?.id).toBe('connect');
     expect(matchBinding(keyEvent('j'), 'object')).toBeNull();
