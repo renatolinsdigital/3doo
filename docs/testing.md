@@ -1,6 +1,6 @@
 # Testing
 
-170 tests across the kernel, the store, the component library and the app shell.
+282 tests across the kernel, the store, the component library and the app shell.
 
 ```bash
 npm test              # everything
@@ -43,14 +43,15 @@ Good operation tests check four things, not just one:
 
 | Suite | Tests | Covers |
 | --- | --- | --- |
-| `kernel/mesh` | 16 | BMesh structure, radial sets, cascade deletion, triangulation, serialization |
-| `kernel/ops` | 43 | Extrude, inset, bevel, loop cut, subdivide, merge, delete, dissolve, fill, bridge, normals, transforms, selection walks |
-| `kernel/modifiers` | 14 | Mirror, array, solidify, weld, stack ordering, non-destructiveness |
+| `kernel/mesh` | 21 | BMesh structure, radial sets, cascade deletion, triangulation, serialization |
+| `kernel/ops` | 79 | Extrude, inset, bevel, loop cut, subdivide, merge, delete, dissolve, fill, bridge, normals, transforms, selection walks, pivot arithmetic |
+| `kernel/modifiers` | 22 | Mirror (seam merge, bisect, wire edges), array, solidify, weld (split seams, array joints, non-transitivity), stack ordering, non-destructiveness |
 | `kernel/io` | 25 | OBJ round trip, FBX structure and index encoding, axis presets, project files, undo history, operator registry |
-| `store` | 16 | Add/duplicate/join, exec, undo/redo, modifiers, project round trip, locked objects |
-| `shared/components` | 31 | Rendering and behaviour of every shared component |
-| `domain` | 17 | Keymap resolution, outliner, status bar |
-| `app` | 8 | Full shell mounted with the viewport mocked: add a primitive, enter edit mode, subdivide, undo, open dialogs |
+| `store` | 48 | Add/duplicate/join, exec, undo/redo, modifiers, gizmo centring, project round trip, locked objects, tooltip and viewport preferences |
+| `shared/components` | 36 | Rendering and behaviour of every shared component |
+| `domain` | 27 | Keymap resolution, outliner, status bar, operations panel availability |
+| `viewport` | 8 | The TransformControls drag contract the gizmo code rests on, and gizmo disposal |
+| `app` | 16 | Full shell mounted with the viewport mocked: add a primitive, enter edit mode, subdivide, undo, open dialogs |
 
 ## Two traps worth knowing
 
@@ -84,10 +85,12 @@ The kernel is where correctness lives, but some things are worth eyeballing:
 
 Listed in `TODO.txt`, principally:
 
-- Panels beyond the outliner and status bar have no *dedicated* tests. They are
-  exercised through the app shell suite, which mounts the real component tree,
-  but their individual edge cases are not covered.
-- The viewport, camera controller and picking have no tests — they need a WebGL
-  context or a mocked one.
+- Panels beyond the outliner, status bar and operations panel have no *dedicated*
+  tests. They are exercised through the app shell suite, which mounts the real
+  component tree, but their individual edge cases are not covered.
+- The `Viewport` class itself has no tests — it needs a WebGL context. What the
+  `viewport` suite covers is the TransformControls behaviour its drag handling
+  depends on, so a three upgrade that changes those assumptions fails loudly.
+  The camera controller and picking are untested.
 - No Blender headless harness validating exported FBX fixtures.
 - No end-to-end browser test.

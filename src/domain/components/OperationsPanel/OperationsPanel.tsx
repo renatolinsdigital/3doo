@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { Button, FieldRow, NumberField, Panel, Select, Toggle } from '@shared/components';
-import { useEditorStore } from '@store/index';
+import { useActiveSelectionCounts, useEditorStore } from '@store/index';
 
 import './OperationsPanel.scss';
 
@@ -28,6 +28,12 @@ export function OperationsPanel() {
   // Subdivide splits edges at their midpoint in edge mode; the Catmull-Clark
   // smoothing only means anything when whole faces are being cut up.
   const edgeMode = useEditorStore((state) => state.selectMode === 'edge');
+
+  // Every operator below refuses outright when the selection cannot feed it —
+  // the button is disabled to match, and its hint says what to select instead.
+  // Triangulate, tris-to-quads and merge-by-distance are absent on purpose:
+  // each falls back to the whole mesh, so none of them is ever unavailable.
+  const selection = useActiveSelectionCounts();
 
   const [extrudeOffset, setExtrudeOffset] = useState(1);
   const [extrudeIndividual, setExtrudeIndividual] = useState(false);
@@ -59,7 +65,12 @@ export function OperationsPanel() {
         <Button
           label="EXTRUDE"
           variant="primary"
-          hint="Pull the selected faces or edges out into new geometry (E)"
+          disabled={selection.faces === 0 && selection.edges === 0}
+          hint={
+            selection.faces > 0 || selection.edges > 0
+              ? 'Pull the selected faces or edges out into new geometry (E)'
+              : 'Select faces or edges to pull out into new geometry (E)'
+          }
           onClick={() =>
             exec('extrude', { offset: extrudeOffset, individual: extrudeIndividual }, 'Extrude')
           }
@@ -84,7 +95,12 @@ export function OperationsPanel() {
         />
         <Button
           label="INSET"
-          hint="Shrink the selected faces inward, keeping the border (I)"
+          disabled={selection.faces === 0}
+          hint={
+            selection.faces > 0
+              ? 'Shrink the selected faces inward, keeping the border (I)'
+              : 'Insetting shrinks faces inward — select some first (I)'
+          }
           onClick={() => exec('inset', { thickness: insetThickness, depth: insetDepth }, 'Inset')}
         />
       </FieldRow>
@@ -109,7 +125,12 @@ export function OperationsPanel() {
         />
         <Button
           label="BEVEL"
-          hint="Chamfer the selected edges (Ctrl+B)"
+          disabled={selection.edges === 0}
+          hint={
+            selection.edges > 0
+              ? 'Chamfer the selected edges (Ctrl+B)'
+              : 'Bevelling chamfers edges — select some first (Ctrl+B)'
+          }
           onClick={() =>
             exec('bevel', { width: bevelWidth, segments: bevelSegments }, 'Bevel')
           }
@@ -128,7 +149,12 @@ export function OperationsPanel() {
         />
         <Button
           label="LOOP CUT"
-          hint="Insert a new edge loop across the selected edge's quad ring (Ctrl+R)"
+          disabled={selection.edges === 0}
+          hint={
+            selection.edges > 0
+              ? "Insert a new edge loop across the selected edge's quad ring (Ctrl+R)"
+              : 'Select an edge for the new loop to cut across (Ctrl+R)'
+          }
           onClick={() => exec('loopCut', { cuts: loopCuts }, 'Loop cut')}
         />
       </FieldRow>
@@ -163,10 +189,15 @@ export function OperationsPanel() {
         />
         <Button
           label={edgeMode ? 'SUBDIVIDE EDGE' : 'SUBDIVIDE'}
+          disabled={edgeMode ? selection.edges === 0 : selection.faces === 0}
           hint={
             edgeMode
-              ? 'Add a vertex at the midpoint of each selected edge (Ctrl+D)'
-              : 'Split each selected face into four smaller faces (Ctrl+D)'
+              ? selection.edges > 0
+                ? 'Add a vertex at the midpoint of each selected edge (Ctrl+D)'
+                : 'Select edges to add a midpoint vertex to (Ctrl+D)'
+              : selection.faces > 0
+                ? 'Split each selected face into four smaller faces (Ctrl+D)'
+                : 'Select faces to split into smaller ones (Ctrl+D)'
           }
           onClick={() =>
             exec('subdivide', { cuts: subdivideCuts, smooth: subdivideSmooth }, 'Subdivide')
@@ -203,11 +234,13 @@ export function OperationsPanel() {
         />
         <Button
           label="MERGE"
-          disabled={!vertexMode}
+          disabled={!vertexMode || selection.verts < 2}
           hint={
-            vertexMode
-              ? 'Weld the selected vertices into one'
-              : 'Merging joins vertices — switch to vertex select mode (1)'
+            !vertexMode
+              ? 'Merging joins vertices — switch to vertex select mode (1)'
+              : selection.verts < 2
+                ? 'Select at least two vertices to weld into one'
+                : 'Weld the selected vertices into one'
           }
           onClick={() => exec('merge', { mode: mergeMode }, `Merge at ${mergeMode}`)}
         />
@@ -216,32 +249,54 @@ export function OperationsPanel() {
       <FieldRow legend="TOPOLOGY" columns={2}>
         <Button
           label="CONNECT"
-          disabled={!vertexMode}
+          disabled={!vertexMode || selection.verts !== 2}
           hint={
-            vertexMode
-              ? 'Run an edge between two selected vertices, splitting their face (J)'
-              : 'Connecting joins vertices — switch to vertex select mode (1)'
+            !vertexMode
+              ? 'Connecting joins vertices — switch to vertex select mode (1)'
+              : selection.verts !== 2
+                ? 'Select exactly two vertices to run an edge between (J)'
+                : 'Create an edge between the two selected vertices, splitting their faces (J)'
           }
           onClick={() => exec('connect', {}, 'Connect')}
         />
         <Button
           label="FILL"
-          hint="Fill a selected open boundary loop with a new face (F)"
+          disabled={selection.edges < 3}
+          hint={
+            selection.edges >= 3
+              ? 'Fill a selected open boundary loop with a new face (F)'
+              : 'Select an open boundary loop — three edges or more — to fill (F)'
+          }
           onClick={() => exec('fill', {}, 'Fill')}
         />
         <Button
           label="BRIDGE"
-          hint="Connect two open edge loops with a band of quads"
+          disabled={selection.edges < 4}
+          hint={
+            selection.edges >= 4
+              ? 'Connect two open edge loops with a band of quads'
+              : 'Select two separate edge loops of matching length to bridge'
+          }
           onClick={() => exec('bridge', {}, 'Bridge')}
         />
         <Button
           label="GROW"
-          hint="Extend the selection to adjacent geometry"
+          disabled={selection.verts === 0}
+          hint={
+            selection.verts > 0
+              ? 'Extend the selection to adjacent geometry'
+              : 'Select some geometry for the selection to grow out from'
+          }
           onClick={() => exec('growSelection', {}, 'Grow selection')}
         />
         <Button
           label="SHRINK"
-          hint="Remove the border from the current selection"
+          disabled={selection.verts === 0}
+          hint={
+            selection.verts > 0
+              ? 'Remove the border from the current selection'
+              : 'Nothing is selected for the selection to shrink back from'
+          }
           onClick={() => exec('shrinkSelection', {}, 'Shrink selection')}
         />
       </FieldRow>

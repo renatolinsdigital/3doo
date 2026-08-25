@@ -42,6 +42,10 @@
 
     &:disabled {
       color: var(--ink-muted);
+      // The hint lives on the wrapping row, and a disabled control swallows
+      // the hover that would raise it. Letting the pointer through means the
+      // row still explains why the field is unavailable.
+      pointer-events: none;
     }
   }
 

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { exportFBXAscii, exportOBJ, parseProject, stringifyProject } from '@kernel/index';
 
-import { evaluatedMesh } from './slices/scene';
+import { displayCenter, evaluatedMesh } from './slices/scene';
 import { useEditorStore } from './useEditorStore';
 
 function store() {
@@ -444,6 +444,32 @@ describe('editor store', () => {
     const object = activeObject();
     expect(object.mesh.faces.size).toBe(6);
     expect(evaluatedMesh(object).faces.size).toBe(18);
+  });
+
+  it('centres the gizmo on the whole array, not the first copy', () => {
+    store().addPrimitive('box');
+    const before = displayCenter(activeObject(), evaluatedMesh(activeObject()));
+    expect(before.x).toBeCloseTo(0);
+
+    store().addModifier('array');
+
+    // Default array is 3 copies of a 2-unit box along +X, spanning -1..5.
+    const after = displayCenter(activeObject(), evaluatedMesh(activeObject()));
+    expect(after.x).toBeCloseTo(2);
+    expect(after.y).toBeCloseTo(0);
+    expect(after.z).toBeCloseTo(0);
+  });
+
+  it('carries the gizmo centre through the object transform', () => {
+    store().addPrimitive('box');
+    store().addModifier('array');
+    const object = activeObject();
+    store().setObjectTransforms([
+      { id: object.id, transform: { position: { x: 10, y: 0, z: 0 } } },
+    ]);
+
+    const center = displayCenter(activeObject(), evaluatedMesh(activeObject()));
+    expect(center.x).toBeCloseTo(12);
   });
 
   it('bakes a modifier into the mesh on apply', () => {

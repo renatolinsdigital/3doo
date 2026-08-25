@@ -4,7 +4,7 @@ import { BMesh } from '../mesh';
 import { createBox, createPlane } from '../primitives';
 
 import { evaluateModifiers, createModifier } from './index';
-import type { ArrayModifier, MirrorModifier, SolidifyModifier } from './types';
+import type { ArrayModifier, MirrorModifier, SolidifyModifier, WeldModifier } from './types';
 
 function mirror(overrides: Partial<MirrorModifier> = {}): MirrorModifier {
   return { ...(createModifier('mirror') as MirrorModifier), ...overrides };
@@ -178,6 +178,82 @@ describe('solidify modifier', () => {
   });
 });
 
+describe('weld modifier', () => {
+  function weld(threshold: number): WeldModifier {
+    return { ...(createModifier('weld') as WeldModifier), threshold };
+  }
+
+  /** Two quads that meet along a line but do not share the vertices there. */
+  function splitSeam(): BMesh {
+    const mesh = new BMesh();
+    const left = [
+      mesh.addVert({ x: 0, y: 0, z: 0 }),
+      mesh.addVert({ x: 1, y: 0, z: 0 }),
+      mesh.addVert({ x: 1, y: 0, z: 1 }),
+      mesh.addVert({ x: 0, y: 0, z: 1 }),
+    ];
+    mesh.addFace(left);
+    const right = [
+      mesh.addVert({ x: 1.0002, y: 0, z: 0 }),
+      mesh.addVert({ x: 2, y: 0, z: 0 }),
+      mesh.addVert({ x: 2, y: 0, z: 1 }),
+      mesh.addVert({ x: 1.0002, y: 0, z: 1 }),
+    ];
+    mesh.addFace(right);
+    return mesh;
+  }
+
+  it('joins a split seam into one continuous surface', () => {
+    const mesh = splitSeam();
+    expect(mesh.verts.size).toBe(8);
+
+    const result = evaluateModifiers(mesh, [weld(0.001)]);
+
+    expect(result.verts.size).toBe(6);
+    expect(result.faces.size).toBe(2);
+    // The seam is only closed if the two quads now share one interior edge.
+    expect([...result.edges.values()].filter((edge) => edge.loops.length === 2)).toHaveLength(1);
+    expect(result.validate()).toEqual([]);
+  });
+
+  it('leaves a mesh with no duplicates untouched at the default distance', () => {
+    const cube = createBox(2);
+    const result = evaluateModifiers(cube, [createModifier('weld')]);
+
+    expect(result.verts.size).toBe(8);
+    expect(result.faces.size).toBe(6);
+  });
+
+  it('does nothing at a distance of zero', () => {
+    const result = evaluateModifiers(splitSeam(), [weld(0)]);
+    expect(result.verts.size).toBe(8);
+  });
+
+  it('closes the joints an array leaves between touching copies', () => {
+    const cube = createBox(2);
+    const array = { ...(createModifier('array') as ArrayModifier), count: 3, merge: false };
+
+    const loose = evaluateModifiers(cube, [array]);
+    const welded = evaluateModifiers(cube, [array, weld(0.001)]);
+
+    expect(loose.verts.size).toBe(24);
+    expect(welded.verts.size).toBe(16);
+    expect(welded.validate()).toEqual([]);
+  });
+
+  it('does not chain: the vertex absorbed cannot go on to absorb the next', () => {
+    const mesh = new BMesh();
+    const row = [0, 0.6, 1.2, 1.8, 2.4].map((x) => mesh.addVert({ x, y: 0, z: 0 }));
+    for (let index = 0; index < row.length - 1; index++) mesh.addEdge(row[index], row[index + 1]);
+
+    // Every gap is inside the distance, so a transitive weld would collapse the
+    // whole row to one point. First occupant wins instead, keeping every other.
+    const result = evaluateModifiers(mesh, [weld(1)]);
+
+    expect([...result.verts.values()].map((vert) => vert.co.x)).toEqual([0, 1.2, 2.4]);
+  });
+});
+
 describe('modifier stack', () => {
   it('leaves the base mesh untouched', () => {
     const cube = createBox(2);
@@ -205,12 +281,18 @@ describe('modifier stack', () => {
     expect(evaluateModifiers(cube, [array]).faces.size).toBe(6);
   });
 
-  it('welds a mesh through the weld modifier', () => {
-    const cube = createBox(2);
-    const weld = createModifier('weld');
-    const result = evaluateModifiers(cube, [
-      { ...weld, ...(weld.type === 'weld' ? { threshold: 5 } : {}) },
+  it('runs a weld as part of the stack, after the geometry it cleans up', () => {
+    const plane = createPlane(2);
+    for (const vert of plane.verts.values()) vert.co = { ...vert.co, x: Math.max(0, vert.co.x) };
+
+    // Mirror with merge off leaves the seam split; the weld behind it closes up.
+    const result = evaluateModifiers(plane, [
+      mirror({ merge: false }),
+      { ...(createModifier('weld') as WeldModifier), threshold: 0.01 },
     ]);
-    expect(result.verts.size).toBeLessThan(8);
+
+    expect(result.verts.size).toBe(6);
+    expect(result.faces.size).toBe(2);
+    expect(result.validate()).toEqual([]);
   });
 });

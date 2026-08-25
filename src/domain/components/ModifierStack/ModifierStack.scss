@@ -49,7 +49,7 @@
       color: var(--bone);
       border: var(--border-thin) solid var(--bone);
 
-      &:hover:not(:disabled) {
+      &:hover:not(:disabled):not([aria-disabled='true']) {
         background: var(--bone);
         color: var(--rust);
       }

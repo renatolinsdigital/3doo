@@ -14,7 +14,7 @@ npm run dev      # http://localhost:5173
 ```
 
 ```bash
-npm test         # 170 tests
+npm test         # 282 tests
 npm run build    # typecheck + production bundle
 npm run lint
 ```
@@ -90,7 +90,7 @@ Four responsibilities, kept strictly apart:
 | Document | Covers |
 | --- | --- |
 | [docs/architecture.md](docs/architecture.md) | How the four layers fit together and why |
-| [docs/mesh-kernel.md](docs/mesh-kernel.md) | The BMesh data structure and every modelling operation |
+| [docs/mesh-kernel.md](docs/mesh-kernel.md) | The BMesh data structure, every modelling operation, and the modifier stack |
 | [docs/math.md](docs/math.md) | Coordinate system, winding, normals, mitering, triangulation |
 | [docs/state-management.md](docs/state-management.md) | Zustand slices, mesh versioning, undo |
 | [docs/rendering.md](docs/rendering.md) | The display bridge, buffers, picking, camera |
@@ -143,9 +143,13 @@ faces meet at.
 
 Because the keys cover both, the Operations panel has no Delete or Dissolve
 section; it offers Merge instead, which welds the selected vertices together at
-their center, or onto the first or last one selected. Merge is vertex-only and is
-disabled in edge and face mode, as is Connect, which runs an edge between two
-selected vertices. Object mode's panel likewise drops its Delete
+their center, or onto the first or last one selected. Every operation in that
+panel disables itself when the current selection cannot feed it — Merge and
+Connect are vertex-only and want two or more and exactly two vertices
+respectively, Bevel and Loop Cut want edges, Inset wants faces — and each keeps
+its hint while disabled, saying what to select instead. Only Merge by Distance,
+Triangulate and Tris to Quads are always available, because each falls back to
+the whole mesh. Object mode's panel likewise drops its Delete
 button — the same two keys cover it — and carries Recalculate Normals instead,
 which is otherwise unreachable outside edit mode and is most often wanted right
 after a Join.

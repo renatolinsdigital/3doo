@@ -278,6 +278,40 @@ edge.
 modifier. The object being edited is never touched, which is what makes the stack
 non-destructive. `applyModifier` bakes a single one into the mesh.
 
-Mirror reflects and reverses winding (reflection inverts handedness), optionally
-welding the seam. Solidify offsets a shell along vertex normals, reverses it, and
-fills rim quads along boundary edges captured *before* the shell was added.
+Mirror reflects and reverses winding (reflection inverts handedness), and copies
+wire edges by hand since they carry no loop for the face pass to follow. Its
+merge limit is a distance from the *mirror plane*, not a general weld: only a
+vertex sitting on the seam absorbs its own reflection, so geometry that happens
+to be dense elsewhere is left intact. Bisect cuts the faces that straddle the
+plane instead of dropping them whole, otherwise the reflection lands back on top
+of the uncut half and the result is doubled geometry with opposing winding.
+
+Array repeats the mesh along an offset built from the bounding box, a constant,
+or the two added together. Solidify offsets a shell along vertex normals,
+reverses it, and fills rim quads along boundary edges captured *before* the shell
+was added. Subdivision runs `subdivideFaces` across every face.
+
+### Weld
+
+Weld is `mergeByDistance` run over every vertex in the mesh. There is no
+selection involved, because a modifier has none — that is the whole difference
+between it and the Merge by Distance operator in the Operations panel.
+
+It exists for the seams the rest of the pipeline leaves behind: an array whose
+copies touch but do not share vertices, a mirror with merge switched off, an OBJ
+that split its vertices per face. Ordering matters, so it belongs *below* the
+modifier whose output it is cleaning up.
+
+Two things about the distance are worth knowing, because both look like bugs:
+
+- **The default of 0.001 usually changes nothing.** It is sized to catch
+  vertices already stacked on top of each other, which is what a seam is. The
+  silhouette is meant to stay put; if the shape moves, the distance is too big.
+- **Welding is not transitive.** A row of vertices 0.6 apart welded at 1.0 keeps
+  every other one rather than collapsing to a point: the spatial hash lets the
+  first occupant of each cell win, and a vertex that has been absorbed is no
+  longer a candidate to absorb the next.
+
+A distance approaching the size of the mesh removes it altogether — every face
+falls below three distinct corners, and `weldVerts` drops those, leaving nothing
+for the surviving vertices to belong to.

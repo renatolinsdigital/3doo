@@ -22,6 +22,8 @@
     &:disabled + .toggle__label {
       color: var(--ink-muted);
       cursor: not-allowed;
+      // See NumberField: the hover has to reach the row that carries the hint.
+      pointer-events: none;
     }
   }
 

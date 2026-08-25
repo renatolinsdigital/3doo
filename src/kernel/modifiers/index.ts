@@ -288,6 +288,14 @@ function applySolidify(mesh: BMesh, modifier: SolidifyModifier): BMesh {
   return mesh;
 }
 
+/**
+ * Merge by distance over the whole mesh — a modifier has no selection to work
+ * from, so every vertex is a candidate.
+ *
+ * This is the cleanup pass for seams the rest of the stack leaves behind: an
+ * array whose copies touch, a mirror with merge off, an OBJ that split its
+ * vertices per face.
+ */
 function applyWeld(mesh: BMesh, modifier: WeldModifier): BMesh {
   mergeByDistance(mesh, [...mesh.verts.values()], modifier.threshold);
   return mesh;

@@ -32,4 +32,17 @@ describe('Button', () => {
 
     expect(onClick).not.toHaveBeenCalled();
   });
+
+  it('stays hoverable and focusable while disabled, so its hint is reachable', () => {
+    render(<Button label="BEVEL" disabled hint="Select edges first" onClick={() => {}} />);
+    const button = screen.getByRole('button', { name: 'BEVEL' });
+
+    // A natively disabled button reports no hover and takes no focus, which
+    // would hide the very hint that explains why it cannot be pressed.
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).not.toBeDisabled();
+
+    button.focus();
+    expect(button).toHaveFocus();
+  });
 });

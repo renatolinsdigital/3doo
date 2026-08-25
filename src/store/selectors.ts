@@ -11,6 +11,38 @@ export function useActiveObject(): SceneObject | null {
   return useEditorStore(selectActiveObject);
 }
 
+export interface SelectionCounts {
+  verts: number;
+  edges: number;
+  faces: number;
+}
+
+/**
+ * What is selected on the active object — the thing that decides whether an
+ * edit-mode operator has anything to act on.
+ *
+ * Reads `meshVersion` for the same reason `useSceneStats` does: selection lives
+ * on the mesh, which is mutated in place, so nothing changes identity when it
+ * moves.
+ */
+export function useActiveSelectionCounts(): SelectionCounts {
+  return useEditorStore(
+    useShallow((state): SelectionCounts => {
+      void state.meshVersion;
+
+      const object = selectActiveObject(state);
+      if (!object) return { verts: 0, edges: 0, faces: 0 };
+
+      const stats = object.mesh.stats();
+      return {
+        verts: stats.selectedVerts,
+        edges: stats.selectedEdges,
+        faces: stats.selectedFaces,
+      };
+    }),
+  );
+}
+
 /**
  * Scene counts for the status bar.
  *

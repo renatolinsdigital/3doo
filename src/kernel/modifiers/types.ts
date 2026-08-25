@@ -39,6 +39,7 @@ export interface SolidifyModifier extends ModifierBase {
 
 export interface WeldModifier extends ModifierBase {
   type: 'weld';
+  /** Vertices closer together than this are fused, mesh-wide. */
   threshold: number;
 }
 

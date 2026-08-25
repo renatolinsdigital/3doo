@@ -17,7 +17,7 @@
   color: var(--void);
   transition: background-color 80ms linear;
 
-  &:hover:not(:disabled) {
+  &:hover:not(:disabled):not([aria-disabled='true']) {
     background: var(--bone-dim);
   }
 
@@ -25,7 +25,7 @@
     background: var(--red);
     color: var(--bone);
 
-    &:hover:not(:disabled) {
+    &:hover:not(:disabled):not([aria-disabled='true']) {
       background: var(--rust);
     }
   }
@@ -39,7 +39,7 @@
     box-shadow: none;
     background: transparent;
 
-    &:hover:not(:disabled) {
+    &:hover:not(:disabled):not([aria-disabled='true']) {
       background: var(--bone-dim);
     }
   }

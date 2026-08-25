@@ -17,7 +17,7 @@
   background: var(--bone);
   color: var(--void);
 
-  &:hover:not(:disabled) {
+  &:hover:not(:disabled):not([aria-disabled='true']) {
     background: var(--bone-dim);
   }
 
@@ -33,7 +33,7 @@
     background: var(--red);
     color: var(--bone);
 
-    &:hover:not(:disabled) {
+    &:hover:not(:disabled):not([aria-disabled='true']) {
       background: var(--rust);
     }
   }

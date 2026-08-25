@@ -1,6 +1,7 @@
 import type { StateCreator } from 'zustand';
 
 import {
+  type BMesh,
   type Modifier,
   type PrimitiveKind,
   type PrimitiveParams,
@@ -11,7 +12,9 @@ import {
   PRIMITIVE_DEFAULT_OVERRIDES,
   PRIMITIVE_LABELS,
   applyModifier,
+  centroid,
   cloneMesh,
+  composeMatrix,
   createModifier,
   createPrimitive,
   createTransform,
@@ -20,6 +23,7 @@ import {
   execOperator,
   normalizePrimitiveParams,
   serializeProject,
+  transformPoint,
   vec3,
 } from '@kernel/index';
 
@@ -619,4 +623,17 @@ export function evaluatedMesh(object: SceneObject) {
   return object.modifiers.length > 0
     ? evaluateModifiers(object.mesh, object.modifiers)
     : object.mesh;
+}
+
+/**
+ * World-space centre of what an object actually draws — where its object-mode
+ * gizmo sits, so an array modifier carries the handles out to the middle of
+ * the array instead of leaving them beside the first copy.
+ *
+ * Takes the evaluated mesh rather than deriving it, so callers that have
+ * already run the modifier stack do not run it twice.
+ */
+export function displayCenter(object: SceneObject, mesh: BMesh): Vec3 {
+  const box = mesh.boundingBox();
+  return transformPoint(composeMatrix(object.transform), centroid([box.min, box.max]));
 }

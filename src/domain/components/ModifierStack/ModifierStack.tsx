@@ -24,7 +24,7 @@ const MODIFIER_INFO: Record<ModifierType, { label: string; description: string }
   weld: {
     label: 'WELD',
     description:
-      'Collapses vertices that sit closer together than the distance into one, cleaning up split seams and duplicates.',
+      'Fuses vertices closer together considering a DISTANCE threshold. Raising it starts collapsing real detail.',
   },
   subdivide: {
     label: 'SUBDIVISION',
@@ -148,7 +148,14 @@ interface ModifierIconButtonProps {
 function ModifierIconButton({ label, hint, disabled, onClick, children }: ModifierIconButtonProps) {
   const tooltip = useTooltipTrigger(hint);
   return (
-    <button type="button" aria-label={label} disabled={disabled} onClick={onClick} {...tooltip}>
+    <button
+      type="button"
+      aria-label={label}
+      // See Button: the native attribute would take the hint down with it.
+      aria-disabled={disabled || undefined}
+      onClick={disabled ? undefined : onClick}
+      {...tooltip}
+    >
       {children}
     </button>
   );
@@ -297,7 +304,7 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
         step={0.001}
         min={0}
         precision={4}
-        hint="Vertices closer than this are merged together"
+        hint="How far apart two vertices can sit and still be fused into one"
         onChange={(threshold) => onChange({ threshold })}
       />
     );

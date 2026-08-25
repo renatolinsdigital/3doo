@@ -15,7 +15,7 @@ import {
   translateVerts,
   vec3,
 } from '@kernel/index';
-import { evaluatedMesh, useEditorStore } from '@store/index';
+import { displayCenter, evaluatedMesh, useEditorStore } from '@store/index';
 import type { SceneObject } from '@store/types';
 
 import { CameraController, MAX_ORBIT_DISTANCE } from './CameraController';
@@ -56,6 +56,11 @@ export class Viewport {
   private readonly raycaster = new THREE.Raycaster();
 
   private readonly views = new Map<string, ObjectView>();
+  /**
+   * Where each object's displayed mesh is centred in the world, cached from the
+   * last scene sync so seating the gizmo does not re-run the modifier stack.
+   */
+  private readonly displayCenters = new Map<string, Vec3>();
   private readonly unsubscribers: (() => void)[] = [];
   private frameHandle = 0;
   private disposed = false;
@@ -260,7 +265,8 @@ export class Viewport {
         this.scene.add(view.group);
       }
 
-      view.update(object, evaluatedMesh(object), {
+      const display = evaluatedMesh(object);
+      view.update(object, display, {
         mode: state.mode,
         selectMode: state.selectMode,
         recentVerts: this.recentVerts?.objectId === object.id ? this.recentVerts.ids : undefined,
@@ -268,12 +274,15 @@ export class Viewport {
         isSelected: state.selectedObjectIds.includes(object.id),
         settings,
       });
+
+      this.displayCenters.set(object.id, displayCenter(object, display));
     }
 
     for (const [id, view] of this.views) {
       if (alive.has(id)) continue;
       view.dispose();
       this.views.delete(id);
+      this.displayCenters.delete(id);
     }
 
     this.updateGizmo();
@@ -350,13 +359,29 @@ export class Viewport {
   }
 
   /**
+   * World-space anchor for one object's gizmo: the centre of the mesh actually
+   * on screen, not the object origin.
+   *
+   * A modifier that pushes geometry away from the origin — an array most
+   * obviously — takes the gizmo with it, so the handles sit on what the user
+   * sees rather than off beside the first copy.
+   */
+  private objectGizmoAnchor(object: SceneObject): Vec3 {
+    return this.displayCenters.get(object.id) ?? object.transform.position;
+  }
+
+  /**
    * Positions the gizmo for object mode.
    *
-   * With one object selected it sits at that object's own transform, oriented
-   * to it, exactly as before. With several selected it sits at their median
-   * position with a neutral (world-aligned) orientation, and the resulting
-   * drag is applied to every one of them — Blender's median-point, global
-   * pivot default for multi-object transforms.
+   * With one object selected it sits at that object's displayed centre,
+   * oriented to the object. With several selected it sits at the median of
+   * those centres with a neutral (world-aligned) orientation, and the
+   * resulting drag is applied to every one of them — Blender's median-point,
+   * global pivot default for multi-object transforms.
+   *
+   * The anchor doubles as the transform pivot, so a rotate or scale drag
+   * orbits the displayed centre. That point is fixed in the object's own
+   * frame, which is what keeps the gizmo from creeping across a drag.
    */
   private updateObjectGizmo(state: ReturnType<typeof useEditorStore.getState>, gizmoMode: 'translate' | 'rotate' | 'scale'): void {
     const selected = state.objects.filter((object) => state.selectedObjectIds.includes(object.id));
@@ -373,12 +398,13 @@ export class Viewport {
     this.transformGroup = transformable.map((object) => object.id);
 
     if (transformable.length === 1) {
-      const { position, rotation, scale } = transformable[0].transform;
-      this.gizmoProxy.position.set(position.x, position.y, position.z);
+      const { rotation, scale } = transformable[0].transform;
+      const anchor = this.objectGizmoAnchor(transformable[0]);
+      this.gizmoProxy.position.set(anchor.x, anchor.y, anchor.z);
       this.gizmoProxy.rotation.set(rotation.x, rotation.y, rotation.z);
       this.gizmoProxy.scale.set(scale.x, scale.y, scale.z);
     } else {
-      const pivot = centroid(transformable.map((object) => object.transform.position));
+      const pivot = centroid(transformable.map((object) => this.objectGizmoAnchor(object)));
       this.gizmoProxy.position.set(pivot.x, pivot.y, pivot.z);
       this.gizmoProxy.rotation.set(0, 0, 0);
       this.gizmoProxy.scale.set(1, 1, 1);
@@ -488,11 +514,12 @@ export class Viewport {
    * The delta between the gizmo's current transform and its transform at drag
    * start (not the previous tick) is what gets applied, computed against each
    * object's own transform at drag start. That avoids compounding rounding
-   * error across many pointer-move ticks in a single drag, and is what makes a
-   * single object behave exactly as it did before this pivot moved to the
-   * group's median: for one object the pivot IS that object's own position, so
-   * the rotate/scale math below reduces to the previous direct-assignment
-   * behaviour.
+   * error across many pointer-move ticks in a single drag.
+   *
+   * The pivot is wherever the gizmo was seated, which is the displayed centre
+   * rather than the object origin — so an arrayed object rotates about the
+   * middle of the array, and each object's origin is carried around that point
+   * rather than staying put.
    */
   private applyObjectGroupTransform(state: ReturnType<typeof useEditorStore.getState>): void {
     if (!this.gizmoBaseline || this.transformGroup.length === 0) return;

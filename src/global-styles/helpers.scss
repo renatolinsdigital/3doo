@@ -16,7 +16,7 @@
 /// Buttons shift by the shadow offset when pressed so they meet their own
 /// shadow, which reads as a physical press without any animation.
 @mixin brutal-press($offset: var(--shadow-offset)) {
-  &:active:not(:disabled) {
+  &:active:not(:disabled):not([aria-disabled='true']) {
     transform: translate($offset, $offset);
     box-shadow: 0 0 0 var(--void);
   }

@@ -22,6 +22,8 @@ export function IconButton({
   hint,
   className,
   type = 'button',
+  disabled = false,
+  onClick,
   ...rest
 }: IconButtonProps) {
   const tooltipText = hint ?? (shortcut ? `${label} (${shortcut})` : label);
@@ -36,6 +38,9 @@ export function IconButton({
       className={classes}
       aria-label={label}
       aria-pressed={active || undefined}
+      // See Button: the native attribute would take the hint down with it.
+      aria-disabled={disabled || undefined}
+      onClick={disabled ? undefined : onClick}
       {...rest}
       {...tooltip}
     >
