@@ -719,6 +719,11 @@ export class Viewport {
     // pointer only crosses the model.
     this.scaleLine.visible = modal !== null || axis === 'XYZ';
 
+    // A crosshair reads as "measuring", which is what the line is doing — the
+    // ordinary arrow gives no hint that dragging now changes size rather than
+    // orbiting or picking something.
+    if (this.scaleLine.visible) this.canvas.style.cursor = 'crosshair';
+
     // With the line up the handles say nothing the line does not, and they sit
     // over the very geometry being scaled. They come back through updateGizmo
     // when the scale ends.
@@ -730,6 +735,7 @@ export class Viewport {
   private endScaleDrag(): void {
     this.scaleDrag = null;
     this.scaleLine.visible = false;
+    this.canvas.style.cursor = '';
   }
 
   /**
