@@ -1,7 +1,12 @@
 import { useState } from 'react';
 
 import { Button, FieldRow, NumberField, Panel, Select, Toggle } from '@shared/components';
-import { useActiveSelectionCounts, useEditorStore, useFaceLoopAvailable } from '@store/index';
+import {
+  useActiveSelectionCounts,
+  useEditorStore,
+  useFaceLoopAvailable,
+  useLoopCutAvailable,
+} from '@store/index';
 
 import './OperationsPanel.scss';
 
@@ -41,6 +46,7 @@ export function OperationsPanel() {
   // Counts cannot answer this one: two faces that never touch are still two
   // faces, and no loop runs through them.
   const faceLoopAvailable = useFaceLoopAvailable();
+  const loopCutAvailable = useLoopCutAvailable();
 
   const [extrudeOffset, setExtrudeOffset] = useState(1);
   const [extrudeIndividual, setExtrudeIndividual] = useState(false);
@@ -156,11 +162,13 @@ export function OperationsPanel() {
         />
         <Button
           label="LOOP CUT"
-          disabled={selection.edges === 0}
+          disabled={selection.edges === 0 || !loopCutAvailable}
           hint={
-            selection.edges > 0
-              ? "Insert a new edge loop across the selected edge's quad ring (Ctrl+R)"
-              : 'Select an edge for the new loop to cut across (Ctrl+R)'
+            selection.edges === 0
+              ? 'Select an edge for the new loop to cut across (Ctrl+R)'
+              : !loopCutAvailable
+                ? 'No quad ring runs across that edge — a cone or a fan has only triangles there (Ctrl+R)'
+                : "Insert a new edge loop across the selected edge's quad ring (Ctrl+R)"
           }
           onClick={() => exec('loopCut', { cuts: loopCuts }, 'Loop cut')}
         />

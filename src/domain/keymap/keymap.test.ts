@@ -72,6 +72,14 @@ describe('keymap', () => {
     expect(matchBinding(keyEvent('q'), 'object')).toBeNull();
   });
 
+  it('binds the select tool and the way out of a selection', () => {
+    expect(matchBinding(keyEvent('v'), 'object')?.id).toBe('selectTool');
+    expect(matchBinding(keyEvent('Escape'), 'object')?.id).toBe('clearSelection');
+    expect(matchBinding(keyEvent('Escape'), 'edit')?.id).toBe('clearSelection');
+    // Shift+V still sends the selection to the cursor.
+    expect(matchBinding(keyEvent('v', { shiftKey: true }), 'object')?.id).toBe('selectionToCursor');
+  });
+
   it('formats bindings for the overlay', () => {
     const redo = DEFAULT_KEYMAP.find((binding) => binding.id === 'redo');
     expect(redo && formatBinding(redo)).toBe('Ctrl + Shift + Z');

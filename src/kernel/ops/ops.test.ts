@@ -3,7 +3,14 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { type Vec3, vec3 } from '../math';
 import { BMesh } from '../mesh';
 import type { Face } from '../mesh/types';
-import { createBox, createCircle, createCylinder, createGrid, createPlane } from '../primitives';
+import {
+  createBox,
+  createCircle,
+  createCone,
+  createCylinder,
+  createGrid,
+  createPlane,
+} from '../primitives';
 
 import { bevelEdges } from './bevel';
 import { connectVerts } from './connect';
@@ -19,12 +26,12 @@ import {
 import { extrudeFaces } from './extrude';
 import { bridgeEdgeLoops, fillHole } from './fill';
 import { insetFaces } from './inset';
-import { loopCut } from './loopcut';
+import { canLoopCut, loopCut } from './loopcut';
 import { countMergeByDistance, mergeByDistance, mergeVerts } from './merge';
 import { flipNormals, recalculateNormals } from './normals';
 import { subdivideEdges, subdivideFaces, triangulateFaces, trisToQuads } from './subdivide';
 import { rotateVerts, scaleVerts, translateVerts } from './transform';
-import { selectEdgeLoop, selectEdgeRing, selectLinked } from './select';
+import { faceLoopAtClick, selectEdgeLoop, selectEdgeRing, selectLinked } from './select';
 
 /** Euler characteristic of a closed manifold surface is 2 per shell. */
 function eulerCharacteristic(mesh: BMesh): number {
@@ -33,6 +40,14 @@ function eulerCharacteristic(mesh: BMesh): number {
 
 function isClosed(mesh: BMesh): boolean {
   return [...mesh.edges.values()].every((edge) => edge.loops.length === 2);
+}
+
+function faceAtCenter(mesh: BMesh, center: Vec3): Face {
+  for (const face of mesh.faces.values()) {
+    const found = mesh.faceCenter(face);
+    if (Math.abs(found.x - center.x) < 1e-6 && Math.abs(found.z - center.z) < 1e-6) return face;
+  }
+  throw new Error('No face found at that centre');
 }
 
 function faceAt(mesh: BMesh, normal: Vec3): Face {
@@ -234,6 +249,26 @@ describe('loop cut', () => {
 
     expect(result.verts.length).toBeGreaterThan(0);
     expect(grid.validate()).toEqual([]);
+  });
+
+  it('has no ring to cut across a cone', () => {
+    // Every side face is a triangle and the base is one n-gon, so the ring walk
+    // has nowhere to step — the same reason Blender will not cut one either.
+    const cone = createCone(0.5, 1, 12, true);
+
+    for (const edge of cone.edges.values()) {
+      expect(canLoopCut(cone, edge)).toBe(false);
+      expect(loopCut(cone, edge, { cuts: 1 }).verts).toHaveLength(0);
+    }
+    expect(cone.verts.size).toBe(13);
+  });
+
+  it('has a ring to cut wherever a quad sits on the edge', () => {
+    const cube = createBox(2);
+    const edge = [...cube.edges.values()][0];
+
+    expect(canLoopCut(cube, edge)).toBe(true);
+    expect(loopCut(cube, edge, { cuts: 1 }).verts.length).toBeGreaterThan(0);
   });
 });
 
@@ -917,6 +952,43 @@ describe('selection walks', () => {
 
     // An open tube's rim is valence 3, so the vertical loop cannot continue.
     expect(selectEdgeLoop(cylinder, vertical as never)).toHaveLength(1);
+  });
+
+  it('names a face loop from the edge nearest the click', () => {
+    const grid = createGrid(4, 4);
+    const face = faceAtCenter(grid, vec3(-0.5, 0, -0.5));
+
+    const across = faceLoopAtClick(grid, face, vec3(-0.9, 0, -0.5));
+    const along = faceLoopAtClick(grid, face, vec3(-0.5, 0, -0.9));
+
+    expect(across.every((member) => grid.faceCenter(member).z === -0.5)).toBe(true);
+    expect(along.every((member) => grid.faceCenter(member).x === -0.5)).toBe(true);
+  });
+
+  it('names the same face loop however much is already selected', () => {
+    const grid = createGrid(8, 8);
+    const clicked = faceAtCenter(grid, vec3(-2.5, 0, -2.5));
+    const wanted = faceLoopAtClick(grid, clicked, vec3(-2.9, 0, -2.5));
+
+    // The row below and the column beside, as earlier Shift+Alt clicks would
+    // leave things. A selected neighbour on one edge of the clicked face used
+    // to rename its loop, and once a second edge had one the click stopped
+    // selecting anything new at all.
+    const below = faceLoopAtClick(grid, faceAtCenter(grid, vec3(-2.5, 0, -3.5)), vec3(-2.9, 0, -3.5));
+    const beside = faceLoopAtClick(grid, faceAtCenter(grid, vec3(-3.5, 0, -2.5)), vec3(-3.5, 0, -2.9));
+    for (const face of [...below, ...beside]) face.selected = true;
+
+    const loop = faceLoopAtClick(grid, clicked, vec3(-2.9, 0, -2.5));
+
+    expect(loop).toEqual(wanted);
+    expect(loop.some((face) => !face.selected)).toBe(true);
+  });
+
+  it('names no face loop through a triangle', () => {
+    const disc = createCircle(1, 6, true);
+    const [face] = [...disc.faces.values()];
+
+    expect(faceLoopAtClick(disc, face)).toHaveLength(0);
   });
 
   it('walks the ring of edges a loop cut would cross', () => {

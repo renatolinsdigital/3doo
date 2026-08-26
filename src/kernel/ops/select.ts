@@ -1,4 +1,5 @@
-import { dot } from '../math';
+import { EPSILON, addScaled, clamp, distanceSq, dot, lengthSq, sub } from '../math';
+import type { Vec3 } from '../math';
 import type { BMesh } from '../mesh';
 import type { Edge, Face, SelectMode, Vert } from '../mesh/types';
 
@@ -57,19 +58,6 @@ export function selectEdgeRing(mesh: BMesh, start: Edge): Edge[] {
 }
 
 /**
- * The face loop running through a pair of adjacent selected faces.
- *
- * Two adjacent faces are what name a loop. The edge they share is the one a
- * loop cut would run across, so the ring of quads through it — the same walk
- * `loopCut` uses — is the loop the user pointed at. One face alone names
- * nothing: four loops run through it and there is no way to tell which.
- *
- * Every adjacent pair in the selection contributes its loop, so three faces in
- * a row give the one loop they share while an L of three gives both. That keeps
- * the result the same whatever order the faces were picked in, which matters
- * because faces carry no click-order stamp to break the tie with.
- */
-/**
  * Whether any two of these faces share an edge.
  *
  * What `selectFaceLoop` needs before it can name a loop at all, and cheap
@@ -90,6 +78,19 @@ export function hasAdjacentFaces(mesh: BMesh, faces: readonly Face[]): boolean {
   return false;
 }
 
+/**
+ * The face loop running through a pair of adjacent selected faces.
+ *
+ * Two adjacent faces are what name a loop. The edge they share is the one a
+ * loop cut would run across, so the ring of quads through it — the same walk
+ * `loopCut` uses — is the loop the user pointed at. One face alone names
+ * nothing: four loops run through it and there is no way to tell which.
+ *
+ * Every adjacent pair in the selection contributes its loop, so three faces in
+ * a row give the one loop they share while an L of three gives both. That keeps
+ * the result the same whatever order the faces were picked in, which matters
+ * because faces carry no click-order stamp to break the tie with.
+ */
 export function selectFaceLoop(mesh: BMesh, faces: readonly Face[]): Face[] {
   const selected = new Set(faces.map((face) => face.id));
   const walked = new Set<number>();
@@ -108,6 +109,54 @@ export function selectFaceLoop(mesh: BMesh, faces: readonly Face[]): Face[] {
   }
 
   return [...loop.values()];
+}
+
+/**
+ * The face loop a single click names.
+ *
+ * A face on its own names nothing — two loops run through it — so the edge
+ * nearest where the click landed picks one: the ring across that edge is the
+ * strip the cursor was pointing along, which is how Alt+click reads in Blender.
+ *
+ * Nothing but the click decides it. Letting an already-selected neighbour name
+ * the loop instead reads well on the first click and then rots: every loop laid
+ * down leaves the next face with a selected neighbour of its own, so the rule
+ * fires where it was not wanted, and once a face is hemmed in on two sides it
+ * keeps re-naming a loop that is already selected — the click stops doing
+ * anything at all. Reading only the cursor cannot drift that way.
+ *
+ * Empty at a triangle or an n-gon: no ring runs through those.
+ */
+export function faceLoopAtClick(mesh: BMesh, face: Face, point?: Vec3): Face[] {
+  const seed = nearestEdge(mesh.faceEdges(face), point);
+  if (!seed) return [];
+
+  return collectEdgeRing(mesh, seed).map((step) => step.face);
+}
+
+/** The candidate closest to the click, or the first one when there is no point to measure from. */
+function nearestEdge(candidates: readonly Edge[], point?: Vec3): Edge | undefined {
+  if (!point || candidates.length < 2) return candidates[0];
+
+  let best = candidates[0];
+  let bestDistance = Infinity;
+  for (const edge of candidates) {
+    const distance = distanceToEdgeSq(edge, point);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = edge;
+    }
+  }
+  return best;
+}
+
+function distanceToEdgeSq(edge: Edge, point: Vec3): number {
+  const span = sub(edge.v1.co, edge.v0.co);
+  const spanLengthSq = lengthSq(span);
+  if (spanLengthSq < EPSILON) return distanceSq(point, edge.v0.co);
+
+  const t = clamp(dot(sub(point, edge.v0.co), span) / spanLengthSq, 0, 1);
+  return distanceSq(point, addScaled(edge.v0.co, span, t));
 }
 
 /** Flood-fills the selection across connected geometry. */

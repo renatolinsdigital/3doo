@@ -1,6 +1,6 @@
 import { useShallow } from 'zustand/react/shallow';
 
-import { hasAdjacentFaces } from '@kernel/index';
+import { canLoopCut, hasAdjacentFaces } from '@kernel/index';
 
 import type { SceneObject, SceneStats } from './types';
 import { type EditorStore, useEditorStore } from './useEditorStore';
@@ -35,6 +35,26 @@ export function useFaceLoopAvailable(): boolean {
 
     const faces = object.mesh.selectedFaces();
     return faces.length >= 2 && hasAdjacentFaces(object.mesh, faces);
+  });
+}
+
+/**
+ * Whether the edge a loop cut would start from has a quad ring to run along.
+ *
+ * The operator cuts across `selectedEdges()[0]`, so that is the edge asked
+ * about here. Cheap the way `useFaceLoopAvailable` is: only the faces on the
+ * edge itself are read, never the ring the cut would walk.
+ */
+export function useLoopCutAvailable(): boolean {
+  return useEditorStore((state) => {
+    void state.meshVersion;
+
+    if (state.mode !== 'edit') return false;
+    const object = selectActiveObject(state);
+    if (!object) return false;
+
+    const [edge] = object.mesh.selectedEdges();
+    return edge !== undefined && canLoopCut(object.mesh, edge);
   });
 }
 

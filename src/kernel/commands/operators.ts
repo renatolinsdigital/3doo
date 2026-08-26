@@ -22,6 +22,7 @@ import {
   isDissolvableEdge,
   isDissolvableVert,
   limitedDissolve,
+  canLoopCut,
   loopCut,
   medianPoint,
   mergeByDistance,
@@ -177,6 +178,14 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     const edges = mesh.selectedEdges();
     const start = edges[0];
     if (!start) return { status: 'Select an edge to cut across' };
+    // Refused before anything is touched: the deselect below would otherwise
+    // cost the user the edge they picked in exchange for a cut that never
+    // happened.
+    if (!canLoopCut(mesh, start)) {
+      return {
+        status: 'No quad ring runs across that edge — the faces beside it are triangles or n-gons',
+      };
+    }
 
     const result = loopCut(mesh, start, {
       cuts: Math.round(readNumber(params, 'cuts', 1)),

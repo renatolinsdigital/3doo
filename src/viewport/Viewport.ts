@@ -9,6 +9,7 @@ import {
   type Vec3,
   axisVector,
   centroid,
+  faceLoopAtClick,
   inverseTransformDirection,
   inverseTransformPoint,
   medianPoint,
@@ -25,10 +26,23 @@ import type { CursorSnapTargets, SceneObject } from '@store/types';
 
 import { CameraController, MAX_ORBIT_DISTANCE } from './CameraController';
 import { ViewportGrid } from './grid';
-import { type BoxSelectRect, pickElement, pickInRectangle } from './picking';
+import { type MarqueeLayer, createMarqueeLayer, drawMarquee, hideMarquee } from './marquee';
+import {
+  type Marquee,
+  type Region,
+  marqueeBounds,
+  marqueeShape,
+  pickElement,
+  pickInRegion,
+  pickObjectsInRegion,
+  regionForShape,
+} from './picking';
 
 /** Beyond this multiple of the max zoom, the scene reads as empty rather than distant. */
 const VIEW_LOST_DISTANCE = MAX_ORBIT_DISTANCE * 0.45;
+
+/** Minimum gap between recorded lasso points, in pixels. */
+const LASSO_POINT_SPACING = 6;
 
 /** How long freshly created vertices stay flagged in the viewport. */
 const RECENT_VERTS_MS = 1600;
@@ -155,6 +169,10 @@ export class Viewport {
 
   private dragStart: THREE.Vector2 | null = null;
   private dragCurrent: THREE.Vector2 | null = null;
+  /** Every point a lasso drag has passed through, in canvas pixels. */
+  private dragPath: THREE.Vector2[] = [];
+  /** The overlay's SVG shapes, built on first use. */
+  private shapeLayer: MarqueeLayer | null = null;
   private gizmoBaseline: GizmoBaseline | null = null;
   /** Ids of the selected, unlocked objects a group gizmo drag in object mode applies to. */
   private transformGroup: string[] = [];
@@ -1338,6 +1356,7 @@ export class Viewport {
 
     this.dragStart = this.pointerPosition(event);
     this.dragCurrent = this.dragStart.clone();
+    this.dragPath = [this.dragStart.clone()];
   };
 
   private handlePointerMove = (event: PointerEvent): void => {
@@ -1357,32 +1376,47 @@ export class Viewport {
     if (!this.dragStart) return;
 
     this.dragCurrent = this.pointerPosition(event);
-    this.drawSelectionRectangle();
+    // Thinned as it is drawn: a pointer event per pixel would leave a lasso
+    // thousands of points long, and every one of them is a segment the
+    // crossing test walks for every element in the mesh.
+    const last = this.dragPath[this.dragPath.length - 1];
+    if (!last || last.distanceTo(this.dragCurrent) >= LASSO_POINT_SPACING) {
+      this.dragPath.push(this.dragCurrent.clone());
+    }
+    this.drawSelectionShape();
   };
 
   private handlePointerUp = (event: PointerEvent): void => {
     const wasNavigating = this.controls.isNavigating;
     this.controls.onPointerUp(event);
-    if (wasNavigating) return;
-    if (!this.dragStart || !this.dragCurrent) return;
 
     const start = this.dragStart;
     const end = this.dragCurrent;
+    const path = this.dragPath;
+    // Cleared before either way out below: a drag the camera took over halfway
+    // through never reaches the selection, and used to leave its marquee on
+    // screen until something else drew over it.
     this.dragStart = null;
     this.dragCurrent = null;
-    this.overlay.style.display = 'none';
+    this.dragPath = [];
+    this.hideSelectionShape();
 
-    const isBox = start.distanceTo(end) > 4;
-    if (isBox) {
-      this.boxSelect(
-        {
-          minX: Math.min(start.x, end.x),
-          minY: Math.min(start.y, end.y),
-          maxX: Math.max(start.x, end.x),
-          maxY: Math.max(start.y, end.y),
-        },
-        event.shiftKey,
-      );
+    if (wasNavigating || !start || !end) return;
+
+    // Under a few pixels the drag is a click with a shaky hand, whatever shape
+    // it drew: a lasso that small encloses nothing anyone aimed at.
+    if (start.distanceTo(end) > 4) {
+      // The release point closes the lasso: thinning may have dropped it, and
+      // it is the one point the user was certainly looking at.
+      const shape = useEditorStore.getState().selectShape;
+      const points = [...path, end];
+      const region = regionForShape(shape, start, end, points);
+
+      if (useEditorStore.getState().mode === 'object') {
+        this.objectRegionSelect(region, marqueeShape(shape, start, end, points), event.shiftKey);
+      } else {
+        this.regionSelect(region, event.shiftKey);
+      }
       return;
     }
 
@@ -1504,17 +1538,21 @@ export class Viewport {
     return new THREE.Vector2(event.clientX - rect.left, event.clientY - rect.top);
   }
 
-  private drawSelectionRectangle(): void {
+  private drawSelectionShape(): void {
     if (!this.dragStart || !this.dragCurrent) return;
     if (this.dragStart.distanceTo(this.dragCurrent) < 4) return;
 
-    const minX = Math.min(this.dragStart.x, this.dragCurrent.x);
-    const minY = Math.min(this.dragStart.y, this.dragCurrent.y);
-    this.overlay.style.display = 'block';
-    this.overlay.style.left = `${minX}px`;
-    this.overlay.style.top = `${minY}px`;
-    this.overlay.style.width = `${Math.abs(this.dragCurrent.x - this.dragStart.x)}px`;
-    this.overlay.style.height = `${Math.abs(this.dragCurrent.y - this.dragStart.y)}px`;
+    const shape = useEditorStore.getState().selectShape;
+    this.shapeLayer ??= createMarqueeLayer(this.overlay);
+    drawMarquee(
+      this.overlay,
+      this.shapeLayer,
+      marqueeShape(shape, this.dragStart, this.dragCurrent, this.dragPath),
+    );
+  }
+
+  private hideSelectionShape(): void {
+    hideMarquee(this.overlay, this.shapeLayer);
   }
 
   private updateRaycaster(pointer: THREE.Vector2): void {
@@ -1566,21 +1604,52 @@ export class Viewport {
     applySelection(object, state.selectMode, [result.elementId], {
       additive,
       loopSelect,
+      point: result.point,
     });
     object.mesh.flushSelection(state.selectMode);
     state.touchMesh();
   }
 
-  private boxSelect(rect: BoxSelectRect, additive: boolean): void {
+  /**
+   * Objects a region drag touched, in object mode.
+   *
+   * Touching is the whole test: any part of an object inside the region takes
+   * it, which is what `pickObjectsInRegion` reads off the geometry on screen.
+   * The ray covers the one case that geometry cannot — a region small enough to
+   * sit inside a single face, touching an object without reaching an edge of it.
+   */
+  private objectRegionSelect(region: Region, marquee: Marquee, additive: boolean): void {
+    const state = useEditorStore.getState();
+    const entries = state.objects
+      .filter((object) => object.visible)
+      .map((object) => ({ id: object.id, view: this.views.get(object.id) }))
+      .filter((entry): entry is { id: string; view: ObjectView } => entry.view !== undefined);
+
+    const size = { width: this.canvas.clientWidth, height: this.canvas.clientHeight };
+    const bounds = marqueeBounds(marquee);
+    const hits = pickObjectsInRegion(entries, region, bounds, this.camera, size);
+
+    const centre = new THREE.Vector2((bounds.minX + bounds.maxX) / 2, (bounds.minY + bounds.maxY) / 2);
+    if (region.contains(centre)) {
+      this.updateRaycaster(centre);
+      const targets = entries.map((entry) => entry.view.pickTarget);
+      const objectId = this.raycaster.intersectObjects(targets, false)[0]?.object.userData.objectId;
+      if (typeof objectId === 'string' && !hits.includes(objectId)) hits.push(objectId);
+    }
+
+    state.selectObjects(hits, additive);
+  }
+
+  private regionSelect(region: Region, additive: boolean): void {
     const state = useEditorStore.getState();
     const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
     const view = object ? this.views.get(object.id) : undefined;
     if (state.mode !== 'edit' || !object || !view) return;
 
-    const hits = pickInRectangle(
+    const hits = pickInRegion(
       view,
       state.selectMode,
-      rect,
+      region,
       this.camera,
       { width: this.canvas.clientWidth, height: this.canvas.clientHeight },
       object.mesh,
@@ -1775,10 +1844,12 @@ function applySelection(
   object: SceneObject,
   mode: SelectMode,
   ids: readonly number[],
-  options: { additive: boolean; loopSelect: boolean },
+  options: { additive: boolean; loopSelect: boolean; point?: Vec3 },
 ): void {
   const mesh = object.mesh;
-  if (!options.additive && !options.loopSelect) mesh.deselectAll();
+  // Alt alone replaces the selection with the loop, Shift adds to it: Blender's
+  // reading, and what keeps repeated Shift+Alt clicks stacking loops up.
+  if (!options.additive) mesh.deselectAll();
 
   for (const id of ids) {
     if (mode === 'vertex') {
@@ -1799,7 +1870,15 @@ function applySelection(
       }
     } else {
       const face = mesh.faces.get(id);
-      if (face) face.selected = options.additive ? !face.selected : true;
+      if (!face) continue;
+      const loop = options.loopSelect ? faceLoopAtClick(mesh, face, options.point) : [];
+      // Empty at a triangle or an n-gon: nothing to run a loop along, so the
+      // click falls back to picking the one face.
+      if (loop.length > 0) {
+        for (const member of loop) member.selected = true;
+      } else {
+        face.selected = options.additive ? !face.selected : true;
+      }
     }
   }
 }

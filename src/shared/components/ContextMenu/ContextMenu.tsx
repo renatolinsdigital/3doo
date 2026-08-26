@@ -9,6 +9,8 @@ export interface ContextMenuItem {
   label: string;
   hint?: string;
   disabled?: boolean;
+  /** The choice already in force, for a menu that picks one of a set. */
+  current?: boolean;
   onSelect: () => void;
 }
 
@@ -104,7 +106,10 @@ function ContextMenuButton({ item, onClose }: { item: ContextMenuItem; onClose: 
     <button
       type="button"
       role="menuitem"
-      className="context-menu__item"
+      className={`context-menu__item${item.current ? ' context-menu__item--current' : ''}`}
+      // Marked the way the outliner marks the active row, rather than with a
+      // glyph in the label: one reading for "this is the one you are on".
+      aria-current={item.current ? 'true' : undefined}
       // Disabled entries stay in place and keep their hint, which is what says
       // why the click found nothing to snap to.
       aria-disabled={item.disabled || undefined}

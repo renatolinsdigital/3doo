@@ -92,6 +92,9 @@ export interface SceneSlice {
     options?: { touchGeometry?: boolean; status?: string },
   ) => void;
   setActiveObject: (id: string | null, additive?: boolean) => void;
+  deselectObject: (id: string) => void;
+  selectObjects: (ids: readonly string[], additive?: boolean) => void;
+  clearSelection: () => void;
   selectAllObjects: () => void;
   renameObject: (id: string, name: string) => void;
   toggleObjectVisibility: (id: string) => void;
@@ -101,8 +104,10 @@ export interface SceneSlice {
   duplicateSelected: (linked?: boolean) => void;
   mergeSelected: () => void;
   separateLooseParts: () => void;
-  deleteSelected: () => void;
-  applyTransformToSelected: () => void;
+  /** Deletes the selection, or the objects named — the outliner's row menu names one. */
+  deleteSelected: (ids?: readonly string[]) => void;
+  /** Bakes the selection's transforms, or those of the objects named. */
+  applyTransformToSelected: (ids?: readonly string[]) => void;
   setObjectTransform: (id: string, transform: Partial<SceneObject['transform']>) => void;
   setObjectTransforms: (
     patches: { id: string; transform: Partial<SceneObject['transform']> }[],
@@ -275,6 +280,76 @@ export const createSceneSlice: StateCreator<
     // say so on the click rather than letting the user find out on a failed edit.
     const object = get().objects.find((candidate) => candidate.id === id);
     if (object?.locked) get().noteLockedAttempt(id);
+  },
+
+  /**
+   * Selects a set of objects at once, for a region drag in object mode.
+   *
+   * The last one named becomes active, the way the last one clicked would.
+   * Additive keeps what was already selected and adds to it, and a drag that
+   * caught nothing clears the selection rather than leaving the last one
+   * standing — the same as clicking empty space.
+   */
+  selectObjects: (ids, additive = false) => {
+    set((state) => {
+      const selected = additive
+        ? [...state.selectedObjectIds, ...ids.filter((id) => !state.selectedObjectIds.includes(id))]
+        : [...ids];
+
+      return {
+        selectedObjectIds: selected,
+        activeObjectId: ids[ids.length - 1] ?? (additive ? state.activeObjectId : null),
+      };
+    });
+  },
+
+  /**
+   * Drops one object from the selection.
+   *
+   * `setActiveObject` with `additive` toggles the same way, but leaves what it
+   * turned off as the active object, and the outliner would go on drawing a
+   * deselected row as the active one. Whatever is left selected takes over
+   * instead.
+   */
+  deselectObject: (id) => {
+    set((state) => {
+      if (!state.selectedObjectIds.includes(id)) return {};
+
+      const selected = state.selectedObjectIds.filter((candidate) => candidate !== id);
+      return {
+        selectedObjectIds: selected,
+        activeObjectId:
+          state.activeObjectId === id
+            ? (selected[selected.length - 1] ?? null)
+            : state.activeObjectId,
+      };
+    });
+  },
+
+  /**
+   * Empties the selection in whichever mode is live, and stands the gizmo down.
+   *
+   * Falling back to the select tool is what removes the handles: the viewport
+   * attaches its gizmo to whatever the active tool asks for, so clearing the
+   * selection alone would leave a move or rotate tool armed and the handles
+   * back the moment anything was picked again.
+   *
+   * No history entry, unlike Alt+A: Escape is the way out of a state, and
+   * filling undo with the times someone reached for it would bury the edits
+   * they actually want back.
+   */
+  clearSelection: () => {
+    const { mode, objects, activeObjectId } = get();
+
+    if (mode === 'edit') {
+      const object = objects.find((candidate) => candidate.id === activeObjectId);
+      object?.mesh.deselectAll();
+      set((state) => ({ meshVersion: state.meshVersion + 1 }));
+    } else {
+      set({ selectedObjectIds: [], activeObjectId: null });
+    }
+
+    set({ activeTool: 'select', status: 'Deselected all' });
   },
 
   /** The object-mode equivalent of "select all" in edit mode. */
@@ -503,21 +578,23 @@ export const createSceneSlice: StateCreator<
     }));
   },
 
-  deleteSelected: () => {
-    const { selectedObjectIds } = get();
-    if (selectedObjectIds.length === 0) return;
+  deleteSelected: (ids) => {
+    const targetIds = ids ?? get().selectedObjectIds;
+    if (targetIds.length === 0) return;
     get().recordHistory('Delete object');
 
     set((state) => {
-      const remaining = state.objects.filter(
-        (object) => !selectedObjectIds.includes(object.id),
-      );
+      const remaining = state.objects.filter((object) => !targetIds.includes(object.id));
       return {
         objects: remaining,
-        selectedObjectIds: [],
-        activeObjectId: remaining[remaining.length - 1]?.id ?? null,
+        // What survived the delete keeps its place in the selection: naming one
+        // object from the outliner leaves the rest of a selection alone.
+        selectedObjectIds: state.selectedObjectIds.filter((id) => !targetIds.includes(id)),
+        activeObjectId: targetIds.includes(state.activeObjectId ?? '')
+          ? (remaining[remaining.length - 1]?.id ?? null)
+          : state.activeObjectId,
         meshVersion: state.meshVersion + 1,
-        status: `Deleted ${selectedObjectIds.length} object(s)`,
+        status: `Deleted ${targetIds.length} object(s)`,
       };
     });
   },
@@ -530,11 +607,10 @@ export const createSceneSlice: StateCreator<
    * mesh rather than the world matrix — modifier thickness, bevel width, export
    * — then works on the shape you actually see.
    */
-  applyTransformToSelected: () => {
+  applyTransformToSelected: (ids) => {
     const { objects, selectedObjectIds } = get();
-    const targets = objects.filter(
-      (object) => selectedObjectIds.includes(object.id) && !object.locked,
-    );
+    const targetIds = ids ?? selectedObjectIds;
+    const targets = objects.filter((object) => targetIds.includes(object.id) && !object.locked);
     if (targets.length === 0) return;
 
     // A linked duplicate shares its mesh instance, so baking one object's

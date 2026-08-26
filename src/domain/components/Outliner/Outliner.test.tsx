@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -143,6 +143,106 @@ describe('Outliner', () => {
       act(() => useEditorStore.setState({ lockedAttempt: { objectId: 'someone-else', token: 1 } }));
 
       expect(lockBtn.className).not.toMatch(/tremble/);
+    });
+  });
+
+  describe('row menu', () => {
+    const openMenuOn = async (name: string) => {
+      const row = screen.getByRole('button', { name }).closest('li') as HTMLElement;
+      await userEvent.pointer({ keys: '[MouseRight]', target: row });
+    };
+
+    it('opens on right-click, naming the row it was opened on', async () => {
+      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cylinder');
+      render(<Outliner />);
+
+      await openMenuOn('CYLINDER');
+
+      const menu = screen.getByRole('menu', { name: 'CYLINDER' });
+      // Adding the cylinder selected it, so its row offers the way back out.
+      for (const entry of ['DESELECT', 'RENAME', 'APPLY TRANSFORMS', 'DELETE']) {
+        expect(within(menu).getByRole('menuitem', { name: entry })).toBeInTheDocument();
+      }
+    });
+
+    it('selects the object it was opened on', async () => {
+      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cylinder');
+      render(<Outliner />);
+      const box = useEditorStore.getState().objects[0];
+
+      await openMenuOn('BOX');
+      await userEvent.click(screen.getByRole('menuitem', { name: 'SELECT' }));
+
+      expect(useEditorStore.getState().activeObjectId).toBe(box.id);
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    });
+
+    it('offers the way out of the selection instead, once selected', async () => {
+      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cylinder');
+      act(() => useEditorStore.getState().selectAllObjects());
+      render(<Outliner />);
+      const [box, cylinder] = useEditorStore.getState().objects;
+
+      await openMenuOn('BOX');
+      await userEvent.click(screen.getByRole('menuitem', { name: 'DESELECT' }));
+
+      // Only the row the menu was opened on leaves the selection.
+      expect(useEditorStore.getState().selectedObjectIds).toEqual([cylinder.id]);
+      expect(useEditorStore.getState().activeObjectId).not.toBe(box.id);
+    });
+
+    it('starts a rename in place', async () => {
+      useEditorStore.getState().addPrimitive('box');
+      render(<Outliner />);
+
+      await openMenuOn('BOX');
+      await userEvent.click(screen.getByRole('menuitem', { name: 'RENAME' }));
+
+      expect(screen.getByDisplayValue('BOX')).toBeInTheDocument();
+    });
+
+    it('deletes only the row it was opened on', async () => {
+      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cylinder');
+      act(() => useEditorStore.getState().selectAllObjects());
+      render(<Outliner />);
+
+      await openMenuOn('BOX');
+      await userEvent.click(screen.getByRole('menuitem', { name: 'DELETE' }));
+
+      // The whole scene was selected: the menu names one row, not the selection.
+      expect(useEditorStore.getState().objects.map((object) => object.name)).toEqual(['CYLINDER']);
+    });
+
+    it('bakes the transform of the row it was opened on', async () => {
+      useEditorStore.getState().addPrimitive('box');
+      render(<Outliner />);
+      const box = useEditorStore.getState().objects[0];
+      act(() =>
+        useEditorStore.getState().setObjectTransform(box.id, { scale: { x: 2, y: 2, z: 2 } }),
+      );
+
+      await openMenuOn('BOX');
+      await userEvent.click(screen.getByRole('menuitem', { name: 'APPLY TRANSFORMS' }));
+
+      expect(useEditorStore.getState().objects[0].transform.scale).toEqual({ x: 1, y: 1, z: 1 });
+    });
+
+    it('will not bake a locked object', async () => {
+      useEditorStore.getState().addPrimitive('box');
+      render(<Outliner />);
+      const box = useEditorStore.getState().objects[0];
+      act(() => useEditorStore.getState().toggleObjectLock(box.id));
+
+      await openMenuOn('BOX');
+
+      expect(screen.getByRole('menuitem', { name: 'APPLY TRANSFORMS' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
     });
   });
 });

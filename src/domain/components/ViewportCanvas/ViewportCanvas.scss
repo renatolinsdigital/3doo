@@ -21,5 +21,28 @@
     border: var(--border-thin) dashed var(--cyan);
     background: rgb(61 224 208 / 12%);
     pointer-events: none;
+
+    // A circle or a lasso is drawn in SVG rather than being the div itself: the
+    // reset forbids a border-radius anywhere, and no radius traces a lasso. The
+    // div stretches over the canvas and gets out of the way.
+    &--drawn {
+      border: none;
+      background: none;
+    }
+  }
+
+  &__shape {
+    width: 100%;
+    height: 100%;
+
+    circle,
+    polygon {
+      fill: rgb(61 224 208 / 12%);
+      stroke: var(--cyan);
+      // Matches --border-thin on the rectangle marquee, so the three shapes
+      // read as one tool.
+      stroke-width: 2;
+      stroke-dasharray: 4 4;
+    }
   }
 }

@@ -135,6 +135,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Rename, hide, lock',
             'All in the OUTLINER, per row, alongside the visibility and lock toggles.',
           ],
+          [
+            'The row menu',
+            'Right-click a row in the OUTLINER for SELECT, RENAME, APPLY TRANSFORMS and DELETE. The first entry reads DESELECT on a row that is already selected, and drops just that row from the selection. Every entry acts on the row it was opened on — the name in the header — and not on whatever else happens to be selected.',
+          ],
         ],
       },
     ],
@@ -153,13 +157,20 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         head: ['SELECTION', 'HOW'],
         rows: [
           ['One element', 'Click it. Shift+click to add to the selection.'],
-          ['A rectangle of elements', 'Drag across empty space to box-select.'],
+          [
+            'A region of elements',
+            'Drag across empty space. The region is a rectangle until you say otherwise: V steps the select tool through SQUARE, CIRCLE — dragged out from its centre, not corner to corner — and LASSO, drawn freehand around what you want. Clicking the tool in the rail offers the same three, and its icon shows which one a drag would draw. In object mode the same drag takes every object it touches, whether it covers the whole thing or clips one corner.',
+          ],
           ['An edge loop', 'Alt+click an edge. The loop runs on until it meets a pole.'],
           [
             'A face loop',
-            'Select two faces that share an edge, then Alt+L. The pair is what names which of the loops through them you meant, so two faces that do not touch name nothing — the button stays unavailable until they do.',
+            'Alt+click a face, near the edge you want the loop to run across — that edge is what says which of the two loops through the face you meant, so point at the side you are heading for rather than the middle. Shift+Alt+click adds a loop instead of replacing the selection, so bands stack up one click at a time. Alt+L still names one from two faces already picked.',
           ],
           ['Everything / nothing', 'A selects all, Alt+A deselects all, Ctrl+I inverts.'],
+          [
+            'Out of a selection',
+            'Esc clears it — objects in object mode, vertices, edges or faces in edit mode — and puts the transform gizmo away with it. It leaves no undo entry of its own.',
+          ],
           [
             'Wider or narrower',
             '] grows the selection to the neighbouring ring, [ shrinks it back from its border.',
@@ -199,7 +210,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Loop cut (Ctrl+R)',
-            'Inserts edge loops across the quad ring the selected edge passes through. The new loop is left selected, ready to scale or move.',
+            'Inserts edge loops across the quad ring the selected edge passes through. The new loop is left selected, ready to scale or move. Quads are what the ring is made of, so an edge with triangles or an n-gon on both sides — every edge of a cone — has nothing to cut across, and the button stays unavailable until one does.',
           ],
           [
             'Subdivide (Ctrl+D)',

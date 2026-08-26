@@ -137,7 +137,7 @@ export function AddPanel() {
             <Button
               label="APPLY TRANSFORM"
               hint="Bake rotation and scale into the mesh so modifiers and exports see the real shape (Ctrl+A)"
-              onClick={applyTransform}
+              onClick={() => applyTransform()}
             />
             <Button
               label="RECALCULATE NORMALS"

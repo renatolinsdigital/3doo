@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 
-import { Panel } from '@shared/components';
+import { type ContextMenuEntry, ContextMenu, Panel } from '@shared/components';
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
 import { useEditorStore } from '@store/index';
 import type { SceneObject } from '@store/types';
@@ -19,8 +20,57 @@ export function Outliner() {
   const renameObject = useEditorStore((state) => state.renameObject);
   const toggleVisibility = useEditorStore((state) => state.toggleObjectVisibility);
   const toggleLock = useEditorStore((state) => state.toggleObjectLock);
+  const deselectObject = useEditorStore((state) => state.deselectObject);
+  const deleteObjects = useEditorStore((state) => state.deleteSelected);
+  const applyTransform = useEditorStore((state) => state.applyTransformToSelected);
 
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ objectId: string; x: number; y: number } | null>(null);
+
+  const menuObject = menu ? (objects.find((object) => object.id === menu.objectId) ?? null) : null;
+
+  // Every entry names the row the menu was opened on rather than the selection,
+  // which is what the menu's header says and what right-clicking one row of
+  // several selected ones reads as.
+  const menuEntries = (object: SceneObject): ContextMenuEntry[] => [
+    // One entry either way: what a selected row offers is the way back out of
+    // the selection, which is the only thing selecting it again could mean.
+    selectedObjectIds.includes(object.id)
+      ? {
+          id: 'select',
+          label: 'DESELECT',
+          hint: 'Drop this object from the selection, leaving the rest of it alone',
+          onSelect: () => deselectObject(object.id),
+        }
+      : {
+          id: 'select',
+          label: 'SELECT',
+          hint: 'Make this the active object, dropping anything else selected',
+          onSelect: () => setActiveObject(object.id, false),
+        },
+    {
+      id: 'rename',
+      label: 'RENAME',
+      hint: 'Edit the name in place (double-click it)',
+      onSelect: () => setEditingId(object.id),
+    },
+    { id: 'rule', separator: true },
+    {
+      id: 'apply-transform',
+      label: 'APPLY TRANSFORMS',
+      disabled: object.locked,
+      hint: object.locked
+        ? 'Locked objects cannot be edited — unlock it first'
+        : 'Bake rotation and scale into the mesh so modifiers and exports see the real shape (Ctrl+A)',
+      onSelect: () => applyTransform([object.id]),
+    },
+    {
+      id: 'delete',
+      label: 'DELETE',
+      hint: 'Remove this object from the scene (X)',
+      onSelect: () => deleteObjects([object.id]),
+    },
+  ];
 
   // Linked objects are one mesh behind several rows, which is otherwise
   // indistinguishable from a plain copy: the count is what says so.
@@ -51,10 +101,25 @@ export function Outliner() {
               onCancelRename={() => setEditingId(null)}
               onToggleVisibility={() => toggleVisibility(object.id)}
               onToggleLock={() => toggleLock(object.id)}
+              onOpenMenu={(x, y) => setMenu({ objectId: object.id, x, y })}
             />
           ))}
         </ul>
       )}
+      {menu && menuObject
+        ? // Portalled out of the panel: its body scrolls and clips, so a menu
+          // drawn inside it would be cut off at the first row near an edge.
+          createPortal(
+            <ContextMenu
+              x={menu.x}
+              y={menu.y}
+              label={menuObject.name}
+              entries={menuEntries(menuObject)}
+              onClose={() => setMenu(null)}
+            />,
+            document.body,
+          )
+        : null}
     </Panel>
   );
 }
@@ -74,6 +139,8 @@ interface OutlinerRowProps {
   onCancelRename: () => void;
   onToggleVisibility: () => void;
   onToggleLock: () => void;
+  /** Opens the row's menu at the pointer, in client coordinates. */
+  onOpenMenu: (x: number, y: number) => void;
 }
 
 function OutlinerRow({
@@ -89,9 +156,10 @@ function OutlinerRow({
   onCancelRename,
   onToggleVisibility,
   onToggleLock,
+  onOpenMenu,
 }: OutlinerRowProps) {
   const nameTooltip = useTooltipTrigger(
-    'Click to select, Shift+click to add to selection, double-click to rename',
+    'Click to select, Shift+click to add to selection, double-click to rename, right-click for more',
   );
   const visibilityTooltip = useTooltipTrigger(
     object.visible ? 'Hide this object in the viewport' : 'Show this object in the viewport',
@@ -125,6 +193,10 @@ function OutlinerRow({
       ]
         .filter(Boolean)
         .join(' ')}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onOpenMenu(event.clientX, event.clientY);
+      }}
     >
       {isEditing ? (
         <input

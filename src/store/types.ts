@@ -14,6 +14,9 @@ export type EditorMode = 'object' | 'edit';
 
 export type ShadingMode = 'solid' | 'wireframe' | 'solidWire' | 'xray' | 'matcap';
 
+/** What a selection drag draws: the region it sweeps is what gets picked. */
+export type SelectShape = 'box' | 'circle' | 'lasso';
+
 export type ToolId =
   | 'select'
   | 'move'

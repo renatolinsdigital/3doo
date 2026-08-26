@@ -458,6 +458,137 @@ describe('editor store', () => {
     expect(activeObject().mesh === original.mesh).toBe(true);
   });
 
+  it('steps the select tool through its region shapes', () => {
+    store().setActiveTool('select');
+
+    expect(store().selectShape).toBe('box');
+    store().cycleSelectShape();
+    expect(store().selectShape).toBe('circle');
+    store().cycleSelectShape();
+    expect(store().selectShape).toBe('lasso');
+    store().cycleSelectShape();
+    expect(store().selectShape).toBe('box');
+  });
+
+  it('picks the select tool up before it starts changing shapes', () => {
+    store().setActiveTool('move');
+    store().setSelectShape('circle');
+    store().setActiveTool('move');
+
+    store().cycleSelectShape();
+
+    // Arriving from another tool, V should not also change what a drag draws.
+    expect(store().activeTool).toBe('select');
+    expect(store().selectShape).toBe('circle');
+
+    store().cycleSelectShape();
+    expect(store().selectShape).toBe('lasso');
+  });
+
+  it('selects every object a region drag touched', () => {
+    store().addPrimitive('box');
+    store().addPrimitive('cylinder');
+    store().addPrimitive('uvSphere');
+    const [box, cylinder, sphere] = store().objects;
+
+    store().selectObjects([box.id, cylinder.id]);
+
+    expect(store().selectedObjectIds).toEqual([box.id, cylinder.id]);
+    // The last one named goes active, the way the last one clicked would.
+    expect(store().activeObjectId).toBe(cylinder.id);
+    expect(store().selectedObjectIds).not.toContain(sphere.id);
+  });
+
+  it('adds to the selection when a region drag holds shift', () => {
+    store().addPrimitive('box');
+    store().addPrimitive('cylinder');
+    const [box, cylinder] = store().objects;
+    store().selectObjects([box.id]);
+
+    store().selectObjects([cylinder.id], true);
+
+    expect(store().selectedObjectIds).toEqual([box.id, cylinder.id]);
+  });
+
+  it('clears the selection when a region drag touched nothing', () => {
+    store().addPrimitive('box');
+    store().selectAllObjects();
+
+    store().selectObjects([]);
+
+    // The same as clicking empty space, rather than leaving the last one behind.
+    expect(store().selectedObjectIds).toEqual([]);
+    expect(store().activeObjectId).toBeNull();
+  });
+
+  it('clears the object selection and stands the gizmo down', () => {
+    store().addPrimitive('box');
+    store().addPrimitive('cylinder');
+    store().selectAllObjects();
+    store().setActiveTool('move');
+
+    store().clearSelection();
+
+    expect(store().selectedObjectIds).toEqual([]);
+    expect(store().activeObjectId).toBeNull();
+    // The viewport hangs its gizmo off the active tool, so the tool is what
+    // has to go back for the handles to.
+    expect(store().activeTool).toBe('select');
+  });
+
+  it('clears the mesh selection in edit mode, keeping the object', () => {
+    store().addPrimitive('box');
+    const object = activeObject();
+    store().setMode('edit');
+    store().exec('selectAll', {}, 'Select all');
+    store().setActiveTool('rotate');
+
+    store().clearSelection();
+
+    expect(object.mesh.selectedVerts()).toEqual([]);
+    expect(store().activeObjectId).toBe(object.id);
+    expect(store().activeTool).toBe('select');
+  });
+
+  it('leaves undo alone when a selection is cleared', () => {
+    store().addPrimitive('box');
+    const before = store().objects.length;
+
+    store().clearSelection();
+    store().undo();
+
+    // Escape is a way out of a state, not an edit: the undo behind it is still
+    // the one that added the box.
+    expect(store().objects).toHaveLength(before - 1);
+  });
+
+  it('hands the active object on when it is deselected', () => {
+    store().addPrimitive('box');
+    store().addPrimitive('cylinder');
+    store().selectAllObjects();
+    const [box, cylinder] = store().objects;
+    useEditorStore.setState({ activeObjectId: cylinder.id });
+
+    store().deselectObject(cylinder.id);
+
+    // Left active, a deselected object still draws as the active row and stays
+    // the target of everything that reads activeObjectId.
+    expect(store().selectedObjectIds).toEqual([box.id]);
+    expect(store().activeObjectId).toBe(box.id);
+  });
+
+  it('leaves the rest of the selection alone when one object is deselected', () => {
+    store().addPrimitive('box');
+    store().addPrimitive('cylinder');
+    store().selectAllObjects();
+    const [box] = store().objects;
+
+    store().deselectObject(box.id);
+    store().deselectObject(box.id);
+
+    expect(store().selectedObjectIds).toHaveLength(1);
+  });
+
   it('holds a linked duplicate on one mesh through an undo', () => {
     store().addPrimitive('box');
     store().setActiveObject(activeObject().id);

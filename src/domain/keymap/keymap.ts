@@ -142,6 +142,18 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
   { id: 'undo', key: 'z', ctrl: true, label: 'Undo', group: 'Edit' },
   { id: 'redo', key: 'z', ctrl: true, shift: true, label: 'Redo', group: 'Edit' },
 
+  {
+    id: 'selectTool',
+    key: 'v',
+    label: 'Select tool — press again for the next region shape',
+    group: 'Selection',
+  },
+  {
+    id: 'clearSelection',
+    key: 'escape',
+    label: 'Clear the selection and put the gizmo away',
+    group: 'Selection',
+  },
   { id: 'selectAll', key: 'a', label: 'Select all', group: 'Selection' },
   { id: 'deselectAll', key: 'a', alt: true, label: 'Deselect all', group: 'Selection' },
   { id: 'invertSelection', key: 'i', ctrl: true, label: 'Invert selection', group: 'Selection' },

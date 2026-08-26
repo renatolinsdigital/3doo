@@ -30,6 +30,12 @@
   color: var(--void);
   text-align: left;
 
+  // The choice in force, shaded like a selected row in the outliner. Hover
+  // still wins: it is a heavier selector, and the entry is still clickable.
+  &--current {
+    background: var(--bone-shade);
+  }
+
   &:hover:not([aria-disabled='true']) {
     background: var(--red);
     color: var(--bone);

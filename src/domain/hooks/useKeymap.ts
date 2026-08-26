@@ -170,6 +170,12 @@ export function useKeymap(): void {
           state.redo();
           break;
 
+        case 'selectTool':
+          state.cycleSelectShape();
+          break;
+        case 'clearSelection':
+          state.clearSelection();
+          break;
         case 'selectAll':
           if (state.mode === 'edit') state.exec('selectAll', {}, 'Select all');
           else state.selectAllObjects();
