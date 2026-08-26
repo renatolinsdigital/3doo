@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { Button, FieldRow, NumberField, Panel, Select, Toggle } from '@shared/components';
-import { useActiveSelectionCounts, useEditorStore } from '@store/index';
+import { useActiveSelectionCounts, useEditorStore, useFaceLoopAvailable } from '@store/index';
 
 import './OperationsPanel.scss';
 
@@ -38,6 +38,9 @@ export function OperationsPanel() {
   // Triangulate, tris-to-quads and merge-by-distance are absent on purpose:
   // each falls back to the whole mesh, so none of them is ever unavailable.
   const selection = useActiveSelectionCounts();
+  // Counts cannot answer this one: two faces that never touch are still two
+  // faces, and no loop runs through them.
+  const faceLoopAvailable = useFaceLoopAvailable();
 
   const [extrudeOffset, setExtrudeOffset] = useState(1);
   const [extrudeIndividual, setExtrudeIndividual] = useState(false);
@@ -217,12 +220,12 @@ export function OperationsPanel() {
         />
         <Button
           label="TRIANGULATE"
-          hint="Split every face into triangles"
+          hint="Split every face into triangles (Alt+T)"
           onClick={() => exec('triangulate', {}, 'Triangulate')}
         />
         <Button
           label="TRIS TO QUADS"
-          hint="Merge adjacent, near-coplanar triangle pairs back into quads"
+          hint="Merge adjacent, near-coplanar triangle pairs back into quads (Alt+J)"
           onClick={() => exec('trisToQuads', {}, 'Tris to quads')}
         />
       </FieldRow>
@@ -278,8 +281,8 @@ export function OperationsPanel() {
           disabled={selection.edges < 4}
           hint={
             selection.edges >= 4
-              ? 'Connect two open edge loops with a band of quads'
-              : 'Select two separate edge loops of matching length to bridge'
+              ? 'Connect two open edge loops with a band of quads (Alt+B)'
+              : 'Select two separate edge loops of matching length to bridge (Alt+B)'
           }
           onClick={() => exec('bridge', {}, 'Bridge')}
         />
@@ -288,8 +291,8 @@ export function OperationsPanel() {
           disabled={selection.verts === 0}
           hint={
             selection.verts > 0
-              ? 'Extend the selection to adjacent geometry'
-              : 'Select some geometry for the selection to grow out from'
+              ? 'Extend the selection to adjacent geometry (])'
+              : 'Select some geometry for the selection to grow out from (])'
           }
           onClick={() => exec('growSelection', {}, 'Grow selection')}
         />
@@ -298,20 +301,22 @@ export function OperationsPanel() {
           disabled={selection.verts === 0}
           hint={
             selection.verts > 0
-              ? 'Remove the border from the current selection'
-              : 'Nothing is selected for the selection to shrink back from'
+              ? 'Remove the border from the current selection ([)'
+              : 'Nothing is selected for the selection to shrink back from ([)'
           }
           onClick={() => exec('shrinkSelection', {}, 'Shrink selection')}
         />
         <Button
           label="FACE LOOP"
-          disabled={!faceMode || selection.faces < 2}
+          disabled={!faceLoopAvailable}
           hint={
             !faceMode
               ? 'Face loops run through faces — switch to face select mode (3)'
               : selection.faces < 2
-                ? 'Select two adjacent faces for the loop to run through'
-                : 'Extend the selection along the whole loop those faces sit in'
+                ? 'Select two adjacent faces for the loop to run through (Alt+L)'
+                : !faceLoopAvailable
+                  ? 'Those faces do not touch — a loop is named by two that share an edge (Alt+L)'
+                  : 'Extend the selection along the whole loop those faces sit in (Alt+L)'
           }
           onClick={() => exec('selectFaceLoop', {}, 'Select face loop')}
         />

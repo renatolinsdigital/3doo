@@ -47,6 +47,30 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
     group: 'Edit',
   },
   {
+    id: 'bridge',
+    key: 'b',
+    alt: true,
+    mode: 'edit',
+    label: 'Bridge two open edge loops with a band of quads',
+    group: 'Modelling',
+  },
+  {
+    id: 'triangulate',
+    key: 't',
+    alt: true,
+    mode: 'edit',
+    label: 'Triangulate every face',
+    group: 'Modelling',
+  },
+  {
+    id: 'trisToQuads',
+    key: 'j',
+    alt: true,
+    mode: 'edit',
+    label: 'Merge adjacent, near-coplanar triangle pairs back into quads',
+    group: 'Modelling',
+  },
+  {
     id: 'fill',
     key: 'f',
     label: 'Fill a boundary loop with a face',
@@ -121,13 +145,57 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
   { id: 'selectAll', key: 'a', label: 'Select all', group: 'Selection' },
   { id: 'deselectAll', key: 'a', alt: true, label: 'Deselect all', group: 'Selection' },
   { id: 'invertSelection', key: 'i', ctrl: true, label: 'Invert selection', group: 'Selection' },
+  {
+    id: 'selectFaceLoop',
+    key: 'l',
+    alt: true,
+    mode: 'edit',
+    label: 'Select the face loop running through two adjacent faces',
+    group: 'Selection',
+  },
+  // Brackets rather than Blender's Ctrl+NumPad +/-: half the keyboards this
+  // runs on have no numpad, and Ctrl with the +/- row is browser zoom, which
+  // preventDefault does not reliably hold back.
+  {
+    id: 'growSelection',
+    key: ']',
+    mode: 'edit',
+    label: 'Grow the selection to the neighbouring ring',
+    group: 'Selection',
+  },
+  {
+    id: 'shrinkSelection',
+    key: '[',
+    mode: 'edit',
+    label: 'Shrink the selection back from its border',
+    group: 'Selection',
+  },
 
-  { id: 'cursorToWorldOrigin', key: 'c', shift: true, label: 'Cursor to world origin', group: 'Cursor' },
-  { id: 'cursorToSelection', key: 'c', ctrl: true, shift: true, label: 'Cursor to selection', group: 'Cursor' },
+  {
+    id: 'cursorToWorldOrigin',
+    key: 'c',
+    shift: true,
+    label: 'Cursor to world origin',
+    group: 'Cursor',
+  },
+  {
+    id: 'cursorToSelection',
+    key: 'c',
+    ctrl: true,
+    shift: true,
+    label: 'Cursor to selection',
+    group: 'Cursor',
+  },
   { id: 'selectionToCursor', key: 'v', shift: true, label: 'Selection to cursor', group: 'Cursor' },
   // Ctrl rather than Shift: shifting a punctuation key changes the character
   // the browser reports, so `Shift+.` arrives as `>` and never matches.
-  { id: 'togglePivot', key: '.', ctrl: true, label: 'Toggle median / cursor pivot', group: 'Cursor' },
+  {
+    id: 'togglePivot',
+    key: '.',
+    ctrl: true,
+    label: 'Toggle median / cursor pivot',
+    group: 'Cursor',
+  },
 
   { id: 'frameSelected', key: '.', label: 'Frame selected', group: 'View' },
   { id: 'frameAll', key: 'home', label: 'Frame all', group: 'View' },
@@ -179,7 +247,9 @@ export function matchBinding(
     })
     .sort(
       (a, b) =>
-        Number(Boolean(b.ctrl)) + Number(Boolean(b.shift)) + Number(Boolean(b.alt)) -
+        Number(Boolean(b.ctrl)) +
+        Number(Boolean(b.shift)) +
+        Number(Boolean(b.alt)) -
         (Number(Boolean(a.ctrl)) + Number(Boolean(a.shift)) + Number(Boolean(a.alt))),
     );
 

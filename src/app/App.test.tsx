@@ -52,6 +52,23 @@ describe('App shell', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Added BOX');
   });
 
+  it('arms the move tool on the rail when a primitive is added', async () => {
+    render(<App />);
+
+    const rail = screen.getByRole('navigation', { name: 'Tools' });
+    expect(within(rail).getByRole('button', { name: 'Move' })).not.toHaveAttribute('aria-pressed');
+
+    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+
+    // The gizmo only draws for a transform tool, so this is what puts handles
+    // on the thing that was just added.
+    expect(within(rail).getByRole('button', { name: 'Move' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
   it('swaps the left panel when entering edit mode', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });

@@ -77,6 +77,48 @@ describe('keymap', () => {
     expect(redo && formatBinding(redo)).toBe('Ctrl + Shift + Z');
   });
 
+  it('binds the edit operations that had no key of their own', () => {
+    const edit = (key: string, modifiers: Partial<KeyboardEventInit> = {}) =>
+      matchBinding(keyEvent(key, modifiers), 'edit')?.id;
+
+    expect(edit('l', { altKey: true })).toBe('selectFaceLoop');
+    expect(edit(']')).toBe('growSelection');
+    expect(edit('[')).toBe('shrinkSelection');
+    expect(edit('b', { altKey: true })).toBe('bridge');
+    expect(edit('t', { altKey: true })).toBe('triangulate');
+    expect(edit('j', { altKey: true })).toBe('trisToQuads');
+  });
+
+  it('keeps the new Alt bindings clear of the plain keys they sit on', () => {
+    // Alt+J is tris-to-quads, J alone is still connect: `matchBinding` compares
+    // every modifier, so the two cannot shadow each other.
+    expect(matchBinding(keyEvent('j'), 'edit')?.id).toBe('connect');
+    expect(matchBinding(keyEvent('b', { ctrlKey: true }), 'edit')?.id).toBe('bevel');
+    expect(matchBinding(keyEvent('t'), 'edit')).toBeNull();
+    expect(matchBinding(keyEvent('l'), 'edit')).toBeNull();
+  });
+
+  it('leaves the new edit bindings out of object mode', () => {
+    for (const [key, modifiers] of [
+      ['l', { altKey: true }],
+      [']', {}],
+      ['[', {}],
+      ['b', { altKey: true }],
+    ] as const) {
+      expect(matchBinding(keyEvent(key, modifiers), 'object')).toBeNull();
+    }
+  });
+
+  it('stays off the browser shortcuts preventDefault cannot hold back', () => {
+    // Ctrl+T opens a tab and Ctrl with +/- is zoom, neither of which the page
+    // can suppress — which is why grow and shrink are on brackets and the
+    // clean-up operators are on Alt.
+    const reserved = DEFAULT_KEYMAP.filter(
+      (binding) => binding.ctrl && ['t', 'n', 'w', '+', '-', '='].includes(binding.key),
+    );
+    expect(reserved).toEqual([]);
+  });
+
   it('has no duplicate binding signatures within a mode', () => {
     const seen = new Set<string>();
     for (const binding of DEFAULT_KEYMAP) {

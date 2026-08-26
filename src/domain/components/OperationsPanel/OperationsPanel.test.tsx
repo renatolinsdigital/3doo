@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { dot } from '@kernel/index';
 import { TooltipHost } from '@shared/components';
 import { useEditorStore } from '@store/index';
 
@@ -91,18 +92,28 @@ describe('OperationsPanel', () => {
     expect(button('CONNECT')).not.toHaveAttribute('aria-disabled');
   });
 
-  it('offers a face loop only once two faces are selected in face mode', () => {
-    render(<OperationsPanel />);
-
+  /** Selects the two faces the given picker returns, in face mode. */
+  function selectFaces(pick: (mesh: ReturnType<typeof activeMesh>) => unknown[]) {
     act(() => {
       const mesh = activeMesh();
       mesh.deselectAll();
-      const [first, second] = [...mesh.faces.values()];
-      first.selected = true;
-      second.selected = true;
+      for (const face of pick(mesh) as { selected: boolean }[]) face.selected = true;
       mesh.flushSelection('face');
       useEditorStore.getState().setSelectMode('face');
       useEditorStore.getState().touchMesh();
+    });
+  }
+
+  it('offers a face loop once two faces that touch are selected', () => {
+    render(<OperationsPanel />);
+
+    selectFaces((mesh) => {
+      const [first] = [...mesh.faces.values()];
+      const neighbour = mesh
+        .faceEdges(first)
+        .flatMap((edge) => mesh.edgeFaces(edge))
+        .find((face) => face !== first);
+      return [first, neighbour];
     });
 
     expect(button('FACE LOOP')).not.toHaveAttribute('aria-disabled');
@@ -111,6 +122,22 @@ describe('OperationsPanel', () => {
     // of faces to read it from.
     act(() => {
       useEditorStore.getState().setSelectMode('edge');
+    });
+
+    expect(button('FACE LOOP')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('refuses two faces that do not touch, however many are selected', () => {
+    render(<OperationsPanel />);
+
+    // Opposite sides of a box: two faces, no shared edge, so no loop runs
+    // through them. A count alone would have called this available.
+    selectFaces((mesh) => {
+      const [first] = [...mesh.faces.values()];
+      const opposite = [...mesh.faces.values()].find(
+        (face) => dot(face.normal, first.normal) < -0.99,
+      );
+      return [first, opposite];
     });
 
     expect(button('FACE LOOP')).toHaveAttribute('aria-disabled', 'true');

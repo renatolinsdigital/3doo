@@ -1,5 +1,7 @@
 import { useShallow } from 'zustand/react/shallow';
 
+import { hasAdjacentFaces } from '@kernel/index';
+
 import type { SceneObject, SceneStats } from './types';
 import { type EditorStore, useEditorStore } from './useEditorStore';
 
@@ -9,6 +11,31 @@ export function selectActiveObject(state: EditorStore): SceneObject | null {
 
 export function useActiveObject(): SceneObject | null {
   return useEditorStore(selectActiveObject);
+}
+
+/**
+ * Whether the selection names a face loop.
+ *
+ * Counts alone cannot answer this: two faces on opposite sides of a cube are
+ * still two faces, and the operator would refuse them. Adjacency is the part
+ * that decides, so the button has to ask about adjacency.
+ *
+ * Only that a pair touches, not that the walk succeeds — a ring stops at
+ * triangles and n-gons, and running it on every selection change to catch that
+ * rarer case is not worth the walk. The operator still explains it when it
+ * happens.
+ */
+export function useFaceLoopAvailable(): boolean {
+  return useEditorStore((state) => {
+    void state.meshVersion;
+
+    if (state.mode !== 'edit' || state.selectMode !== 'face') return false;
+    const object = selectActiveObject(state);
+    if (!object) return false;
+
+    const faces = object.mesh.selectedFaces();
+    return faces.length >= 2 && hasAdjacentFaces(object.mesh, faces);
+  });
 }
 
 export interface SelectionCounts {

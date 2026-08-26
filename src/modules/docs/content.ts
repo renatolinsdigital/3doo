@@ -157,10 +157,13 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ['An edge loop', 'Alt+click an edge. The loop runs on until it meets a pole.'],
           [
             'A face loop',
-            'Select two adjacent faces, then press FACE LOOP in the OPERATIONS panel. The pair is what names which of the loops through them you meant.',
+            'Select two faces that share an edge, then Alt+L. The pair is what names which of the loops through them you meant, so two faces that do not touch name nothing — the button stays unavailable until they do.',
           ],
           ['Everything / nothing', 'A selects all, Alt+A deselects all, Ctrl+I inverts.'],
-          ['Wider or narrower', 'GROW adds the neighbouring ring, SHRINK removes the border.'],
+          [
+            'Wider or narrower',
+            '] grows the selection to the neighbouring ring, [ shrinks it back from its border.',
+          ],
         ],
       },
       {
@@ -212,15 +215,15 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Fill (F) and bridge',
-            'Fill closes a selected boundary loop with a face. Bridge connects two open loops of matching length with a band of quads.',
+            'Fill closes a selected boundary loop with a face. Bridge (Alt+B) connects two open loops of matching length with a band of quads.',
           ],
           [
             'Connect (J)',
             'Runs an edge between two selected vertices, splitting the face they share.',
           ],
           [
-            'Triangulate / tris to quads',
-            'Convert the whole mesh either way. Tris-to-quads merges adjacent, near-coplanar triangle pairs back into quads.',
+            'Triangulate (Alt+T) / tris to quads (Alt+J)',
+            'Convert the whole mesh either way, with Alt+T and Alt+J. Tris-to-quads merges adjacent, near-coplanar triangle pairs back into quads.',
           ],
         ],
       },

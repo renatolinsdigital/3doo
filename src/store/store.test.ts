@@ -40,6 +40,16 @@ describe('editor store', () => {
     expect(state.objects[0].mesh.faces.size).toBe(6);
   });
 
+  it('reaches for the move tool, so the new primitive has a gizmo to grab', () => {
+    store().setActiveTool('select');
+
+    store().addPrimitive('box');
+
+    expect(store().activeTool).toBe('move');
+    // The add is what the status line says; switching tool must not bury it.
+    expect(store().status).toBe('Added BOX');
+  });
+
   it('keeps primitive parameters live until an operation commits', () => {
     store().addPrimitive('cylinder', { segments: 8 });
     expect(activeObject().mesh.faces.size).toBe(10);

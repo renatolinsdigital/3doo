@@ -69,6 +69,27 @@ export function selectEdgeRing(mesh: BMesh, start: Edge): Edge[] {
  * the result the same whatever order the faces were picked in, which matters
  * because faces carry no click-order stamp to break the tie with.
  */
+/**
+ * Whether any two of these faces share an edge.
+ *
+ * What `selectFaceLoop` needs before it can name a loop at all, and cheap
+ * enough for the UI to ask on every selection change — no ring is walked, only
+ * the four edges of each selected face.
+ */
+export function hasAdjacentFaces(mesh: BMesh, faces: readonly Face[]): boolean {
+  const selected = new Set(faces.map((face) => face.id));
+
+  for (const face of faces) {
+    for (const edge of mesh.faceEdges(face)) {
+      if (mesh.edgeFaces(edge).some((other) => other !== face && selected.has(other.id))) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 export function selectFaceLoop(mesh: BMesh, faces: readonly Face[]): Face[] {
   const selected = new Set(faces.map((face) => face.id));
   const walked = new Set<number>();

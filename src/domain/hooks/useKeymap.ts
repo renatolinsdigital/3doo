@@ -117,6 +117,15 @@ export function useKeymap(): void {
         case 'connect':
           state.exec('connect', {}, 'Connect');
           break;
+        case 'bridge':
+          state.exec('bridge', {}, 'Bridge');
+          break;
+        case 'triangulate':
+          state.exec('triangulate', {}, 'Triangulate');
+          break;
+        case 'trisToQuads':
+          state.exec('trisToQuads', {}, 'Tris to quads');
+          break;
 
         case 'delete':
           if (state.mode === 'object') state.deleteSelected();
@@ -162,6 +171,15 @@ export function useKeymap(): void {
           break;
         case 'invertSelection':
           if (state.mode === 'edit') state.exec('invertSelection', {}, 'Invert selection');
+          break;
+        case 'selectFaceLoop':
+          state.exec('selectFaceLoop', {}, 'Select face loop');
+          break;
+        case 'growSelection':
+          state.exec('growSelection', {}, 'Grow selection');
+          break;
+        case 'shrinkSelection':
+          state.exec('shrinkSelection', {}, 'Shrink selection');
           break;
 
         case 'cursorToWorldOrigin':

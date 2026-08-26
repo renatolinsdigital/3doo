@@ -37,7 +37,27 @@ export class ViewportGrid {
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
     this.axes.geometry = geometry;
-    this.axes.material = new THREE.LineBasicMaterial({ vertexColors: true });
+    this.axes.material = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      depthWrite: false,
+    });
+
+    // Everything here is coplanar at y = 0, so depth cannot separate it and
+    // draw order has to. The axes used to be the one opaque object of the
+    // three: they rendered first and wrote depth, leaving the grids to
+    // depth-test against a value equal to their own to within float error. The
+    // two axis lines did the same to each other where they converge on screen
+    // at a grazing angle, which is what made the X axis flicker between red and
+    // the Z axis's cyan as the camera orbited.
+    //
+    // With nothing on the plane writing depth, the group cannot fight itself:
+    // every line passes or fails the test against the scene identically, and
+    // the order below — fixed, not camera-dependent — is what decides. Negative
+    // so the ground plane stays behind the selection overlays in `ObjectView`.
+    this.fine.renderOrder = -3;
+    this.coarse.renderOrder = -2;
+    this.axes.renderOrder = -1;
 
     this.group.add(this.fine, this.coarse, this.axes);
   }
