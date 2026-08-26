@@ -7,6 +7,7 @@ import {
   type SelectMode,
   type Transform,
   type Vec3,
+  axisVector,
   centroid,
   inverseTransformDirection,
   inverseTransformPoint,
@@ -65,6 +66,17 @@ export function gizmoScaleRatio(pointerPx: number, referencePx: number): number 
   return Math.min(MAX_SCALE_RATIO, Math.max(MIN_SCALE_RATIO, ratio));
 }
 
+/**
+ * An angle difference brought into (-pi, pi].
+ *
+ * Bearings come out of `atan2` wrapped, so the step across the wrap point
+ * reads as almost a full turn backwards unless it is folded like this.
+ */
+export function shortestAngle(delta: number): number {
+  const wrapped = (((delta + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  return wrapped - Math.PI;
+}
+
 interface GizmoBaseline {
   position: THREE.Vector3;
   quaternion: THREE.Quaternion;
@@ -90,8 +102,8 @@ export class Viewport {
   private readonly gizmoProxy = new THREE.Object3D();
   private readonly grid = new ViewportGrid();
   private readonly cursor: THREE.Object3D;
-  /** Blender's dashed scale line: pivot to pointer, drawn only mid-drag. */
-  private readonly scaleLine: THREE.Line;
+  /** Blender's dashed line: pivot to pointer, drawn only during a modal scale or rotate. */
+  private readonly modalLine: THREE.Line;
   private pointerPixels = new THREE.Vector2();
   /** Where the camera stood when the selection outlines were last traced. */
   private readonly outlineEye = new THREE.Vector3(Number.NaN, 0, 0);
@@ -109,6 +121,26 @@ export class Viewport {
     /** Set for a keyboard-started scale, which can be cancelled; null for a handle drag. */
     modal: { restore: () => void; seeded: boolean } | null;
   } | null = null;
+  /**
+   * A rotation running off the bare pointer, the way Blender's R does.
+   *
+   * Kept beside `scaleDrag` rather than folded into it: the two read the
+   * pointer differently — a scale off its distance from the pivot, a rotation
+   * off its bearing around it — and merging them would put a branch in every
+   * line of the most delicate code here.
+   */
+  private rotateDrag: {
+    pivot: THREE.Vector3;
+    pivotPixels: THREE.Vector2;
+    /** Pointer bearing last seen, so a turn past half a circle still reads as one step. */
+    bearing: number;
+    /** Total angle turned so far. Object mode re-applies it whole, never compounding. */
+    applied: number;
+    /** World axis the turn is pinned to, or null for the axis facing the camera. */
+    axis: 'x' | 'y' | 'z' | null;
+    modal: { restore: () => void; seeded: boolean } | null;
+  } | null = null;
+
   private readonly raycaster = new THREE.Raycaster();
 
   private readonly views = new Map<string, ObjectView>();
@@ -129,6 +161,8 @@ export class Viewport {
   private readonly objectBaselines = new Map<string, Transform>();
   private gizmoDragging = false;
   private viewLostReported = false;
+  /** Last cursor written to the canvas; the render loop would otherwise set it every frame. */
+  private appliedCursor = '';
   private recentVerts: { objectId: string; ids: Set<number>; expiresAt: number } | null = null;
 
   constructor(
@@ -157,8 +191,8 @@ export class Viewport {
     this.scene.add(this.grid.group);
     this.cursor = this.createCursor();
     this.scene.add(this.cursor);
-    this.scaleLine = this.createScaleLine();
-    this.scene.add(this.scaleLine);
+    this.modalLine = this.createScaleLine();
+    this.scene.add(this.modalLine);
     this.scene.add(this.gizmoProxy);
 
     this.controls = new CameraController(this.camera, canvas);
@@ -379,9 +413,11 @@ export class Viewport {
         (state) => state.modal,
         (modal) => {
           if (modal?.kind === 'scale') this.beginModalScale();
+          else if (modal?.kind === 'rotate') this.beginModalRotate();
           // Cleared from somewhere else — a mode change, a reset — while a
           // modal scale is still live: put everything back.
           else if (!modal && this.scaleDrag?.modal) this.finishModalScale(true);
+          else if (!modal && this.rotateDrag?.modal) this.finishModalRotate(true);
         },
       ),
       // An operator reporting new vertices flags them for a moment. The expiry
@@ -593,8 +629,8 @@ export class Viewport {
     }
 
     this.gizmo.setMode(gizmoMode);
-    this.gizmo.enabled = !this.scaleLine.visible;
-    this.gizmoHelper.visible = !this.scaleLine.visible;
+    this.gizmo.enabled = !this.modalLine.visible;
+    this.gizmoHelper.visible = !this.modalLine.visible;
     this.transformGroup = transformable.map((object) => object.id);
 
     if (state.pivot === 'cursor') {
@@ -636,8 +672,8 @@ export class Viewport {
     }
 
     this.gizmo.setMode(gizmoMode);
-    this.gizmo.enabled = !this.scaleLine.visible;
-    this.gizmoHelper.visible = !this.scaleLine.visible;
+    this.gizmo.enabled = !this.modalLine.visible;
+    this.gizmoHelper.visible = !this.modalLine.visible;
     this.transformGroup = [];
 
     const median = medianPoint(selected);
@@ -731,25 +767,19 @@ export class Viewport {
     // keyboard's, or the centre handle's. Along a single axis or in a plane the
     // handle already shows where the drag is going, and a line out to the
     // pointer only crosses the model.
-    this.scaleLine.visible = modal !== null || axis === 'XYZ';
-
-    // A crosshair reads as "measuring", which is what the line is doing — the
-    // ordinary arrow gives no hint that dragging now changes size rather than
-    // orbiting or picking something.
-    if (this.scaleLine.visible) this.canvas.style.cursor = 'crosshair';
+    this.modalLine.visible = modal !== null || axis === 'XYZ';
 
     // With the line up the handles say nothing the line does not, and they sit
     // over the very geometry being scaled. They come back through updateGizmo
     // when the scale ends.
-    if (this.scaleLine.visible) this.standDownGizmo();
+    if (this.modalLine.visible) this.standDownGizmo();
 
-    this.updateScaleLine();
+    this.updateModalLine();
   }
 
   private endScaleDrag(): void {
     this.scaleDrag = null;
-    this.scaleLine.visible = false;
-    this.canvas.style.cursor = '';
+    this.modalLine.visible = false;
   }
 
   /**
@@ -759,6 +789,182 @@ export class Viewport {
    * pointerup — and because it can be cancelled, it captures how to put
    * everything back before it touches anything.
    */
+  /** Pointer bearing around a screen point, counter-clockwise from the +X axis. */
+  private pointerBearing(origin: THREE.Vector2): number {
+    // Canvas y grows downward, so it is negated here: that puts the bearing in
+    // the same handedness as a turn about an axis pointing out of the screen,
+    // and a counter-clockwise drag then reads as a positive angle.
+    return Math.atan2(-(this.pointerPixels.y - origin.y), this.pointerPixels.x - origin.x);
+  }
+
+  /**
+   * The axis a free rotation turns about: the one pointing back at the camera.
+   *
+   * Blender's R with no constraint spins the object in the plane of the screen,
+   * which is a turn about the view normal — not about any world axis.
+   */
+  private viewAxis(): Vec3 {
+    const forward = new THREE.Vector3();
+    this.camera.getWorldDirection(forward);
+    forward.negate();
+    return vec3(forward.x, forward.y, forward.z);
+  }
+
+  private startRotateDrag(modal: { restore: () => void; seeded: boolean }): void {
+    const pivotPixels = this.projectToPixels(this.gizmoProxy.position);
+    this.rotateDrag = {
+      pivot: this.gizmoProxy.position.clone(),
+      pivotPixels,
+      bearing: this.pointerBearing(pivotPixels),
+      applied: 0,
+      axis: null,
+      modal,
+    };
+
+    this.modalLine.visible = true;
+    // With the line up the handles say nothing it does not, and they sit over
+    // the very geometry being turned. `updateGizmo` brings them back at the end.
+    this.standDownGizmo();
+    this.updateModalLine();
+  }
+
+  private endRotateDrag(): void {
+    this.rotateDrag = null;
+    this.modalLine.visible = false;
+  }
+
+  /**
+   * Starts a rotation that runs off the bare pointer, the way Blender's R does.
+   *
+   * The same shape as `beginModalScale`: no button is held, so it ends on a
+   * click, Enter or Escape, and the history entry goes in before anything moves
+   * so a cancel can put everything back before it has touched anything.
+   */
+  private beginModalRotate(): void {
+    if (this.rotateDrag || this.scaleDrag) return;
+
+    const state = useEditorStore.getState();
+    const editing = state.mode === 'edit';
+    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+    const selected = editing && object ? object.mesh.selectedVerts() : [];
+
+    if (editing ? selected.length === 0 : this.transformGroup.length === 0) {
+      state.endModal();
+      return;
+    }
+
+    state.recordHistory(editing ? 'ROTATE selection' : 'Transform object');
+    if (editing) state.patchActiveObject({ primitive: null }, { touchGeometry: false });
+
+    this.captureGizmoBaseline();
+    this.objectBaselines.clear();
+    for (const candidate of state.objects) {
+      if (!this.transformGroup.includes(candidate.id)) continue;
+      this.objectBaselines.set(candidate.id, structuredClone(candidate.transform));
+    }
+
+    const restorePoints = selected.map((vert) => ({ vert, co: { ...vert.co } }));
+    const restore = editing
+      ? () => {
+          for (const point of restorePoints) point.vert.co = point.co;
+          object?.mesh.computeNormals();
+          useEditorStore.getState().touchMesh();
+        }
+      : () => {
+          useEditorStore
+            .getState()
+            .setObjectTransforms(
+              [...this.objectBaselines].map(([id, transform]) => ({ id, transform })),
+            );
+        };
+
+    this.startRotateDrag({ restore, seeded: false });
+    window.addEventListener('keydown', this.handleModalKey, true);
+    window.addEventListener('pointerdown', this.handleModalPointer, true);
+    window.addEventListener('contextmenu', this.handleModalContextMenu, true);
+  }
+
+  private finishModalRotate(cancelled: boolean): void {
+    const drag = this.rotateDrag;
+    if (!drag?.modal) return;
+
+    window.removeEventListener('keydown', this.handleModalKey, true);
+    window.removeEventListener('pointerdown', this.handleModalPointer, true);
+    window.removeEventListener('contextmenu', this.handleModalContextMenu, true);
+
+    const state = useEditorStore.getState();
+    if (cancelled) {
+      drag.modal.restore();
+      // The entry was recorded before anything moved, so with everything back
+      // where it was it would undo to the state the scene is already in.
+      state.discardHistory();
+    }
+
+    this.endRotateDrag();
+    state.endModal();
+    state.touchMesh();
+  }
+
+  /**
+   * Turns the selection to wherever the pointer has swung round the pivot.
+   *
+   * The bearing is tracked step by step rather than measured from the start, so
+   * a drag carried past half a circle keeps turning the same way instead of
+   * snapping back: `atan2` wraps at π, a running total does not.
+   */
+  private applyRotateDrag(): void {
+    const drag = this.rotateDrag;
+    if (!drag) return;
+
+    // A keypress carries no pointer position, so the bearing it started from is
+    // only known once the pointer first moves. Seeding it here is what keeps the
+    // object from jumping on the first move of a modal rotate.
+    if (drag.modal && !drag.modal.seeded) {
+      drag.bearing = this.pointerBearing(drag.pivotPixels);
+      drag.modal.seeded = true;
+      this.updateModalLine();
+      return;
+    }
+
+    this.updateModalLine();
+
+    const bearing = this.pointerBearing(drag.pivotPixels);
+    const step = shortestAngle(bearing - drag.bearing);
+    drag.bearing = bearing;
+    if (Math.abs(step) < 1e-6) return;
+
+    const previous = drag.applied;
+    drag.applied += step;
+
+    const state = useEditorStore.getState();
+    state.updateModal({ value: vec3(THREE.MathUtils.radToDeg(drag.applied), 0, 0) });
+
+    const baseline = this.gizmoBaseline;
+    if (!baseline) return;
+
+    const axis = drag.axis ? axisVector(drag.axis) : this.viewAxis();
+    const turn = (angle: number) =>
+      new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(axis.x, axis.y, axis.z), angle);
+
+    if (state.mode === 'object') {
+      // Re-applied whole against the drag-start baseline, so pinning an axis
+      // part-way through re-reads the same total turn about the new one rather
+      // than stacking it on what the old one had already done.
+      this.gizmoProxy.quaternion.copy(turn(drag.applied).multiply(baseline.quaternion));
+      this.applyObjectGroupTransform(state);
+      return;
+    }
+
+    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+    if (!object) return;
+
+    // Edit mode has no per-vertex baseline to re-apply against, so it turns by
+    // the step since the last move and `applyEditTransform` re-seats the
+    // baseline behind it.
+    this.gizmoProxy.quaternion.copy(turn(drag.applied - previous).multiply(baseline.quaternion));
+    this.applyEditTransform(state, object);
+  }
+
   private beginModalScale(): void {
     if (this.scaleDrag) return;
 
@@ -824,9 +1030,21 @@ export class Viewport {
     state.touchMesh();
   }
 
+  /** Whichever modal transform is running off the bare pointer, if either is. */
+  private activeModal(): 'scale' | 'rotate' | null {
+    if (this.scaleDrag?.modal) return 'scale';
+    if (this.rotateDrag?.modal) return 'rotate';
+    return null;
+  }
+
+  private finishModal(cancelled: boolean): void {
+    if (this.scaleDrag?.modal) this.finishModalScale(cancelled);
+    else if (this.rotateDrag?.modal) this.finishModalRotate(cancelled);
+  }
+
   private handleModalKey = (event: KeyboardEvent): void => {
-    const drag = this.scaleDrag;
-    if (!drag?.modal) return;
+    const kind = this.activeModal();
+    if (!kind) return;
 
     const key = event.key.toLowerCase();
     if (key !== 'escape' && key !== 'enter' && key !== 'x' && key !== 'y' && key !== 'z') return;
@@ -834,10 +1052,25 @@ export class Viewport {
     event.preventDefault();
     event.stopPropagation();
 
-    if (key === 'escape') return this.finishModalScale(true);
-    if (key === 'enter') return this.finishModalScale(false);
+    if (key === 'escape') return this.finishModal(true);
+    if (key === 'enter') return this.finishModal(false);
 
     // Pressing the same axis again lifts the constraint, as it does in Blender.
+    if (kind === 'rotate') {
+      const rotating = this.rotateDrag;
+      if (!rotating) return;
+      rotating.axis = rotating.axis === key ? null : (key as 'x' | 'y' | 'z');
+      useEditorStore.getState().updateModal({ axis: rotating.axis });
+      // Re-read the turn about the axis that just changed. The step is zero at
+      // this instant, so nudge the running total back and let it re-apply.
+      rotating.applied = 0;
+      rotating.bearing = this.pointerBearing(rotating.pivotPixels);
+      this.applyRotateDrag();
+      return;
+    }
+
+    const drag = this.scaleDrag;
+    if (!drag) return;
     const axis = key.toUpperCase();
     drag.axis = drag.axis === axis ? 'XYZ' : axis;
     useEditorStore.getState().updateModal({ axis: drag.axis === 'XYZ' ? null : key });
@@ -845,15 +1078,15 @@ export class Viewport {
   };
 
   private handleModalPointer = (event: PointerEvent): void => {
-    if (!this.scaleDrag?.modal) return;
+    if (!this.activeModal()) return;
     event.preventDefault();
     event.stopPropagation();
-    this.finishModalScale(event.button === 2);
+    this.finishModal(event.button === 2);
   };
 
   /** Right-click cancels, so the menu it would otherwise open is swallowed. */
   private handleModalContextMenu = (event: Event): void => {
-    if (!this.scaleDrag?.modal) return;
+    if (!this.activeModal()) return;
     event.preventDefault();
     event.stopPropagation();
   };
@@ -875,11 +1108,11 @@ export class Viewport {
     if (drag.modal && !drag.modal.seeded) {
       drag.reference = this.pointerPixels.distanceTo(drag.pivotPixels);
       drag.modal.seeded = true;
-      this.updateScaleLine();
+      this.updateModalLine();
       return;
     }
 
-    this.updateScaleLine();
+    this.updateModalLine();
 
     const factor = gizmoScaleRatio(this.pointerPixels.distanceTo(drag.pivotPixels), drag.reference);
     const state = useEditorStore.getState();
@@ -912,9 +1145,9 @@ export class Viewport {
   }
 
   /** Redraws the dashed line from the pivot out to the pointer. */
-  private updateScaleLine(): void {
-    const drag = this.scaleDrag;
-    if (!drag || !this.scaleLine.visible) return;
+  private updateModalLine(): void {
+    const drag = this.scaleDrag ?? this.rotateDrag;
+    if (!drag || !this.modalLine.visible) return;
 
     // Unprojected at the pivot's own depth, so the line lands under the pointer
     // whatever the projection is doing.
@@ -925,18 +1158,18 @@ export class Viewport {
       depth,
     ).unproject(this.camera);
 
-    const positions = this.scaleLine.geometry.getAttribute('position') as THREE.BufferAttribute;
+    const positions = this.modalLine.geometry.getAttribute('position') as THREE.BufferAttribute;
     positions.setXYZ(0, drag.pivot.x, drag.pivot.y, drag.pivot.z);
     positions.setXYZ(1, pointer.x, pointer.y, pointer.z);
     positions.needsUpdate = true;
 
-    const material = this.scaleLine.material as THREE.LineDashedMaterial;
+    const material = this.modalLine.material as THREE.LineDashedMaterial;
     // Guarded: a zero dash size divides by zero in the dash shader, and the
     // line vanishes the moment the pointer sits on the pivot.
     const length = Math.max(drag.pivot.distanceTo(pointer), 1e-4);
     material.dashSize = length / 30;
     material.gapSize = length / 45;
-    this.scaleLine.computeLineDistances();
+    this.modalLine.computeLineDistances();
   }
 
   private handleGizmoChange = (): void => {
@@ -1114,6 +1347,10 @@ export class Viewport {
     // for the same move, and would always be working off the previous position.
     if (this.scaleDrag) {
       this.applyScaleDrag();
+      return;
+    }
+    if (this.rotateDrag) {
+      this.applyRotateDrag();
       return;
     }
     if (this.controls.onPointerMove(event)) return;
@@ -1403,11 +1640,34 @@ export class Viewport {
     this.extendFarPlane(distance);
     this.updateViewLost(distance);
     this.updateCursor();
+    this.updatePointerCursor();
     this.updateSelectionOutlines();
-    if (this.scaleLine.visible) this.standDownGizmo();
+    if (this.modalLine.visible) this.standDownGizmo();
     this.expireRecentVerts();
     this.renderer.render(this.scene, this.camera);
   };
+
+  /**
+   * Marks the pointer for whichever transform is under way.
+   *
+   * The sole writer of the canvas cursor: the drag starts used to set it
+   * themselves, which left two of them able to overwrite each other and a
+   * stale value behind whenever one ended without the other noticing.
+   */
+  private updatePointerCursor(): void {
+    const axis = (this.gizmo as unknown as { axis: string | null }).axis;
+    const rotating =
+      this.rotateDrag !== null || (this.gizmo.mode === 'rotate' && axis === FREE_ROTATE_AXIS);
+
+    // A crosshair reads as "measuring", which is what the scale line is doing —
+    // the ordinary arrow gives no hint that dragging now changes size rather
+    // than orbiting or picking something.
+    const cursor = rotating ? ROTATE_CURSOR : this.modalLine.visible ? 'crosshair' : '';
+    if (cursor === this.appliedCursor) return;
+
+    this.appliedCursor = cursor;
+    this.canvas.style.cursor = cursor;
+  }
 
   /**
    * Re-traces the selection outlines when the camera has moved.
@@ -1599,6 +1859,36 @@ const AXIS_GUIDES = ['X', 'Y', 'Z'];
  */
 const DELTA_GUIDES = ['START', 'END', 'DELTA'];
 
+/** The rotate helper's single infinite line, laid along whichever axis is live. */
+const ROTATE_GUIDES = ['AXIS'];
+
+/** The free-rotate handle: the object's centre, where every axis lights at once. */
+const FREE_ROTATE_AXIS = 'XYZE';
+
+/**
+ * A circular arrow for the pointer while a free rotation is under way.
+ *
+ * Drawn twice — a heavy `--void` stroke under a thin `--bone` one — because a
+ * cursor has to stay legible over the viewport's dark background and over a lit
+ * surface both, and the palette has no single value that does. Encoded at
+ * module load rather than written out by hand, so the data URI cannot be
+ * malformed by an unescaped character.
+ */
+const ROTATE_CURSOR_SVG = [
+  `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'>`,
+  `<g fill='none' stroke='#0b0b0b' stroke-width='4.5' stroke-linecap='round' stroke-linejoin='round'>`,
+  `<path d='M18.5 12a6.5 6.5 0 1 1-1.9-4.6'/><path d='M18.5 3.5v4.6h-4.6'/></g>`,
+  `<g fill='none' stroke='#f4f1ea' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'>`,
+  `<path d='M18.5 12a6.5 6.5 0 1 1-1.9-4.6'/><path d='M18.5 3.5v4.6h-4.6'/></g>`,
+  `</svg>`,
+].join('');
+
+// Hotspot at the middle of the arc, so the turn reads as centred on the point
+// the pointer is actually over. `crosshair` covers a browser that refuses SVG.
+export const ROTATE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
+  ROTATE_CURSOR_SVG,
+)}") 12 12, crosshair`;
+
 /**
  * Cuts the gizmo's drag narration back to the parts that mean something.
  *
@@ -1611,6 +1901,10 @@ const DELTA_GUIDES = ['START', 'END', 'DELTA'];
  * - The delta line answers **how far from where it started**, which is worth
  *   having on a free move off the centre handle, where nothing else reports it.
  *   The plane handle is the one case that wants neither.
+ * - The rotate line belongs to the free rotation off the centre handle, which
+ *   has no ring to read an angle from. Dragging a ring already draws its own
+ *   circle, so a line through it is redundant — and the control would otherwise
+ *   show one for a merely hovered ring, before any rotation has begun.
  *
  * Wrapped around `updateMatrixWorld` because that is where the control decides
  * this, and the renderer calls it on the way into every frame — visibility set
@@ -1620,12 +1914,14 @@ const DELTA_GUIDES = ['START', 'END', 'DELTA'];
 export function trimGizmoGuides(helper: THREE.Object3D, controls: TransformControls): void {
   const axisGuides: THREE.Object3D[] = [];
   const deltaGuides: THREE.Object3D[] = [];
+  const rotateGuides: THREE.Object3D[] = [];
 
   helper.traverse((child) => {
     const tagged = child as THREE.Object3D & { tag?: string };
     if (tagged.tag !== 'helper') return;
     if (AXIS_GUIDES.includes(child.name)) axisGuides.push(child);
     else if (DELTA_GUIDES.includes(child.name)) deltaGuides.push(child);
+    else if (ROTATE_GUIDES.includes(child.name)) rotateGuides.push(child);
   });
 
   const update = helper.updateMatrixWorld.bind(helper);
@@ -1638,6 +1934,7 @@ export function trimGizmoGuides(helper: THREE.Object3D, controls: TransformContr
 
     if (spanned > 1) for (const guide of axisGuides) guide.visible = false;
     if (spanned === 2) for (const guide of deltaGuides) guide.visible = false;
+    if (axis !== FREE_ROTATE_AXIS) for (const guide of rotateGuides) guide.visible = false;
   };
 }
 

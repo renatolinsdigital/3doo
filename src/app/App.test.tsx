@@ -167,6 +167,29 @@ describe('App shell', () => {
     expect(within(modifiers).getByText(/Stack is empty/i)).toBeInTheDocument();
   });
 
+  it('starts a modal rotation on R, the way Blender does', async () => {
+    render(<App />);
+    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+
+    fireEvent.keyDown(window, { key: 'r' });
+
+    // No handle was grabbed: the keypress alone puts the editor into the turn,
+    // which the viewport then drives off the bare pointer.
+    expect(useEditorStore.getState().activeTool).toBe('rotate');
+    expect(useEditorStore.getState().modal).toMatchObject({ kind: 'rotate', axis: null });
+  });
+
+  it('arms the rotate tool but starts no turn when nothing is selected', async () => {
+    render(<App />);
+    act(() => useEditorStore.getState().setActiveObject(null));
+
+    fireEvent.keyDown(window, { key: 'r' });
+
+    expect(useEditorStore.getState().activeTool).toBe('rotate');
+    expect(useEditorStore.getState().modal).toBeNull();
+  });
+
   it('selects all objects when pressing A in object mode', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });

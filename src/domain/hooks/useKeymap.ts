@@ -76,9 +76,18 @@ export function useKeymap(): void {
         case 'move':
           state.setActiveTool('move');
           break;
-        case 'rotate':
+        case 'rotate': {
           state.setActiveTool('rotate');
+          // Blender's R, like S: the turn starts on the keypress with no handle
+          // to grab first. The viewport picks the modal up from here.
+          const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+          const ready =
+            state.mode === 'object'
+              ? state.selectedObjectIds.length > 0
+              : (object?.mesh.selectedVerts().length ?? 0) > 0;
+          if (ready) state.beginModal('rotate');
           break;
+        }
         case 'scale': {
           state.setActiveTool('scale');
           // Blender's S: the drag starts on the keypress, with no handle to

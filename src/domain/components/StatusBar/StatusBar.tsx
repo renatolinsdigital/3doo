@@ -8,6 +8,10 @@ function modalLabel(modal: ModalTransform): string {
   const kind = modal.kind.toUpperCase();
   const axis = modal.axis ? ` ${modal.axis.toUpperCase()}` : '';
   if (modal.typed) return `${kind}${axis} ${modal.typed}`;
+
+  // A rotation carries its angle in x whatever axis it turns about — there is
+  // one angle, not three, and the axis is already spelled out beside it.
+  if (modal.kind === 'rotate') return `${kind}${axis} ${modal.value.x.toFixed(1)}°`;
   if (modal.kind !== 'scale') return `${kind}${axis}`;
 
   const factor = modal.axis ? modal.value[modal.axis] : modal.value.x;

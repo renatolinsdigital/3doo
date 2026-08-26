@@ -8,6 +8,32 @@ import { StatusBar } from './StatusBar';
 describe('StatusBar', () => {
   beforeEach(() => useEditorStore.getState().resetScene());
 
+  it('reads a live rotation out in degrees', () => {
+    useEditorStore.getState().addPrimitive('box');
+    act(() => {
+      useEditorStore.getState().beginModal('rotate');
+      useEditorStore.getState().updateModal({ value: { x: 42.5, y: 0, z: 0 } });
+    });
+
+    render(<StatusBar />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('ROTATE 42.5°');
+  });
+
+  it('names the axis a rotation has been pinned to', () => {
+    useEditorStore.getState().addPrimitive('box');
+    act(() => {
+      useEditorStore.getState().beginModal('rotate');
+      useEditorStore.getState().updateModal({ axis: 'z', value: { x: -90, y: 0, z: 0 } });
+    });
+
+    render(<StatusBar />);
+
+    // The angle stays in x whatever axis the turn is about: there is one angle,
+    // not three.
+    expect(screen.getByRole('status')).toHaveTextContent('ROTATE Z -90.0°');
+  });
+
   it('reports an empty scene', () => {
     render(<StatusBar />);
     expect(screen.getByText('OBJ')).toBeInTheDocument();
