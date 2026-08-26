@@ -81,19 +81,12 @@ export function AddPanel() {
   const selectMode = useEditorStore((state) => state.selectMode);
   const setSelectMode = useEditorStore((state) => state.setSelectMode);
   const addPrimitive = useEditorStore((state) => state.addPrimitive);
-  const duplicateSelected = useEditorStore((state) => state.duplicateSelected);
-  const mergeSelected = useEditorStore((state) => state.mergeSelected);
-  const separateLooseParts = useEditorStore((state) => state.separateLooseParts);
-  const applyTransform = useEditorStore((state) => state.applyTransformToSelected);
-  const exec = useEditorStore((state) => state.exec);
   const shading = useEditorStore((state) => state.shading);
   const setShading = useEditorStore((state) => state.setShading);
   const overlays = useEditorStore((state) => state.overlays);
   const setOverlay = useEditorStore((state) => state.setOverlay);
   const frameSelected = useEditorStore((state) => state.frameSelected);
   const frameAll = useEditorStore((state) => state.frameAll);
-  const orthographic = useEditorStore((state) => state.orthographic);
-  const setViewportSetting = useEditorStore((state) => state.setViewportSetting);
   const viewLost = useEditorStore((state) => state.viewLost);
   const pivot = useEditorStore((state) => state.pivot);
   const setPivot = useEditorStore((state) => state.setPivot);
@@ -101,51 +94,16 @@ export function AddPanel() {
   return (
     <Panel title={mode === 'object' ? 'ADD / SCENE' : 'SELECT / VIEW'} className="add-panel">
       {mode === 'object' ? (
-        <>
-          <FieldRow legend="PRIMITIVES" columns={2}>
-            {PRIMITIVE_ORDER.map((kind) => (
-              <Button
-                key={kind}
-                label={PRIMITIVE_LABELS[kind]}
-                hint={PRIMITIVE_HINTS[kind]}
-                onClick={() => addPrimitive(kind)}
-              />
-            ))}
-          </FieldRow>
-
-          <FieldRow legend="OBJECT" columns={1}>
+        <FieldRow legend="PRIMITIVES" columns={2}>
+          {PRIMITIVE_ORDER.map((kind) => (
             <Button
-              label="DUPLICATE"
-              hint="Copy the selected object(s) with an independent mesh (Shift+D)"
-              onClick={() => duplicateSelected(false)}
+              key={kind}
+              label={PRIMITIVE_LABELS[kind]}
+              hint={PRIMITIVE_HINTS[kind]}
+              onClick={() => addPrimitive(kind)}
             />
-            <Button
-              label="LINKED DUPLICATE"
-              hint="Copy the selected object(s) sharing the same mesh data (Alt+D)"
-              onClick={() => duplicateSelected(true)}
-            />
-            <Button
-              label="MERGE SELECTED"
-              hint="Merge the selected objects into the active one, each keeping where it sits (M)"
-              onClick={mergeSelected}
-            />
-            <Button
-              label="SEPARATE"
-              hint="Split the active object into separate objects, one for each loose part (P)"
-              onClick={separateLooseParts}
-            />
-            <Button
-              label="APPLY TRANSFORM"
-              hint="Bake rotation and scale into the mesh so modifiers and exports see the real shape (Ctrl+A)"
-              onClick={() => applyTransform()}
-            />
-            <Button
-              label="RECALCULATE NORMALS"
-              hint="Make winding consistent and point normals outward (Shift+N)"
-              onClick={() => exec('recalculateNormals', { outside: true }, 'Recalculate normals')}
-            />
-          </FieldRow>
-        </>
+          ))}
+        </FieldRow>
       ) : (
         <FieldRow legend="SELECT MODE" columns={1}>
           <SegmentedControl<SelectMode>
@@ -222,12 +180,6 @@ export function AddPanel() {
           checked={overlays.statistics}
           hint="Show vertex/edge/face/triangle counts in the status bar"
           onChange={(statistics) => setOverlay({ statistics })}
-        />
-        <Toggle
-          label="ORTHOGRAPHIC"
-          checked={orthographic}
-          hint="Switch between perspective and orthographic projection"
-          onChange={(value) => setViewportSetting({ orthographic: value })}
         />
       </FieldRow>
 

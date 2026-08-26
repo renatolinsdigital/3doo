@@ -86,7 +86,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Tool rail, far left',
             'Select, move, rotate and scale in object mode; vertex, edge and face select in edit mode.',
           ],
-          ['Left panels', 'ADD / SCENE in object mode. OPERATIONS replaces it in edit mode.'],
+          [
+            'Left panels',
+            'ADD / SCENE with OBJECT under it in object mode. SELECT / VIEW and OPERATIONS replace them in edit mode.',
+          ],
           ['Viewport', 'The scene. Orbit, pan and zoom here; right-click places the 3D cursor.'],
           [
             'Right column',

@@ -9,6 +9,7 @@ import {
   ExportDialog,
   MergeDialog,
   ModifierStack,
+  ObjectPanel,
   OperationsPanel,
   Outliner,
   PreferencesDialog,
@@ -48,7 +49,7 @@ export function ModelingModule() {
 
         <div className="modeling-shell__left">
           <AddPanel />
-          {mode === 'edit' ? <OperationsPanel /> : null}
+          {mode === 'object' ? <ObjectPanel /> : <OperationsPanel />}
         </div>
 
         <ViewportCanvas />

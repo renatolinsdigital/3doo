@@ -116,6 +116,8 @@ export interface Preferences {
   selectionLineWidth: number;
   /** `#rrggbb`. The active object wears it; the rest of the selection a darker mix. */
   selectionLineColor: string;
+  /** `#rrggbb` the viewport clears to behind the scene. */
+  viewportBackground: string;
 }
 
 export interface Toast {

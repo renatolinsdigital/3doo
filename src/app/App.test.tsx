@@ -38,6 +38,7 @@ describe('App shell', () => {
     expect(screen.getByRole('region', { name: 'PROPERTIES' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'MODIFIERS' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'ADD / SCENE' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'OBJECT' })).toBeInTheDocument();
   });
 
   it('adds a primitive from the add panel and shows it everywhere', async () => {
@@ -238,17 +239,42 @@ describe('App shell', () => {
     // Clicking a toggle leaves its hidden checkbox focused. Read as a field
     // being typed into, that left every shortcut dead until the next click
     // landed somewhere else.
-    const enabled = screen.getByRole('checkbox', { name: 'ENABLED' });
-    await userEvent.click(enabled);
-    expect(useEditorStore.getState().proportional.enabled).toBe(true);
+    const gridOverlay = screen.getByRole('checkbox', { name: 'GRID' });
+    await userEvent.click(gridOverlay);
+    expect(useEditorStore.getState().overlays.grid).toBe(false);
 
-    fireEvent.keyDown(enabled, { key: 'a' });
+    fireEvent.keyDown(gridOverlay, { key: 'a' });
     expect(useEditorStore.getState().objects[0].mesh.selectedFaces()).toHaveLength(6);
 
     // The radius field is a real one, and an "a" typed into it stays there.
     act(() => useEditorStore.getState().clearSelection());
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'RADIUS' }), { key: 'a' });
     expect(useEditorStore.getState().objects[0].mesh.selectedFaces()).toHaveLength(0);
+  });
+
+  it('flips proportional editing from the top bar, and only in edit mode', async () => {
+    render(<App />);
+    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+
+    const prop = screen.getByRole('button', { name: 'PROP' });
+    expect(prop).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.click(prop);
+    expect(useEditorStore.getState().proportional.enabled).toBe(false);
+
+    await userEvent.click(screen.getByRole('button', { name: 'EDIT' }));
+    await userEvent.click(screen.getByRole('button', { name: 'PROP' }));
+
+    expect(useEditorStore.getState().proportional.enabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'PROP' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('flips the orthographic camera from the top bar', async () => {
+    render(<App />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'ORTHO' }));
+
+    expect(useEditorStore.getState().orthographic).toBe(true);
   });
 
   it('shows a hint tooltip after hovering a control, once the delay passes', () => {

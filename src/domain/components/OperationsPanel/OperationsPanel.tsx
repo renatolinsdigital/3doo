@@ -331,12 +331,9 @@ export function OperationsPanel() {
       </FieldRow>
 
       <FieldRow legend="PROPORTIONAL EDIT" columns={1}>
-        <Toggle
-          label="ENABLED"
-          checked={proportional.enabled}
-          hint="Spread transforms to nearby unselected geometry, inside the ring the viewport draws"
-          onChange={(enabled) => setProportional({ enabled })}
-        />
+        <p className="operations__note">
+          Switched on and off by the ◉ button, up beside the mode buttons.
+        </p>
         <NumberField
           label="RADIUS"
           value={proportional.radius}

@@ -446,6 +446,11 @@ export class Viewport {
         { equalityFn: shallowArrayEqual },
       ),
       store.subscribe(
+        (state) => state.viewportBackground,
+        (color) => (this.scene.background as THREE.Color).set(color),
+        { fireImmediately: true },
+      ),
+      store.subscribe(
         (state) => [state.overlays.grid, state.overlays.axes] as const,
         ([grid, axes]) => this.grid.setVisibility(grid, axes),
         { equalityFn: shallowArrayEqual, fireImmediately: true },
@@ -1733,6 +1738,7 @@ export class Viewport {
     if (!result) {
       if (!additive) {
         object.mesh.deselectAll();
+        state.stowTransformTool();
         state.touchMesh();
       }
       return;
@@ -1744,6 +1750,7 @@ export class Viewport {
       point: result.point,
     });
     object.mesh.flushSelection(state.selectMode);
+    state.stowTransformTool();
     state.touchMesh();
   }
 
@@ -1795,6 +1802,7 @@ export class Viewport {
     if (!additive) object.mesh.deselectAll();
     applySelection(object, state.selectMode, hits, { additive: true, loopSelect: false });
     object.mesh.flushSelection(state.selectMode);
+    state.stowTransformTool();
     state.touchMesh();
   }
 

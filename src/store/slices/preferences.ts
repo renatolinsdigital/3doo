@@ -9,6 +9,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   tooltipsEnabled: true,
   selectionLineWidth: 2,
   selectionLineColor: '#e5342a',
+  viewportBackground: '#1a1918',
 };
 
 export const MIN_SELECTION_LINE_WIDTH = 1;
@@ -32,6 +33,8 @@ export function coercePreferences(raw: unknown): Preferences {
   const source = (raw ?? {}) as Partial<Record<keyof Preferences, unknown>>;
   const width = Number(source.selectionLineWidth);
   const color = typeof source.selectionLineColor === 'string' ? source.selectionLineColor : '';
+  const background =
+    typeof source.viewportBackground === 'string' ? source.viewportBackground : '';
 
   return {
     tooltipsEnabled:
@@ -44,6 +47,9 @@ export function coercePreferences(raw: unknown): Preferences {
     selectionLineColor: HEX_COLOR.test(color)
       ? color.toLowerCase()
       : DEFAULT_PREFERENCES.selectionLineColor,
+    viewportBackground: HEX_COLOR.test(background)
+      ? background.toLowerCase()
+      : DEFAULT_PREFERENCES.viewportBackground,
   };
 }
 
@@ -96,8 +102,8 @@ export const createPreferencesSlice: StateCreator<
     resetPreferences: () => apply({ ...DEFAULT_PREFERENCES }),
 
     currentPreferences: () => {
-      const { tooltipsEnabled, selectionLineWidth, selectionLineColor } = get();
-      return { tooltipsEnabled, selectionLineWidth, selectionLineColor };
+      const { tooltipsEnabled, selectionLineWidth, selectionLineColor, viewportBackground } = get();
+      return { tooltipsEnabled, selectionLineWidth, selectionLineColor, viewportBackground };
     },
 
     importPreferences: (text) => {

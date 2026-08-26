@@ -42,6 +42,7 @@ describe('preference storage', () => {
     const store = await freshStore();
 
     expect(store.getState().currentPreferences()).toEqual({
+      ...DEFAULT_PREFERENCES,
       tooltipsEnabled: false,
       selectionLineWidth: 6,
       selectionLineColor: '#3de0d0',
@@ -88,6 +89,13 @@ describe('coercePreferences', () => {
     expect(coercePreferences({ selectionLineWidth: 999 }).selectionLineWidth).toBe(8);
   });
 
+  it('rejects a background colour that is not #rrggbb', () => {
+    expect(coercePreferences({ viewportBackground: 'black' }).viewportBackground).toBe(
+      DEFAULT_PREFERENCES.viewportBackground,
+    );
+    expect(coercePreferences({ viewportBackground: '#0B0B0B' }).viewportBackground).toBe('#0b0b0b');
+  });
+
   it('rejects a colour that is not #rrggbb', () => {
     expect(coercePreferences({ selectionLineColor: 'red' }).selectionLineColor).toBe(
       DEFAULT_PREFERENCES.selectionLineColor,
@@ -111,16 +119,23 @@ describe('importing a preferences file', () => {
 
   it('round-trips what the export button writes', async () => {
     const store = await freshStore();
-    store.getState().setPreferences({ selectionLineWidth: 5, selectionLineColor: '#f2a03d' });
+    store
+      .getState()
+      .setPreferences({
+        selectionLineWidth: 5,
+        selectionLineColor: '#f2a03d',
+        viewportBackground: '#0b0b0b',
+      });
     const exported = JSON.stringify(store.getState().currentPreferences());
 
     store.getState().resetPreferences();
     store.getState().importPreferences(exported);
 
     expect(store.getState().currentPreferences()).toEqual({
-      tooltipsEnabled: true,
+      ...DEFAULT_PREFERENCES,
       selectionLineWidth: 5,
       selectionLineColor: '#f2a03d',
+      viewportBackground: '#0b0b0b',
     });
   });
 

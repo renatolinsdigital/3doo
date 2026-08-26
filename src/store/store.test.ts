@@ -50,6 +50,30 @@ describe('editor store', () => {
     expect(store().status).toBe('Added BOX');
   });
 
+  it('stows the handles when an operator only moves the selection around', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    expect(store().activeTool).toBe('move');
+
+    store().exec('selectAll', {}, 'Select all');
+
+    // Picking geometry is not asking to move it — the gizmo would land on the
+    // very thing being aimed at. G, R and S bring it straight back.
+    expect(store().activeTool).toBe('select');
+    expect(store().status).toBe('Selected all');
+  });
+
+  it('leaves the handles up for an operator that edits geometry', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    store().exec('selectAll', {}, 'Select all');
+    store().setActiveTool('move');
+
+    store().exec('extrude', { offset: 1 }, 'Extrude');
+
+    expect(store().activeTool).toBe('move');
+  });
+
   it('keeps primitive parameters live until an operation commits', () => {
     store().addPrimitive('cylinder', { segments: 8 });
     expect(activeObject().mesh.faces.size).toBe(10);

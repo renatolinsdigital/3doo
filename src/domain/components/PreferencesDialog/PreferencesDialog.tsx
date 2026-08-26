@@ -17,6 +17,7 @@ export function PreferencesDialog() {
   const tooltipsEnabled = useEditorStore((state) => state.tooltipsEnabled);
   const selectionLineWidth = useEditorStore((state) => state.selectionLineWidth);
   const selectionLineColor = useEditorStore((state) => state.selectionLineColor);
+  const viewportBackground = useEditorStore((state) => state.viewportBackground);
   const setPreferences = useEditorStore((state) => state.setPreferences);
   const resetPreferences = useEditorStore((state) => state.resetPreferences);
 
@@ -88,6 +89,25 @@ export function PreferencesDialog() {
           A short description appears after hovering a control for a moment. Turn this off if the
           popups get in the way.
         </p>
+      </FieldRow>
+
+      <FieldRow legend="VIEWPORT" columns={1}>
+        <p className="preferences-dialog__hint">
+          What the viewport clears to behind the scene. The grid, the axes and the overlays keep
+          their own colours, so a very light background costs some of their contrast.
+        </p>
+        <div className="preferences-dialog__color">
+          <label className="preferences-dialog__color-label" htmlFor="viewport-background">
+            BACKGROUND
+          </label>
+          <input
+            id="viewport-background"
+            className="preferences-dialog__swatch"
+            type="color"
+            value={viewportBackground}
+            onChange={(event) => setPreferences({ viewportBackground: event.target.value })}
+          />
+        </div>
       </FieldRow>
 
       <FieldRow legend="SELECTION LINE" columns={1}>

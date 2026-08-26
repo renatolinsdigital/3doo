@@ -72,6 +72,25 @@ function getMatcap(): THREE.Texture {
   return matcapTexture;
 }
 
+/**
+ * Sinks the shaded surface a hair into the depth buffer.
+ *
+ * The wireframe runs along the very edges of the triangles under it, so the two
+ * come out of the rasteriser at the same depth and which one survives comes
+ * down to float rounding — an edge would show solid on one face, stipple on the
+ * next, and change again as the mesh deformed under it. Offsetting the fill
+ * (the only thing WebGL can offset: there is no POLYGON_OFFSET_LINE) settles
+ * that for good, and a line still disappears properly behind geometry in front.
+ *
+ * Slope-scaled *and* constant: the factor alone is zero on a polygon facing the
+ * camera square on, which is where the flattest, longest edges are.
+ */
+const SURFACE_DEPTH_OFFSET = {
+  polygonOffset: true,
+  polygonOffsetFactor: 1,
+  polygonOffsetUnits: 1,
+} as const;
+
 export interface SurfaceMaterialOptions {
   color: THREE.ColorRepresentation;
   shading: ShadingMode;
@@ -86,7 +105,12 @@ export function createSurfaceMaterial({
   const side = backfaceCulling ? THREE.FrontSide : THREE.DoubleSide;
 
   if (shading === 'matcap') {
-    return new THREE.MeshMatcapMaterial({ color, matcap: getMatcap(), side });
+    return new THREE.MeshMatcapMaterial({
+      color,
+      matcap: getMatcap(),
+      side,
+      ...SURFACE_DEPTH_OFFSET,
+    });
   }
 
   if (shading === 'xray') {
@@ -99,7 +123,12 @@ export function createSurfaceMaterial({
     });
   }
 
-  return new THREE.MeshLambertMaterial({ color, side, flatShading: false });
+  return new THREE.MeshLambertMaterial({
+    color,
+    side,
+    flatShading: false,
+    ...SURFACE_DEPTH_OFFSET,
+  });
 }
 
 /** Red backfaces make inverted normals obvious before an export. */

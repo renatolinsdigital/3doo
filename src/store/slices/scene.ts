@@ -11,6 +11,7 @@ import {
   History,
   PRIMITIVE_DEFAULT_OVERRIDES,
   PRIMITIVE_LABELS,
+  SELECTION_OPERATORS,
   add,
   applyModifier,
   centroid,
@@ -865,6 +866,10 @@ export const createSceneSlice: StateCreator<
       get().noteLockedAttempt(object.id);
       return;
     }
+
+    // Nothing about picking more geometry asks for the handles, so they go
+    // away here as they do for a click in the viewport.
+    if (SELECTION_OPERATORS.has(name)) get().stowTransformTool();
 
     get().recordHistory(label ?? name);
 

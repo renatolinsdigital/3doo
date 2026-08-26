@@ -4,8 +4,10 @@ export { Panel, type PanelProps } from './Panel/Panel';
 export { NumberField, type NumberFieldProps } from './NumberField/NumberField';
 export {
   SegmentedControl,
+  SegmentedToggle,
   type SegmentedControlProps,
   type SegmentedOption,
+  type SegmentedToggleProps,
 } from './SegmentedControl/SegmentedControl';
 export { Toggle, type ToggleProps } from './Toggle/Toggle';
 export { Select, type SelectOption, type SelectProps } from './Select/Select';

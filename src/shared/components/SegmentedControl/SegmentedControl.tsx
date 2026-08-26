@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 import { useTooltipTrigger } from '../../hooks/useTooltipTrigger';
 
 import './SegmentedControl.scss';
@@ -28,6 +30,64 @@ export function SegmentedControl<T extends string>({
       {options.map((option) => (
         <SegmentedItem key={option.value} option={option} active={option.value === value} onChange={onChange} />
       ))}
+    </div>
+  );
+}
+
+export interface SegmentedToggleProps {
+  label: string;
+  pressed: boolean;
+  onChange: (pressed: boolean) => void;
+  /** Drawn before the label, and hidden from screen readers: the label says it. */
+  icon?: ReactNode;
+  /** Wear the icon alone: `label` becomes the accessible name, and the hint says the rest. */
+  iconOnly?: boolean;
+  disabled?: boolean;
+  hint?: string;
+}
+
+/**
+ * One flag wearing the segmented control's clothes.
+ *
+ * Same button, same filled-and-underlined pressed state — but on its own, so a
+ * row of them reads as a row of independent switches rather than as a set to
+ * pick one of. It sits next to the mode picker in the top bar, where a flag has
+ * to be as reachable as the mode it applies to.
+ */
+export function SegmentedToggle({
+  label,
+  pressed,
+  onChange,
+  icon,
+  iconOnly = false,
+  disabled = false,
+  hint,
+}: SegmentedToggleProps) {
+  const tooltip = useTooltipTrigger(hint);
+
+  return (
+    <div className={`segmented segmented--single${iconOnly ? ' segmented--icon' : ''}`}>
+      <button
+        type="button"
+        className={`segmented__item${pressed ? ' segmented__item--active' : ''}`}
+        aria-pressed={pressed}
+        // The glyph is decoration either way, so with the label gone there is
+        // no text left to name the button.
+        aria-label={iconOnly ? label : undefined}
+        // `aria-disabled` rather than the native attribute, as in `Button`: a
+        // disabled button takes no focus and fires no pointer events, which is
+        // exactly when its hint — the one thing saying why — is needed most.
+        aria-disabled={disabled || undefined}
+        onClick={disabled ? undefined : () => onChange(!pressed)}
+        {...tooltip}
+      >
+        {icon ? (
+          <span className="segmented__icon" aria-hidden="true">
+            {icon}
+          </span>
+        ) : null}
+        {iconOnly ? null : label}
+      </button>
     </div>
   );
 }

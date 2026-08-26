@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 
-import { Button, SegmentedControl } from '@shared/components';
+import { Button, SegmentedControl, SegmentedToggle } from '@shared/components';
 import { useEditorStore } from '@store/index';
 import type { EditorMode } from '@store/types';
 
@@ -33,6 +33,10 @@ export function TopBar({ brand }: TopBarProps) {
   const undo = useEditorStore((state) => state.undo);
   const redo = useEditorStore((state) => state.redo);
   const openDialog = useEditorStore((state) => state.openDialog);
+  const proportional = useEditorStore((state) => state.proportional);
+  const setProportional = useEditorStore((state) => state.setProportional);
+  const orthographic = useEditorStore((state) => state.orthographic);
+  const setViewportSetting = useEditorStore((state) => state.setViewportSetting);
 
   const { newProject, saveProject, openProject, importMesh } = useProjectFiles();
 
@@ -57,6 +61,30 @@ export function TopBar({ brand }: TopBarProps) {
           options={MODE_OPTIONS}
           value={mode}
           onChange={setMode}
+        />
+        <SegmentedToggle
+          label="PROP"
+          // A point with its falloff ring around it — the same ring the
+          // viewport draws once this is on.
+          icon="◉"
+          iconOnly
+          pressed={proportional.enabled}
+          disabled={mode !== 'edit'}
+          hint={
+            mode === 'edit'
+              ? `Proportional editing: a transform also drags nearby geometry (${proportional.falloff} falloff)`
+              : 'Proportional editing: edit mode only (Tab)'
+          }
+          onChange={(enabled) => setProportional({ enabled })}
+        />
+        <SegmentedToggle
+          label="ORTHO"
+          // Parallel projection: the square a perspective camera would taper.
+          icon="▱"
+          iconOnly
+          pressed={orthographic}
+          hint="Orthographic camera: no perspective, so parallel lines stay parallel"
+          onChange={(value) => setViewportSetting({ orthographic: value })}
         />
       </div>
 

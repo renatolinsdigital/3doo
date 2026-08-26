@@ -36,8 +36,16 @@
   }
 
   &__modes {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
     flex: 0 0 auto;
-    width: 220px;
+
+    // The mode picker holds its width so OBJECT and EDIT stay the same size;
+    // the flags beside it take only what their labels need.
+    > :first-child {
+      width: 220px;
+    }
   }
 
   &__actions {
