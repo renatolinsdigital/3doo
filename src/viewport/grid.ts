@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-import { VIEWPORT_COLORS } from '@bridge/index';
+import { AXIS_COLORS, VIEWPORT_COLORS } from '@bridge/index';
 
 /**
  * Adaptive ground grid.
@@ -29,9 +29,13 @@ export class ViewportGrid {
 
     const span = 50;
     const positions = new Float32Array([-span, 0, 0, span, 0, 0, 0, 0, -span, 0, 0, span]);
-    const colors = new Float32Array([
-      0.9, 0.2, 0.16, 0.9, 0.2, 0.16, 0.24, 0.88, 0.82, 0.24, 0.88, 0.82,
-    ]);
+    // Run through THREE.Color rather than written out as raw channels: with
+    // colour management on, that is the same sRGB-to-working conversion the
+    // gizmo's materials get from `setHex`. Hand-written values would land in a
+    // different space and the two would not match on screen.
+    const x = new THREE.Color(AXIS_COLORS.x);
+    const z = new THREE.Color(AXIS_COLORS.z);
+    const colors = new Float32Array([x.r, x.g, x.b, x.r, x.g, x.b, z.r, z.g, z.b, z.r, z.g, z.b]);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 
-import { ObjectView, VIEWPORT_COLORS } from '@bridge/index';
+import { AXIS_COLORS, ObjectView, VIEWPORT_COLORS } from '@bridge/index';
 import {
   type PivotTool,
   type SelectMode,
@@ -164,6 +164,7 @@ export class Viewport {
     this.controls = new CameraController(this.camera, canvas);
     this.gizmo = new TransformControls(this.camera, canvas);
     this.gizmoHelper = resolveGizmoHelper(this.gizmo);
+    paintGizmoAxes(this.gizmoHelper);
     this.scene.add(this.gizmoHelper);
     this.gizmo.enabled = false;
     this.gizmoHelper.visible = false;
@@ -1551,6 +1552,40 @@ function resolveGizmoHelper(controls: TransformControls): THREE.Object3D {
   const candidate = controls as unknown as { getHelper?: () => THREE.Object3D };
   if (typeof candidate.getHelper === 'function') return candidate.getHelper();
   return controls as unknown as THREE.Object3D;
+}
+
+/**
+ * Repaints the gizmo handles onto the app's axis colours.
+ *
+ * `TransformControls` hard-codes pure red, green and blue, and caches each
+ * material's colour as `_color` the first time it updates so it can restore it
+ * after the hover highlight. Setting `color` alone would therefore survive one
+ * frame at most, which is why the cache is written too — and why doing this
+ * once at construction is enough.
+ *
+ * Matched on the colour rather than the handle name so the plane handles come
+ * along for free: three shares each axis material with the plane facing it, so
+ * red covers X and YZ, green covers Y and XZ, blue covers Z and XY. The remap
+ * is idempotent — after the first pass no material carries the old hex.
+ */
+export function paintGizmoAxes(helper: THREE.Object3D): void {
+  const remap = new Map<number, number>([
+    [0xff0000, AXIS_COLORS.x],
+    [0x00ff00, AXIS_COLORS.y],
+    [0x0000ff, AXIS_COLORS.z],
+  ]);
+
+  helper.traverse((child) => {
+    const material = (child as Partial<THREE.Mesh>).material as
+      (THREE.Material & { color?: THREE.Color; _color?: THREE.Color }) | undefined;
+    if (!material?.color) return;
+
+    const replacement = remap.get(material.color.getHex());
+    if (replacement === undefined) return;
+
+    material.color.setHex(replacement);
+    material._color?.setHex(replacement);
+  });
 }
 
 function focalLengthToFov(focalLength: number): number {

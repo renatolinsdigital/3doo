@@ -17,6 +17,20 @@ export const VIEWPORT_COLORS = {
 } as const;
 
 /**
+ * One colour per axis, shared by the world centre lines and the gizmo handles.
+ *
+ * Blender's scheme with this palette's hues standing in for raw RGB: X keeps
+ * red, Y takes amber where Blender uses green, Z takes cyan where it uses blue.
+ * Both the grid and the gizmo read this table, so an axis is the same colour
+ * wherever it shows up.
+ */
+export const AXIS_COLORS = {
+  x: VIEWPORT_COLORS.red,
+  y: VIEWPORT_COLORS.amber,
+  z: VIEWPORT_COLORS.cyan,
+} as const;
+
+/**
  * Procedural matcap.
  *
  * A generated radial ramp avoids shipping a texture asset while still giving

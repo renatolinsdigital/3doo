@@ -41,14 +41,13 @@ describe('ground plane depth behaviour', () => {
     }
   });
 
-  it('keeps the axes on their two colours', () => {
+  it('carries a colour per endpoint of both centre lines', () => {
     const grid = new ViewportGrid();
     const axes = grid.group.children[2] as THREE.LineSegments;
-    const colors = axes.geometry.getAttribute('color');
 
-    expect(colors.count).toBe(4);
-    // Red along X, cyan along Z — one colour per endpoint, two per line.
-    expect(colors.getX(0)).toBeCloseTo(0.9);
-    expect(colors.getZ(2)).toBeCloseTo(0.82);
+    // Which hues those are is `axisColors.test.ts`, where they are checked
+    // against the gizmo they have to match.
+    expect(axes.geometry.getAttribute('color').count).toBe(4);
+    expect(axes.geometry.getAttribute('position').count).toBe(4);
   });
 });
