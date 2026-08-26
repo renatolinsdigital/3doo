@@ -165,6 +165,7 @@ export class Viewport {
     this.gizmo = new TransformControls(this.camera, canvas);
     this.gizmoHelper = resolveGizmoHelper(this.gizmo);
     paintGizmoAxes(this.gizmoHelper);
+    trimGizmoGuides(this.gizmoHelper, this.gizmo);
     this.scene.add(this.gizmoHelper);
     this.gizmo.enabled = false;
     this.gizmoHelper.visible = false;
@@ -1586,6 +1587,58 @@ export function paintGizmoAxes(helper: THREE.Object3D): void {
     material.color.setHex(replacement);
     material._color?.setHex(replacement);
   });
+}
+
+/** Infinite lines along each axis the drag names: what it is locked to. */
+const AXIS_GUIDES = ['X', 'Y', 'Z'];
+
+/**
+ * The line from where the object started to where it is now, and the marks on
+ * its two ends. `TransformControls` gates these on nothing but `dragging`, so
+ * they show on every drag whatever its axis.
+ */
+const DELTA_GUIDES = ['START', 'END', 'DELTA'];
+
+/**
+ * Cuts the gizmo's drag narration back to the parts that mean something.
+ *
+ * The two kinds answer different questions, so they come and go on different
+ * rules:
+ *
+ * - An axis line stands for a **constraint**, and only one axis is a constraint
+ *   worth drawing. Two lines through the model, or three, say nothing about
+ *   where the drag can go.
+ * - The delta line answers **how far from where it started**, which is worth
+ *   having on a free move off the centre handle, where nothing else reports it.
+ *   The plane handle is the one case that wants neither.
+ *
+ * Wrapped around `updateMatrixWorld` because that is where the control decides
+ * this, and the renderer calls it on the way into every frame — visibility set
+ * any earlier is recomputed before a pixel is drawn. Only ever hides, so
+ * anything left alone keeps the control's own answer.
+ */
+export function trimGizmoGuides(helper: THREE.Object3D, controls: TransformControls): void {
+  const axisGuides: THREE.Object3D[] = [];
+  const deltaGuides: THREE.Object3D[] = [];
+
+  helper.traverse((child) => {
+    const tagged = child as THREE.Object3D & { tag?: string };
+    if (tagged.tag !== 'helper') return;
+    if (AXIS_GUIDES.includes(child.name)) axisGuides.push(child);
+    else if (DELTA_GUIDES.includes(child.name)) deltaGuides.push(child);
+  });
+
+  const update = helper.updateMatrixWorld.bind(helper);
+  helper.updateMatrixWorld = (force?: boolean) => {
+    update(force);
+
+    const axis = (controls as unknown as { axis: string | null }).axis ?? '';
+    // 'XYZX' and friends repeat a letter, so count the distinct ones.
+    const spanned = new Set([...axis].filter((letter) => 'XYZ'.includes(letter))).size;
+
+    if (spanned > 1) for (const guide of axisGuides) guide.visible = false;
+    if (spanned === 2) for (const guide of deltaGuides) guide.visible = false;
+  };
 }
 
 function focalLengthToFov(focalLength: number): number {
