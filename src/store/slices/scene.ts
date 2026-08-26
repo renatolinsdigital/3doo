@@ -136,7 +136,11 @@ export interface SceneSlice {
   redo: () => void;
   touchMesh: () => void;
 
-  loadProjectDocument: (document: ReturnType<typeof serializeProject>) => void;
+  /** `restoreLayout` puts the folded panels back too — for a file load, not for undo. */
+  loadProjectDocument: (
+    document: ReturnType<typeof serializeProject>,
+    restoreLayout?: boolean,
+  ) => void;
   snapshotDocument: () => ReturnType<typeof serializeProject>;
   setProjectName: (name: string) => void;
   resetScene: () => void;
@@ -164,8 +168,11 @@ export const createSceneSlice: StateCreator<
   touchMesh: () => set((state) => ({ meshVersion: state.meshVersion + 1 })),
 
   snapshotDocument: () => {
-    const { projectName, objects, cursor, activeObjectId } = get();
-    return serializeProject(projectName, objects as SceneObjectSnapshot[], cursor, activeObjectId);
+    const { projectName, objects, cursor, activeObjectId, collapsedPanels } = get();
+    return {
+      ...serializeProject(projectName, objects as SceneObjectSnapshot[], cursor, activeObjectId),
+      panels: { ...collapsedPanels },
+    };
   },
 
   recordHistory: (label) => {
@@ -931,8 +938,11 @@ export const createSceneSlice: StateCreator<
     });
   },
 
-  loadProjectDocument: (document) => {
+  loadProjectDocument: (document, restoreLayout = false) => {
     const restored = deserializeProject(document);
+    // Undo replays the scene, not the shell: a snapshot taken while a panel was
+    // folded would otherwise fold it again three operations later.
+    if (restoreLayout) get().setCollapsedPanels(document.panels ?? {});
     const objects: SceneObject[] = restored.objects.map((object) => ({
       ...object,
       primitive: null,
@@ -971,6 +981,7 @@ export const createSceneSlice: StateCreator<
       activeTool: 'select',
       modal: null,
       dialog: null,
+      collapsedPanels: {},
     });
   },
 });

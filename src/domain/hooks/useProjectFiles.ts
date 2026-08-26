@@ -57,7 +57,7 @@ export function useProjectFiles() {
     }
 
     try {
-      state.loadProjectDocument(parseProject(file.text));
+      state.loadProjectDocument(parseProject(file.text), true);
       state.pushToast('success', `Opened ${file.name}`);
     } catch (error) {
       // Named, because a bare parser message never says which file it came from

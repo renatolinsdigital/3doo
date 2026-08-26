@@ -15,6 +15,8 @@ export interface UiSlice {
   hint: HintState | null;
   /** The viewport's right-click cursor menu, or null when it is closed. */
   cursorMenu: CursorMenuState | null;
+  /** Panels folded away, keyed by title. Missing means open, so a new scene is all open. */
+  collapsedPanels: Record<string, boolean>;
 
   pushToast: (variant: Toast['variant'], message: string) => void;
   dismissToast: (id: string) => void;
@@ -26,6 +28,8 @@ export interface UiSlice {
   hideHint: () => void;
   openCursorMenu: (menu: CursorMenuState) => void;
   closeCursorMenu: () => void;
+  togglePanel: (title: string) => void;
+  setCollapsedPanels: (collapsed: Record<string, boolean>) => void;
 }
 
 let toastCounter = 0;
@@ -42,6 +46,7 @@ export const createUiSlice: StateCreator<
   mergePreview: null,
   hint: null,
   cursorMenu: null,
+  collapsedPanels: {},
 
   pushToast: (variant, message) => {
     toastCounter += 1;
@@ -73,4 +78,11 @@ export const createUiSlice: StateCreator<
   openCursorMenu: (cursorMenu) => set({ cursorMenu, hint: null }),
 
   closeCursorMenu: () => set({ cursorMenu: null }),
+
+  togglePanel: (title) =>
+    set((state) => ({
+      collapsedPanels: { ...state.collapsedPanels, [title]: !state.collapsedPanels[title] },
+    })),
+
+  setCollapsedPanels: (collapsed) => set({ collapsedPanels: { ...collapsed } }),
 });

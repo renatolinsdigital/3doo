@@ -47,6 +47,36 @@
   }
 }
 
+// The same box the panel toggles wear, so a checked overlay reads the same
+// wherever it is switched from.
+.context-menu__box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  font-size: var(--text-md);
+  line-height: 1;
+  background: var(--bone);
+  border: var(--border-thin) solid var(--void);
+}
+
+.context-menu__item--check {
+  gap: var(--space-3);
+
+  &[aria-checked='true'] .context-menu__box {
+    background: var(--red);
+    color: var(--bone);
+  }
+
+  // The hovered row fills red, which a checked box would disappear into.
+  &:hover:not([aria-disabled='true']) .context-menu__box {
+    background: var(--bone);
+    color: var(--void);
+  }
+}
+
 .context-menu__rule {
   height: var(--border-thin);
   margin: var(--space-1) 0;

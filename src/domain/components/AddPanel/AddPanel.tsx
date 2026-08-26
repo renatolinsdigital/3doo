@@ -6,9 +6,9 @@ import {
   PRIMITIVE_LABELS,
   type PrimitiveKind,
 } from '@kernel/index';
-import { Button, FieldRow, Panel, SegmentedControl, Toggle } from '@shared/components';
+import { Button, FieldRow, Panel, SegmentedControl } from '@shared/components';
 import { useEditorStore } from '@store/index';
-import type { PivotMode, SelectMode, ShadingMode } from '@store/types';
+import type { SelectMode } from '@store/types';
 
 import './AddPanel.scss';
 
@@ -67,32 +67,14 @@ const SELECT_MODE_OPTIONS = [
   { value: 'face', label: 'FACE', shortcut: '3', hint: 'Select whole faces (3)' },
 ] as const;
 
-// Kept short: five segments share a 260px panel, and the control must not clip.
-const SHADING_OPTIONS = [
-  { value: 'solid', label: 'SOLID', hint: 'Flat-lit solid surfaces, no edges' },
-  { value: 'solidWire', label: 'WIRE+', hint: 'Solid surfaces with the wireframe overlaid' },
-  { value: 'wireframe', label: 'WIRE', hint: 'Edges only, no filled surfaces' },
-  { value: 'xray', label: 'XRAY', hint: 'Transparent surfaces to see through the mesh' },
-  { value: 'matcap', label: 'MCAP', hint: 'A material-capture preview shading' },
-] as const;
-
 export function AddPanel() {
   const mode = useEditorStore((state) => state.mode);
   const selectMode = useEditorStore((state) => state.selectMode);
   const setSelectMode = useEditorStore((state) => state.setSelectMode);
   const addPrimitive = useEditorStore((state) => state.addPrimitive);
-  const shading = useEditorStore((state) => state.shading);
-  const setShading = useEditorStore((state) => state.setShading);
-  const overlays = useEditorStore((state) => state.overlays);
-  const setOverlay = useEditorStore((state) => state.setOverlay);
-  const frameSelected = useEditorStore((state) => state.frameSelected);
-  const frameAll = useEditorStore((state) => state.frameAll);
-  const viewLost = useEditorStore((state) => state.viewLost);
-  const pivot = useEditorStore((state) => state.pivot);
-  const setPivot = useEditorStore((state) => state.setPivot);
 
   return (
-    <Panel title={mode === 'object' ? 'ADD / SCENE' : 'SELECT / VIEW'} className="add-panel">
+    <Panel title={mode === 'object' ? 'ADD' : 'SELECT'} className="add-panel">
       {mode === 'object' ? (
         <FieldRow legend="PRIMITIVES" columns={2}>
           {PRIMITIVE_ORDER.map((kind) => (
@@ -114,92 +96,6 @@ export function AddPanel() {
           />
         </FieldRow>
       )}
-
-      <FieldRow legend="SHADING" columns={1}>
-        <SegmentedControl<ShadingMode>
-          label="Shading mode"
-          options={SHADING_OPTIONS}
-          value={shading}
-          onChange={setShading}
-        />
-      </FieldRow>
-
-      <FieldRow legend="TRANSFORM" columns={1}>
-        <SegmentedControl
-          label="PIVOT"
-          value={pivot === 'cursor' ? 'cursor' : 'median'}
-          options={[
-            {
-              value: 'median',
-              label: 'MEDIAN',
-              hint: 'Rotate and scale around the middle of what is selected',
-            },
-            {
-              value: 'cursor',
-              label: 'CURSOR',
-              hint: 'Rotate and scale around the 3D cursor instead',
-            },
-          ]}
-          onChange={(value) => setPivot(value as PivotMode)}
-        />
-      </FieldRow>
-
-      <FieldRow legend="OVERLAYS" columns={1}>
-        <Toggle
-          label="GRID"
-          checked={overlays.grid}
-          hint="Show the ground grid — 1 m squares at normal zoom, rescaled by ten as you pull back"
-          onChange={(grid) => setOverlay({ grid })}
-        />
-        <Toggle
-          label="AXES"
-          checked={overlays.axes}
-          hint="Show the coloured X/Z axis lines"
-          onChange={(axes) => setOverlay({ axes })}
-        />
-        <Toggle
-          label="3D CURSOR"
-          checked={overlays.cursor}
-          hint="Show the 3D cursor ring in the viewport — hiding it does not move it"
-          onChange={(cursor) => setOverlay({ cursor })}
-        />
-        <Toggle
-          label="NORMALS"
-          checked={overlays.normals}
-          hint="Draw a short line out of every face along its normal"
-          onChange={(normals) => setOverlay({ normals })}
-        />
-        <Toggle
-          label="FACE ORIENT"
-          checked={overlays.faceOrientation}
-          hint="Tint backfaces red so inverted normals are obvious"
-          onChange={(faceOrientation) => setOverlay({ faceOrientation })}
-        />
-        <Toggle
-          label="STATISTICS"
-          checked={overlays.statistics}
-          hint="Show vertex/edge/face/triangle counts in the status bar"
-          onChange={(statistics) => setOverlay({ statistics })}
-        />
-      </FieldRow>
-
-      <FieldRow legend="VIEW" columns={2}>
-        <Button
-          label="FRAME SEL"
-          hint="Frame the camera on the current selection (.)"
-          onClick={frameSelected}
-        />
-        <Button
-          label="FRAME ALL"
-          className={viewLost ? 'add-panel__frame-all--tremble' : undefined}
-          hint={
-            viewLost
-              ? "You've zoomed out past your scene — click to come back"
-              : 'Frame the camera on the whole scene'
-          }
-          onClick={frameAll}
-        />
-      </FieldRow>
     </Panel>
   );
 }

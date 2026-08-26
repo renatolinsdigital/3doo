@@ -52,7 +52,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         kind: 'steps',
         items: [
           'Open the MODELING module from the plate in the top-left corner.',
-          'In the ADD / SCENE panel on the left, click a primitive — BOX is the usual place to start. It drops into the scene already selected.',
+          'In the ADD panel on the left, click a primitive — BOX is the usual place to start. It drops into the scene already selected.',
           'While it is still freshly added, the PROPERTIES panel lets you change its parameters — size, segments, rings — and the mesh is rebuilt each time.',
           'Press Tab to enter edit mode. The left panel swaps to OPERATIONS and the tool rail switches to vertex, edge and face selection.',
           'Select some geometry and run an operation: E extrudes, I insets, Ctrl+R cuts a loop.',
@@ -80,7 +80,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Top bar',
-            'Project name, the object/edit mode switch, file actions, undo and redo, preferences and export.',
+            'FILE, PREFS and the project name on the left; then the object/edit mode switch, the proportional and orthographic flags, the pivot picker, and the SHADING and OVERLAYS menus; the two framing buttons and the shortcut list on the right.',
           ],
           [
             'Tool rail, far left',
@@ -88,7 +88,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Left panels',
-            'ADD / SCENE with OBJECT under it in object mode. SELECT / VIEW and OPERATIONS replace them in edit mode.',
+            'ADD with OBJECT under it in object mode. SELECT and OPERATIONS replace them in edit mode.',
+          ],
+          [
+            'Panel titles',
+            'Every panel folds away when its title is clicked. Which ones are folded is saved with the project.',
           ],
           ['Viewport', 'The scene. Orbit, pan and zoom here; right-click places the 3D cursor.'],
           [
@@ -327,7 +331,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Orbit, pan, zoom',
             'Middle-drag orbits, Shift+middle-drag pans, the wheel zooms. A Maya preset is available if that is the muscle memory you have.',
           ],
-          ['Frame the selection', '. frames what is selected, Home frames the whole scene.'],
+          [
+            'Frame the selection',
+            '. frames what is selected, Home frames the whole scene. Both have a button in the top bar.',
+          ],
           [
             'Axis views',
             '7 for top, Ctrl+1 for front, Ctrl+3 for side. 5 toggles orthographic and perspective.',
@@ -349,7 +356,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'Shift+Z cycles the shading modes. The grid adapts its spacing as you zoom, and the overlays for normals, face orientation, statistics and the cursor each toggle independently.',
+        text: 'Shading is picked from the menu in the top bar, and Shift+Z cycles the modes. The grid adapts its spacing as you zoom, and the OVERLAYS menu beside it ticks the grid, axes, cursor, normals, face orientation and statistics independently.',
       },
     ],
   },

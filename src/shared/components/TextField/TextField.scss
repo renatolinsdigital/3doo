@@ -1,0 +1,19 @@
+@use '@global-styles/helpers' as *;
+
+.text-field {
+  @include mono-value;
+  @include brutal-focus-border;
+
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  // The surface is a token rather than a fixed colour: a field on a bone panel
+  // and a field on the bone top bar cannot both be bone.
+  background: var(--text-field-surface, var(--bone));
+  color: var(--void);
+  border: var(--border-thin) solid var(--void);
+
+  &:disabled {
+    color: var(--ink-muted);
+    cursor: not-allowed;
+  }
+}

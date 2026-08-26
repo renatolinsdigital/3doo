@@ -35,6 +35,14 @@ export interface ProjectDocument {
   cursor: Vec3;
   activeObjectId: string | null;
   objects: SceneObjectData[];
+  /**
+   * Which panels were folded away, keyed by title.
+   *
+   * Layout rather than scene, so it is filled in and read back by the store —
+   * `serializeProject` has no business knowing about the shell. Absent in files
+   * written before panels could fold, which load with everything open.
+   */
+  panels?: Record<string, boolean>;
 }
 
 export interface SceneObjectSnapshot {

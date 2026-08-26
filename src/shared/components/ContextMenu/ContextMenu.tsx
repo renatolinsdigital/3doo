@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef, type RefObject } from 'react';
 
 import { useTooltipTrigger } from '../../hooks/useTooltipTrigger';
 
@@ -14,7 +14,20 @@ export interface ContextMenuItem {
   onSelect: () => void;
 }
 
-export type ContextMenuEntry = ContextMenuItem | { id: string; separator: true };
+export interface ContextMenuCheckbox {
+  id: string;
+  label: string;
+  hint?: string;
+  disabled?: boolean;
+  checked: boolean;
+  /** Flipped in place: the menu stays open, so a run of boxes is set in one visit. */
+  onToggle: (checked: boolean) => void;
+}
+
+export type ContextMenuEntry =
+  | ContextMenuItem
+  | ContextMenuCheckbox
+  | { id: string; separator: true };
 
 export interface ContextMenuProps {
   /** Position within the menu's containing block, in pixels. */
@@ -23,11 +36,22 @@ export interface ContextMenuProps {
   /** Drawn as the menu's header strip and used as its accessible name. */
   label: string;
   entries: readonly ContextMenuEntry[];
+  /**
+   * The element the menu was opened from, if any.
+   *
+   * A press on it does not close the menu here — that button toggles the menu
+   * itself, and closing on the way down would leave it reopening on the click.
+   */
+  anchor?: RefObject<HTMLElement>;
   onClose: () => void;
 }
 
 function isSeparator(entry: ContextMenuEntry): entry is { id: string; separator: true } {
   return 'separator' in entry;
+}
+
+function isCheckbox(entry: ContextMenuEntry): entry is ContextMenuCheckbox {
+  return 'checked' in entry;
 }
 
 /**
@@ -38,7 +62,7 @@ function isSeparator(entry: ContextMenuEntry): entry is { id: string; separator:
  * otherwise run off the viewport, and the entries at the end are the ones a
  * user reaches for last.
  */
-export function ContextMenu({ x, y, label, entries, onClose }: ContextMenuProps) {
+export function ContextMenu({ x, y, label, entries, anchor, onClose }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
 
@@ -66,7 +90,9 @@ export function ContextMenu({ x, y, label, entries, onClose }: ContextMenuProps)
       }
     };
     const onPointerDown = (event: PointerEvent) => {
-      if (!ref.current?.contains(event.target as Node)) onClose();
+      const target = event.target as Node;
+      if (ref.current?.contains(target) || anchor?.current?.contains(target)) return;
+      onClose();
     };
 
     window.addEventListener('keydown', onKeyDown, true);
@@ -75,7 +101,7 @@ export function ContextMenu({ x, y, label, entries, onClose }: ContextMenuProps)
       window.removeEventListener('keydown', onKeyDown, true);
       window.removeEventListener('pointerdown', onPointerDown, true);
     };
-  }, [onClose]);
+  }, [anchor, onClose]);
 
   return (
     <div
@@ -89,14 +115,32 @@ export function ContextMenu({ x, y, label, entries, onClose }: ContextMenuProps)
       <div className="context-menu__title" id={titleId}>
         {label}
       </div>
-      {entries.map((entry) =>
-        isSeparator(entry) ? (
-          <hr key={entry.id} className="context-menu__rule" />
-        ) : (
-          <ContextMenuButton key={entry.id} item={entry} onClose={onClose} />
-        ),
-      )}
+      {entries.map((entry) => {
+        if (isSeparator(entry)) return <hr key={entry.id} className="context-menu__rule" />;
+        if (isCheckbox(entry)) return <ContextMenuCheck key={entry.id} item={entry} />;
+        return <ContextMenuButton key={entry.id} item={entry} onClose={onClose} />;
+      })}
     </div>
+  );
+}
+
+function ContextMenuCheck({ item }: { item: ContextMenuCheckbox }) {
+  const tooltip = useTooltipTrigger(item.hint);
+  return (
+    <button
+      type="button"
+      role="menuitemcheckbox"
+      className="context-menu__item context-menu__item--check"
+      aria-checked={item.checked}
+      aria-disabled={item.disabled || undefined}
+      onClick={item.disabled ? undefined : () => item.onToggle(!item.checked)}
+      {...tooltip}
+    >
+      <span className="context-menu__box" aria-hidden="true">
+        {item.checked ? '×' : ''}
+      </span>
+      {item.label}
+    </button>
   );
 }
 

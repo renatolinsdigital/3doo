@@ -37,14 +37,14 @@ describe('App shell', () => {
     expect(screen.getByRole('region', { name: 'OUTLINER' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'PROPERTIES' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'MODIFIERS' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'ADD / SCENE' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'ADD' })).toBeInTheDocument();
     expect(screen.getByRole('region', { name: 'OBJECT' })).toBeInTheDocument();
   });
 
   it('adds a primitive from the add panel and shows it everywhere', async () => {
     render(<App />);
 
-    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
     await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
 
     expect(useEditorStore.getState().objects).toHaveLength(1);
@@ -59,7 +59,7 @@ describe('App shell', () => {
     const rail = screen.getByRole('navigation', { name: 'Tools' });
     expect(within(rail).getByRole('button', { name: 'Move' })).not.toHaveAttribute('aria-pressed');
 
-    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
     await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
 
     // The gizmo only draws for a transform tool, so this is what puts handles
@@ -72,7 +72,7 @@ describe('App shell', () => {
 
   it('swaps the left panel when entering edit mode', async () => {
     render(<App />);
-    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
     await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
 
     expect(screen.queryByRole('region', { name: 'OPERATIONS' })).not.toBeInTheDocument();
@@ -80,12 +80,12 @@ describe('App shell', () => {
     await userEvent.click(screen.getByRole('button', { name: 'EDIT' }));
 
     expect(screen.getByRole('region', { name: 'OPERATIONS' })).toBeInTheDocument();
-    expect(screen.getByRole('region', { name: 'SELECT / VIEW' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'SELECT' })).toBeInTheDocument();
   });
 
   it('runs a modelling operation end to end through the UI', async () => {
     render(<App />);
-    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
     await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
     await userEvent.click(screen.getByRole('button', { name: 'EDIT' }));
 
@@ -101,21 +101,35 @@ describe('App shell', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Subdivided');
   });
 
-  it('undoes from the top bar', async () => {
+  it('undoes from the keyboard', async () => {
     render(<App />);
-    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
     await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
     expect(useEditorStore.getState().objects).toHaveLength(1);
 
-    await userEvent.click(screen.getByRole('button', { name: 'UNDO' }));
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
 
     expect(useEditorStore.getState().objects).toHaveLength(0);
   });
 
-  it('opens the export dialog with its presets', async () => {
+  it('folds a panel away by its title, and keeps it folded in the saved document', async () => {
     render(<App />);
 
-    await userEvent.click(screen.getByRole('button', { name: 'EXPORT' }));
+    const outliner = screen.getByRole('region', { name: 'OUTLINER' });
+    const title = within(outliner).getByRole('button', { name: 'OUTLINER' });
+    expect(title).toHaveAttribute('aria-expanded', 'true');
+
+    await userEvent.click(title);
+
+    expect(title).toHaveAttribute('aria-expanded', 'false');
+    expect(useEditorStore.getState().snapshotDocument().panels).toEqual({ OUTLINER: true });
+  });
+
+  it('opens the export dialog with its presets from the file menu', async () => {
+    render(<App />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'FILE' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'EXPORT' }));
 
     const dialog = screen.getByRole('dialog', { name: 'EXPORT' });
     expect(within(dialog).getByLabelText('PRESET')).toBeInTheDocument();
@@ -133,7 +147,7 @@ describe('App shell', () => {
 
   it('adds a modifier and renders it in the stack', async () => {
     render(<App />);
-    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
     await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
 
     const modifiers = screen.getByRole('region', { name: 'MODIFIERS' });
@@ -157,7 +171,7 @@ describe('App shell', () => {
 
   it('removes a modifier from the stack', async () => {
     render(<App />);
-    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
     await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
 
     const modifiers = screen.getByRole('region', { name: 'MODIFIERS' });
@@ -170,7 +184,7 @@ describe('App shell', () => {
 
   it('starts a modal rotation on R, the way Blender does', async () => {
     render(<App />);
-    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
     await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
 
     fireEvent.keyDown(window, { key: 'r' });
@@ -193,7 +207,7 @@ describe('App shell', () => {
 
   it('selects all objects when pressing A in object mode', async () => {
     render(<App />);
-    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
     await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
     await userEvent.click(within(addPanel).getByRole('button', { name: 'PLANE' }));
     act(() => useEditorStore.getState().setActiveObject(null));
@@ -207,7 +221,7 @@ describe('App shell', () => {
 
   it('selects all geometry when pressing A in edit mode', async () => {
     render(<App />);
-    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
     await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
     await userEvent.click(screen.getByRole('button', { name: 'EDIT' }));
 
@@ -218,7 +232,7 @@ describe('App shell', () => {
 
   it('treats Ctrl+A as a no-op that only suppresses the browser default', async () => {
     render(<App />);
-    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
     await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
     act(() => useEditorStore.getState().setActiveObject(null));
     expect(useEditorStore.getState().selectedObjectIds).toHaveLength(0);
@@ -232,18 +246,18 @@ describe('App shell', () => {
 
   it('keeps shortcuts alive while a toggle holds focus, but not in a text field', async () => {
     render(<App />);
-    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
     await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
     await userEvent.click(screen.getByRole('button', { name: 'EDIT' }));
 
     // Clicking a toggle leaves its hidden checkbox focused. Read as a field
     // being typed into, that left every shortcut dead until the next click
     // landed somewhere else.
-    const gridOverlay = screen.getByRole('checkbox', { name: 'GRID' });
-    await userEvent.click(gridOverlay);
-    expect(useEditorStore.getState().overlays.grid).toBe(false);
+    const toggle = screen.getByRole('checkbox', { name: 'INDIVIDUAL' });
+    await userEvent.click(toggle);
+    expect(toggle).toBeChecked();
 
-    fireEvent.keyDown(gridOverlay, { key: 'a' });
+    fireEvent.keyDown(toggle, { key: 'a' });
     expect(useEditorStore.getState().objects[0].mesh.selectedFaces()).toHaveLength(6);
 
     // The radius field is a real one, and an "a" typed into it stays there.
@@ -254,7 +268,7 @@ describe('App shell', () => {
 
   it('flips proportional editing from the top bar, and only in edit mode', async () => {
     render(<App />);
-    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
     await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
 
     const prop = screen.getByRole('button', { name: 'PROP' });
@@ -269,6 +283,60 @@ describe('App shell', () => {
     expect(screen.getByRole('button', { name: 'PROP' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('ticks overlays from the top bar menu, which stays open across them', async () => {
+    render(<App />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'OVERLAYS' }));
+    const grid = screen.getByRole('menuitemcheckbox', { name: 'GRID' });
+    expect(grid).toHaveAttribute('aria-checked', 'true');
+
+    await userEvent.click(grid);
+    expect(useEditorStore.getState().overlays.grid).toBe(false);
+
+    // Still up, so a run of boxes can be set without reopening it each time.
+    await userEvent.click(screen.getByRole('menuitemcheckbox', { name: 'NORMALS' }));
+    expect(useEditorStore.getState().overlays.normals).toBe(true);
+    expect(screen.getByRole('menuitemcheckbox', { name: 'GRID' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+  });
+
+  it('switches the transform pivot from the top bar', async () => {
+    render(<App />);
+    const pivot = screen.getByRole('group', { name: 'Pivot' });
+    expect(within(pivot).getByRole('button', { name: 'MEDIAN' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+
+    await userEvent.click(within(pivot).getByRole('button', { name: 'CURSOR' }));
+
+    expect(useEditorStore.getState().pivot).toBe('cursor');
+  });
+
+  it('asks the viewport to frame from the top bar buttons', async () => {
+    render(<App />);
+
+    // The glyphs are decoration, so the label is the only thing naming these.
+    await userEvent.click(screen.getByRole('button', { name: 'FRAME SEL' }));
+    expect(useEditorStore.getState().frameRequest).toMatchObject({ target: 'selected' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'FRAME ALL' }));
+    expect(useEditorStore.getState().frameRequest).toMatchObject({ target: 'all' });
+  });
+
+  it('picks a shading mode from the top bar menu', async () => {
+    render(<App />);
+
+    // The trigger wears the mode in force, so it is named by the value it holds.
+    await userEvent.click(screen.getByRole('button', { name: 'Shading: SOLID + WIRE' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'X-RAY' }));
+
+    expect(useEditorStore.getState().shading).toBe('xray');
+    expect(screen.getByRole('button', { name: 'Shading: X-RAY' })).toBeInTheDocument();
+  });
+
   it('flips the orthographic camera from the top bar', async () => {
     render(<App />);
 
@@ -279,18 +347,18 @@ describe('App shell', () => {
 
   it('shows a hint tooltip after hovering a control, once the delay passes', () => {
     render(<App />);
-    const exportButton = screen.getByRole('button', { name: 'EXPORT' });
+    const fileButton = screen.getByRole('button', { name: 'FILE' });
 
     vi.useFakeTimers();
-    fireEvent.mouseEnter(exportButton);
+    fireEvent.mouseEnter(fileButton);
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
 
     act(() => {
       vi.advanceTimersByTime(500);
     });
-    expect(screen.getByRole('tooltip')).toHaveTextContent(/export the scene/i);
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/project files/i);
 
-    fireEvent.mouseLeave(exportButton);
+    fireEvent.mouseLeave(fileButton);
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
@@ -305,7 +373,7 @@ describe('App shell', () => {
     expect(useEditorStore.getState().tooltipsEnabled).toBe(false);
 
     vi.useFakeTimers();
-    fireEvent.mouseEnter(screen.getByRole('button', { name: 'EXPORT' }));
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'FILE' }));
     act(() => {
       vi.advanceTimersByTime(1000);
     });

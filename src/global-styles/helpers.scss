@@ -30,6 +30,17 @@
   }
 }
 
+/// Focus for a field that draws its own hard border: recolour that border
+/// instead of ringing it. An outline would sit inside the border as a second
+/// frame around one control, and the caret is the cue that does not rely on
+/// colour. Use `brutal-focus-field` where the border is shared across a row.
+@mixin brutal-focus-border($color: var(--red)) {
+  &:focus {
+    outline: none;
+    border-color: $color;
+  }
+}
+
 /// Focus for a field that already draws a hard border: recolour that border
 /// instead of ringing it. An outline on top of a hard border reads as a second
 /// frame around one control; the caret is the cue that does not rely on colour.

@@ -48,17 +48,6 @@
     white-space: nowrap;
   }
 
-  &__rename {
-    @include mono-value;
-
-    min-width: 0;
-    padding: var(--space-2) var(--space-3);
-    color: var(--void);
-    background: var(--bone);
-    border: none;
-    outline: var(--border-thin) solid var(--cyan);
-  }
-
   // Reads as a plate rather than a control: it reports the link, it does not
   // change it.
   &__badge {

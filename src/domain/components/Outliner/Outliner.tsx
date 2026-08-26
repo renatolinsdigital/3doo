@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
-import { type ContextMenuEntry, ContextMenu, Panel } from '@shared/components';
+import { type ContextMenuEntry, ContextMenu, Panel, TextField } from '@shared/components';
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
 import { useEditorStore } from '@store/index';
 import type { SceneObject } from '@store/types';
@@ -199,8 +199,8 @@ function OutlinerRow({
       }}
     >
       {isEditing ? (
-        <input
-          className="outliner__rename"
+        <TextField
+          label={`Rename ${object.name}`}
           defaultValue={object.name}
           autoFocus
           onBlur={(event) => onFinishRename(event.target.value.trim() || object.name)}

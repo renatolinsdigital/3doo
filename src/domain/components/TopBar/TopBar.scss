@@ -2,7 +2,11 @@
 
 .top-bar {
   display: flex;
-  align-items: center;
+  // One row, one height. Every group stretches to the bar and every control
+  // stretches to its group, so the tallest of them — a `Button` at its hit
+  // target — sets the line and nothing sits proud of its neighbours. Centring
+  // them instead left the segmented pickers and the project field short.
+  align-items: stretch;
   justify-content: space-between;
   gap: var(--space-4);
   padding: var(--space-3) var(--space-4);
@@ -11,33 +15,29 @@
 
   &__brand {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: var(--space-4);
     min-width: 0;
   }
 
-  &__project {
-    // Contains the visually hidden label. See `.toggle`.
-    position: relative;
-    display: flex;
-    min-width: 0;
+  // The switcher is the one control that wraps its button in a positioning
+  // shell, so the stretch has to be passed down to the button itself.
+  .module-switcher__brand {
+    height: 100%;
   }
 
   &__project-input {
-    @include mono-value;
-    @include brutal-focus;
+    // The bar is bone itself, so the field has to sit a shade back from it.
+    --text-field-surface: var(--bone-dim);
 
     width: 22ch;
     max-width: 100%;
-    padding: var(--space-2) var(--space-3);
-    background: var(--bone-dim);
-    border: var(--border-thin) solid var(--void);
     text-transform: uppercase;
   }
 
   &__modes {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: var(--space-3);
     flex: 0 0 auto;
 
@@ -48,17 +48,54 @@
     }
   }
 
-  &__actions {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    flex-wrap: wrap;
-    justify-content: flex-end;
+  &__menu {
+    display: inline-flex;
   }
 
-  &__divider {
-    width: var(--border-thin);
-    height: 24px;
-    background: var(--void);
+  &__menu-trigger {
+    // The caret is decoration: the button already says what it opens, and a
+    // glyph in the label would be read out as whatever it happens to be called.
+    &::after {
+      content: '▾';
+      margin-inline-start: var(--space-2);
+      font-size: var(--text-md);
+      line-height: 1;
+    }
+
+    &[aria-expanded='true'] {
+      background: var(--bone-shade);
+    }
+  }
+
+  // Wearing the shading in force, so the bar says what the viewport is doing.
+  // Held to one width: the labels differ in length, and the group is centred.
+  &__menu--shading &__menu-trigger {
+    justify-content: space-between;
+    min-width: 150px;
+  }
+
+  // The parallelogram sits low in its em box, so it reads a pixel below the
+  // ring on the flag next to it. Nudged back up rather than left uneven.
+  &__ortho .segmented__icon {
+    position: relative;
+    bottom: 1px;
+  }
+
+  // The rail sizes its icon buttons to fill a column; here they are their own
+  // squares, sitting beside the flags at the same height.
+  &__icon {
+    width: auto;
+    min-width: var(--hit-target);
+  }
+
+  &__icon--tremble {
+    animation: tremble 0.4s ease-in-out infinite;
+  }
+
+  &__actions {
+    display: flex;
+    align-items: stretch;
+    gap: var(--space-2);
+    justify-content: flex-end;
   }
 }

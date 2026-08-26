@@ -13,8 +13,38 @@
     flex: 0 0 auto;
   }
 
+  // Folded away, the panel is the header strip alone, and that strip's own
+  // divider would land straight on the panel border under it.
+  &--collapsed &__header {
+    border-bottom: none;
+  }
+
   &__title {
     @include label-text;
+
+    // Takes the strip's free space so the whole width of it is the handle;
+    // `actions`, still a sibling, keeps its own.
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  &__toggle {
+    @include brutal-focus(var(--bone));
+
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  &__caret {
+    font-size: var(--text-md);
+    line-height: 1;
   }
 
   &__actions {

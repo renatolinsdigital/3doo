@@ -31,7 +31,7 @@ export function useAutosave(): void {
       const objectCount = record.document.objects.length;
       if (objectCount === 0) return;
 
-      state.loadProjectDocument(record.document);
+      state.loadProjectDocument(record.document, true);
       state.pushToast(
         'info',
         `Recovered ${objectCount} object(s) from ${new Date(record.savedAt).toLocaleTimeString()}`,

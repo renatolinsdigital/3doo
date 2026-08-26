@@ -28,7 +28,12 @@ export function SegmentedControl<T extends string>({
   return (
     <div className="segmented" role="group" aria-label={label}>
       {options.map((option) => (
-        <SegmentedItem key={option.value} option={option} active={option.value === value} onChange={onChange} />
+        <SegmentedItem
+          key={option.value}
+          option={option}
+          active={option.value === value}
+          onChange={onChange}
+        />
       ))}
     </div>
   );
@@ -44,6 +49,7 @@ export interface SegmentedToggleProps {
   iconOnly?: boolean;
   disabled?: boolean;
   hint?: string;
+  className?: string;
 }
 
 /**
@@ -62,11 +68,21 @@ export function SegmentedToggle({
   iconOnly = false,
   disabled = false,
   hint,
+  className,
 }: SegmentedToggleProps) {
   const tooltip = useTooltipTrigger(hint);
 
   return (
-    <div className={`segmented segmented--single${iconOnly ? ' segmented--icon' : ''}`}>
+    <div
+      className={[
+        'segmented',
+        'segmented--single',
+        iconOnly ? 'segmented--icon' : '',
+        className ?? '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
+    >
       <button
         type="button"
         className={`segmented__item${pressed ? ' segmented__item--active' : ''}`}
@@ -99,7 +115,8 @@ interface SegmentedItemProps<T extends string> {
 }
 
 function SegmentedItem<T extends string>({ option, active, onChange }: SegmentedItemProps<T>) {
-  const tooltipText = option.hint ?? (option.shortcut ? `${option.label} (${option.shortcut})` : undefined);
+  const tooltipText =
+    option.hint ?? (option.shortcut ? `${option.label} (${option.shortcut})` : undefined);
   const tooltip = useTooltipTrigger(tooltipText);
 
   return (

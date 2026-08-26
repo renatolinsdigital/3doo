@@ -2,6 +2,35 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useEditorStore } from '../useEditorStore';
 
+describe('panel folds', () => {
+  beforeEach(() => {
+    useEditorStore.getState().resetScene();
+  });
+
+  it('folds and unfolds a panel by title', () => {
+    useEditorStore.getState().togglePanel('OUTLINER');
+    expect(useEditorStore.getState().collapsedPanels).toEqual({ OUTLINER: true });
+
+    useEditorStore.getState().togglePanel('OUTLINER');
+    expect(useEditorStore.getState().collapsedPanels).toEqual({ OUTLINER: false });
+  });
+
+  it('rides in the document, but comes back only on a real load', () => {
+    useEditorStore.getState().togglePanel('OPERATIONS');
+    const document = useEditorStore.getState().snapshotDocument();
+    expect(document.panels).toEqual({ OPERATIONS: true });
+
+    // Undo replays the scene through this same format. Restoring the shell with
+    // it would refold a panel the user had opened three operations later.
+    useEditorStore.getState().setCollapsedPanels({});
+    useEditorStore.getState().loadProjectDocument(document);
+    expect(useEditorStore.getState().collapsedPanels).toEqual({});
+
+    useEditorStore.getState().loadProjectDocument(document, true);
+    expect(useEditorStore.getState().collapsedPanels).toEqual({ OPERATIONS: true });
+  });
+});
+
 describe('hover hints', () => {
   beforeEach(() => {
     useEditorStore.getState().resetPreferences();
