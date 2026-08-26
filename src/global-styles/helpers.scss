@@ -119,6 +119,12 @@
   }
 }
 
+/// Hides an element from sight while leaving it to screen readers.
+///
+/// The host must be a containing block (`position: relative` is enough):
+/// absolute positioning otherwise resolves against the page, which lets the
+/// hidden node escape any scrolling ancestor and drags the viewport after it
+/// when it takes focus.
 @mixin visually-hidden {
   position: absolute;
   width: 1px;

@@ -22,23 +22,32 @@ const ELEMENT_FOR_SELECT_MODE: Record<SelectMode, 'verts' | 'edges' | 'faces'> =
   face: 'faces',
 };
 
+/** The input types a keystroke belongs to rather than to the keymap. */
+const TEXT_INPUT_TYPES = new Set(['text', 'number', 'search', 'email', 'url', 'tel', 'password']);
+
+/**
+ * Whether a keystroke is going into a field rather than to the editor.
+ *
+ * Type-aware rather than tag-aware: a toggle's checkbox keeps focus after it is
+ * clicked, and treating that as typing left every shortcut dead — click
+ * proportional editing on, and G, R and S did nothing until the next click
+ * landed somewhere else.
+ */
+function isTypingTarget(target: HTMLElement | null): boolean {
+  if (!target) return false;
+  if (target.isContentEditable) return true;
+  if (target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return true;
+  return target.tagName === 'INPUT' && TEXT_INPUT_TYPES.has((target as HTMLInputElement).type);
+}
+
 /** Wires the keymap table to store actions. */
 export function useKeymap(): void {
   const { saveProject, openProject } = useProjectFiles();
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      const target = event.target as HTMLElement | null;
       // Never steal keys from a field the user is typing in.
-      if (
-        target &&
-        (target.tagName === 'INPUT' ||
-          target.tagName === 'TEXTAREA' ||
-          target.tagName === 'SELECT' ||
-          target.isContentEditable)
-      ) {
-        return;
-      }
+      if (isTypingTarget(event.target as HTMLElement | null)) return;
 
       // Ctrl/Cmd+A never reaches the browser, whether or not it is bound here:
       // its default is "select all page text", which breaks the 3D immersion the

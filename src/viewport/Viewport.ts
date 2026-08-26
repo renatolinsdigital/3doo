@@ -63,6 +63,11 @@ const SCALE_REFERENCE_PX = 60;
 const MIN_SCALE_RATIO = 0.01;
 const MAX_SCALE_RATIO = 100;
 
+/** What one wheel notch multiplies the proportional falloff radius by. */
+const PROPORTIONAL_WHEEL_STEP = 1.1;
+const MIN_PROPORTIONAL_RADIUS = 0.01;
+const MAX_PROPORTIONAL_RADIUS = 1000;
+
 /**
  * The factor a scale drag has reached, from pointer distances **on screen**.
  *
@@ -78,6 +83,24 @@ export function gizmoScaleRatio(pointerPx: number, referencePx: number): number 
   const ratio = (pointerPx + SCALE_REFERENCE_PX) / (Math.max(referencePx, 0) + SCALE_REFERENCE_PX);
   if (!Number.isFinite(ratio) || ratio <= 0) return MIN_SCALE_RATIO;
   return Math.min(MAX_SCALE_RATIO, Math.max(MIN_SCALE_RATIO, ratio));
+}
+
+/**
+ * The falloff radius one wheel notch lands on.
+ *
+ * Multiplicative, so a notch changes the ring by the same proportion whether it
+ * is covering a millimetre or half the scene — and rounded to the three decimals
+ * the radius field shows, so the panel and the ring never disagree about the
+ * number the wheel just landed on.
+ */
+export function proportionalRadiusStep(radius: number, deltaY: number): number {
+  const factor = deltaY < 0 ? PROPORTIONAL_WHEEL_STEP : 1 / PROPORTIONAL_WHEEL_STEP;
+  const next = THREE.MathUtils.clamp(
+    radius * factor,
+    MIN_PROPORTIONAL_RADIUS,
+    MAX_PROPORTIONAL_RADIUS,
+  );
+  return Number(next.toFixed(3));
 }
 
 /**
@@ -118,6 +141,12 @@ export class Viewport {
   private readonly cursor: THREE.Object3D;
   /** Blender's dashed line: pivot to pointer, drawn only during a modal scale or rotate. */
   private readonly modalLine: THREE.Line;
+  /** Blender's proportional-edit circle: how far the falloff reaches from the selection. */
+  private readonly proportionalRing: THREE.LineLoop;
+  /** World-space centre of that circle, refreshed whenever the selection moves. */
+  private proportionalAnchor: THREE.Vector3 | null = null;
+  /** Object-to-world scale for the radius, which is an object-space distance. */
+  private proportionalScale = 1;
   private pointerPixels = new THREE.Vector2();
   /** Where the camera stood when the selection outlines were last traced. */
   private readonly outlineEye = new THREE.Vector3(Number.NaN, 0, 0);
@@ -211,6 +240,8 @@ export class Viewport {
     this.scene.add(this.cursor);
     this.modalLine = this.createScaleLine();
     this.scene.add(this.modalLine);
+    this.proportionalRing = this.createProportionalRing();
+    this.scene.add(this.proportionalRing);
     this.scene.add(this.gizmoProxy);
 
     this.controls = new CameraController(this.camera, canvas);
@@ -339,6 +370,38 @@ export class Viewport {
     line.renderOrder = 11;
     line.frustumCulled = false;
     return line;
+  }
+
+  /**
+   * The circle marking how far proportional editing reaches.
+   *
+   * Unit radius, in the XY plane; `updateProportionalRing` turns it to face the
+   * camera and scales it to the falloff radius every frame.
+   */
+  private createProportionalRing(): THREE.LineLoop {
+    const segments = 96;
+    const points: number[] = [];
+    for (let step = 0; step < segments; step += 1) {
+      const angle = (step / segments) * Math.PI * 2;
+      points.push(Math.cos(angle), Math.sin(angle), 0);
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+
+    const ring = new THREE.LineLoop(
+      geometry,
+      new THREE.LineBasicMaterial({
+        color: VIEWPORT_COLORS.bone,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.7,
+      }),
+    );
+    ring.visible = false;
+    ring.renderOrder = 11;
+    ring.frustumCulled = false;
+    return ring;
   }
 
   private bindEvents(): void {
@@ -526,7 +589,58 @@ export class Viewport {
       this.displayCenters.delete(id);
     }
 
+    this.updateProportionalAnchor(state);
     this.updateGizmo();
+  }
+
+  /**
+   * Re-centres the proportional falloff ring on the selection.
+   *
+   * The median rather than the transform pivot: influence is measured from
+   * whichever selected vertex is nearest, so a ring drawn around the 3D cursor
+   * sitting off to one side would describe an area nothing falls off from.
+   *
+   * The radius is an object-space distance, so the ring carries the object's
+   * own scale. Under a non-uniform one the true reach is an ellipsoid and the
+   * circle can only average it — as Blender's does.
+   */
+  private updateProportionalAnchor(state: ReturnType<typeof useEditorStore.getState>): void {
+    this.proportionalAnchor = null;
+    if (state.mode !== 'edit') return;
+
+    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+    if (!object) return;
+
+    const selected = object.mesh.selectedVerts();
+    if (selected.length === 0) return;
+
+    const median = medianPoint(selected);
+    this.proportionalAnchor = new THREE.Vector3(median.x, median.y, median.z).applyMatrix4(
+      this.views.get(object.id)?.group.matrix ?? new THREE.Matrix4(),
+    );
+
+    const { scale } = object.transform;
+    this.proportionalScale = (Math.abs(scale.x) + Math.abs(scale.y) + Math.abs(scale.z)) / 3;
+  }
+
+  /**
+   * Faces the falloff ring at the camera and sizes it to the current radius.
+   *
+   * Billboarded like the 3D cursor: the falloff is a sphere, and a circle only
+   * reads as its silhouette while it faces the viewer.
+   */
+  private updateProportionalRing(): void {
+    const state = useEditorStore.getState();
+    const anchor = this.proportionalAnchor;
+    const radius = state.proportional.radius * this.proportionalScale;
+    const visible = anchor !== null && state.proportional.enabled && radius > 0;
+
+    this.proportionalRing.visible = visible;
+    if (!visible || !anchor) return;
+
+    this.proportionalRing.position.copy(anchor);
+    this.proportionalRing.quaternion.copy(this.camera.quaternion);
+    this.proportionalRing.scale.setScalar(radius);
   }
 
   /** Drops the just-created-vertex flash once its moment has passed. */
@@ -1425,8 +1539,31 @@ export class Viewport {
 
   private handleWheel = (event: WheelEvent): void => {
     event.preventDefault();
+    if (this.resizeProportionalFalloff(event)) return;
     this.controls.onWheel(event);
   };
+
+  /**
+   * Blender's gesture: while a proportional transform runs, the wheel grows and
+   * shrinks the falloff instead of zooming.
+   *
+   * Ctrl reaches the same radius whenever the ring is on screen, which is what
+   * makes it usable here at all: G picks the move gizmo up rather than starting
+   * a bare-pointer modal, so the most common proportional edit of the lot has
+   * no free-handed moment to scroll during.
+   */
+  private resizeProportionalFalloff(event: WheelEvent): boolean {
+    if (!this.proportionalRing.visible) return false;
+
+    const transforming = this.gizmoDragging || this.scaleDrag !== null || this.rotateDrag !== null;
+    if (!transforming && !event.ctrlKey) return false;
+
+    const state = useEditorStore.getState();
+    state.setProportional({
+      radius: proportionalRadiusStep(state.proportional.radius, event.deltaY),
+    });
+    return true;
+  }
 
   /**
    * Right-click opens the 3D cursor menu on whatever is under the pointer.
@@ -1709,6 +1846,7 @@ export class Viewport {
     this.extendFarPlane(distance);
     this.updateViewLost(distance);
     this.updateCursor();
+    this.updateProportionalRing();
     this.updatePointerCursor();
     this.updateSelectionOutlines();
     if (this.modalLine.visible) this.standDownGizmo();

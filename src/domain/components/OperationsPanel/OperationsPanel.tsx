@@ -334,7 +334,7 @@ export function OperationsPanel() {
         <Toggle
           label="ENABLED"
           checked={proportional.enabled}
-          hint="Spread transforms to nearby unselected geometry"
+          hint="Spread transforms to nearby unselected geometry, inside the ring the viewport draws"
           onChange={(enabled) => setProportional({ enabled })}
         />
         <NumberField
@@ -343,7 +343,7 @@ export function OperationsPanel() {
           step={0.1}
           min={0}
           disabled={!proportional.enabled}
-          hint="How far the falloff reaches from the selection"
+          hint="How far the falloff reaches from the selection. Scroll to resize it mid-transform, or Ctrl+scroll any time the ring is up"
           onChange={(radius) => setProportional({ radius })}
         />
         <Select

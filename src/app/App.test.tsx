@@ -229,6 +229,28 @@ describe('App shell', () => {
     expect(useEditorStore.getState().selectedObjectIds).toHaveLength(0);
   });
 
+  it('keeps shortcuts alive while a toggle holds focus, but not in a text field', async () => {
+    render(<App />);
+    const addPanel = screen.getByRole('region', { name: 'ADD / SCENE' });
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(screen.getByRole('button', { name: 'EDIT' }));
+
+    // Clicking a toggle leaves its hidden checkbox focused. Read as a field
+    // being typed into, that left every shortcut dead until the next click
+    // landed somewhere else.
+    const enabled = screen.getByRole('checkbox', { name: 'ENABLED' });
+    await userEvent.click(enabled);
+    expect(useEditorStore.getState().proportional.enabled).toBe(true);
+
+    fireEvent.keyDown(enabled, { key: 'a' });
+    expect(useEditorStore.getState().objects[0].mesh.selectedFaces()).toHaveLength(6);
+
+    // The radius field is a real one, and an "a" typed into it stays there.
+    act(() => useEditorStore.getState().clearSelection());
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'RADIUS' }), { key: 'a' });
+    expect(useEditorStore.getState().objects[0].mesh.selectedFaces()).toHaveLength(0);
+  });
+
   it('shows a hint tooltip after hovering a control, once the delay passes', () => {
     render(<App />);
     const exportButton = screen.getByRole('button', { name: 'EXPORT' });

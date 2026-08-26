@@ -44,7 +44,7 @@ Sculpting is the next module planned. See
 | Normals | Recalculate outside, flip, shade smooth / flat, face-orientation overlay |
 | Modifiers | Mirror, array, solidify, weld, subdivision — non-destructive, reorderable, with Apply |
 | 3D cursor | Right-click to place it on a point, vertex, edge or face; snap it to the selection or the selection to it; use it as the transform pivot or as a mirror plane |
-| Proportional editing | Six falloff curves |
+| Proportional editing | Six falloff curves, with a viewport ring showing how far the falloff reaches — scroll to resize it mid-transform, or Ctrl+scroll any time |
 | Viewport | Orbit / pan / zoom (Blender and Maya presets), solid / wireframe / x-ray / matcap, adaptive grid, normals overlay |
 | Files | Save and load JSON projects, autosave to IndexedDB with crash recovery, OBJ import |
 | Preferences | Tooltips, selection outline thickness and colour — kept in localStorage per device, with import / export |

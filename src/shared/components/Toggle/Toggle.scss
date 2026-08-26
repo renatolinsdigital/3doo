@@ -1,6 +1,11 @@
 @use '@global-styles/helpers' as *;
 
 .toggle {
+  // The hidden input is absolutely positioned, so without a containing block
+  // here it resolves against the page and escapes the scrolling panel around
+  // it. Clicking the label then focused a control the browser believed to be
+  // hundreds of pixels below the fold, and it scrolled the whole shell away.
+  position: relative;
   display: flex;
   align-items: center;
   min-height: 28px;

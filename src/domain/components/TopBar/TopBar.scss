@@ -17,6 +17,8 @@
   }
 
   &__project {
+    // Contains the visually hidden label. See `.toggle`.
+    position: relative;
     display: flex;
     min-width: 0;
   }
