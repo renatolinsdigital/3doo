@@ -283,7 +283,7 @@ export class Viewport {
     this.controls = new CameraController(this.camera, canvas);
     this.gizmo = new TransformControls(this.camera, canvas);
     this.gizmoHelper = resolveGizmoHelper(this.gizmo);
-    paintGizmoAxes(this.gizmoHelper);
+    paintGizmoAxes(this.gizmoHelper, this.gizmo);
     trimGizmoGuides(this.gizmoHelper, this.gizmo);
     this.scene.add(this.gizmoHelper);
     this.gizmo.enabled = false;
@@ -2140,38 +2140,90 @@ function resolveGizmoHelper(controls: TransformControls): THREE.Object3D {
   return controls as unknown as THREE.Object3D;
 }
 
+type GizmoMaterial = THREE.Material & { color: THREE.Color; _color?: THREE.Color };
+
+/** Three's own highlight for the handle under the pointer. Painted over, never shown. */
+const GIZMO_HIGHLIGHT = 0xffff00;
+/** How far a highlighted handle is lightened towards white in its place. */
+const GIZMO_HIGHLIGHT_MIX = 0.4;
+const WHITE = new THREE.Color(0xffffff);
+
+/** The colour a drag on one axis is narrated in, or null where it spans more than one. */
+function axisTint(axis: string | null): number | null {
+  if (axis === 'X') return AXIS_COLORS.x;
+  if (axis === 'Y') return AXIS_COLORS.y;
+  if (axis === 'Z') return AXIS_COLORS.z;
+  return null;
+}
+
 /**
- * Repaints the gizmo handles onto the app's axis colours.
+ * Repaints the gizmo onto the app's axis colours, and keeps it there.
  *
- * `TransformControls` hard-codes pure red, green and blue, and caches each
- * material's colour as `_color` the first time it updates so it can restore it
- * after the hover highlight. Setting `color` alone would therefore survive one
- * frame at most, which is why the cache is written too — and why doing this
- * once at construction is enough.
+ * Three colours the gizmo three ways, and only the first is set once. The base
+ * handles are pure red, green and blue; each material's colour is cached as
+ * `_color` the first time it updates so it can be restored after a highlight,
+ * so the cache is written too and one pass at construction holds. Matched on
+ * the colour rather than the handle name so the plane handles come along for
+ * free: three shares each axis material with the plane facing it, so red covers
+ * X and YZ, green covers Y and XZ, blue covers Z and XY.
  *
- * Matched on the colour rather than the handle name so the plane handles come
- * along for free: three shares each axis material with the plane facing it, so
- * red covers X and YZ, green covers Y and XZ, blue covers Z and XY. The remap
- * is idempotent — after the first pass no material carries the old hex.
+ * The other two are rewritten every frame, from inside three's own
+ * `updateMatrixWorld`, which is why this hangs off it:
+ *
+ * - The handle under the pointer is painted **yellow**, a hue the viewport uses
+ *   for nothing else and which says only "this one", not which axis it is.
+ *   Lightening the axis's own colour says both, in a colour already being read.
+ * - The guide lines — the track a drag is confined to, and the delta along it —
+ *   are **white**. A line drawn along X is the same statement as the X handle,
+ *   so it is tinted to match, as Blender's is. Only a drag spanning more than
+ *   one axis keeps them neutral, having no single colour to claim.
  */
-export function paintGizmoAxes(helper: THREE.Object3D): void {
+export function paintGizmoAxes(helper: THREE.Object3D, controls: TransformControls): void {
   const remap = new Map<number, number>([
     [0xff0000, AXIS_COLORS.x],
     [0x00ff00, AXIS_COLORS.y],
     [0x0000ff, AXIS_COLORS.z],
   ]);
 
+  const handles: GizmoMaterial[] = [];
+  const guides: { material: GizmoMaterial; base: THREE.Color }[] = [];
+
   helper.traverse((child) => {
-    const material = (child as Partial<THREE.Mesh>).material as
-      (THREE.Material & { color?: THREE.Color; _color?: THREE.Color }) | undefined;
+    const material = (child as Partial<THREE.Mesh>).material as GizmoMaterial | undefined;
     if (!material?.color) return;
 
-    const replacement = remap.get(material.color.getHex());
-    if (replacement === undefined) return;
+    if ((child as THREE.Object3D & { tag?: string }).tag === 'helper') {
+      // Three shares one material across the delta markers and clones it per
+      // axis line, so the same one turns up on several children.
+      if (!guides.some((guide) => guide.material === material)) {
+        guides.push({ material, base: material.color.clone() });
+      }
+      return;
+    }
 
-    material.color.setHex(replacement);
-    material._color?.setHex(replacement);
+    const replacement = remap.get(material.color.getHex());
+    if (replacement !== undefined) {
+      material.color.setHex(replacement);
+      material._color?.setHex(replacement);
+    }
+    if (!handles.includes(material)) handles.push(material);
   });
+
+  const update = helper.updateMatrixWorld.bind(helper);
+  helper.updateMatrixWorld = (force?: boolean) => {
+    update(force);
+
+    for (const material of handles) {
+      if (material.color.getHex() !== GIZMO_HIGHLIGHT) continue;
+      material.color.copy(material._color ?? material.color).lerp(WHITE, GIZMO_HIGHLIGHT_MIX);
+    }
+
+    const tint = axisTint((controls as unknown as { axis: string | null }).axis ?? null);
+    for (const guide of guides) {
+      if (tint === null) guide.material.color.copy(guide.base);
+      else guide.material.color.setHex(tint);
+    }
+  };
 }
 
 /** Infinite lines along each axis the drag names: what it is locked to. */
