@@ -3,6 +3,7 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 
 import { AXIS_COLORS, ObjectView, VIEWPORT_COLORS } from '@bridge/index';
 import {
+  type BMesh,
   type PivotTool,
   type SelectMode,
   type Transform,
@@ -28,8 +29,10 @@ import { CameraController, MAX_ORBIT_DISTANCE } from './CameraController';
 import { ViewportGrid } from './grid';
 import { type MarqueeLayer, createMarqueeLayer, drawMarquee, hideMarquee } from './marquee';
 import {
+  type FacingElements,
   type Marquee,
   type Region,
+  facingElements,
   marqueeBounds,
   marqueeShape,
   pickElement,
@@ -275,7 +278,14 @@ export class Viewport {
     const aspect = clientHeight > 0 ? clientWidth / clientHeight : 1;
 
     this.perspectiveCamera = new THREE.PerspectiveCamera(50, aspect, 0.05, 2000);
-    this.orthographicCamera = new THREE.OrthographicCamera(-5 * aspect, 5 * aspect, 5, -5, -1000, 2000);
+    this.orthographicCamera = new THREE.OrthographicCamera(
+      -5 * aspect,
+      5 * aspect,
+      5,
+      -5,
+      -1000,
+      2000,
+    );
     this.camera = this.perspectiveCamera;
 
     this.scene.add(new THREE.AmbientLight(0xffffff, 1.15));
@@ -296,6 +306,11 @@ export class Viewport {
     this.scene.add(this.gizmoProxy);
 
     this.controls = new CameraController(this.camera, canvas);
+    // Switching module tears this viewport down and builds another, so the
+    // camera picks up where the last one was left rather than at the default.
+    const pose = useEditorStore.getState().cameraPose;
+    if (pose) this.controls.setPose(pose);
+
     this.gizmo = new TransformControls(this.camera, canvas);
     this.gizmo.size = GIZMO_SIZE;
     this.gizmoHelper = resolveGizmoHelper(this.gizmo);
@@ -569,8 +584,7 @@ export class Viewport {
         { fireImmediately: true },
       ),
       store.subscribe(
-        (state) =>
-          [state.orthographic, state.focalLength, state.clipStart, state.clipEnd] as const,
+        (state) => [state.orthographic, state.focalLength, state.clipStart, state.clipEnd] as const,
         () => this.applyCameraSettings(),
         { equalityFn: shallowArrayEqual, fireImmediately: true },
       ),
@@ -774,7 +788,8 @@ export class Viewport {
 
   private applyCameraSettings(): void {
     const state = useEditorStore.getState();
-    const aspect = this.canvas.clientHeight > 0 ? this.canvas.clientWidth / this.canvas.clientHeight : 1;
+    const aspect =
+      this.canvas.clientHeight > 0 ? this.canvas.clientWidth / this.canvas.clientHeight : 1;
 
     this.perspectiveCamera.fov = focalLengthToFov(state.focalLength);
     this.perspectiveCamera.near = state.clipStart;
@@ -872,7 +887,10 @@ export class Viewport {
    * orbits the displayed centre. That point is fixed in the object's own
    * frame, which is what keeps the gizmo from creeping across a drag.
    */
-  private updateObjectGizmo(state: ReturnType<typeof useEditorStore.getState>, gizmoMode: 'translate' | 'rotate' | 'scale'): void {
+  private updateObjectGizmo(
+    state: ReturnType<typeof useEditorStore.getState>,
+    gizmoMode: 'translate' | 'rotate' | 'scale',
+  ): void {
     const selected = state.objects.filter((object) => state.selectedObjectIds.includes(object.id));
     const transformable = selected.filter((object) => !object.locked);
 
@@ -911,7 +929,10 @@ export class Viewport {
   }
 
   /** In edit mode the gizmo drives the selection's median point on the one active object. */
-  private updateEditGizmo(state: ReturnType<typeof useEditorStore.getState>, gizmoMode: 'translate' | 'rotate' | 'scale'): void {
+  private updateEditGizmo(
+    state: ReturnType<typeof useEditorStore.getState>,
+    gizmoMode: 'translate' | 'rotate' | 'scale',
+  ): void {
     const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
     if (!object || object.locked) {
       this.detachGizmo();
@@ -1249,9 +1270,11 @@ export class Viewport {
           useEditorStore.getState().touchMesh();
         }
       : () => {
-          useEditorStore.getState().setObjectTransforms(
-            [...this.objectBaselines].map(([id, transform]) => ({ id, transform })),
-          );
+          useEditorStore
+            .getState()
+            .setObjectTransforms(
+              [...this.objectBaselines].map(([id, transform]) => ({ id, transform })),
+            );
         };
 
     this.startScaleDrag('XYZ', { restore, seeded: false });
@@ -1746,16 +1769,41 @@ export class Viewport {
         if (face) targets.face = toWorld(mesh.faceCenter(face));
       }
 
-      if (!targets.vertex) {
-        const pick = pickElement(view, mesh, 'vertex', pointer, this.camera, size, this.raycaster);
-        const vert = pick ? mesh.verts.get(pick.elementId) : undefined;
-        if (vert) targets.vertex = toWorld(vert.co);
-      }
+      // Snapping the cursor to something round the back of the model is as
+      // wrong as selecting it. Both reads answer from one pass over the mesh,
+      // and once the nearer objects have supplied both there is none at all.
+      if (!targets.vertex || !targets.edge) {
+        const facing = this.pickable(mesh, view);
 
-      if (!targets.edge) {
-        const pick = pickElement(view, mesh, 'edge', pointer, this.camera, size, this.raycaster);
-        const edge = pick ? mesh.edges.get(pick.elementId) : undefined;
-        if (edge) targets.edge = toWorld(mesh.edgeCenter(edge));
+        if (!targets.vertex) {
+          const pick = pickElement(
+            view,
+            mesh,
+            'vertex',
+            pointer,
+            this.camera,
+            size,
+            this.raycaster,
+            facing,
+          );
+          const vert = pick ? mesh.verts.get(pick.elementId) : undefined;
+          if (vert) targets.vertex = toWorld(vert.co);
+        }
+
+        if (!targets.edge) {
+          const pick = pickElement(
+            view,
+            mesh,
+            'edge',
+            pointer,
+            this.camera,
+            size,
+            this.raycaster,
+            facing,
+          );
+          const edge = pick ? mesh.edges.get(pick.elementId) : undefined;
+          if (edge) targets.edge = toWorld(mesh.edgeCenter(edge));
+        }
       }
     }
 
@@ -1772,7 +1820,7 @@ export class Viewport {
     }
 
     return targets;
-  };
+  }
 
   /**
    * Ends a gizmo drag whose pointer went away without a pointerup.
@@ -1813,6 +1861,21 @@ export class Viewport {
     hideMarquee(this.overlay, this.shapeLayer);
   }
 
+  /**
+   * What the pointer is allowed to reach on a mesh, given the shading.
+   *
+   * X-ray and wireframe are the two modes whose whole point is seeing — and
+   * therefore selecting — what the surface would otherwise hide, so they hand
+   * back null and leave every element pickable. Everywhere else the pick is
+   * held to the geometry actually on screen, which is what stops a click on a
+   * dense model landing on its far side.
+   */
+  private pickable(mesh: BMesh, view: ObjectView): FacingElements | null {
+    const { shading } = useEditorStore.getState();
+    if (shading === 'xray' || shading === 'wireframe') return null;
+    return facingElements(mesh, view.group.matrix, this.camera);
+  }
+
   private updateRaycaster(pointer: THREE.Vector2): void {
     const ndc = new THREE.Vector2(
       (pointer.x / this.canvas.clientWidth) * 2 - 1,
@@ -1849,6 +1912,7 @@ export class Viewport {
       this.camera,
       { width: this.canvas.clientWidth, height: this.canvas.clientHeight },
       this.raycaster,
+      this.pickable(object.mesh, view),
     );
 
     if (!result) {
@@ -1889,7 +1953,10 @@ export class Viewport {
     const bounds = marqueeBounds(marquee);
     const hits = pickObjectsInRegion(entries, region, bounds, this.camera, size);
 
-    const centre = new THREE.Vector2((bounds.minX + bounds.maxX) / 2, (bounds.minY + bounds.maxY) / 2);
+    const centre = new THREE.Vector2(
+      (bounds.minX + bounds.maxX) / 2,
+      (bounds.minY + bounds.maxY) / 2,
+    );
     if (region.contains(centre)) {
       this.updateRaycaster(centre);
       const targets = entries.map((entry) => entry.view.pickTarget);
@@ -1913,6 +1980,7 @@ export class Viewport {
       this.camera,
       { width: this.canvas.clientWidth, height: this.canvas.clientHeight },
       object.mesh,
+      this.pickable(object.mesh, view),
     );
 
     if (!additive) object.mesh.deselectAll();
@@ -2053,6 +2121,10 @@ export class Viewport {
   dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.frameHandle);
+
+    // Handed over before anything is torn down, for whichever viewport is
+    // mounted next.
+    useEditorStore.getState().setCameraPose(this.controls.pose());
 
     for (const unsubscribe of this.unsubscribers) unsubscribe();
     this.canvas.removeEventListener('pointerdown', this.handlePointerDown);

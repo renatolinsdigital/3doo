@@ -13,6 +13,102 @@ export interface PickResult {
 
 const PICK_RADIUS_PIXELS = 12;
 
+/**
+ * How far past edge-on a face has to turn before it counts as facing you.
+ *
+ * A cosine, so the same number means the same angle at every scale. It is not
+ * only there to absorb rounding: the four side faces of a cube seen head-on are
+ * exactly edge-on, and whether they land a hair either side of zero decides
+ * whether the four corners behind the cube are selectable. Edge-on has to
+ * resolve to "not facing", every time.
+ */
+const FACING_EPSILON = 1e-6;
+
+/** Kernel ids lying on a surface turned towards the camera. */
+export interface FacingElements {
+  verts: Set<number>;
+  edges: Set<number>;
+  faces: Set<number>;
+}
+
+/**
+ * What the camera can actually see of a mesh.
+ *
+ * Vertices and edges are picked in screen space, which has no idea whether one
+ * is round the back — so on a dense mesh the element nearest the pointer in
+ * pixels is regularly one hidden behind the model, and a click lands on the far
+ * side of the shape being aimed at. Filtering the candidates through this is
+ * what makes the pick agree with what is on screen.
+ *
+ * An element on the silhouette borders a front face and a back one, so it stays
+ * pickable. Wire edges and loose vertices have no face to turn away and stay
+ * pickable too.
+ *
+ * Self-occlusion — a front-facing surface hidden behind another part of the
+ * same model — is not caught here; answering that needs a depth buffer. The far
+ * side of the object is the half that makes a dense mesh unusable.
+ */
+export function facingElements(
+  mesh: BMesh,
+  matrix: THREE.Matrix4,
+  camera: THREE.Camera,
+): FacingElements {
+  const inverse = new THREE.Matrix4().copy(matrix).invert();
+  const perspective = camera instanceof THREE.PerspectiveCamera;
+
+  // Both tests run in object space, so nothing is transformed per face. The
+  // eye position is exact under any transform; the parallel direction an
+  // orthographic camera needs is only approximate under non-uniform scale.
+  const eye = camera.position.clone().applyMatrix4(inverse);
+  const forward = camera
+    .getWorldDirection(new THREE.Vector3())
+    .transformDirection(inverse)
+    .normalize();
+
+  const verts = new Set<number>();
+  const edges = new Set<number>();
+  const faces = new Set<number>();
+  const facedVerts = new Set<number>();
+  const facedEdges = new Set<number>();
+
+  for (const face of mesh.faces.values()) {
+    const loops = mesh.faceLoops(face);
+    // Any point on the face does for the plane test, so the centroid is not
+    // worth computing over every face of a dense mesh.
+    const anchor = loops[0].vert.co;
+    const normal = face.normal;
+
+    // Normalised to a cosine either way, so one epsilon covers both cameras and
+    // every scale a model might be at.
+    let towards: number;
+    if (perspective) {
+      const dx = eye.x - anchor.x;
+      const dy = eye.y - anchor.y;
+      const dz = eye.z - anchor.z;
+      const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      towards = distance > 0 ? (normal.x * dx + normal.y * dy + normal.z * dz) / distance : 0;
+    } else {
+      towards = -(normal.x * forward.x + normal.y * forward.y + normal.z * forward.z);
+    }
+
+    const front = towards > FACING_EPSILON;
+    if (front) faces.add(face.id);
+    for (const loop of loops) {
+      facedVerts.add(loop.vert.id);
+      facedEdges.add(loop.edge.id);
+      if (front) {
+        verts.add(loop.vert.id);
+        edges.add(loop.edge.id);
+      }
+    }
+  }
+
+  for (const vert of mesh.verts.values()) if (!facedVerts.has(vert.id)) verts.add(vert.id);
+  for (const edge of mesh.edges.values()) if (!facedEdges.has(edge.id)) edges.add(edge.id);
+
+  return { verts, edges, faces };
+}
+
 function project(
   point: THREE.Vector3,
   matrix: THREE.Matrix4,
@@ -32,6 +128,9 @@ function project(
  *
  * Vertices and edges have no area to hit, so distance-in-pixels is both more
  * forgiving and closer to what the user sees than a 3D intersection test.
+ *
+ * `facing` narrows the candidates to what the camera can see; null picks
+ * through the model, which is what x-ray and wireframe shading are for.
  */
 export function pickElement(
   view: ObjectView,
@@ -41,6 +140,7 @@ export function pickElement(
   camera: THREE.Camera,
   size: { width: number; height: number },
   raycaster: THREE.Raycaster,
+  facing: FacingElements | null,
 ): PickResult | null {
   const matrix = view.group.matrix;
 
@@ -49,6 +149,8 @@ export function pickElement(
     let bestDistance = PICK_RADIUS_PIXELS;
 
     for (let i = 0; i < view.vertIds.length; i++) {
+      if (facing && !facing.verts.has(view.vertIds[i])) continue;
+
       const position = new THREE.Vector3(
         view.vertPositions[i * 3],
         view.vertPositions[i * 3 + 1],
@@ -71,6 +173,8 @@ export function pickElement(
     let bestDistance = PICK_RADIUS_PIXELS;
 
     for (let i = 0; i < view.edgeIds.length; i++) {
+      if (facing && !facing.edges.has(view.edgeIds[i])) continue;
+
       const a = project(
         new THREE.Vector3(
           view.edgePositions[i * 6],
@@ -409,7 +513,14 @@ function anyEdgeCrosses(
   return false;
 }
 
-/** Collects every element whose screen position falls inside the swept region. */
+/**
+ * Collects every element whose screen position falls inside the swept region.
+ *
+ * `facing` means the same here as it does for a click: null sweeps through the
+ * model the way x-ray shading draws it, and anything else takes only what the
+ * camera can see. A drag over a dense sphere otherwise takes the far side of it
+ * along with the near one.
+ */
 export function pickInRegion(
   view: ObjectView,
   mode: SelectMode,
@@ -417,6 +528,7 @@ export function pickInRegion(
   camera: THREE.Camera,
   size: { width: number; height: number },
   mesh: BMesh,
+  facing: FacingElements | null,
 ): number[] {
   const matrix = view.group.matrix;
   const inside = (screen: THREE.Vector2 | null) => screen !== null && region.contains(screen);
@@ -424,6 +536,8 @@ export function pickInRegion(
   if (mode === 'vertex') {
     const hits: number[] = [];
     for (let i = 0; i < view.vertIds.length; i++) {
+      if (facing && !facing.verts.has(view.vertIds[i])) continue;
+
       const screen = project(
         new THREE.Vector3(
           view.vertPositions[i * 3],
@@ -443,6 +557,8 @@ export function pickInRegion(
   if (mode === 'edge') {
     const hits: number[] = [];
     for (const edge of mesh.edges.values()) {
+      if (facing && !facing.edges.has(edge.id)) continue;
+
       const center = mesh.edgeCenter(edge);
       const screen = project(
         new THREE.Vector3(center.x, center.y, center.z),
@@ -458,6 +574,8 @@ export function pickInRegion(
 
   const hits: number[] = [];
   for (const face of mesh.faces.values()) {
+    if (facing && !facing.faces.has(face.id)) continue;
+
     const center = mesh.faceCenter(face);
     const screen = project(
       new THREE.Vector3(center.x, center.y, center.z),

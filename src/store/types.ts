@@ -93,6 +93,21 @@ export interface CursorMenuState {
   targets: CursorSnapTargets;
 }
 
+/**
+ * Where the orbit camera is standing.
+ *
+ * The focus point plus the spherical offset from it, which is exactly the state
+ * `CameraController` navigates in — a matrix would have to be decomposed back
+ * into these to be usable. Held in the store so it survives the viewport being
+ * torn down and rebuilt, which is what switching module does.
+ */
+export interface CameraPose {
+  target: Vec3;
+  radius: number;
+  phi: number;
+  theta: number;
+}
+
 export interface ViewportSettings {
   shading: ShadingMode;
   overlays: OverlaySettings;

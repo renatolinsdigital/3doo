@@ -1,0 +1,105 @@
+@use '@global-styles/helpers' as *;
+
+.remesh-report {
+  .panel__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  &__empty {
+    @include mono-value;
+
+    color: var(--ink-muted);
+    line-height: 1.4;
+  }
+
+  // An uncommitted result is the one state where the viewport is showing
+  // something the project does not hold yet, so it says so in the accent
+  // colour the editor uses for "act on this".
+  &__state {
+    @include label-text;
+
+    color: var(--ink-muted);
+
+    &--pending {
+      padding: var(--space-2) var(--space-3);
+      color: var(--bone);
+      background: var(--rust);
+      border: var(--border-thin) solid var(--void);
+    }
+  }
+
+  &__table {
+    @include mono-value;
+
+    width: 100%;
+    border-collapse: collapse;
+
+    th,
+    td {
+      padding: var(--space-1) var(--space-2);
+      text-align: right;
+      border-bottom: var(--border-thin) solid var(--bone-shade);
+    }
+
+    thead th {
+      @include label-text;
+
+      color: var(--ink-muted);
+    }
+
+    tbody th {
+      @include label-text;
+
+      text-align: left;
+      color: var(--ink-muted);
+    }
+
+    // The change column is the one the eye goes to, so it is the one set solid.
+    td:last-child {
+      color: var(--void);
+      font-weight: 700;
+    }
+  }
+
+  &__facts {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-2);
+  }
+
+  &__fact {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2);
+    border: var(--border-thin) solid var(--void);
+
+    dt {
+      @include label-text;
+
+      color: var(--ink-muted);
+    }
+
+    dd {
+      @include mono-value;
+    }
+  }
+
+  &__warnings {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    list-style: none;
+
+    li {
+      padding: var(--space-2) var(--space-3);
+      color: var(--void);
+      font-size: var(--text-xs);
+      line-height: 1.4;
+      background: var(--amber);
+      border: var(--border-thin) solid var(--void);
+    }
+  }
+}

@@ -6,6 +6,7 @@ import {
   type Modifier,
   type PrimitiveKind,
   type PrimitiveParams,
+  type ProjectDocument,
   type SceneObjectSnapshot,
   type Vec3,
   DEFAULT_PRIMITIVE_PARAMS,
@@ -140,6 +141,14 @@ export interface SceneSlice {
 
   exec: (name: string, params?: Record<string, unknown>, label?: string) => void;
   recordHistory: (label: string) => void;
+  /**
+   * Records a document captured earlier rather than the one on screen now.
+   *
+   * For an edit that stands as a preview before it is committed: the state to
+   * undo back to is the one from before the preview, which by then is no longer
+   * what `snapshotDocument` would return.
+   */
+  recordHistoryDocument: (label: string, document: ProjectDocument) => void;
   /** Forgets the last recorded entry, for an operation that was cancelled. */
   discardHistory: () => void;
   undo: () => void;
@@ -185,8 +194,10 @@ export const createSceneSlice: StateCreator<
     };
   },
 
-  recordHistory: (label) => {
-    history.record(label, get().snapshotDocument());
+  recordHistory: (label) => get().recordHistoryDocument(label, get().snapshotDocument()),
+
+  recordHistoryDocument: (label, document) => {
+    history.record(label, document);
     set({ canUndo: history.canUndo, canRedo: history.canRedo });
   },
 
@@ -1034,6 +1045,9 @@ export const createSceneSlice: StateCreator<
       activeObjectId: restored.activeObjectId,
       selectedObjectIds: restored.activeObjectId ? [restored.activeObjectId] : [],
       meshVersion: state.meshVersion + 1,
+      // The mesh a remesh preview was standing in for has just been replaced
+      // wholesale, so the preview has nothing left to put back.
+      remeshPreview: null,
     }));
   },
 
@@ -1053,6 +1067,8 @@ export const createSceneSlice: StateCreator<
       lastOperator: null,
       lockedAttempt: null,
       recentVerts: null,
+      remeshPreview: null,
+      remeshReport: null,
       meshVersion: get().meshVersion + 1,
       // Edit mode with no object is not a reachable state, so a new scene has
       // to drop back to object mode along with the tool that was active.

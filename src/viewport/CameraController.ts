@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-import type { NavigationPreset } from '@store/types';
+import type { CameraPose, NavigationPreset } from '@store/types';
 
 /**
  * Hard clamp on how far the orbit can zoom out. Shared with the viewport so it
@@ -57,6 +57,24 @@ export class CameraController {
 
   get focusPoint(): THREE.Vector3 {
     return this.target.clone();
+  }
+
+  /** Where the camera is standing, in a form that survives being stored. */
+  pose(): CameraPose {
+    return {
+      target: { x: this.target.x, y: this.target.y, z: this.target.z },
+      radius: this.spherical.radius,
+      phi: this.spherical.phi,
+      theta: this.spherical.theta,
+    };
+  }
+
+  setPose(pose: CameraPose): void {
+    this.target.set(pose.target.x, pose.target.y, pose.target.z);
+    this.spherical.radius = pose.radius;
+    this.spherical.phi = pose.phi;
+    this.spherical.theta = pose.theta;
+    this.apply();
   }
 
   onPointerDown(event: PointerEvent): boolean {
@@ -175,7 +193,8 @@ export class CameraController {
     if (this.camera instanceof THREE.OrthographicCamera) {
       // An ortho camera has no perspective divide, so the orbit radius has to
       // drive the frustum height instead of the eye distance.
-      const aspect = (this.camera.right - this.camera.left) / (this.camera.top - this.camera.bottom);
+      const aspect =
+        (this.camera.right - this.camera.left) / (this.camera.top - this.camera.bottom);
       const height = this.spherical.radius * 0.6;
       this.camera.top = height;
       this.camera.bottom = -height;

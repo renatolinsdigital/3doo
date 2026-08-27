@@ -5,3 +5,4 @@ export * from './ops';
 export * from './modifiers';
 export * from './io';
 export * from './commands';
+export * from './remesh';

@@ -28,6 +28,7 @@ corner. Each has its own path and owns its own layout and lifecycle.
 | --- | --- | --- |
 | Home | `/` | Landing page |
 | Modeling | `/modeling` | The mesh editor |
+| Remesh | `/remesh` | Auto-retopology over the same viewport |
 | Docs | `/docs` | The user manual, with a left-hand contents menu |
 
 Sculpting is the next module planned. See
@@ -43,6 +44,7 @@ Sculpting is the next module planned. See
 | Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, subdivide (Catmull-Clark), merge by distance, delete, dissolve, fill, bridge, triangulate, tris-to-quads |
 | Normals | Recalculate outside, flip, shade smooth / flat, face-orientation overlay |
 | Modifiers | Mirror, array, solidify, weld, subdivision — non-destructive, reorderable, with Apply |
+| Remesh | Voxel quad remesh (surface nets, relax and re-project), blocks, quadric error decimation — previewed before it is kept |
 | 3D cursor | Right-click to place it on a point, vertex, edge or face; snap it to the selection or the selection to it; use it as the transform pivot or as a mirror plane |
 | Proportional editing | Six falloff curves, with a viewport ring showing how far the falloff reaches — scroll to resize it mid-transform, or Ctrl+scroll any time |
 | Viewport | Orbit / pan / zoom (Blender and Maya presets), solid / wireframe / x-ray / matcap, adaptive grid, normals overlay |

@@ -1,0 +1,24 @@
+.remesh-panel {
+  .panel__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  // The one paragraph of prose in the column, so it is set apart from the
+  // controls rather than reading as another label.
+  &__note {
+    color: var(--ink-muted);
+    font-size: var(--text-xs);
+    line-height: 1.4;
+
+    // The one setting these controls can hold that would do nothing at all, so
+    // it wears the same amber the result panel warns in.
+    &--warn {
+      padding: var(--space-2) var(--space-3);
+      color: var(--void);
+      background: var(--amber);
+      border: var(--border-thin) solid var(--void);
+    }
+  }
+}

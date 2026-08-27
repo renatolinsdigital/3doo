@@ -291,6 +291,53 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     ],
   },
   {
+    id: 'remesh',
+    title: 'REMESH',
+    blurb: 'Rebuilding a mesh topology automatically',
+    blocks: [
+      {
+        kind: 'prose',
+        text: 'The REMESH module is the same scene and the same viewport as MODELING, with a different set of panels over it. It answers one question: the shape is right, but the topology is not — a boolean left a mess of slivers, an import arrived as one dense triangle soup, or a sculpt needs an even quad cage to work on.',
+      },
+      {
+        kind: 'table',
+        head: ['METHOD', 'WHAT IT DOES'],
+        rows: [
+          [
+            'Voxel',
+            'Samples the model into a signed distance grid and contours it back out as an even, watertight quad shell. Topology, seams and anything finer than one voxel are replaced. This is the auto-retopology pass.',
+          ],
+          [
+            'Blocks',
+            'The same grid, read straight off the lattice with every face axis-aligned — a voxel study of the shape rather than a surface to carry on working.',
+          ],
+          [
+            'Reduce',
+            'Quadric error decimation: collapses the edges that cost the least to lose and leaves everything else exactly where it is. The only method that keeps material slots, and the only one that never closes an open mesh.',
+          ],
+        ],
+      },
+      {
+        kind: 'steps',
+        items: [
+          'Select an object, then pick a preset in PRESETS or set the method yourself in TOPOLOGY.',
+          'DENSITY decides how much comes out. TARGET FACE COUNT names the figure you want and solves the voxel size back out of it; turn it off to set the voxel size (or the fraction to keep) by hand.',
+          'REFINE tunes the voxel result: SMOOTHING evens out the staircase the grid leaves behind, and PROJECTION pulls each relaxed vertex back onto the original surface, which is what puts the detail back.',
+          'Press REMESH. The object shows the result straight away, but nothing is committed — look at it, change a setting, RUN AGAIN as often as you like.',
+          'APPLY keeps it as one undo step. REVERT puts the original mesh back and forgets it.',
+        ],
+      },
+      {
+        kind: 'note',
+        text: 'An uncommitted result is reverted automatically if you select another object, enter edit mode or leave the module, so a preview can never be mistaken for the mesh you kept. RESULT reports before and after counts, the quad share and the grid the solve ran at.',
+      },
+      {
+        kind: 'note',
+        text: 'A voxel remesh always produces a closed solid — an open surface is closed over, and holes narrower than a voxel disappear. Use REDUCE when the mesh has to stay open, and apply the object transform first if it is scaled, so the voxel size means what it says.',
+      },
+    ],
+  },
+  {
     id: 'cursor',
     title: 'THE 3D CURSOR AND PIVOTS',
     blurb: 'Choosing what a transform turns around',
