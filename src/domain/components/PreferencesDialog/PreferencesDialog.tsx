@@ -1,5 +1,16 @@
-import { Button, FieldRow, Modal, NumberField, Toggle } from '@shared/components';
-import { MAX_SELECTION_LINE_WIDTH, MIN_SELECTION_LINE_WIDTH, useEditorStore } from '@store/index';
+import { useId } from 'react';
+
+import { Accordion, Button, Modal, NumberField, Toggle } from '@shared/components';
+import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
+import {
+  MAX_GRID_SCALE,
+  MAX_GRID_SUBDIVISIONS,
+  MAX_SELECTION_LINE_WIDTH,
+  MIN_GRID_SCALE,
+  MIN_GRID_SUBDIVISIONS,
+  MIN_SELECTION_LINE_WIDTH,
+  useEditorStore,
+} from '@store/index';
 
 import {
   PREFERENCES_FILE,
@@ -11,6 +22,34 @@ import {
 
 import './PreferencesDialog.scss';
 
+interface ColorFieldProps {
+  label: string;
+  value: string;
+  hint: string;
+  onChange: (value: string) => void;
+}
+
+/** A swatch row laid out like `NumberField`, so the two line up in a column. */
+function ColorField({ label, value, hint, onChange }: ColorFieldProps) {
+  const id = useId();
+  const tooltip = useTooltipTrigger(hint);
+
+  return (
+    <div className="preferences-dialog__color" {...tooltip}>
+      <label className="preferences-dialog__color-label" htmlFor={id}>
+        {label}
+      </label>
+      <input
+        id={id}
+        className="preferences-dialog__swatch"
+        type="color"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}
+
 export function PreferencesDialog() {
   const open = useEditorStore((state) => state.dialog === 'preferences');
   const closeDialog = useEditorStore((state) => state.closeDialog);
@@ -18,6 +57,12 @@ export function PreferencesDialog() {
   const selectionLineWidth = useEditorStore((state) => state.selectionLineWidth);
   const selectionLineColor = useEditorStore((state) => state.selectionLineColor);
   const viewportBackground = useEditorStore((state) => state.viewportBackground);
+  const gridScale = useEditorStore((state) => state.gridScale);
+  const gridSubdivisions = useEditorStore((state) => state.gridSubdivisions);
+  const gridColor = useEditorStore((state) => state.gridColor);
+  const gridOpacity = useEditorStore((state) => state.gridOpacity);
+  const gridMajorColor = useEditorStore((state) => state.gridMajorColor);
+  const gridMajorOpacity = useEditorStore((state) => state.gridMajorOpacity);
   const setPreferences = useEditorStore((state) => state.setPreferences);
   const resetPreferences = useEditorStore((state) => state.resetPreferences);
 
@@ -73,47 +118,85 @@ export function PreferencesDialog() {
           <Button
             label="EXPORT"
             onClick={exportPreferences}
-            hint="Save these preferences to a .pref file"
+            hint="Save these preferences to a .pref file, to carry to another browser"
           />
           <Button label="DONE" variant="primary" onClick={closeDialog} />
         </>
       }
     >
-      <FieldRow legend="INTERFACE" columns={1}>
+      <Accordion title="INTERFACE" defaultOpen>
         <Toggle
           label="SHOW HINT TOOLTIPS"
           checked={tooltipsEnabled}
+          hint="A short description appears after hovering a control for a moment. Turn this off if the popups get in the way"
           onChange={(enabled) => setPreferences({ tooltipsEnabled: enabled })}
         />
-        <p className="preferences-dialog__hint">
-          A short description appears after hovering a control for a moment. Turn this off if the
-          popups get in the way.
-        </p>
-      </FieldRow>
+      </Accordion>
 
-      <FieldRow legend="VIEWPORT" columns={1}>
-        <p className="preferences-dialog__hint">
-          What the viewport clears to behind the scene. The grid, the axes and the overlays keep
-          their own colours, so a very light background costs some of their contrast.
-        </p>
-        <div className="preferences-dialog__color">
-          <label className="preferences-dialog__color-label" htmlFor="viewport-background">
-            BACKGROUND
-          </label>
-          <input
-            id="viewport-background"
-            className="preferences-dialog__swatch"
-            type="color"
-            value={viewportBackground}
-            onChange={(event) => setPreferences({ viewportBackground: event.target.value })}
-          />
-        </div>
-      </FieldRow>
+      <Accordion title="VIEWPORT">
+        <ColorField
+          label="BACKGROUND"
+          value={viewportBackground}
+          hint="What the viewport clears to behind the scene. The grid, the axes and the overlays keep their own colours"
+          onChange={(color) => setPreferences({ viewportBackground: color })}
+        />
+      </Accordion>
 
-      <FieldRow legend="SELECTION LINE" columns={1}>
-        <p className="preferences-dialog__hint">
-          The outline around selected objects in object mode. 
-        </p>
+      <Accordion title="GRID">
+        <NumberField
+          label="SCALE"
+          value={gridScale}
+          min={MIN_GRID_SCALE}
+          max={MAX_GRID_SCALE}
+          step={0.1}
+          suffix="×"
+          hint="The plane resizes itself by powers of ten as you zoom, so a square has no fixed length in metres. This multiplies whichever step the zoom lands on: 2 makes every square twice the size, at every zoom"
+          onChange={(scale) => setPreferences({ gridScale: scale })}
+        />
+        <NumberField
+          label="SUBDIVISIONS"
+          value={gridSubdivisions}
+          min={MIN_GRID_SUBDIVISIONS}
+          max={MAX_GRID_SUBDIVISIONS}
+          integer
+          hint="How many squares fall between two heavy lines"
+          onChange={(subdivisions) => setPreferences({ gridSubdivisions: subdivisions })}
+        />
+        <ColorField
+          label="SQUARE COLOR"
+          value={gridColor}
+          hint="Colour of the fine lines, the ones a square is drawn from"
+          onChange={(color) => setPreferences({ gridColor: color })}
+        />
+        <NumberField
+          label="SQUARE OPACITY"
+          value={gridOpacity}
+          min={0}
+          max={1}
+          step={0.05}
+          precision={2}
+          hint="How solid the fine lines are at their strongest: 0 hides them, 1 is a flat line. They ease off as a zoom closes them up"
+          onChange={(opacity) => setPreferences({ gridOpacity: opacity })}
+        />
+        <ColorField
+          label="HEAVY COLOR"
+          value={gridMajorColor}
+          hint="Colour of the heavy line drawn every few squares"
+          onChange={(color) => setPreferences({ gridMajorColor: color })}
+        />
+        <NumberField
+          label="HEAVY OPACITY"
+          value={gridMajorOpacity}
+          min={0}
+          max={1}
+          step={0.05}
+          precision={2}
+          hint="How solid the heavy lines are: 0 hides them, 1 is a flat line"
+          onChange={(opacity) => setPreferences({ gridMajorOpacity: opacity })}
+        />
+      </Accordion>
+
+      <Accordion title="SELECTION LINE">
         <NumberField
           label="THICKNESS"
           value={selectionLineWidth}
@@ -122,28 +205,16 @@ export function PreferencesDialog() {
           step={0.5}
           precision={1}
           suffix="px"
-          hint="Width of the outline drawn around selected objects"
+          hint="Width of the outline drawn around selected objects in object mode"
           onChange={(width) => setPreferences({ selectionLineWidth: width })}
         />
-        <div className="preferences-dialog__color">
-          <label className="preferences-dialog__color-label" htmlFor="selection-line-color">
-            COLOR
-          </label>
-          <input
-            id="selection-line-color"
-            className="preferences-dialog__swatch"
-            type="color"
-            value={selectionLineColor}
-            onChange={(event) => setPreferences({ selectionLineColor: event.target.value })}
-          />
-        </div>
-        
-      </FieldRow>
-
-      <p className="preferences-dialog__hint bottom">
-        Preferences are stored on this device, separately from your project. Export writes them to a
-        .pref file you can carry to another browser.
-      </p>
+        <ColorField
+          label="COLOR"
+          value={selectionLineColor}
+          hint="Colour of the outline around selected objects. The active one wears it, the rest a darker mix"
+          onChange={(color) => setPreferences({ selectionLineColor: color })}
+        />
+      </Accordion>
     </Modal>
   );
 }

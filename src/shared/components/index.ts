@@ -1,3 +1,4 @@
+export { Accordion, type AccordionProps } from './Accordion/Accordion';
 export { Button, type ButtonProps, type ButtonVariant } from './Button/Button';
 export { IconButton, type IconButtonProps } from './IconButton/IconButton';
 export { Panel, type PanelProps } from './Panel/Panel';

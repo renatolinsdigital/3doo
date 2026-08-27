@@ -10,15 +10,38 @@ export const DEFAULT_PREFERENCES: Preferences = {
   selectionLineWidth: 2,
   selectionLineColor: '#e5342a',
   viewportBackground: '#1a1918',
+  gridScale: 1,
+  gridSubdivisions: 10,
+  // VIEWPORT_COLORS.grid and .rust, which the viewport used to hard-code. Named
+  // there in hex ints, written here as CSS so the colour inputs can show them.
+  gridColor: '#3a2a28',
+  gridOpacity: 0.3,
+  gridMajorColor: '#b8452f',
+  gridMajorOpacity: 0.65,
 };
 
 export const MIN_SELECTION_LINE_WIDTH = 1;
 export const MAX_SELECTION_LINE_WIDTH = 8;
 
+/** Three decades either side of the step the zoom picks, which is past useful both ways. */
+export const MIN_GRID_SCALE = 0.001;
+export const MAX_GRID_SCALE = 1000;
+/** One is no subdivision at all — every line heavy — and the cap keeps the mesh sane. */
+export const MIN_GRID_SUBDIVISIONS = 1;
+export const MAX_GRID_SUBDIVISIONS = 100;
+
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
-function clampWidth(value: number): number {
-  return Math.min(MAX_SELECTION_LINE_WIDTH, Math.max(MIN_SELECTION_LINE_WIDTH, value));
+/** A finite number inside its range, or the default when it is neither. */
+function coerceNumber(raw: unknown, min: number, max: number, fallback: number): number {
+  const value = Number(raw);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
+/** A `#rrggbb` colour, lowercased, or the default. */
+function coerceColor(raw: unknown, fallback: string): string {
+  return typeof raw === 'string' && HEX_COLOR.test(raw) ? raw.toLowerCase() : fallback;
 }
 
 /**
@@ -31,25 +54,50 @@ function clampWidth(value: number): number {
  */
 export function coercePreferences(raw: unknown): Preferences {
   const source = (raw ?? {}) as Partial<Record<keyof Preferences, unknown>>;
-  const width = Number(source.selectionLineWidth);
-  const color = typeof source.selectionLineColor === 'string' ? source.selectionLineColor : '';
-  const background =
-    typeof source.viewportBackground === 'string' ? source.viewportBackground : '';
 
   return {
     tooltipsEnabled:
       typeof source.tooltipsEnabled === 'boolean'
         ? source.tooltipsEnabled
         : DEFAULT_PREFERENCES.tooltipsEnabled,
-    selectionLineWidth: Number.isFinite(width)
-      ? clampWidth(width)
-      : DEFAULT_PREFERENCES.selectionLineWidth,
-    selectionLineColor: HEX_COLOR.test(color)
-      ? color.toLowerCase()
-      : DEFAULT_PREFERENCES.selectionLineColor,
-    viewportBackground: HEX_COLOR.test(background)
-      ? background.toLowerCase()
-      : DEFAULT_PREFERENCES.viewportBackground,
+    selectionLineWidth: coerceNumber(
+      source.selectionLineWidth,
+      MIN_SELECTION_LINE_WIDTH,
+      MAX_SELECTION_LINE_WIDTH,
+      DEFAULT_PREFERENCES.selectionLineWidth,
+    ),
+    selectionLineColor: coerceColor(
+      source.selectionLineColor,
+      DEFAULT_PREFERENCES.selectionLineColor,
+    ),
+    viewportBackground: coerceColor(
+      source.viewportBackground,
+      DEFAULT_PREFERENCES.viewportBackground,
+    ),
+    gridScale: coerceNumber(
+      source.gridScale,
+      MIN_GRID_SCALE,
+      MAX_GRID_SCALE,
+      DEFAULT_PREFERENCES.gridScale,
+    ),
+    // Rounded: half a subdivision is a line the grid cannot draw.
+    gridSubdivisions: Math.round(
+      coerceNumber(
+        source.gridSubdivisions,
+        MIN_GRID_SUBDIVISIONS,
+        MAX_GRID_SUBDIVISIONS,
+        DEFAULT_PREFERENCES.gridSubdivisions,
+      ),
+    ),
+    gridColor: coerceColor(source.gridColor, DEFAULT_PREFERENCES.gridColor),
+    gridOpacity: coerceNumber(source.gridOpacity, 0, 1, DEFAULT_PREFERENCES.gridOpacity),
+    gridMajorColor: coerceColor(source.gridMajorColor, DEFAULT_PREFERENCES.gridMajorColor),
+    gridMajorOpacity: coerceNumber(
+      source.gridMajorOpacity,
+      0,
+      1,
+      DEFAULT_PREFERENCES.gridMajorOpacity,
+    ),
   };
 }
 
@@ -102,8 +150,30 @@ export const createPreferencesSlice: StateCreator<
     resetPreferences: () => apply({ ...DEFAULT_PREFERENCES }),
 
     currentPreferences: () => {
-      const { tooltipsEnabled, selectionLineWidth, selectionLineColor, viewportBackground } = get();
-      return { tooltipsEnabled, selectionLineWidth, selectionLineColor, viewportBackground };
+      const {
+        tooltipsEnabled,
+        selectionLineWidth,
+        selectionLineColor,
+        viewportBackground,
+        gridScale,
+        gridSubdivisions,
+        gridColor,
+        gridOpacity,
+        gridMajorColor,
+        gridMajorOpacity,
+      } = get();
+      return {
+        tooltipsEnabled,
+        selectionLineWidth,
+        selectionLineColor,
+        viewportBackground,
+        gridScale,
+        gridSubdivisions,
+        gridColor,
+        gridOpacity,
+        gridMajorColor,
+        gridMajorOpacity,
+      };
     },
 
     importPreferences: (text) => {

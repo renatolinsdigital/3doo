@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { ShadingMode } from '@store/types';
 
-import { createSurfaceMaterial, createWireMaterial } from './materials';
+import { createPointMaterial, createSurfaceMaterial, createWireMaterial } from './materials';
 
 function surface(shading: ShadingMode): THREE.Material {
   return createSurfaceMaterial({ color: 0xcccccc, shading, backfaceCulling: true });
@@ -35,6 +35,12 @@ describe('surface depth offset', () => {
 
   it('leaves the x-ray fill flat, having no depth for a line to fight over', () => {
     expect(surface('xray').depthWrite).toBe(false);
+  });
+});
+
+describe('vertex point material', () => {
+  it('depth-tests the dots, so vertices behind a solid surface stay hidden', () => {
+    expect(createPointMaterial().depthTest).toBe(true);
   });
 });
 

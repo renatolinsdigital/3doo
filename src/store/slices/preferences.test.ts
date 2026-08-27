@@ -103,6 +103,24 @@ describe('coercePreferences', () => {
     expect(coercePreferences({ selectionLineColor: '#3DE0D0' }).selectionLineColor).toBe('#3de0d0');
   });
 
+  it('clamps grid values that would leave no grid to look at', () => {
+    expect(coercePreferences({ gridScale: 0 }).gridScale).toBe(0.001);
+    expect(coercePreferences({ gridScale: 1e9 }).gridScale).toBe(1000);
+    expect(coercePreferences({ gridSubdivisions: 0 }).gridSubdivisions).toBe(1);
+    expect(coercePreferences({ gridSubdivisions: 5000 }).gridSubdivisions).toBe(100);
+    expect(coercePreferences({ gridOpacity: -1 }).gridOpacity).toBe(0);
+    expect(coercePreferences({ gridMajorOpacity: 5 }).gridMajorOpacity).toBe(1);
+  });
+
+  it('rounds a subdivision count to a line the grid can actually draw', () => {
+    expect(coercePreferences({ gridSubdivisions: 4.6 }).gridSubdivisions).toBe(5);
+  });
+
+  it('rejects a grid colour that is not #rrggbb', () => {
+    expect(coercePreferences({ gridColor: 'grey' }).gridColor).toBe(DEFAULT_PREFERENCES.gridColor);
+    expect(coercePreferences({ gridMajorColor: '#B8452F' }).gridMajorColor).toBe('#b8452f');
+  });
+
   it('does not let one bad value cost the user the rest', () => {
     expect(coercePreferences({ tooltipsEnabled: false, selectionLineWidth: 'wide' })).toEqual({
       ...DEFAULT_PREFERENCES,

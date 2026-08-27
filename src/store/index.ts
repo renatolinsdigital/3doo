@@ -5,7 +5,11 @@ export { displayCenter, evaluatedMesh } from './slices/scene';
 export { SELECT_SHAPES } from './slices/tool';
 export {
   DEFAULT_PREFERENCES,
+  MAX_GRID_SCALE,
+  MAX_GRID_SUBDIVISIONS,
   MAX_SELECTION_LINE_WIDTH,
+  MIN_GRID_SCALE,
+  MIN_GRID_SUBDIVISIONS,
   MIN_SELECTION_LINE_WIDTH,
   coercePreferences,
 } from './slices/preferences';

@@ -398,7 +398,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'PREFS in the top bar holds the settings that belong to you rather than to a scene: whether hint tooltips appear, and how thick and what colour the outline around selected objects is drawn. They are stored on this device and deliberately kept out of project files, so opening a scene someone sent you never repaints your viewport.',
+        text: 'PREFS in the top bar holds the settings that belong to you rather than to a scene: whether hint tooltips appear, the viewport background, the scale, colour and opacity of the grid, and how thick and what colour the outline around selected objects is drawn. They are stored on this device and deliberately kept out of project files, so opening a scene someone sent you never repaints your viewport.',
       },
       {
         kind: 'note',

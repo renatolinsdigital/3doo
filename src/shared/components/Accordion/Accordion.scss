@@ -1,0 +1,41 @@
+@use '@global-styles/helpers' as *;
+
+.accordion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+
+  // The same muted, ruled caption `FieldRow` uses for its legend: folding a
+  // section away should not make it a different kind of heading.
+  &__title {
+    @include label-text;
+
+    color: var(--ink-muted);
+    border-bottom: var(--border-thin) solid var(--void);
+  }
+
+  &__toggle {
+    @include brutal-focus(var(--bone));
+
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    width: 100%;
+    padding-bottom: var(--space-1);
+    color: inherit;
+    font: inherit;
+    letter-spacing: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  &__caret {
+    font-size: var(--text-md);
+    line-height: 1;
+  }
+
+  &__body {
+    display: grid;
+    gap: var(--space-2);
+  }
+}

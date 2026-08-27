@@ -118,6 +118,20 @@ export interface Preferences {
   selectionLineColor: string;
   /** `#rrggbb` the viewport clears to behind the scene. */
   viewportBackground: string;
+  /**
+   * Multiplier on the grid's own step, not a length: the plane rescales itself
+   * by powers of ten as the camera pulls back, so a square is this many units
+   * times whichever decade the zoom has settled on.
+   */
+  gridScale: number;
+  /** How many divisions fall between two heavy lines. */
+  gridSubdivisions: number;
+  /** `#rrggbb` of the fine division lines, and how solid they are (0 to 1). */
+  gridColor: string;
+  gridOpacity: number;
+  /** `#rrggbb` of the heavy line every `gridSubdivisions` divisions, and its solidity. */
+  gridMajorColor: string;
+  gridMajorOpacity: number;
 }
 
 export interface Toast {

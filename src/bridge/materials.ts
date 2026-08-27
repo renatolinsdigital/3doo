@@ -183,12 +183,24 @@ export function createOutlineMaterial({ color, width }: OutlineMaterialOptions):
   return new LineMaterial({ color, linewidth: width, depthTest: false });
 }
 
+/**
+ * The vertex dots of edit mode.
+ *
+ * Depth-tested, like the plain wireframe: a solid or matcap surface is opaque,
+ * and vertices round the back showing through it read as sitting on the face in
+ * front — a click near one lands somewhere the user cannot see. The surface's
+ * own depth offset is what keeps the dots on the near side visible, since a
+ * vertex and the faces meeting at it share a depth to the last bit.
+ *
+ * Nothing is hidden in x-ray or wireframe shading even so: neither writes any
+ * depth for this to test against.
+ */
 export function createPointMaterial(): THREE.PointsMaterial {
   return new THREE.PointsMaterial({
     size: 3,
     sizeAttenuation: false,
     vertexColors: true,
-    depthTest: false,
+    depthTest: true,
   });
 }
 

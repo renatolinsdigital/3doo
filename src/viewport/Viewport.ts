@@ -509,6 +509,20 @@ export class Viewport {
         { equalityFn: shallowArrayEqual, fireImmediately: true },
       ),
       store.subscribe(
+        (state) =>
+          [
+            state.gridScale,
+            state.gridSubdivisions,
+            state.gridColor,
+            state.gridOpacity,
+            state.gridMajorColor,
+            state.gridMajorOpacity,
+          ] as const,
+        ([scale, subdivisions, color, opacity, majorColor, majorOpacity]) =>
+          this.grid.setGrid({ scale, subdivisions, color, opacity, majorColor, majorOpacity }),
+        { equalityFn: shallowArrayEqual, fireImmediately: true },
+      ),
+      store.subscribe(
         (state) => state.overlays.cursor,
         (visible) => {
           this.cursor.visible = visible;
