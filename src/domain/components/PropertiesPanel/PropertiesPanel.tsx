@@ -1,3 +1,6 @@
+import { useState } from 'react';
+import { createPortal } from 'react-dom';
+
 import {
   INTEGER_PARAMS,
   METRE_PARAMS,
@@ -7,7 +10,17 @@ import {
   degToRad,
   vec3,
 } from '@kernel/index';
-import { Button, FieldRow, NumberField, Panel, Toggle, Vector3Field } from '@shared/components';
+import {
+  type ContextMenuEntry,
+  Button,
+  ContextMenu,
+  FieldRow,
+  NumberField,
+  Panel,
+  TextField,
+  Toggle,
+  Vector3Field,
+} from '@shared/components';
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
 import { cx } from '@shared/utils/cx';
 import { useActiveObject, useEditorStore } from '@store/index';
@@ -47,7 +60,11 @@ export function PropertiesPanel() {
   const updateMaterial = useEditorStore((state) => state.updateMaterial);
   const setActiveMaterial = useEditorStore((state) => state.setActiveMaterial);
   const assignMaterial = useEditorStore((state) => state.assignMaterialToSelection);
+  const removeMaterial = useEditorStore((state) => state.removeMaterial);
   const exec = useEditorStore((state) => state.exec);
+
+  const [editingSlot, setEditingSlot] = useState<number | null>(null);
+  const [slotMenu, setSlotMenu] = useState<{ slot: number; x: number; y: number } | null>(null);
 
   if (!object) {
     return (
@@ -64,6 +81,26 @@ export function PropertiesPanel() {
     Number(radToDeg(transform.rotation.y).toFixed(2)),
     Number(radToDeg(transform.rotation.z).toFixed(2)),
   );
+
+  const menuMaterial = slotMenu ? (object.materials[slotMenu.slot] ?? null) : null;
+
+  // Every entry names the row the menu was opened on rather than the active
+  // slot, the same way the outliner's row menu does.
+  const slotEntries = (slot: number): ContextMenuEntry[] => [
+    {
+      id: 'rename',
+      label: 'RENAME',
+      hint: 'Edit the slot name in place (double-click it)',
+      onSelect: () => setEditingSlot(slot),
+    },
+    { id: 'rule', separator: true },
+    {
+      id: 'delete',
+      label: 'DELETE',
+      hint: 'Remove this slot; faces wearing it fall back to the first',
+      onSelect: () => removeMaterial(slot),
+    },
+  ];
 
   return (
     <Panel title="PROPERTIES" className="properties">
@@ -143,8 +180,16 @@ export function PropertiesPanel() {
               name={material.name}
               active={index === object.activeMaterial}
               color={material.color}
+              isEditing={editingSlot === index}
               onSelect={() => setActiveMaterial(index)}
               onColorChange={(color) => updateMaterial(index, { color })}
+              onStartRename={() => setEditingSlot(index)}
+              onFinishRename={(name) => {
+                updateMaterial(index, { name });
+                setEditingSlot(null);
+              }}
+              onCancelRename={() => setEditingSlot(null)}
+              onOpenMenu={(x, y) => setSlotMenu({ slot: index, x, y })}
             />
           ))}
         </ul>
@@ -163,6 +208,20 @@ export function PropertiesPanel() {
             onClick={assignMaterial}
           />
         </div>
+        {slotMenu && menuMaterial
+          ? // Portalled for the reason the outliner's is: the right-hand column
+            // scrolls and clips, so a menu drawn inside it would be cut off.
+            createPortal(
+              <ContextMenu
+                x={slotMenu.x}
+                y={slotMenu.y}
+                label={menuMaterial.name}
+                entries={slotEntries(slotMenu.slot)}
+                onClose={() => setSlotMenu(null)}
+              />,
+              document.body,
+            )
+          : null}
       </FieldRow>
 
       {mode === 'edit' ? (
@@ -197,25 +256,64 @@ interface MaterialRowProps {
   name: string;
   active: boolean;
   color: { r: number; g: number; b: number };
+  isEditing: boolean;
   onSelect: () => void;
   onColorChange: (color: { r: number; g: number; b: number }) => void;
+  onStartRename: () => void;
+  onFinishRename: (name: string) => void;
+  onCancelRename: () => void;
+  /** Opens the row's menu at the pointer, in client coordinates. */
+  onOpenMenu: (x: number, y: number) => void;
 }
 
-function MaterialRow({ name, active, color, onSelect, onColorChange }: MaterialRowProps) {
-  const slotTooltip = useTooltipTrigger('Make this the active material slot for Assign');
+function MaterialRow({
+  name,
+  active,
+  color,
+  isEditing,
+  onSelect,
+  onColorChange,
+  onStartRename,
+  onFinishRename,
+  onCancelRename,
+  onOpenMenu,
+}: MaterialRowProps) {
+  const slotTooltip = useTooltipTrigger(
+    'Click to make this the active slot for Assign, double-click to rename, right-click for more',
+  );
   const swatchTooltip = useTooltipTrigger(`${name} colour`);
 
   return (
-    <li className="properties__material">
-      <button
-        type="button"
-        className={cx('properties__material-slot', active && 'properties__material-slot--active')}
-        aria-pressed={active}
-        onClick={onSelect}
-        {...slotTooltip}
-      >
-        {name}
-      </button>
+    <li
+      className="properties__material"
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onOpenMenu(event.clientX, event.clientY);
+      }}
+    >
+      {isEditing ? (
+        <TextField
+          label={`Rename ${name}`}
+          defaultValue={name}
+          autoFocus
+          onBlur={(event) => onFinishRename(event.target.value.trim() || name)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+            if (event.key === 'Escape') onCancelRename();
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          className={cx('properties__material-slot', active && 'properties__material-slot--active')}
+          aria-pressed={active}
+          onClick={onSelect}
+          onDoubleClick={onStartRename}
+          {...slotTooltip}
+        >
+          {name}
+        </button>
+      )}
       <input
         className="properties__swatch"
         type="color"

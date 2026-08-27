@@ -26,6 +26,15 @@ import { useKeymap } from '@domain/hooks/useKeymap';
 
 import './ModelingModule.scss';
 
+/** Input types whose native menu is the only route to the clipboard actions. */
+const TEXT_ENTRY_TYPES = new Set(['text', 'search', 'url', 'tel', 'email', 'password', 'number']);
+
+function isTextEntry(target: EventTarget | null): boolean {
+  if (target instanceof HTMLTextAreaElement) return true;
+  if (target instanceof HTMLInputElement) return TEXT_ENTRY_TYPES.has(target.type);
+  return target instanceof HTMLElement && target.isContentEditable;
+}
+
 /**
  * The mesh modelling module.
  *
@@ -42,7 +51,18 @@ export function ModelingModule() {
   const mainRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div className="modeling-shell">
+    <div
+      className="modeling-shell"
+      // Right-clicking the editor is the application's gesture, not the
+      // browser's: the viewport, the outliner and the material slots each
+      // answer it with a menu of their own, and anywhere else it does nothing
+      // rather than opening one about the page. Typing fields keep theirs,
+      // which is where cut, copy and paste live. Portalled menus and dialogs
+      // are covered too — a portal still bubbles through the React tree.
+      onContextMenu={(event) => {
+        if (!isTextEntry(event.target)) event.preventDefault();
+      }}
+    >
       <TopBar brand={<ModuleSwitcher />} />
 
       <div className="modeling-shell__main" ref={mainRef}>

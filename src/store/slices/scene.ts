@@ -129,6 +129,8 @@ export interface SceneSlice {
 
   addMaterial: () => void;
   updateMaterial: (index: number, patch: Partial<Material>) => void;
+  /** Drops a slot and rehomes the faces that were wearing it. */
+  removeMaterial: (index: number) => void;
   setActiveMaterial: (index: number) => void;
   assignMaterialToSelection: () => void;
 
@@ -872,6 +874,36 @@ export const createSceneSlice: StateCreator<
             ),
           }
         : null,
+    );
+  },
+
+  /**
+   * Deletes a material slot.
+   *
+   * Slots are addressed by position, so removing one renumbers every slot after
+   * it. Faces are rewritten to match: the ones past the gap follow the material
+   * they were already wearing down a place, and the ones wearing the deleted
+   * slot fall back to the first — a face always points at a slot that exists.
+   */
+  removeMaterial: (index) => {
+    const object = activeObject(get());
+    const material = object?.materials[index];
+    if (!object || !material) return;
+
+    get().recordHistory(`Delete ${material.name}`);
+
+    for (const face of object.mesh.faces.values()) {
+      if (face.materialIndex === index) face.materialIndex = 0;
+      else if (face.materialIndex > index) face.materialIndex -= 1;
+    }
+
+    const materials = object.materials.filter((_, slot) => slot !== index);
+    get().patchActiveObject(
+      {
+        materials,
+        activeMaterial: Math.max(0, Math.min(object.activeMaterial, materials.length - 1)),
+      },
+      { status: `Deleted ${material.name}` },
     );
   },
 

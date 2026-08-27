@@ -28,6 +28,28 @@ describe('App shell', () => {
     vi.useRealTimers();
   });
 
+  describe('right-click', () => {
+    const rightClick = (target: Element) => {
+      const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+      target.dispatchEvent(event);
+      return event;
+    };
+
+    it('is a no-op over a surface with no menu of its own', () => {
+      render(<App />);
+
+      // The status bar answers nothing, so the gesture stops here rather than
+      // handing the page's own menu to someone reaching for the editor's.
+      expect(rightClick(screen.getByRole('contentinfo')).defaultPrevented).toBe(true);
+    });
+
+    it('leaves the native menu to a typing field, where the clipboard lives', () => {
+      render(<App />);
+
+      expect(rightClick(screen.getByLabelText('Project name')).defaultPrevented).toBe(false);
+    });
+  });
+
   it('renders the full brutalist layout', () => {
     render(<App />);
 

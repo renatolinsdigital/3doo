@@ -107,3 +107,90 @@ describe('evaluated display mesh', () => {
     expect(defaults.targetFaces).toBeGreaterThan(0);
   });
 });
+
+describe('material slots', () => {
+  /** A box with three slots, its six faces spread across all of them. */
+  function threeSlotBox() {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    store.addPrimitive('box');
+    store.addMaterial();
+    store.addMaterial();
+
+    const object = useEditorStore.getState().objects[0];
+    const faces = [...object.mesh.faces.values()];
+    faces[0].materialIndex = 0;
+    faces[1].materialIndex = 1;
+    faces[2].materialIndex = 1;
+    faces[3].materialIndex = 2;
+    faces[4].materialIndex = 2;
+    faces[5].materialIndex = 2;
+    return object;
+  }
+
+  const indices = () =>
+    [...useEditorStore.getState().objects[0].mesh.faces.values()].map((face) => face.materialIndex);
+
+  it('renames a slot in place, leaving the faces alone', () => {
+    threeSlotBox();
+    useEditorStore.getState().updateMaterial(1, { name: 'CHROME' });
+
+    expect(useEditorStore.getState().objects[0].materials[1].name).toBe('CHROME');
+    expect(indices()).toEqual([0, 1, 1, 2, 2, 2]);
+  });
+
+  it('renumbers the faces past the slot it removes', () => {
+    threeSlotBox();
+    useEditorStore.getState().removeMaterial(1);
+
+    // Slot 2 slid down into 1, so the faces wearing it follow; the two that
+    // wore the deleted slot fall back to the first.
+    expect(useEditorStore.getState().objects[0].materials).toHaveLength(2);
+    expect(indices()).toEqual([0, 0, 0, 1, 1, 1]);
+  });
+
+  it('leaves every face pointing at a slot that exists', () => {
+    threeSlotBox();
+    useEditorStore.getState().removeMaterial(0);
+
+    const object = useEditorStore.getState().objects[0];
+    for (const index of indices()) {
+      expect(object.materials[index]).toBeDefined();
+    }
+  });
+
+  it('pulls the active slot back when the one it named goes', () => {
+    threeSlotBox();
+    useEditorStore.getState().setActiveMaterial(2);
+    useEditorStore.getState().removeMaterial(2);
+
+    expect(useEditorStore.getState().objects[0].activeMaterial).toBe(1);
+  });
+
+  it('takes the last slot, leaving an object with none', () => {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    store.addPrimitive('box');
+    store.removeMaterial(0);
+
+    const object = useEditorStore.getState().objects[0];
+    expect(object.materials).toEqual([]);
+    expect(object.activeMaterial).toBe(0);
+  });
+
+  it('is undoable', () => {
+    threeSlotBox();
+    useEditorStore.getState().removeMaterial(1);
+    useEditorStore.getState().undo();
+
+    expect(useEditorStore.getState().objects[0].materials).toHaveLength(3);
+    expect(indices()).toEqual([0, 1, 1, 2, 2, 2]);
+  });
+
+  it('ignores a slot that is not there', () => {
+    threeSlotBox();
+    useEditorStore.getState().removeMaterial(7);
+
+    expect(useEditorStore.getState().objects[0].materials).toHaveLength(3);
+  });
+});
