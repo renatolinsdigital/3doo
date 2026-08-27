@@ -2,6 +2,7 @@ import type { StateCreator } from 'zustand';
 
 import {
   type BMesh,
+  type BooleanOp,
   type Modifier,
   type PrimitiveKind,
   type PrimitiveParams,
@@ -14,6 +15,7 @@ import {
   SELECTION_OPERATORS,
   add,
   applyModifier,
+  booleanMesh,
   centroid,
   cloneMesh,
   composeMatrix,
@@ -37,6 +39,12 @@ import {
 
 import type { EditorStore } from '../useEditorStore';
 import type { LastOperator, Material, SceneObject } from '../types';
+
+const BOOLEAN_LABELS: Record<BooleanOp, string> = {
+  union: 'Union',
+  difference: 'Difference',
+  intersect: 'Intersect',
+};
 
 /** Undo lives outside React state: only its two flags ever drive a render. */
 const history = new History(64);
@@ -104,6 +112,8 @@ export interface SceneSlice {
   clearRecentVerts: () => void;
   duplicateSelected: (linked?: boolean) => void;
   mergeSelected: () => void;
+  /** Cuts the selected objects against the active one, which keeps the result. */
+  booleanWithSelected: (op: BooleanOp) => void;
   separateLooseParts: () => void;
   /** Deletes the selection, or the objects named — the outliner's row menu names one. */
   deleteSelected: (ids?: readonly string[]) => void;
@@ -523,6 +533,75 @@ export const createSceneSlice: StateCreator<
       activeObjectId: target.id,
       meshVersion: state.meshVersion + 1,
       status: `Merged ${sources.length + 1} objects`,
+    }));
+  },
+
+  booleanWithSelected: (op) => {
+    const { objects, selectedObjectIds, activeObjectId } = get();
+    const target = objects.find((candidate) => candidate.id === activeObjectId);
+    if (!target) {
+      set({ status: 'Select a cutter and the object to cut it against' });
+      return;
+    }
+    if (target.locked) {
+      get().noteLockedAttempt(target.id);
+      return;
+    }
+
+    const tools = objects.filter(
+      (object) =>
+        object.id !== target.id && selectedObjectIds.includes(object.id) && !object.locked,
+    );
+    if (tools.length === 0) {
+      set({ status: `Select a cutter as well — ${target.name} is the one that keeps the result` });
+      return;
+    }
+
+    get().recordHistory(BOOLEAN_LABELS[op]);
+
+    // No clone guard as in a merge: each pass builds a new mesh rather than
+    // writing into the old one, so an object linked to the target's mesh keeps
+    // the shape it had. The target simply stops sharing it.
+    const materials = [...target.materials];
+    let mesh = target.mesh;
+
+    for (const tool of tools) {
+      // Slots are merged by identity so a cutter's material does not arrive as
+      // a second slot pointing at the one the target already has.
+      const slots = tool.materials.map((material) => {
+        const existing = materials.findIndex((candidate) => candidate.id === material.id);
+        if (existing !== -1) return existing;
+        materials.push(structuredClone(material));
+        return materials.length - 1;
+      });
+
+      const matrix = composeMatrix(tool.transform);
+      mesh = booleanMesh(
+        op,
+        mesh,
+        tool.mesh,
+        (point) => inverseTransformPoint(target.transform, transformPoint(matrix, point)),
+        (face) => slots[face.materialIndex] ?? 0,
+      );
+    }
+
+    const consumed = new Set(tools.map((object) => object.id));
+    set((state) => ({
+      objects: state.objects
+        .filter((object) => !consumed.has(object.id))
+        .map((object) =>
+          object.id === target.id
+            ? // The parameters described a primitive shape the result is not.
+              { ...object, mesh, materials, primitive: null }
+            : object,
+        ),
+      selectedObjectIds: [target.id],
+      activeObjectId: target.id,
+      meshVersion: state.meshVersion + 1,
+      status:
+        mesh.faces.size === 0
+          ? `${BOOLEAN_LABELS[op]} left nothing behind`
+          : `${BOOLEAN_LABELS[op]} with ${tools.length} object(s)`,
     }));
   },
 

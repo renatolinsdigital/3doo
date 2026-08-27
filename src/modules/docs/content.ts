@@ -88,7 +88,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Left panels',
-            'ADD with OBJECT under it in object mode. SELECT and OPERATIONS replace them in edit mode.',
+            'ADD, OBJECT and BOOLEAN in object mode. SELECT and OPERATIONS replace them in edit mode.',
           ],
           [
             'Panel titles',

@@ -7,6 +7,7 @@ export { ModifierStack } from './ModifierStack/ModifierStack';
 export { StatusBar } from './StatusBar/StatusBar';
 export { AddPanel } from './AddPanel/AddPanel';
 export { ObjectPanel } from './ObjectPanel/ObjectPanel';
+export { BooleanPanel } from './BooleanPanel/BooleanPanel';
 export { OperationsPanel } from './OperationsPanel/OperationsPanel';
 export { MergeDialog } from './MergeDialog/MergeDialog';
 export { ExportDialog } from './ExportDialog/ExportDialog';

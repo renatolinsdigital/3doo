@@ -101,6 +101,42 @@ describe('App shell', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Subdivided');
   });
 
+  it('cuts one object out of another from the boolean panel', async () => {
+    render(<App />);
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
+
+    // Nothing to cut against yet, so the operations say so rather than run.
+    const booleans = screen.getByRole('region', { name: 'BOOLEAN' });
+    expect(within(booleans).getByRole('button', { name: 'DIFFERENCE' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    act(() =>
+      useEditorStore.setState((state) => ({
+        // The second box overlaps the first by half, and the first is active,
+        // so it is the one that keeps the result.
+        objects: state.objects.map((object, index) =>
+          index === 1
+            ? { ...object, transform: { ...object.transform, position: { x: 0.5, y: 0, z: 0 } } }
+            : object,
+        ),
+        selectedObjectIds: state.objects.map((object) => object.id),
+        activeObjectId: state.objects[0].id,
+      })),
+    );
+
+    await userEvent.click(within(booleans).getByRole('button', { name: 'DIFFERENCE' }));
+
+    // The cutter is consumed, and what is left is smaller than the box was.
+    expect(useEditorStore.getState().objects).toHaveLength(1);
+    const box = useEditorStore.getState().objects[0].mesh.boundingBox();
+    expect(box.max.x).toBeCloseTo(0, 5);
+    expect(screen.getByRole('status')).toHaveTextContent('Difference');
+  });
+
   it('undoes from the keyboard', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'ADD' });

@@ -6,6 +6,7 @@ import { useEditorStore } from '@store/index';
 
 import {
   AddPanel,
+  BooleanPanel,
   ExportDialog,
   MergeDialog,
   ModifierStack,
@@ -49,7 +50,14 @@ export function ModelingModule() {
 
         <div className="modeling-shell__left">
           <AddPanel />
-          {mode === 'object' ? <ObjectPanel /> : <OperationsPanel />}
+          {mode === 'object' ? (
+            <>
+              <ObjectPanel />
+              <BooleanPanel />
+            </>
+          ) : (
+            <OperationsPanel />
+          )}
         </div>
 
         <ViewportCanvas />
