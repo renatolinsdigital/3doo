@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { type Vec3, add, vec3 } from '../math';
+import { type Vec3, add, dot, polygonNormal, vec3 } from '../math';
 import type { BMesh } from '../mesh';
+import { triangulatePolygon } from '../mesh/triangulate';
 import {
   createBox,
   createCapsule,
@@ -224,6 +225,49 @@ describe('mesh booleans', () => {
       expect(ngonCount(result)).toBe(0);
       expect(quads).toBeGreaterThan(result.faces.size * 0.8);
     }
+  });
+
+  it('leaves no face reaching out over the cut', () => {
+    // A sphere sunk into the top of a box. Every vertex of the seam folds the
+    // face it lands on, and a folded face split across the fold paints a
+    // triangle over the hole that was just cut — which is what a boolean's
+    // curved seam is full of, and what the eye reads as material that should
+    // not be there.
+    const centre = vec3(0, 1, 0);
+    const tool = createUVSphere(1, 24, 12);
+    const result = booleanMesh('difference', createBox(2), tool, offsetBy(centre));
+
+    // The tool is convex, so its own face planes answer "how far inside is
+    // this?" exactly — no ray to graze a seam vertex and no tessellation
+    // sagitta to mistake for a real overlap.
+    const planes = [...tool.faces.values()].map((face) => {
+      const points = tool.facePoints(face).map(offsetBy(centre));
+      const normal = polygonNormal(points);
+      return { normal, d: dot(normal, points[0]) };
+    });
+
+    let deepest = 0;
+    for (const face of result.faces.values()) {
+      const points = result.facePoints(face);
+      // Faces lying in the box's own planes: the material the cut left behind.
+      const onBox = (['x', 'y', 'z'] as const).some((axis) =>
+        points.every((point) => Math.abs(Math.abs(point[axis]) - 1) < 1e-9),
+      );
+      if (!onBox) continue;
+
+      const indices = triangulatePolygon(points);
+      for (let i = 0; i < indices.length; i += 3) {
+        const [a, b, c] = [points[indices[i]], points[indices[i + 1]], points[indices[i + 2]]];
+        const mid = vec3((a.x + b.x + c.x) / 3, (a.y + b.y + c.y) / 3, (a.z + b.z + c.z) / 3);
+        let outermost = -Infinity;
+        for (const plane of planes) {
+          outermost = Math.max(outermost, dot(plane.normal, mid) - plane.d);
+        }
+        deepest = Math.max(deepest, -outermost);
+      }
+    }
+
+    expect(deepest).toBeLessThan(1e-9);
   });
 
   it('welds the cut so the result has edges to work with, not loose triangles', () => {

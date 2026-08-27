@@ -54,8 +54,24 @@ export function triangulatePolygon(points: readonly Vec3[], normal?: Vec3): numb
   }));
 
   if (count === 4) {
-    // Split the quad on its shorter diagonal to avoid sliver triangles.
     const [a, b, c, d] = projected;
+
+    // A concave quad has one corner folded inwards, and only the diagonal
+    // through that corner stays inside the outline — the other one bridges the
+    // dent, so the pair of triangles covers ground the quad does not. A boolean
+    // leaves plenty of these along a curved seam, where the cut's own vertices
+    // are what fold the face; splitting one the wrong way draws a face reaching
+    // out over the hole that was just cut.
+    const facing = Math.sign(signedArea(projected)) || 1;
+    const folded = (prev: Point2, corner: Point2, next: Point2) =>
+      Math.sign(
+        (corner.x - prev.x) * (next.y - prev.y) - (corner.y - prev.y) * (next.x - prev.x),
+      ) === -facing;
+
+    if (folded(d, a, b) || folded(b, c, d)) return [0, 1, 2, 0, 2, 3];
+    if (folded(a, b, c) || folded(c, d, a)) return [1, 2, 3, 1, 3, 0];
+
+    // Convex, so both diagonals are usable: the shorter one avoids slivers.
     const diagonal1 = (a.x - c.x) ** 2 + (a.y - c.y) ** 2;
     const diagonal2 = (b.x - d.x) ** 2 + (b.y - d.y) ** 2;
     return diagonal1 <= diagonal2 ? [0, 1, 2, 0, 2, 3] : [1, 2, 3, 1, 3, 0];
