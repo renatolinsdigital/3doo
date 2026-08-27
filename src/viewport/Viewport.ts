@@ -68,6 +68,11 @@ const PROPORTIONAL_WHEEL_STEP = 1.1;
 const MIN_PROPORTIONAL_RADIUS = 0.01;
 const MAX_PROPORTIONAL_RADIUS = 1000;
 
+/** How much of the shorter viewport side the ring may reach across when it appears, as a radius. */
+const PROPORTIONAL_MAX_SPAN = 0.45;
+/** How small the ring may appear at before it is grown enough to be seen. */
+const PROPORTIONAL_MIN_PX = 32;
+
 /**
  * The factor a scale drag has reached, from pointer distances **on screen**.
  *
@@ -101,6 +106,35 @@ export function proportionalRadiusStep(radius: number, deltaY: number): number {
     MAX_PROPORTIONAL_RADIUS,
   );
   return Number(next.toFixed(3));
+}
+
+/**
+ * The falloff radius the ring appears at.
+ *
+ * The ring is the only thing saying how far the falloff reaches, so coming up
+ * at a radius left over from another zoom — wider than the canvas, or a
+ * sub-pixel dot — starts the edit blind. `radiusPerPixel` is how much radius
+ * one screen pixel is worth at the ring's centre, `span` the shorter viewport
+ * side.
+ *
+ * Fitted the once, as it appears. After that the radius is the user's: a zoom
+ * or an orbit is a look at the model, not an instruction to resize the falloff.
+ */
+export function fitProportionalRadius(
+  radius: number,
+  radiusPerPixel: number,
+  span: number,
+): number {
+  if (!(radiusPerPixel > 0) || !(span > 0)) return radius;
+
+  const max = span * PROPORTIONAL_MAX_SPAN * radiusPerPixel;
+  const min = Math.min(PROPORTIONAL_MIN_PX * radiusPerPixel, max);
+  const fitted = THREE.MathUtils.clamp(radius, min, max);
+  if (fitted === radius) return radius;
+
+  return Number(
+    THREE.MathUtils.clamp(fitted, MIN_PROPORTIONAL_RADIUS, MAX_PROPORTIONAL_RADIUS).toFixed(3),
+  );
 }
 
 /**
@@ -147,6 +181,8 @@ export class Viewport {
   private proportionalAnchor: THREE.Vector3 | null = null;
   /** Object-to-world scale for the radius, which is an object-space distance. */
   private proportionalScale = 1;
+  /** Whether the falloff ring was drawn last frame; a first showing is fitted to the view. */
+  private proportionalShown = false;
   private pointerPixels = new THREE.Vector2();
   /** Where the camera stood when the selection outlines were last traced. */
   private readonly outlineEye = new THREE.Vector3(Number.NaN, 0, 0);
@@ -332,18 +368,35 @@ export class Viewport {
    */
   private updateCursor(): void {
     if (!this.cursor.visible) return;
-    const height = this.canvas.clientHeight;
-    if (height === 0) return;
+
+    const worldPerPixel = this.worldPerPixel(this.cursor.position);
+    if (worldPerPixel === 0) return;
 
     this.cursor.quaternion.copy(this.camera.quaternion);
-    const worldPerPixel =
-      this.camera instanceof THREE.OrthographicCamera
-        ? (this.camera.top - this.camera.bottom) / height
-        : (2 *
-            Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2) *
-            this.camera.position.distanceTo(this.cursor.position)) /
-          height;
     this.cursor.scale.setScalar(CURSOR_RADIUS_PX * worldPerPixel);
+  }
+
+  /**
+   * What one screen pixel covers in world units at a point.
+   *
+   * Every billboarded overlay — the cursor, the falloff ring — is sized through
+   * this, so they all answer to the same zoom. Zero when the canvas has no
+   * height and there is nothing to measure against.
+   */
+  private worldPerPixel(point: THREE.Vector3): number {
+    const height = this.canvas.clientHeight;
+    if (height === 0) return 0;
+
+    if (this.camera instanceof THREE.OrthographicCamera) {
+      return (this.camera.top - this.camera.bottom) / height;
+    }
+
+    return (
+      (2 *
+        Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2) *
+        this.camera.position.distanceTo(point)) /
+      height
+    );
   }
 
   /**
@@ -637,15 +690,48 @@ export class Viewport {
   private updateProportionalRing(): void {
     const state = useEditorStore.getState();
     const anchor = this.proportionalAnchor;
-    const radius = state.proportional.radius * this.proportionalScale;
-    const visible = anchor !== null && state.proportional.enabled && radius > 0;
+    const visible =
+      anchor !== null &&
+      state.proportional.enabled &&
+      state.proportional.radius * this.proportionalScale > 0;
 
     this.proportionalRing.visible = visible;
-    if (!visible || !anchor) return;
+    if (!visible || !anchor) {
+      this.proportionalShown = false;
+      return;
+    }
+
+    let radius = state.proportional.radius;
+    if (!this.proportionalShown) {
+      this.proportionalShown = true;
+      radius = this.fitRadiusToView(radius);
+      if (radius !== state.proportional.radius) state.setProportional({ radius });
+    }
 
     this.proportionalRing.position.copy(anchor);
     this.proportionalRing.quaternion.copy(this.camera.quaternion);
-    this.proportionalRing.scale.setScalar(radius);
+    this.proportionalRing.scale.setScalar(radius * this.proportionalScale);
+  }
+
+  /**
+   * The falloff radius fitted to what the viewport can show.
+   *
+   * The radius is a stored setting rather than a display one — the ring has to
+   * describe the reach the transform will really use — so the fit has to be
+   * written back to it, not drawn as a circle narrower than the falloff.
+   */
+  private fitRadiusToView(radius: number): number {
+    const anchor = this.proportionalAnchor;
+    if (!anchor || this.proportionalScale === 0) return radius;
+
+    const worldPerPixel = this.worldPerPixel(anchor);
+    if (worldPerPixel === 0) return radius;
+
+    return fitProportionalRadius(
+      radius,
+      worldPerPixel / this.proportionalScale,
+      Math.min(this.canvas.clientWidth, this.canvas.clientHeight),
+    );
   }
 
   /** Drops the just-created-vertex flash once its moment has passed. */
