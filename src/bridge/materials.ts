@@ -73,22 +73,32 @@ function getMatcap(): THREE.Texture {
 }
 
 /**
- * Sinks the shaded surface a hair into the depth buffer.
+ * Sinks the shaded surface into the depth buffer, under the wireframe on it.
  *
- * The wireframe runs along the very edges of the triangles under it, so the two
- * come out of the rasteriser at the same depth and which one survives comes
- * down to float rounding — an edge would show solid on one face, stipple on the
- * next, and change again as the mesh deformed under it. Offsetting the fill
- * (the only thing WebGL can offset: there is no POLYGON_OFFSET_LINE) settles
- * that for good, and a line still disappears properly behind geometry in front.
+ * The wireframe runs along the very edges of the triangles under it and is
+ * built from the same vertices, so the two come out of the rasteriser at the
+ * same depth and which one survives comes down to float rounding — an edge
+ * shows solid on one face, stipple on the next, and changes again as the mesh
+ * deforms under it. Offsetting the fill (the only thing WebGL can offset: there
+ * is no POLYGON_OFFSET_LINE) settles that, and a line still disappears properly
+ * behind geometry in front of it.
  *
  * Slope-scaled *and* constant: the factor alone is zero on a polygon facing the
  * camera square on, which is where the flattest, longest edges are.
+ *
+ * Four of each rather than one. A line and a triangle interpolate depth along
+ * different paths across the same pixel, so they can disagree by several units
+ * of depth rather than the one a single unit buys — and the disagreement grows
+ * with how far the quad under the line has been bent out of plane, which is why
+ * this showed up as edges fading in and out while a mesh was being deformed.
+ * The unit is the depth buffer's own resolution at that fragment, so four of
+ * them stay a vanishingly small distance at any zoom, far too little for a
+ * hidden edge behind the surface to climb through.
  */
 const SURFACE_DEPTH_OFFSET = {
   polygonOffset: true,
-  polygonOffsetFactor: 1,
-  polygonOffsetUnits: 1,
+  polygonOffsetFactor: 4,
+  polygonOffsetUnits: 4,
 } as const;
 
 export interface SurfaceMaterialOptions {
