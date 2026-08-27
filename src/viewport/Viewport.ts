@@ -63,6 +63,14 @@ const SCALE_REFERENCE_PX = 60;
 const MIN_SCALE_RATIO = 0.01;
 const MAX_SCALE_RATIO = 100;
 
+/**
+ * How large the transform gizmo is drawn, against `TransformControls`' own 1.
+ *
+ * Its handles are sized in screen space, so this is the whole of it: arrows,
+ * rings, plane squares and their pickers all scale together.
+ */
+const GIZMO_SIZE = 2 / 3;
+
 /** What one wheel notch multiplies the proportional falloff radius by. */
 const PROPORTIONAL_WHEEL_STEP = 1.1;
 const MIN_PROPORTIONAL_RADIUS = 0.01;
@@ -289,6 +297,7 @@ export class Viewport {
 
     this.controls = new CameraController(this.camera, canvas);
     this.gizmo = new TransformControls(this.camera, canvas);
+    this.gizmo.size = GIZMO_SIZE;
     this.gizmoHelper = resolveGizmoHelper(this.gizmo);
     paintGizmoAxes(this.gizmoHelper, this.gizmo);
     trimGizmoGuides(this.gizmoHelper, this.gizmo);
