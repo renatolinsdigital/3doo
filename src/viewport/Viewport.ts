@@ -252,7 +252,14 @@ export class Viewport {
     private readonly canvas: HTMLCanvasElement,
     private readonly overlay: HTMLElement,
   ) {
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+    // `stencil` is off by default in three, and the selection outline is
+    // masked by one: it draws only where the object's own fill did not.
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      alpha: false,
+      stencil: true,
+    });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.scene.background = new THREE.Color(VIEWPORT_COLORS.ash);
 

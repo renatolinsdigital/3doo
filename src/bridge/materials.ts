@@ -101,6 +101,25 @@ const SURFACE_DEPTH_OFFSET = {
   polygonOffsetUnits: 4,
 } as const;
 
+/**
+ * The stencil value a selected object's fill stamps on the pixels it covers.
+ *
+ * The outline refuses those pixels, which is the whole of how it comes out as
+ * the object's contour rather than as every silhouette edge it owns. Nothing
+ * local to an edge separates the two: the fold inside a cut has a front face on
+ * one side and a back face on the other, exactly like the outer edge does. What
+ * tells them apart is whether the object's own surface is in the way, and the
+ * pixels it covered is the cheapest true answer to that.
+ */
+const OUTLINE_STENCIL = 1;
+
+/** Stamps `OUTLINE_STENCIL`, once `stencilWrite` is switched on. */
+const OUTLINE_STENCIL_STAMP = {
+  stencilRef: OUTLINE_STENCIL,
+  stencilFunc: THREE.AlwaysStencilFunc,
+  stencilZPass: THREE.ReplaceStencilOp,
+} as const;
+
 export interface SurfaceMaterialOptions {
   color: THREE.ColorRepresentation;
   shading: ShadingMode;
@@ -120,6 +139,7 @@ export function createSurfaceMaterial({
       matcap: getMatcap(),
       side,
       ...SURFACE_DEPTH_OFFSET,
+      ...OUTLINE_STENCIL_STAMP,
     });
   }
 
@@ -130,6 +150,7 @@ export function createSurfaceMaterial({
       transparent: true,
       opacity: 0.28,
       depthWrite: false,
+      ...OUTLINE_STENCIL_STAMP,
     });
   }
 
@@ -138,6 +159,7 @@ export function createSurfaceMaterial({
     side,
     flatShading: false,
     ...SURFACE_DEPTH_OFFSET,
+    ...OUTLINE_STENCIL_STAMP,
   });
 }
 
@@ -175,12 +197,35 @@ export interface OutlineMaterialOptions {
  * The cost is `resolution`: the shader turns a pixel width into clip space
  * itself, so it must be told the viewport size (see `ObjectView.setResolution`).
  *
- * Drawn over everything, like the rest of the selection overlays: the line sits
- * exactly on the surface it traces, so depth testing would leave it fighting
- * the very geometry it is drawing around.
+ * Kept off the object it belongs to, by the stencil its own fill stamps: what
+ * survives is the half of the line lying over the background, which is the
+ * contour and nothing else. Blender's outline is the same shape for the same
+ * reason — an outline is about which object you are holding, and a line through
+ * the middle of one says nothing about that.
+ *
+ * Depth-tested as well, so a contour behind another object goes away with it
+ * rather than being drawn across it.
+ *
+ * That costs a fight with the surface the line lies on — and a silhouette is
+ * the worst place to have it, being where the surface is most edge-on and its
+ * depth swings fastest across a pixel. Hence the bias towards the camera here,
+ * against the `SURFACE_DEPTH_OFFSET` pushing the fills the other way: between
+ * them the line clears the surface it traces. Both are a few units of the depth
+ * buffer's own resolution, which is nowhere near enough to climb through the
+ * geometry genuinely in front.
  */
 export function createOutlineMaterial({ color, width }: OutlineMaterialOptions): LineMaterial {
-  return new LineMaterial({ color, linewidth: width, depthTest: false });
+  return new LineMaterial({
+    color,
+    linewidth: width,
+    depthTest: true,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
+    stencilWrite: true,
+    stencilRef: OUTLINE_STENCIL,
+    stencilFunc: THREE.NotEqualStencilFunc,
+  });
 }
 
 /**

@@ -166,7 +166,36 @@ describe('ObjectView selection outline', () => {
     expect(active).not.toBe(selected);
   });
 
-  it('takes its width and colour from the preference it is given', () => {
+  it('has the fill stamp the mask only while there is an outline to keep off', () => {
+    // The line is kept off the object's own pixels by the stencil its fill
+    // writes, so the two have to switch together — a fill still stamping after
+    // the selection moved on would cut a hole in the next object's outline.
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+    const base = {
+      selectMode: 'vertex' as const,
+      isActive: true,
+      eye: vec3(0, 0, 10),
+      selectionLine: SELECTION_LINE,
+      settings,
+    };
+    const stamping = () =>
+      ([surfaceMaterial(view, object.id)].flat() as THREE.Material[]).every(
+        (material) => material.stencilWrite,
+      );
+
+    view.update(object, evaluatedMesh(object), { ...base, mode: 'object', isSelected: true });
+    expect(stamping()).toBe(true);
+
+    view.update(object, evaluatedMesh(object), { ...base, mode: 'object', isSelected: false });
+    expect(stamping()).toBe(false);
+
+    // Edit mode draws no outline either, whatever the selection says.
+    view.update(object, evaluatedMesh(object), { ...base, mode: 'edit', isSelected: true });
+    expect(stamping()).toBe(false);
+  });
+
+  it('takes its colour from the preference, and twice its width', () => {
     const { object, settings } = scene();
     const view = new ObjectView(object.id);
 
@@ -181,7 +210,10 @@ describe('ObjectView selection outline', () => {
     });
 
     const material = outlineMaterial(view, object.id);
-    expect(material.linewidth).toBe(5);
+    // Half the ribbon lies over the object and is stencilled away, so the
+    // preference is met by drawing twice what it asks for: the width someone
+    // sets is the width they see.
+    expect(material.linewidth).toBe(10);
     expect(material.color.getHexString()).toBe('3de0d0');
   });
 

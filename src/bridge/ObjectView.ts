@@ -44,6 +44,11 @@ export interface ObjectViewState {
   recentVerts?: ReadonlySet<number>;
 }
 
+/** A mesh's materials as a list, however many slots it was built with. */
+function surfaceMaterials(mesh: THREE.Mesh): THREE.Material[] {
+  return Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+}
+
 /** Everything the surface materials are built from, as one comparable string. */
 function solidMaterialKey(object: SceneObject, state: ObjectViewState): string {
   const colours = object.materials.map(
@@ -236,12 +241,21 @@ export class ObjectView {
   private updateOutline(object: SceneObject, mesh: BMesh, state: ObjectViewState): void {
     this.outline.visible = state.mode === 'object' && state.isSelected;
     this.outlined = this.outline.visible ? { mesh, object } : null;
+
+    // The fill stamps the stencil that keeps the line off the object's own
+    // pixels, and only while there is a line to keep off: a stencil test costs
+    // nothing to switch, unlike rebuilding a material, which drops its shader.
+    for (const material of surfaceMaterials(this.solid)) {
+      material.stencilWrite = this.outline.visible;
+    }
     if (!this.outline.visible) return;
 
     const material = this.outline.material as LineMaterial;
     material.color.set(state.selectionLine.color);
     if (!state.isActive) material.color.multiplyScalar(INACTIVE_OUTLINE_TINT);
-    material.linewidth = state.selectionLine.width;
+    // Doubled, because the stencil eats the half of it lying over the object:
+    // what is left is the outer half, and the preference is about what shows.
+    material.linewidth = state.selectionLine.width * 2;
     this.traceOutline(state.eye);
   }
 

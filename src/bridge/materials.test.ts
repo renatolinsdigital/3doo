@@ -1,9 +1,14 @@
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { ShadingMode } from '@store/types';
 
-import { createPointMaterial, createSurfaceMaterial, createWireMaterial } from './materials';
+import {
+  createOutlineMaterial,
+  createPointMaterial,
+  createSurfaceMaterial,
+  createWireMaterial,
+} from './materials';
 
 function surface(shading: ShadingMode): THREE.Material {
   return createSurfaceMaterial({ color: 0xcccccc, shading, backfaceCulling: true });
@@ -14,6 +19,20 @@ beforeAll(() => {
   // Returning null is the path the painter already handles; letting jsdom
   // refuse it works too, but writes a stack trace into every run.
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+});
+
+describe('surface stencil stamp', () => {
+  it('stamps the mask the outline keeps off, in every shading that draws a fill', () => {
+    for (const shading of ['solid', 'solidWire', 'matcap', 'xray'] as const) {
+      const material = surface(shading);
+      expect(material.stencilFunc).toBe(THREE.AlwaysStencilFunc);
+      expect(material.stencilZPass).toBe(THREE.ReplaceStencilOp);
+    }
+  });
+
+  it('stamps nothing until something asks, so an unselected fill costs no state', () => {
+    expect(surface('solid').stencilWrite).toBe(false);
+  });
 });
 
 describe('surface depth offset', () => {
@@ -41,6 +60,45 @@ describe('surface depth offset', () => {
 describe('vertex point material', () => {
   it('depth-tests the dots, so vertices behind a solid surface stay hidden', () => {
     expect(createPointMaterial().depthTest).toBe(true);
+  });
+});
+
+describe('selection outline material', () => {
+  it('depth-tests, so an object never wears its own far silhouette', () => {
+    expect(createOutlineMaterial({ color: 0xe5342a, width: 2 }).depthTest).toBe(true);
+  });
+
+  it('refuses the pixels the object itself covers', () => {
+    // What makes it a contour rather than every silhouette edge the object has:
+    // the fold inside a cut is front face against back face, exactly like the
+    // outer edge, and only the fill in the way tells the two apart.
+    const outline = createOutlineMaterial({ color: 0xe5342a, width: 2 });
+
+    expect(outline.stencilWrite).toBe(true);
+    expect(outline.stencilFunc).toBe(THREE.NotEqualStencilFunc);
+    expect(outline.stencilRef).toBe(surface('solid').stencilRef);
+  });
+
+  it('leaves the stencil as it found it', () => {
+    // The outline reads the mask; stamping it as well would have one selected
+    // object's line cut into the next one's.
+    const outline = createOutlineMaterial({ color: 0xe5342a, width: 2 });
+
+    expect(outline.stencilFail).toBe(THREE.KeepStencilOp);
+    expect(outline.stencilZFail).toBe(THREE.KeepStencilOp);
+    expect(outline.stencilZPass).toBe(THREE.KeepStencilOp);
+  });
+
+  it('lifts the line clear of the surface it traces', () => {
+    // Both halves of the same bargain: the fill sinks away from the camera and
+    // the outline rises towards it. The line lies exactly on the silhouette,
+    // which is where a fill's depth swings fastest, so one offset alone left
+    // the surface eating the inner half of its own outline.
+    const outline = createOutlineMaterial({ color: 0xe5342a, width: 2 });
+
+    expect(outline.polygonOffset).toBe(true);
+    expect(outline.polygonOffsetFactor).toBeLessThanOrEqual(-1);
+    expect(surface('solid').polygonOffsetFactor).toBeGreaterThanOrEqual(4);
   });
 });
 
