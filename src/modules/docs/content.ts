@@ -80,7 +80,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Top bar',
-            'FILE, PREFS and the project name on the left; then the object/edit mode switch, the proportional and orthographic flags, the pivot picker, and the SHADING and OVERLAYS menus; the two framing buttons and the shortcut list on the right.',
+            'FILE, PREFS and the project name on the left; then the object/edit mode switch, the proportional, orthographic and smooth-shading flags, the pivot picker, and the SHADING and OVERLAYS menus; the two framing buttons and the shortcut list on the right.',
           ],
           [
             'Tool rail, far left',
@@ -247,7 +247,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'prose',
-        text: 'Normals have their own operations: recalculate outward (Shift+N), flip, and shade smooth or flat. The face-orientation overlay draws backfaces in red, so anywhere red shows you are looking at the inside of the surface — worth checking before an export.',
+        text: 'Normals have their own operations: recalculate outward (Shift+N) and flip. Smooth shading is the ◐ flag in the top bar, next to the orthographic one: it blends the normals across faces rather than faceting them, and in edit mode it applies to the selected faces alone. It belongs to the object, so a REMESH carries it across rather than deciding it. The face-orientation overlay draws backfaces in red, so anywhere red shows you are looking at the inside of the surface — worth checking before an export.',
       },
       {
         kind: 'note',

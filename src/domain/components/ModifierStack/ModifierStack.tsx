@@ -349,6 +349,22 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
           hint="Contour a distance grid, read that grid off blocky, or collapse the cheapest edges"
           onChange={(method) => onChange({ method })}
         />
+        {/*
+          Both dropdowns sit at the top of the stack, above the numeric fields.
+          A native menu opens downward from the control, and one at the foot of
+          a long panel opens against the bottom of the window with nowhere to
+          go — which is the whole of what makes it look clipped.
+        */}
+        <Select
+          label="TOPOLOGY"
+          value={modifier.topology}
+          options={[
+            { value: 'quads', label: 'QUADS' },
+            { value: 'triangles', label: 'TRIANGLES' },
+          ]}
+          hint="Whether the result is left as quads or cut into triangles"
+          onChange={(topology) => onChange({ topology })}
+        />
         <Toggle
           label="TARGET FACES"
           checked={modifier.adaptive}
@@ -435,22 +451,6 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
             onChange={(preserveBoundary) => onChange({ preserveBoundary })}
           />
         ) : null}
-        <Select
-          label="TOPOLOGY"
-          value={modifier.topology}
-          options={[
-            { value: 'quads', label: 'QUADS' },
-            { value: 'triangles', label: 'TRIANGLES' },
-          ]}
-          hint="Whether the result is left as quads or cut into triangles"
-          onChange={(topology) => onChange({ topology })}
-        />
-        <Toggle
-          label="SMOOTH SHADING"
-          checked={modifier.smoothShading}
-          hint="Shade the result smooth rather than faceted"
-          onChange={(smoothShading) => onChange({ smoothShading })}
-        />
       </>
     );
   }

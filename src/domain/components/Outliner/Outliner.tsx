@@ -78,7 +78,7 @@ export function Outliner() {
   for (const object of objects) meshUsers.set(object.mesh, (meshUsers.get(object.mesh) ?? 0) + 1);
 
   return (
-    <Panel title="OUTLINER" className="outliner">
+    <Panel title="OUTLINER" className="outliner" scrollable>
       {objects.length === 0 ? (
         <p className="outliner__empty">No objects. Add a primitive to begin.</p>
       ) : (

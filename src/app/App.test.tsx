@@ -379,6 +379,29 @@ describe('App shell', () => {
     expect(useEditorStore.getState().orthographic).toBe(true);
   });
 
+  it('shades the active object smooth from the top bar, and back', async () => {
+    render(<App />);
+    const smooth = screen.getByRole('button', { name: 'SMOOTH' });
+
+    // Nothing selected, nothing to shade.
+    expect(smooth).toHaveAttribute('aria-disabled', 'true');
+    expect(smooth).toHaveAttribute('aria-pressed', 'false');
+
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+
+    const faces = () => [...useEditorStore.getState().objects[0].mesh.faces.values()];
+    expect(faces().every((face) => face.smooth)).toBe(false);
+
+    await userEvent.click(screen.getByRole('button', { name: 'SMOOTH' }));
+    expect(faces().every((face) => face.smooth)).toBe(true);
+    expect(screen.getByRole('button', { name: 'SMOOTH' })).toHaveAttribute('aria-pressed', 'true');
+
+    await userEvent.click(screen.getByRole('button', { name: 'SMOOTH' }));
+    expect(faces().some((face) => face.smooth)).toBe(false);
+    expect(screen.getByRole('button', { name: 'SMOOTH' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
   it('shows a hint tooltip after hovering a control, once the delay passes', () => {
     render(<App />);
     const fileButton = screen.getByRole('button', { name: 'FILE' });

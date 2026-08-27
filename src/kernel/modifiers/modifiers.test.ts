@@ -403,6 +403,21 @@ describe('remesh modifier', () => {
     expect(source.verts.size).toBe(8);
   });
 
+  it('carries the shading the object already had across the rebuild', () => {
+    // Shading is a property of the object, set from the top bar, and the
+    // rebuild has no opinion of its own to offer about it — so it is read off
+    // the mesh going in rather than being a setting on the modifier.
+    const flat = createBox(2);
+    const smooth = createBox(2);
+    for (const face of smooth.faces.values()) face.smooth = true;
+
+    const rebuiltFlat = evaluateModifiers(flat, [remesh({ targetFaces: 400 })]);
+    const rebuiltSmooth = evaluateModifiers(smooth, [remesh({ targetFaces: 400 })]);
+
+    expect([...rebuiltFlat.faces.values()].some((face) => face.smooth)).toBe(false);
+    expect([...rebuiltSmooth.faces.values()].every((face) => face.smooth)).toBe(true);
+  });
+
   it('passes the mesh straight through rather than throwing on an input it cannot rebuild', () => {
     // A modifier runs while the viewport is drawing, so a throw here would be a
     // blank screen instead of a message. An empty mesh has nothing to remesh

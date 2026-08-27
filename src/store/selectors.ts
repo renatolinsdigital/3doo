@@ -14,6 +14,24 @@ export function useActiveObject(): SceneObject | null {
 }
 
 /**
+ * Whether every face of the active object is shaded smooth.
+ *
+ * All of them rather than any: shading is per face, and a mesh with one flat
+ * patch left in it is not a smooth-shaded object. The scan stops at the first
+ * flat face, so the common answer costs one look.
+ */
+export function useActiveShadingSmooth(): boolean {
+  return useEditorStore((state) => {
+    void state.meshVersion;
+
+    const object = selectActiveObject(state);
+    if (!object || object.mesh.faces.size === 0) return false;
+    for (const face of object.mesh.faces.values()) if (!face.smooth) return false;
+    return true;
+  });
+}
+
+/**
  * Whether the selection names a face loop.
  *
  * Counts alone cannot answer this: two faces on opposite sides of a cube are

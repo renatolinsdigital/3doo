@@ -64,12 +64,21 @@ export interface SubdivideModifier extends ModifierBase {
  * Rebuilds the topology wholesale: the one modifier that throws away the
  * geometry it was given rather than adding to it.
  *
- * Carries the remesher's whole settings record rather than a chosen subset, so
- * every control the kernel reads is one the stack can set — there is no second
- * place for a default to live and disagree with.
+ * Carries the remesher's settings record rather than a chosen subset, so every
+ * control the kernel reads is one the stack can set — there is no second place
+ * for a default to live and disagree with. Shading is the exception: it is a
+ * property of the object, not of the rebuild, so a remesh carries across
+ * whatever the object was already shaded as instead of offering its own answer.
  */
-export interface RemeshModifier extends ModifierBase, RemeshSettings {
+export interface RemeshModifier extends ModifierBase, Omit<RemeshSettings, 'smoothShading'> {
   type: 'remesh';
+}
+
+/** The remesher's defaults, less the shading the object owns. */
+function remeshDefaults(): Omit<RemeshSettings, 'smoothShading'> {
+  const { smoothShading, ...rest } = DEFAULT_REMESH_SETTINGS;
+  void smoothShading;
+  return rest;
 }
 
 export type Modifier =
@@ -145,7 +154,7 @@ export function createModifier(type: ModifierType): Modifier {
       };
     case 'remesh':
       return {
-        ...DEFAULT_REMESH_SETTINGS,
+        ...remeshDefaults(),
         id: nextId(type),
         type,
         name: 'REMESH',

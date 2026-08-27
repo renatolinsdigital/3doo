@@ -8,7 +8,15 @@ export interface PanelProps {
   title: string;
   children: ReactNode;
   actions?: ReactNode;
-  /** Lets the panel body scroll instead of growing the layout. */
+  /**
+   * Lets the panel body scroll instead of growing the layout.
+   *
+   * Off by default, and deliberately: a panel keeps its own height and the
+   * column it sits in scrolls as one, so the body has nothing to scroll — but
+   * the container it takes to do the scrolling clips whatever hangs out of it,
+   * and the menu a `Select` drops is exactly that. Only a panel given a height
+   * of its own has any use for this.
+   */
   scrollable?: boolean;
   className?: string;
 }
@@ -23,7 +31,7 @@ export interface PanelProps {
  * Collapsed panels are keyed by title in the store and travel in the project
  * file, so a layout someone arranged around their work comes back with it.
  */
-export function Panel({ title, children, actions, scrollable = true, className }: PanelProps) {
+export function Panel({ title, children, actions, scrollable = false, className }: PanelProps) {
   const collapsed = useEditorStore((state) => state.collapsedPanels[title] ?? false);
   const togglePanel = useEditorStore((state) => state.togglePanel);
   const bodyId = useId();

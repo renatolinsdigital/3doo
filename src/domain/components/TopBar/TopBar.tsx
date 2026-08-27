@@ -10,7 +10,7 @@ import {
   TextField,
   type ContextMenuEntry,
 } from '@shared/components';
-import { useEditorStore } from '@store/index';
+import { useActiveObject, useActiveShadingSmooth, useEditorStore } from '@store/index';
 import type { EditorMode, OverlaySettings, PivotMode, ShadingMode } from '@store/types';
 
 import { useProjectFiles } from '../../hooks/useProjectFiles';
@@ -89,6 +89,9 @@ export function TopBar({ brand }: TopBarProps) {
   const proportional = useEditorStore((state) => state.proportional);
   const setProportional = useEditorStore((state) => state.setProportional);
   const orthographic = useEditorStore((state) => state.orthographic);
+  const activeObject = useActiveObject();
+  const smoothShaded = useActiveShadingSmooth();
+  const exec = useEditorStore((state) => state.exec);
   const setViewportSetting = useEditorStore((state) => state.setViewportSetting);
   const shading = useEditorStore((state) => state.shading);
   const setShading = useEditorStore((state) => state.setShading);
@@ -209,6 +212,21 @@ export function TopBar({ brand }: TopBarProps) {
           pressed={orthographic}
           hint="Orthographic camera: no perspective, so parallel lines stay parallel"
           onChange={(value) => setViewportSetting({ orthographic: value })}
+        />
+        <SegmentedToggle
+          label="SMOOTH"
+          // A ball half in shadow: the gradient across a face that shading
+          // smooth is asking for, against the flat one it replaces.
+          icon="◐"
+          iconOnly
+          pressed={smoothShaded}
+          disabled={!activeObject}
+          hint={
+            activeObject
+              ? 'Shade smooth: blend the normals across faces instead of faceting them. In edit mode it applies to the selected faces alone'
+              : 'Shade smooth: select an object first'
+          }
+          onChange={(smooth) => exec('shade', { smooth }, smooth ? 'Shade smooth' : 'Shade flat')}
         />
         <SegmentedControl<PivotMode>
           label="Pivot"

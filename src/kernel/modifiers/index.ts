@@ -352,7 +352,16 @@ function applySubdivide(mesh: BMesh, modifier: SubdivideModifier): BMesh {
 function applyRemesh(mesh: BMesh, modifier: RemeshModifier): BMesh {
   if (mesh.faces.size === 0) return mesh;
   try {
-    return remeshMesh(mesh, modifier).mesh;
+    // Shading belongs to the object rather than to the rebuild, so it is read
+    // off the mesh going in: an object shaded smooth comes back smooth without
+    // the modifier having to carry an opinion about it.
+    let smoothShading = true;
+    for (const face of mesh.faces.values()) {
+      if (face.smooth) continue;
+      smoothShading = false;
+      break;
+    }
+    return remeshMesh(mesh, { ...modifier, smoothShading }).mesh;
   } catch {
     return mesh;
   }
