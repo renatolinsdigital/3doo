@@ -1,4 +1,4 @@
-import { cross, degToRad, dot } from '../math';
+import { cross, dot } from '../math';
 import type { BMesh } from '../mesh';
 import { triangulatePolygon } from '../mesh';
 import type { Face } from '../mesh/types';
@@ -7,7 +7,7 @@ import type { Face } from '../mesh/types';
  * Rewrites a face's winding in place by rebuilding it, preserving the flags a
  * caller cares about. Returns the replacement, since the old reference dies.
  */
-export function flipFace(mesh: BMesh, face: Face): Face {
+function flipFace(mesh: BMesh, face: Face): Face {
   const ring = [...mesh.faceVerts(face)].reverse();
   const { materialIndex, smooth, selected } = face;
   mesh.removeFace(face);
@@ -95,36 +95,4 @@ function signedVolume(mesh: BMesh, faces: readonly Face[]): number {
 
 export function setShading(faces: readonly Face[], smooth: boolean): void {
   for (const face of faces) face.smooth = smooth;
-}
-
-/**
- * Marks faces smooth and tags edges above the angle threshold as sharp, so the
- * display bridge can split normals along creases.
- */
-export function autoSmoothByAngle(mesh: BMesh, angleDegrees = 30): void {
-  const limit = Math.cos(degToRad(angleDegrees));
-
-  for (const face of mesh.faces.values()) face.smooth = true;
-
-  for (const edge of mesh.edges.values()) {
-    const faces = mesh.edgeFaces(edge);
-    edge.sharp = faces.length === 2 ? dot(faces[0].normal, faces[1].normal) < limit : true;
-  }
-}
-
-/** Reports faces whose normal disagrees with the shell around them. */
-export function findFlippedFaces(mesh: BMesh): Face[] {
-  const flipped: Face[] = [];
-
-  for (const face of mesh.faces.values()) {
-    for (const loop of mesh.faceLoops(face)) {
-      const neighbourLoop = loop.edge.loops.find((candidate) => candidate.face !== face);
-      if (neighbourLoop && neighbourLoop.vert === loop.vert) {
-        flipped.push(face);
-        break;
-      }
-    }
-  }
-
-  return flipped;
 }

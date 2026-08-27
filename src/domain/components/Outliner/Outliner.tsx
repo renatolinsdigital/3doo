@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 
 import { type ContextMenuEntry, ContextMenu, Panel, TextField } from '@shared/components';
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
+import { cx } from '@shared/utils/cx';
 import { useEditorStore } from '@store/index';
 import type { SceneObject } from '@store/types';
 
@@ -186,13 +187,11 @@ function OutlinerRow({
 
   return (
     <li
-      className={[
+      className={cx(
         'outliner__row',
-        isSelected ? 'outliner__row--selected' : '',
-        isActive ? 'outliner__row--active' : '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
+        isSelected && 'outliner__row--selected',
+        isActive && 'outliner__row--active',
+      )}
       onContextMenu={(event) => {
         event.preventDefault();
         onOpenMenu(event.clientX, event.clientY);
@@ -235,7 +234,7 @@ function OutlinerRow({
 
       <button
         type="button"
-        className={`outliner__icon${object.visible ? '' : ' outliner__icon--on'}`}
+        className={cx('outliner__icon', !object.visible && 'outliner__icon--on')}
         aria-label={`${object.visible ? 'Hide' : 'Show'} ${object.name}`}
         aria-pressed={!object.visible}
         onClick={onToggleVisibility}
@@ -248,13 +247,11 @@ function OutlinerRow({
         // Keyed on the token so a click during a shake remounts the button and
         // restarts the animation, instead of leaving it frozen mid-run.
         key={trembleToken ?? 'lock'}
-        className={[
+        className={cx(
           'outliner__icon',
-          object.locked ? 'outliner__icon--on' : '',
-          trembleToken !== null ? 'outliner__icon--tremble' : '',
-        ]
-          .filter(Boolean)
-          .join(' ')}
+          object.locked && 'outliner__icon--on',
+          trembleToken !== null && 'outliner__icon--tremble',
+        )}
         aria-label={`${object.locked ? 'Unlock' : 'Lock'} ${object.name}`}
         aria-pressed={object.locked}
         onClick={onToggleLock}

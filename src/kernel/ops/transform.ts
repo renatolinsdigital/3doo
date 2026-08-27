@@ -141,16 +141,3 @@ export function falloff(t: number, curve: FalloffCurve): number {
   }
 }
 
-/** Snaps a value to the nearest multiple of `increment`. */
-export function snapValue(value: number, increment: number): number {
-  if (increment <= 0) return value;
-  return Math.round(value / increment) * increment;
-}
-
-export function snapVector(value: Vec3, increment: number): Vec3 {
-  return vec3(
-    snapValue(value.x, increment),
-    snapValue(value.y, increment),
-    snapValue(value.z, increment),
-  );
-}

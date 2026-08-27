@@ -42,7 +42,7 @@ export const APP_MODULES: readonly AppModule[] = [
   },
 ];
 
-export const HOME_MODULE = APP_MODULES[0];
+const HOME_MODULE = APP_MODULES[0];
 
 /**
  * The module a path belongs to, falling back to home.

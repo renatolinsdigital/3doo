@@ -1,3 +1,6 @@
+import type { ReactNode } from 'react';
+
+import { cx } from '@shared/utils/cx';
 import { useEditorStore, useSceneStats } from '@store/index';
 import type { ModalTransform } from '@store/types';
 
@@ -57,21 +60,22 @@ export function StatusBar() {
       ) : null}
 
       <div className="status-bar__section status-bar__section--flags">
-        <span className={`status-bar__flag${mode === 'edit' ? ' status-bar__flag--on' : ''}`}>
+        <Flag on={mode === 'edit'}>
           {mode === 'edit' ? `EDIT / ${selectMode.toUpperCase()}` : 'OBJECT'}
-        </span>
-        <span className={`status-bar__flag${pivot === 'cursor' ? ' status-bar__flag--on' : ''}`}>
-          PIVOT {pivot === 'cursor' ? 'CURSOR' : 'MEDIAN'}
-        </span>
-        <span className={`status-bar__flag${snap.enabled ? ' status-bar__flag--on' : ''}`}>
-          SNAP {snap.enabled ? snap.mode.toUpperCase() : 'OFF'}
-        </span>
-        <span className={`status-bar__flag${proportional.enabled ? ' status-bar__flag--on' : ''}`}>
+        </Flag>
+        <Flag on={pivot === 'cursor'}>PIVOT {pivot === 'cursor' ? 'CURSOR' : 'MEDIAN'}</Flag>
+        <Flag on={snap.enabled}>SNAP {snap.enabled ? snap.mode.toUpperCase() : 'OFF'}</Flag>
+        <Flag on={proportional.enabled}>
           PROP {proportional.enabled ? proportional.falloff.toUpperCase() : 'OFF'}
-        </span>
+        </Flag>
       </div>
     </footer>
   );
+}
+
+/** A setting the viewport is under, lit while it is in force. */
+function Flag({ on, children }: { on: boolean; children: ReactNode }) {
+  return <span className={cx('status-bar__flag', on && 'status-bar__flag--on')}>{children}</span>;
 }
 
 function Metric({ label, value }: { label: string; value: number }) {

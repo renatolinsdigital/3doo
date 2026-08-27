@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-import { useEditorStore } from '@store/index';
+import { activeObject, useEditorStore } from '@store/index';
 import type { SelectMode, ShadingMode } from '@store/types';
 
 import { matchBinding } from '../keymap/keymap';
@@ -89,7 +89,7 @@ export function useKeymap(): void {
           state.setActiveTool('rotate');
           // Blender's R, like S: the turn starts on the keypress with no handle
           // to grab first. The viewport picks the modal up from here.
-          const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+          const object = activeObject(state);
           const ready =
             state.mode === 'object'
               ? state.selectedObjectIds.length > 0
@@ -101,7 +101,7 @@ export function useKeymap(): void {
           state.setActiveTool('scale');
           // Blender's S: the drag starts on the keypress, with no handle to
           // find first. The viewport picks the modal up from here.
-          const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+          const object = activeObject(state);
           const ready =
             state.mode === 'object'
               ? state.selectedObjectIds.length > 0

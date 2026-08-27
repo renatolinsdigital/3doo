@@ -340,7 +340,7 @@ function treeFrom(polys: readonly Poly[], epsilon: number): Node {
  * of the combined solid. It assumes both inputs are closed — an open shell has
  * no inside for the tests to answer about, and the result will show it.
  */
-export function csg(
+function csg(
   op: BooleanOp,
   a: readonly Poly[],
   b: readonly Poly[],
@@ -425,7 +425,7 @@ function isClosed(mesh: BMesh): boolean {
  * union returns a fragment, a difference returns the cutter. Reading the sign
  * off the volume catches a source mesh that was already inverted as well.
  */
-export function meshToPolys(
+function meshToPolys(
   mesh: BMesh,
   toTarget: (point: Vec3) => Vec3,
   slotFor: (face: Face) => number = (face) => face.materialIndex,
@@ -543,7 +543,7 @@ function grid(verts: readonly Vert[], resolution: number) {
  * single face on it, which reads as a crack to everything downstream. Adding
  * the point to the ring that is missing it makes the two share an edge again.
  */
-export function polysToMesh(
+function polysToMesh(
   polys: readonly Poly[],
   tolerance = WELD_EPSILON * extentOf(polys),
 ): BMesh {

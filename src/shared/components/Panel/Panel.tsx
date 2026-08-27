@@ -2,6 +2,8 @@ import { useId, type ReactNode } from 'react';
 
 import { useEditorStore } from '@store/index';
 
+import { cx } from '../../utils/cx';
+
 import './Panel.scss';
 
 export interface PanelProps {
@@ -38,9 +40,7 @@ export function Panel({ title, children, actions, scrollable = false, className 
 
   return (
     <section
-      className={['panel', collapsed ? 'panel--collapsed' : '', className ?? '']
-        .filter(Boolean)
-        .join(' ')}
+      className={cx('panel', collapsed && 'panel--collapsed', className)}
       aria-label={title}
     >
       <header className="panel__header">
@@ -61,7 +61,7 @@ export function Panel({ title, children, actions, scrollable = false, className 
         {actions ? <div className="panel__actions">{actions}</div> : null}
       </header>
       {collapsed ? null : (
-        <div id={bodyId} className={`panel__body${scrollable ? ' panel__body--scroll' : ''}`}>
+        <div id={bodyId} className={cx('panel__body', scrollable && 'panel__body--scroll')}>
           {children}
         </div>
       )}

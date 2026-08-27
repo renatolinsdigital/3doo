@@ -1,5 +1,5 @@
 import { Button, FieldRow, Panel } from '@shared/components';
-import { useEditorStore } from '@store/index';
+import { activeObject, useEditorStore } from '@store/index';
 
 /**
  * Boolean operations between whole objects.
@@ -10,16 +10,14 @@ import { useEditorStore } from '@store/index';
  */
 export function BooleanPanel() {
   const booleanWithSelected = useEditorStore((state) => state.booleanWithSelected);
-  const active = useEditorStore((state) =>
-    state.objects.find((object) => object.id === state.activeObjectId),
-  );
+  const active = useEditorStore(activeObject);
   const tools = useEditorStore(
     (state) => state.selectedObjectIds.filter((id) => id !== state.activeObjectId).length,
   );
 
   // Every operation needs the same two things, so they share one explanation
   // of what is missing rather than each guessing at it.
-  const ready = active !== undefined && tools > 0;
+  const ready = active !== null && tools > 0;
   const missing = !active
     ? 'Select two objects — the last one clicked keeps the result'
     : `Select a cutter as well; ${active.name} keeps the result`;

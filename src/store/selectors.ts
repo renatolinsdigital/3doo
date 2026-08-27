@@ -1,16 +1,30 @@
 import { useShallow } from 'zustand/react/shallow';
 
-import { canLoopCut, hasAdjacentFaces } from '@kernel/index';
+import { type BMesh, canLoopCut, hasAdjacentFaces } from '@kernel/index';
 
+import { activeObject } from './slices/scene';
 import type { SceneObject, SceneStats } from './types';
 import { type EditorStore, useEditorStore } from './useEditorStore';
 
-export function selectActiveObject(state: EditorStore): SceneObject | null {
-  return state.objects.find((object) => object.id === state.activeObjectId) ?? null;
+/**
+ * Asks `test` about the active object's mesh in edit mode; false anywhere else.
+ *
+ * Reads `meshVersion` for the reason `useSceneStats` does — selection lives on
+ * the mesh, which is mutated in place, so nothing changes identity when it
+ * moves. Shared so a probe cannot be written without it and quietly go stale.
+ */
+function useEditModeMesh(test: (mesh: BMesh, state: EditorStore) => boolean): boolean {
+  return useEditorStore((state) => {
+    void state.meshVersion;
+
+    if (state.mode !== 'edit') return false;
+    const object = activeObject(state);
+    return object ? test(object.mesh, state) : false;
+  });
 }
 
 export function useActiveObject(): SceneObject | null {
-  return useEditorStore(selectActiveObject);
+  return useEditorStore(activeObject);
 }
 
 /**
@@ -24,7 +38,7 @@ export function useActiveShadingSmooth(): boolean {
   return useEditorStore((state) => {
     void state.meshVersion;
 
-    const object = selectActiveObject(state);
+    const object = activeObject(state);
     if (!object || object.mesh.faces.size === 0) return false;
     for (const face of object.mesh.faces.values()) if (!face.smooth) return false;
     return true;
@@ -44,15 +58,11 @@ export function useActiveShadingSmooth(): boolean {
  * happens.
  */
 export function useFaceLoopAvailable(): boolean {
-  return useEditorStore((state) => {
-    void state.meshVersion;
+  return useEditModeMesh((mesh, state) => {
+    if (state.selectMode !== 'face') return false;
 
-    if (state.mode !== 'edit' || state.selectMode !== 'face') return false;
-    const object = selectActiveObject(state);
-    if (!object) return false;
-
-    const faces = object.mesh.selectedFaces();
-    return faces.length >= 2 && hasAdjacentFaces(object.mesh, faces);
+    const faces = mesh.selectedFaces();
+    return faces.length >= 2 && hasAdjacentFaces(mesh, faces);
   });
 }
 
@@ -64,15 +74,9 @@ export function useFaceLoopAvailable(): boolean {
  * edge itself are read, never the ring the cut would walk.
  */
 export function useLoopCutAvailable(): boolean {
-  return useEditorStore((state) => {
-    void state.meshVersion;
-
-    if (state.mode !== 'edit') return false;
-    const object = selectActiveObject(state);
-    if (!object) return false;
-
-    const [edge] = object.mesh.selectedEdges();
-    return edge !== undefined && canLoopCut(object.mesh, edge);
+  return useEditModeMesh((mesh) => {
+    const [edge] = mesh.selectedEdges();
+    return edge !== undefined && canLoopCut(mesh, edge);
   });
 }
 
@@ -95,7 +99,7 @@ export function useActiveSelectionCounts(): SelectionCounts {
     useShallow((state): SelectionCounts => {
       void state.meshVersion;
 
-      const object = selectActiveObject(state);
+      const object = activeObject(state);
       if (!object) return { verts: 0, edges: 0, faces: 0 };
 
       const stats = object.mesh.stats();

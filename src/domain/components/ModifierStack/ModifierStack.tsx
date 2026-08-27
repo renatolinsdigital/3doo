@@ -8,7 +8,7 @@ import {
   MIN_TARGET_FACES,
   MIN_VOXEL_SIZE,
 } from '@kernel/index';
-import { NumberField, Panel, Select, Toggle } from '@shared/components';
+import { NumberField, Panel, Select, Toggle, Vector3Field } from '@shared/components';
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
 import { useActiveObject, useEditorStore } from '@store/index';
 
@@ -252,38 +252,28 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
           hint="Offset each copy as a fraction of the mesh's own bounding box"
           onChange={(useRelative) => onChange({ useRelative })}
         />
-        {(['x', 'y', 'z'] as const).map((axis) => (
-          <NumberField
-            key={`relative-${axis}`}
-            label={`REL ${axis.toUpperCase()}`}
-            value={modifier.relativeOffset[axis]}
-            step={0.1}
-            disabled={!modifier.useRelative}
-            hint={`Relative offset per copy along ${axis.toUpperCase()}`}
-            onChange={(value) =>
-              onChange({ relativeOffset: { ...modifier.relativeOffset, [axis]: value } })
-            }
-          />
-        ))}
+        <Vector3Field
+          labelPrefix="REL"
+          value={modifier.relativeOffset}
+          step={0.1}
+          disabled={!modifier.useRelative}
+          hint={(axis) => `Relative offset per copy along ${axis.toUpperCase()}`}
+          onChange={(relativeOffset) => onChange({ relativeOffset })}
+        />
         <Toggle
           label="CONSTANT"
           checked={modifier.useConstant}
           hint="Offset each copy by a fixed distance, on top of the relative offset"
           onChange={(useConstant) => onChange({ useConstant })}
         />
-        {(['x', 'y', 'z'] as const).map((axis) => (
-          <NumberField
-            key={`constant-${axis}`}
-            label={`CONST ${axis.toUpperCase()}`}
-            value={modifier.constantOffset[axis]}
-            step={0.1}
-            disabled={!modifier.useConstant}
-            hint={`Constant offset per copy along ${axis.toUpperCase()}`}
-            onChange={(value) =>
-              onChange({ constantOffset: { ...modifier.constantOffset, [axis]: value } })
-            }
-          />
-        ))}
+        <Vector3Field
+          labelPrefix="CONST"
+          value={modifier.constantOffset}
+          step={0.1}
+          disabled={!modifier.useConstant}
+          hint={(axis) => `Constant offset per copy along ${axis.toUpperCase()}`}
+          onChange={(constantOffset) => onChange({ constantOffset })}
+        />
         <Toggle
           label="MERGE"
           checked={modifier.merge}

@@ -1,6 +1,7 @@
 import { useId } from 'react';
 
 import { useTooltipTrigger } from '../../hooks/useTooltipTrigger';
+import { cx } from '../../utils/cx';
 
 import './Select.scss';
 
@@ -33,7 +34,7 @@ export function Select<T extends string>({
   const tooltip = useTooltipTrigger(hint);
 
   return (
-    <div className={`select${hideLabel ? ' select--bare' : ''}`} {...tooltip}>
+    <div className={cx('select', hideLabel && 'select--bare')} {...tooltip}>
       <label
         className={hideLabel ? 'u-visually-hidden' : 'select__label'}
         htmlFor={id}

@@ -13,6 +13,12 @@ export {
 export { TextField, type TextFieldProps } from './TextField/TextField';
 export { Toggle, type ToggleProps } from './Toggle/Toggle';
 export { Select, type SelectOption, type SelectProps } from './Select/Select';
+export { ColorField, type ColorFieldProps } from './ColorField/ColorField';
+export {
+  Vector3Field,
+  type Axis,
+  type Vector3FieldProps,
+} from './Vector3Field/Vector3Field';
 export { Modal, type ModalProps } from './Modal/Modal';
 export { Toast, type ToastProps, type ToastVariant } from './Toast/Toast';
 export { ToastHost } from './ToastHost/ToastHost';

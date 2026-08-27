@@ -95,7 +95,7 @@ export function weldVerts(mesh: BMesh, mapping: ReadonlyMap<number, Vert>): numb
  * Exposed separately so the UI can show a live "N vertices will be removed"
  * count before the user commits.
  */
-export function planMergeByDistance(verts: readonly Vert[], threshold: number): Map<number, Vert> {
+function planMergeByDistance(verts: readonly Vert[], threshold: number): Map<number, Vert> {
   const mapping = new Map<number, Vert>();
   if (threshold <= 0 || verts.length < 2) return mapping;
 

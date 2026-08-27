@@ -5,8 +5,6 @@ import type { Edge, Face, SelectMode, Vert } from '../mesh/types';
 
 import { collectEdgeRing } from './loopcut';
 
-export type SimilarTrait = 'area' | 'normal' | 'material' | 'valence';
-
 /**
  * Edge loop selection.
  *
@@ -212,60 +210,4 @@ export function invertSelection(mesh: BMesh, mode: SelectMode): void {
     for (const face of mesh.faces.values()) face.selected = !face.selected;
   }
   mesh.flushSelection(mode);
-}
-
-/** Edges bordering exactly one face — the mesh's open boundary. */
-export function findBoundaryEdges(mesh: BMesh): Edge[] {
-  return [...mesh.edges.values()].filter((edge) => edge.loops.length === 1);
-}
-
-export function findNonManifoldEdges(mesh: BMesh): Edge[] {
-  return [...mesh.edges.values()].filter(
-    (edge) => edge.loops.length > 2 || edge.loops.length === 1,
-  );
-}
-
-/** Vertices and edges that belong to no face. */
-export function findLooseGeometry(mesh: BMesh): { verts: Vert[]; edges: Edge[] } {
-  return {
-    verts: [...mesh.verts.values()].filter((vert) => mesh.vertFaces(vert).length === 0),
-    edges: [...mesh.edges.values()].filter((edge) => edge.loops.length === 0),
-  };
-}
-
-/** Faces enclosed by the mesh, where every edge already has two other faces. */
-export function findInteriorFaces(mesh: BMesh): Face[] {
-  return [...mesh.faces.values()].filter((face) =>
-    mesh.faceEdges(face).every((edge) => edge.loops.length > 2),
-  );
-}
-
-export function selectSimilarFaces(
-  mesh: BMesh,
-  reference: Face,
-  trait: SimilarTrait,
-  tolerance = 0.05,
-): Face[] {
-  const matches: Face[] = [];
-
-  for (const face of mesh.faces.values()) {
-    let similar = false;
-    switch (trait) {
-      case 'area':
-        similar = Math.abs(mesh.faceArea(face) - mesh.faceArea(reference)) <= tolerance;
-        break;
-      case 'normal':
-        similar = dot(face.normal, reference.normal) >= 1 - tolerance;
-        break;
-      case 'material':
-        similar = face.materialIndex === reference.materialIndex;
-        break;
-      case 'valence':
-        similar = mesh.faceLoops(face).length === mesh.faceLoops(reference).length;
-        break;
-    }
-    if (similar) matches.push(face);
-  }
-
-  return matches;
 }

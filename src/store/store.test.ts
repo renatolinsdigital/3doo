@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { dot, exportFBXAscii, exportOBJ, parseProject, stringifyProject } from '@kernel/index';
 
-import { displayCenter, evaluatedMesh } from './slices/scene';
+import { activeObject as selectActiveObject, displayCenter, evaluatedMesh } from './slices/scene';
 import { useEditorStore } from './useEditorStore';
 
 function store() {
@@ -10,8 +10,7 @@ function store() {
 }
 
 function activeObject() {
-  const state = store();
-  const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+  const object = selectActiveObject(store());
   if (!object) throw new Error('No active object');
   return object;
 }

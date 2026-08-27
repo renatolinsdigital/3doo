@@ -61,7 +61,7 @@ function nextObjectId(): string {
   return `object-${objectCounter}`;
 }
 
-export function defaultMaterial(): Material {
+function defaultMaterial(): Material {
   materialCounter += 1;
   return {
     id: `material-${materialCounter}`,
@@ -249,8 +249,7 @@ export const createSceneSlice: StateCreator<
    * is the exception — it is mutated in place and tracked by `meshVersion`.
    */
   patchActiveObject: (patch, options = {}) => {
-    const { objects, activeObjectId } = get();
-    const object = objects.find((candidate) => candidate.id === activeObjectId);
+    const object = activeObject(get());
     if (!object) return;
 
     const changes = typeof patch === 'function' ? patch(object) : patch;
@@ -267,7 +266,7 @@ export const createSceneSlice: StateCreator<
 
   /** Live primitive parameters stay editable until the next operation commits. */
   updatePrimitiveParams: (params) => {
-    const object = get().objects.find((candidate) => candidate.id === get().activeObjectId);
+    const object = activeObject(get());
     if (!object?.primitive) return;
 
     const { kind } = object.primitive;
@@ -367,10 +366,10 @@ export const createSceneSlice: StateCreator<
    * they actually want back.
    */
   clearSelection: () => {
-    const { mode, objects, activeObjectId } = get();
+    const { mode } = get();
 
     if (mode === 'edit') {
-      const object = objects.find((candidate) => candidate.id === activeObjectId);
+      const object = activeObject(get());
       object?.mesh.deselectAll();
       set((state) => ({ meshVersion: state.meshVersion + 1 }));
     } else {
@@ -462,8 +461,9 @@ export const createSceneSlice: StateCreator<
    * Modifiers on the sources are dropped with them; the target keeps its own.
    */
   mergeSelected: () => {
-    const { objects, selectedObjectIds, activeObjectId } = get();
-    const target = objects.find((candidate) => candidate.id === activeObjectId);
+    const state = get();
+    const { objects, selectedObjectIds } = state;
+    const target = activeObject(state);
     if (!target) return;
     if (target.locked) {
       get().noteLockedAttempt(target.id);
@@ -547,8 +547,9 @@ export const createSceneSlice: StateCreator<
   },
 
   booleanWithSelected: (op) => {
-    const { objects, selectedObjectIds, activeObjectId } = get();
-    const target = objects.find((candidate) => candidate.id === activeObjectId);
+    const state = get();
+    const { objects, selectedObjectIds } = state;
+    const target = activeObject(state);
     if (!target) {
       set({ status: 'Select a cutter and the object to cut it against' });
       return;
@@ -624,8 +625,9 @@ export const createSceneSlice: StateCreator<
    * material slots and modifier stack, so nothing moves or re-shades.
    */
   separateLooseParts: () => {
-    const { objects, activeObjectId } = get();
-    const object = objects.find((candidate) => candidate.id === activeObjectId);
+    const state = get();
+    const { objects } = state;
+    const object = activeObject(state);
     if (!object) return;
     if (object.locked) {
       get().noteLockedAttempt(object.id);
@@ -824,7 +826,7 @@ export const createSceneSlice: StateCreator<
 
     const offset = sub(state.cursor, anchor);
     if (state.mode === 'edit') {
-      const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+      const object = activeObject(state);
       if (!object || object.locked) return;
       state.recordHistory('Selection to cursor');
       // The gizmo drags in world space but vertices live in object space, so
@@ -878,8 +880,7 @@ export const createSceneSlice: StateCreator<
   },
 
   assignMaterialToSelection: () => {
-    const { objects, activeObjectId } = get();
-    const object = objects.find((candidate) => candidate.id === activeObjectId);
+    const object = activeObject(get());
     if (!object) return;
 
     get().recordHistory('Assign material');
@@ -897,7 +898,7 @@ export const createSceneSlice: StateCreator<
   },
 
   addModifier: (type) => {
-    if (!get().objects.some((object) => object.id === get().activeObjectId)) return;
+    if (!activeObject(get())) return;
     get().recordHistory('Add modifier');
     get().patchActiveObject((object) => ({
       modifiers: [...object.modifiers, createModifier(type)],
@@ -913,7 +914,7 @@ export const createSceneSlice: StateCreator<
   },
 
   removeModifier: (id) => {
-    if (!get().objects.some((object) => object.id === get().activeObjectId)) return;
+    if (!activeObject(get())) return;
     get().recordHistory('Remove modifier');
     get().patchActiveObject((object) => ({
       modifiers: object.modifiers.filter((modifier) => modifier.id !== id),
@@ -934,7 +935,7 @@ export const createSceneSlice: StateCreator<
   },
 
   applyModifierToMesh: (id) => {
-    const object = get().objects.find((candidate) => candidate.id === get().activeObjectId);
+    const object = activeObject(get());
     const modifier = object?.modifiers.find((candidate) => candidate.id === id);
     if (!object || !modifier) return;
 
@@ -952,8 +953,8 @@ export const createSceneSlice: StateCreator<
   },
 
   exec: (name, params = {}, label) => {
-    const { objects, activeObjectId, selectMode, cursor, proportional } = get();
-    const object = objects.find((candidate) => candidate.id === activeObjectId);
+    const { selectMode, cursor, proportional } = get();
+    const object = activeObject(get());
     if (!object) {
       set({ status: 'No active object' });
       return;
@@ -1076,6 +1077,19 @@ export const createSceneSlice: StateCreator<
 });
 
 /**
+ * The object edits land on.
+ *
+ * Every panel, tool and viewport handler starts from this same lookup, so it is
+ * named once here rather than rebuilt at each call site.
+ */
+export function activeObject(state: {
+  objects: readonly SceneObject[];
+  activeObjectId: string | null;
+}): SceneObject | null {
+  return state.objects.find((object) => object.id === state.activeObjectId) ?? null;
+}
+
+/**
  * The world-space point the current selection hangs off — the same point the
  * gizmo sits on, so cursor snapping and the handles agree.
  *
@@ -1083,7 +1097,7 @@ export const createSceneSlice: StateCreator<
  * rather than silently snapping to the origin.
  */
 function selectionAnchor(state: EditorStore): Vec3 | null {
-  const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+  const object = activeObject(state);
 
   if (state.mode === 'edit') {
     const selected = object?.mesh.selectedVerts() ?? [];

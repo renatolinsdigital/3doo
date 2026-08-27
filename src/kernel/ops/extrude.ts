@@ -94,18 +94,6 @@ export function extrudeEdges(
   return { faces, newVerts };
 }
 
-export function extrudeVerts(mesh: BMesh, verts: readonly Vert[], translation: Vec3): Vert[] {
-  const created: Vert[] = [];
-  for (const vert of verts) {
-    const duplicate = mesh.addVert(add(vert.co, translation));
-    duplicate.selected = true;
-    vert.selected = false;
-    mesh.addEdge(vert, duplicate);
-    created.push(duplicate);
-  }
-  return created;
-}
-
 /** Moves selected geometry along each vertex normal — Blender's shrink/fatten. */
 export function shrinkFatten(mesh: BMesh, verts: readonly Vert[], distance: number): void {
   mesh.computeNormals();

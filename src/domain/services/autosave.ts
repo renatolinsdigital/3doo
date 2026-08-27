@@ -87,16 +87,3 @@ export async function readAutosave(): Promise<AutosaveRecord | null> {
     }
   });
 }
-
-export async function clearAutosave(): Promise<void> {
-  const database = await openDatabase();
-  if (!database) return;
-
-  try {
-    const transaction = database.transaction(STORE_NAME, 'readwrite');
-    transaction.objectStore(STORE_NAME).delete(RECORD_KEY);
-    transaction.oncomplete = () => database.close();
-  } catch {
-    database.close();
-  }
-}

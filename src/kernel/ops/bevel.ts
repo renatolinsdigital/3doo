@@ -32,8 +32,7 @@ function cornerKey(faceId: number, vertId: number): string {
  *
  * Where a bevel terminates, the neighbouring unbeveled edge is split so the
  * chamfer lands on a real edge instead of leaving a crack. Fans that terminate
- * against three or more unbeveled edges can still close with a coplanar cap;
- * that limitation is tracked in TODO.txt.
+ * against three or more unbeveled edges can still close with a coplanar cap.
  */
 export function bevelEdges(
   mesh: BMesh,

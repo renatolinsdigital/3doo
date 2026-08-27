@@ -156,7 +156,7 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /** Keeps every field inside the range the solver can actually work in. */
-export function normalizeRemeshSettings(settings: RemeshSettings): RemeshSettings {
+function normalizeRemeshSettings(settings: RemeshSettings): RemeshSettings {
   return {
     ...settings,
     voxelSize: clamp(settings.voxelSize, MIN_VOXEL_SIZE, MAX_VOXEL_SIZE),

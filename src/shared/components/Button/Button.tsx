@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 import { useTooltipTrigger } from '../../hooks/useTooltipTrigger';
+import { cx } from '../../utils/cx';
 
 import './Button.scss';
 
@@ -30,15 +31,13 @@ export function Button({
   ...rest
 }: ButtonProps) {
   const tooltip = useTooltipTrigger(hint);
-  const classes = [
+  const classes = cx(
     'button',
     `button--${variant}`,
-    active ? 'button--active' : '',
-    fullWidth ? 'button--full' : '',
-    className ?? '',
-  ]
-    .filter(Boolean)
-    .join(' ');
+    active && 'button--active',
+    fullWidth && 'button--full',
+    className,
+  );
 
   return (
     <button

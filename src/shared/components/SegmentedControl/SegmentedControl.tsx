@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { useTooltipTrigger } from '../../hooks/useTooltipTrigger';
+import { cx } from '../../utils/cx';
 
 import './SegmentedControl.scss';
 
@@ -74,18 +75,11 @@ export function SegmentedToggle({
 
   return (
     <div
-      className={[
-        'segmented',
-        'segmented--single',
-        iconOnly ? 'segmented--icon' : '',
-        className ?? '',
-      ]
-        .filter(Boolean)
-        .join(' ')}
+      className={cx('segmented', 'segmented--single', iconOnly && 'segmented--icon', className)}
     >
       <button
         type="button"
-        className={`segmented__item${pressed ? ' segmented__item--active' : ''}`}
+        className={cx('segmented__item', pressed && 'segmented__item--active')}
         aria-pressed={pressed}
         // The glyph is decoration either way, so with the label gone there is
         // no text left to name the button.
@@ -122,7 +116,7 @@ function SegmentedItem<T extends string>({ option, active, onChange }: Segmented
   return (
     <button
       type="button"
-      className={`segmented__item${active ? ' segmented__item--active' : ''}`}
+      className={cx('segmented__item', active && 'segmented__item--active')}
       aria-pressed={active}
       onClick={() => onChange(option.value)}
       {...tooltip}

@@ -5,9 +5,11 @@ import {
   type PrimitiveParams,
   radToDeg,
   degToRad,
+  vec3,
 } from '@kernel/index';
-import { Button, FieldRow, NumberField, Panel, Toggle } from '@shared/components';
+import { Button, FieldRow, NumberField, Panel, Toggle, Vector3Field } from '@shared/components';
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
+import { cx } from '@shared/utils/cx';
 import { useActiveObject, useEditorStore } from '@store/index';
 
 import './PropertiesPanel.scss';
@@ -56,76 +58,52 @@ export function PropertiesPanel() {
   }
 
   const { transform } = object;
+  const locked = object.locked ? 'Unlock this object in the outliner to edit its transform' : null;
+  const degrees = vec3(
+    Number(radToDeg(transform.rotation.x).toFixed(2)),
+    Number(radToDeg(transform.rotation.y).toFixed(2)),
+    Number(radToDeg(transform.rotation.z).toFixed(2)),
+  );
 
   return (
     <Panel title="PROPERTIES" className="properties">
-      <FieldRow legend="LOCATION" columns={1}>
-        {(['x', 'y', 'z'] as const).map((axis) => (
-          <NumberField
-            key={`position-${axis}`}
-            label={axis.toUpperCase()}
-            value={transform.position[axis]}
-            step={0.1}
-            suffix="m"
-            disabled={object.locked}
-            hint={
-              object.locked
-                ? 'Unlock this object in the outliner to edit its transform'
-                : `World-space ${axis.toUpperCase()} position in metres; drag the label to scrub`
-            }
-            onChange={(value) =>
-              setObjectTransform(object.id, {
-                position: { ...transform.position, [axis]: value },
-              })
-            }
-          />
-        ))}
-      </FieldRow>
+      <Vector3Field
+        legend="LOCATION"
+        value={transform.position}
+        step={0.1}
+        suffix="m"
+        disabled={object.locked}
+        hint={(axis) =>
+          locked ?? `World-space ${axis.toUpperCase()} position in metres; drag the label to scrub`
+        }
+        onChange={(position) => setObjectTransform(object.id, { position })}
+      />
 
-      <FieldRow legend="ROTATION" columns={1}>
-        {(['x', 'y', 'z'] as const).map((axis) => (
-          <NumberField
-            key={`rotation-${axis}`}
-            label={axis.toUpperCase()}
-            value={Number(radToDeg(transform.rotation[axis]).toFixed(2))}
-            step={1}
-            suffix="°"
-            disabled={object.locked}
-            hint={
-              object.locked
-                ? 'Unlock this object in the outliner to edit its transform'
-                : `Rotation around the ${axis.toUpperCase()} axis, in degrees`
-            }
-            onChange={(value) =>
-              setObjectTransform(object.id, {
-                rotation: { ...transform.rotation, [axis]: degToRad(value) },
-              })
-            }
-          />
-        ))}
-      </FieldRow>
+      <Vector3Field
+        legend="ROTATION"
+        value={degrees}
+        step={1}
+        suffix="°"
+        disabled={object.locked}
+        hint={(axis) => locked ?? `Rotation around the ${axis.toUpperCase()} axis, in degrees`}
+        onChange={(next) =>
+          setObjectTransform(object.id, {
+            rotation: vec3(degToRad(next.x), degToRad(next.y), degToRad(next.z)),
+          })
+        }
+      />
 
-      <FieldRow legend="SCALE" columns={1}>
-        {(['x', 'y', 'z'] as const).map((axis) => (
-          <NumberField
-            key={`scale-${axis}`}
-            label={axis.toUpperCase()}
-            value={transform.scale[axis]}
-            step={0.05}
-            disabled={object.locked}
-            hint={
-              object.locked
-                ? 'Unlock this object in the outliner to edit its transform'
-                : `Scale multiplier along the ${axis.toUpperCase()} axis — 1 keeps the modelled size`
-            }
-            onChange={(value) =>
-              setObjectTransform(object.id, {
-                scale: { ...transform.scale, [axis]: value },
-              })
-            }
-          />
-        ))}
-      </FieldRow>
+      <Vector3Field
+        legend="SCALE"
+        value={transform.scale}
+        step={0.05}
+        disabled={object.locked}
+        hint={(axis) =>
+          locked ??
+          `Scale multiplier along the ${axis.toUpperCase()} axis — 1 keeps the modelled size`
+        }
+        onChange={(scale) => setObjectTransform(object.id, { scale })}
+      />
 
       {object.primitive ? (
         <FieldRow legend={`${object.primitive.kind.toUpperCase()} PARAMETERS`} columns={1}>
@@ -231,7 +209,7 @@ function MaterialRow({ name, active, color, onSelect, onColorChange }: MaterialR
     <li className="properties__material">
       <button
         type="button"
-        className={`properties__material-slot${active ? ' properties__material-slot--active' : ''}`}
+        className={cx('properties__material-slot', active && 'properties__material-slot--active')}
         aria-pressed={active}
         onClick={onSelect}
         {...slotTooltip}

@@ -3,6 +3,7 @@ import type { StateCreator } from 'zustand';
 import type { SelectMode } from '@kernel/index';
 
 import type { EditorStore } from '../useEditorStore';
+import { activeObject } from './scene';
 import type {
   EditorMode,
   ModalTransform,
@@ -57,8 +58,7 @@ export const createToolSlice: StateCreator<
   modal: null,
 
   setMode: (mode) => {
-    const { objects, activeObjectId } = get();
-    const object = objects.find((candidate) => candidate.id === activeObjectId);
+    const object = activeObject(get());
     if (mode === 'edit' && !object) {
       set({ status: 'Select an object before entering edit mode' });
       return;
@@ -69,8 +69,7 @@ export const createToolSlice: StateCreator<
   toggleMode: () => get().setMode(get().mode === 'object' ? 'edit' : 'object'),
 
   setSelectMode: (selectMode) => {
-    const { objects, activeObjectId } = get();
-    const object = objects.find((candidate) => candidate.id === activeObjectId);
+    const object = activeObject(get());
     // Carry the current selection across so switching modes never loses it.
     if (object) object.mesh.flushSelection(selectMode);
     set((state) => ({ selectMode, meshVersion: state.meshVersion + 1 }));

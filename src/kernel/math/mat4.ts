@@ -1,4 +1,4 @@
-import { type Vec3, cross, normalize, sub, vec3 } from './vec3';
+import { type Vec3, normalize, sub, vec3 } from './vec3';
 
 /** Column-major 4x4 matrix, matching the WebGL/Three.js element order. */
 export type Mat4 = readonly number[];
@@ -156,14 +156,6 @@ export function rotationMatrix(axis: Vec3, angle: number): Mat4 {
   ];
 }
 
-export function scaleMatrix(scale: Vec3): Mat4 {
-  return [scale.x, 0, 0, 0, 0, scale.y, 0, 0, 0, 0, scale.z, 0, 0, 0, 0, 1];
-}
-
-export function translationMatrix(offset: Vec3): Mat4 {
-  return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, offset.x, offset.y, offset.z, 1];
-}
-
 /**
  * Normal matrix for a transform: the inverse-transpose of the upper 3x3.
  * Only the rotation and scale parts matter, so this inverts the scale directly
@@ -181,8 +173,4 @@ export function normalMatrix(transform: Transform): Mat4 {
     rotation: transform.rotation,
     scale: inverseScale,
   });
-}
-
-export function triangleNormal(a: Vec3, b: Vec3, c: Vec3): Vec3 {
-  return normalize(cross(sub(b, a), sub(c, a)));
 }

@@ -1,7 +1,4 @@
-import { useId } from 'react';
-
-import { Accordion, Button, Modal, NumberField, Toggle } from '@shared/components';
-import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
+import { Accordion, Button, ColorField, Modal, NumberField, Toggle } from '@shared/components';
 import {
   MAX_GRID_SCALE,
   MAX_GRID_SUBDIVISIONS,
@@ -19,36 +16,6 @@ import {
   saveTextFile,
   wrongKindMessage,
 } from '../../services/download';
-
-import './PreferencesDialog.scss';
-
-interface ColorFieldProps {
-  label: string;
-  value: string;
-  hint: string;
-  onChange: (value: string) => void;
-}
-
-/** A swatch row laid out like `NumberField`, so the two line up in a column. */
-function ColorField({ label, value, hint, onChange }: ColorFieldProps) {
-  const id = useId();
-  const tooltip = useTooltipTrigger(hint);
-
-  return (
-    <div className="preferences-dialog__color" {...tooltip}>
-      <label className="preferences-dialog__color-label" htmlFor={id}>
-        {label}
-      </label>
-      <input
-        id={id}
-        className="preferences-dialog__swatch"
-        type="color"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </div>
-  );
-}
 
 export function PreferencesDialog() {
   const open = useEditorStore((state) => state.dialog === 'preferences');

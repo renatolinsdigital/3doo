@@ -1,5 +1,7 @@
 import type { CSSProperties, InputHTMLAttributes } from 'react';
 
+import { cx } from '../../utils/cx';
+
 import './TextField.scss';
 
 export interface TextFieldProps extends InputHTMLAttributes<HTMLInputElement> {
@@ -31,7 +33,7 @@ export function TextField({
   return (
     <input
       type={type}
-      className={['text-field', className ?? ''].filter(Boolean).join(' ')}
+      className={cx('text-field', className)}
       aria-label={label}
       style={height === undefined ? style : { height, ...style }}
       {...rest}

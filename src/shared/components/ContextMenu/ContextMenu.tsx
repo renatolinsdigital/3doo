@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, type RefObject } from 'react';
 
 import { useTooltipTrigger } from '../../hooks/useTooltipTrigger';
+import { cx } from '../../utils/cx';
 
 import './ContextMenu.scss';
 
@@ -150,7 +151,7 @@ function ContextMenuButton({ item, onClose }: { item: ContextMenuItem; onClose: 
     <button
       type="button"
       role="menuitem"
-      className={`context-menu__item${item.current ? ' context-menu__item--current' : ''}`}
+      className={cx('context-menu__item', item.current && 'context-menu__item--current')}
       // Marked the way the outliner marks the active row, rather than with a
       // glyph in the label: one reading for "this is the one you are on".
       aria-current={item.current ? 'true' : undefined}

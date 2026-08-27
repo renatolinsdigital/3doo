@@ -22,7 +22,7 @@ import {
   translateVerts,
   vec3,
 } from '@kernel/index';
-import { displayCenter, evaluatedMesh, useEditorStore } from '@store/index';
+import { activeObject, displayCenter, evaluatedMesh, useEditorStore } from '@store/index';
 import type { CursorSnapTargets, SceneObject } from '@store/types';
 
 import { CameraController, MAX_ORBIT_DISTANCE } from './CameraController';
@@ -710,7 +710,7 @@ export class Viewport {
     this.proportionalAnchor = null;
     if (state.mode !== 'edit') return;
 
-    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+    const object = activeObject(state);
     if (!object) return;
 
     const selected = object.mesh.selectedVerts();
@@ -933,7 +933,7 @@ export class Viewport {
     state: ReturnType<typeof useEditorStore.getState>,
     gizmoMode: 'translate' | 'rotate' | 'scale',
   ): void {
-    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+    const object = activeObject(state);
     if (!object || object.locked) {
       this.detachGizmo();
       return;
@@ -1119,7 +1119,7 @@ export class Viewport {
 
     const state = useEditorStore.getState();
     const editing = state.mode === 'edit';
-    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+    const object = activeObject(state);
     const selected = editing && object ? object.mesh.selectedVerts() : [];
 
     if (editing ? selected.length === 0 : this.transformGroup.length === 0) {
@@ -1229,7 +1229,7 @@ export class Viewport {
       return;
     }
 
-    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+    const object = activeObject(state);
     if (!object) return;
 
     // Edit mode has no per-vertex baseline to re-apply against, so it turns by
@@ -1244,7 +1244,7 @@ export class Viewport {
 
     const state = useEditorStore.getState();
     const editing = state.mode === 'edit';
-    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+    const object = activeObject(state);
     const selected = editing && object ? object.mesh.selectedVerts() : [];
 
     if (editing ? selected.length === 0 : this.transformGroup.length === 0) {
@@ -1413,7 +1413,7 @@ export class Viewport {
     );
     if (Math.abs(step.x - 1) + Math.abs(step.y - 1) + Math.abs(step.z - 1) < 1e-6) return;
 
-    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+    const object = activeObject(state);
     if (!object) return;
 
     drag.applied = target;
@@ -1460,7 +1460,7 @@ export class Viewport {
       return;
     }
 
-    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+    const object = activeObject(state);
     if (!object) return;
 
     this.applyEditTransform(state, object);
@@ -1900,7 +1900,7 @@ export class Viewport {
       return;
     }
 
-    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+    const object = activeObject(state);
     const view = object ? this.views.get(object.id) : undefined;
     if (!object || !view) return;
 
@@ -1969,7 +1969,7 @@ export class Viewport {
 
   private regionSelect(region: Region, additive: boolean): void {
     const state = useEditorStore.getState();
-    const object = state.objects.find((candidate) => candidate.id === state.activeObjectId);
+    const object = activeObject(state);
     const view = object ? this.views.get(object.id) : undefined;
     if (state.mode !== 'edit' || !object || !view) return;
 

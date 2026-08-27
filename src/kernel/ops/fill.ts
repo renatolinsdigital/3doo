@@ -1,4 +1,4 @@
-import { centroid, distanceSq } from '../math';
+import { distanceSq } from '../math';
 import type { BMesh } from '../mesh';
 import type { Edge, Face, Vert } from '../mesh/types';
 
@@ -8,7 +8,7 @@ import type { Edge, Face, Vert } from '../mesh/types';
  * Both fill and bridge need "which loops does this selection form", so the walk
  * lives here once.
  */
-export function edgeLoopsFrom(mesh: BMesh, edges: readonly Edge[]): Vert[][] {
+function edgeLoopsFrom(mesh: BMesh, edges: readonly Edge[]): Vert[][] {
   const pool = new Set(edges.filter((edge) => mesh.edges.has(edge.id)));
   const loops: Vert[][] = [];
 
@@ -64,25 +64,6 @@ export function fillHole(mesh: BMesh, edges: readonly Edge[]): Face[] {
  * Fills a boundary loop with a fan of triangles instead of one n-gon, which
  * behaves better on long or non-planar loops.
  */
-export function gridFill(mesh: BMesh, edges: readonly Edge[]): Face[] {
-  const created: Face[] = [];
-
-  for (const ring of edgeLoopsFrom(mesh, edges)) {
-    if (ring.length < 3) continue;
-    const oriented = orientAgainstNeighbours(mesh, ring);
-    const center = mesh.addVert(centroid(oriented.map((vert) => vert.co)));
-
-    for (let i = 0; i < oriented.length; i++) {
-      const face = mesh.addFace([oriented[i], oriented[(i + 1) % oriented.length], center]);
-      face.selected = true;
-      created.push(face);
-    }
-  }
-
-  mesh.computeNormals();
-  return created;
-}
-
 /**
  * Bridges two edge loops with a band of quads.
  *

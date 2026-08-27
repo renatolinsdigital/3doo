@@ -1,6 +1,7 @@
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
 import { useTooltipTrigger } from '../../hooks/useTooltipTrigger';
+import { cx } from '../../utils/cx';
 
 import './IconButton.scss';
 
@@ -28,9 +29,7 @@ export function IconButton({
 }: IconButtonProps) {
   const tooltipText = hint ?? (shortcut ? `${label} (${shortcut})` : label);
   const tooltip = useTooltipTrigger(tooltipText);
-  const classes = ['icon-button', active ? 'icon-button--active' : '', className ?? '']
-    .filter(Boolean)
-    .join(' ');
+  const classes = cx('icon-button', active && 'icon-button--active', className);
 
   return (
     <button

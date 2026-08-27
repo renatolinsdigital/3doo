@@ -7,7 +7,7 @@ import type { Edge, Face, Vert } from '../mesh/types';
  * Returns the merged face, or null when the merge would produce a face that
  * visits a vertex twice.
  */
-export function dissolveEdge(mesh: BMesh, edge: Edge): Face | null {
+function dissolveEdge(mesh: BMesh, edge: Edge): Face | null {
   if (!mesh.edges.has(edge.id) || edge.loops.length !== 2) return null;
 
   const [loopA, loopB] = edge.loops;

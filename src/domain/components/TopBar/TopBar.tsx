@@ -10,6 +10,7 @@ import {
   TextField,
   type ContextMenuEntry,
 } from '@shared/components';
+import { cx } from '@shared/utils/cx';
 import { useActiveObject, useActiveShadingSmooth, useEditorStore } from '@store/index';
 import type { EditorMode, OverlaySettings, PivotMode, ShadingMode } from '@store/types';
 
@@ -263,7 +264,7 @@ export function TopBar({ brand }: TopBarProps) {
           label="FRAME ALL"
           // The corners of a frame drawn around everything there is.
           icon="⛶"
-          className={`top-bar__icon${viewLost ? ' top-bar__icon--tremble' : ''}`}
+          className={cx('top-bar__icon', viewLost && 'top-bar__icon--tremble')}
           hint={
             viewLost
               ? "You've zoomed out past your scene — click to come back"
@@ -305,7 +306,7 @@ function TopBarMenu({ label, menuLabel, entries, hint, ariaLabel, className }: T
   const [at, setAt] = useState<{ x: number; y: number } | null>(null);
 
   return (
-    <span className={['top-bar__menu', className ?? ''].filter(Boolean).join(' ')} ref={anchor}>
+    <span className={cx('top-bar__menu', className)} ref={anchor}>
       <Button
         label={label}
         variant="ghost"
