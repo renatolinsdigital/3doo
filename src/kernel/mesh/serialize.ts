@@ -181,7 +181,7 @@ export function splitLooseParts(mesh: BMesh): BMesh[] {
   const find = (index: number): number => {
     let root = index;
     while (parent[root] !== root) root = parent[root];
-    for (let walk = index; parent[walk] !== root; ) {
+    for (let walk = index; parent[walk] !== root;) {
       const next = parent[walk];
       parent[walk] = root;
       walk = next;

@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
 import { BMesh } from '../mesh';
-import { createBox, createPlane } from '../primitives';
+import { createBox, createPlane, createUVSphere } from '../primitives';
 
 import { evaluateModifiers, createModifier } from './index';
-import type { ArrayModifier, MirrorModifier, SolidifyModifier, WeldModifier } from './types';
+import type {
+  ArrayModifier,
+  MirrorModifier,
+  RemeshModifier,
+  SolidifyModifier,
+  WeldModifier,
+} from './types';
 
 function mirror(overrides: Partial<MirrorModifier> = {}): MirrorModifier {
   return { ...(createModifier('mirror') as MirrorModifier), ...overrides };
@@ -57,9 +63,7 @@ describe('mirror modifier', () => {
 
   it('leaves the mesh alone when no axis is enabled', () => {
     const cube = createBox(2);
-    const result = evaluateModifiers(cube, [
-      mirror({ axes: { x: false, y: false, z: false } }),
-    ]);
+    const result = evaluateModifiers(cube, [mirror({ axes: { x: false, y: false, z: false } })]);
     expect(result.faces.size).toBe(6);
   });
 
@@ -214,9 +218,7 @@ describe('solidify modifier', () => {
     const plane = createPlane(2);
     const modifier = createModifier('solidify') as SolidifyModifier;
 
-    const result = evaluateModifiers(plane, [
-      { ...modifier, thickness: 0.4, evenOffset: true },
-    ]);
+    const result = evaluateModifiers(plane, [{ ...modifier, thickness: 0.4, evenOffset: true }]);
     const box = result.boundingBox();
 
     expect(box.max.y).toBeCloseTo(0.2);
@@ -340,5 +342,95 @@ describe('modifier stack', () => {
     expect(result.verts.size).toBe(6);
     expect(result.faces.size).toBe(2);
     expect(result.validate()).toEqual([]);
+  });
+});
+
+describe('remesh modifier', () => {
+  function remesh(overrides: Partial<RemeshModifier> = {}): RemeshModifier {
+    return { ...(createModifier('remesh') as RemeshModifier), ...overrides };
+  }
+
+  /** Every edge shared by exactly two faces. */
+  function isClosed(mesh: BMesh): boolean {
+    return [...mesh.edges.values()].every((edge) => edge.loops.length === 2);
+  }
+
+  /** Edges with a face on one side only: a hole, as opposed to a seam. */
+  function holes(mesh: BMesh): number {
+    return [...mesh.edges.values()].filter((edge) => edge.loops.length === 1).length;
+  }
+
+  it('contours a voxel shell at roughly the face count asked for', () => {
+    const result = evaluateModifiers(createUVSphere(1, 32, 16), [remesh({ targetFaces: 800 })]);
+
+    expect(result.faces.size).toBeGreaterThan(500);
+    expect(result.faces.size).toBeLessThan(1300);
+    expect(isClosed(result)).toBe(true);
+    // A quad shell, and one that still fills the sphere it was built from.
+    expect([...result.faces.values()].every((face) => result.faceLoops(face).length === 4)).toBe(
+      true,
+    );
+    expect(result.boundingBox().max.x).toBeGreaterThan(0.9);
+  });
+
+  it('puts every vertex on the lattice when the method is blocks', () => {
+    const modifier = remesh({ method: 'blocks', adaptive: false, voxelSize: 0.25 });
+    const result = evaluateModifiers(createUVSphere(1, 16, 8), [modifier]);
+
+    const first = [...result.verts.values()][0].co;
+    for (const vert of result.verts.values()) {
+      const steps = (vert.co.x - first.x) / 0.25;
+      expect(Math.abs(steps - Math.round(steps))).toBeLessThan(1e-4);
+    }
+  });
+
+  it('collapses rather than rebuilds when the method is reduce', () => {
+    const source = createUVSphere(1, 32, 16);
+    const before = source.stats().tris;
+    const result = evaluateModifiers(source, [
+      remesh({ method: 'decimate', adaptive: false, ratio: 0.3, topology: 'triangles' }),
+    ]);
+
+    expect(result.stats().tris).toBeLessThan(before * 0.45);
+    expect(result.stats().tris).toBeGreaterThan(0);
+  });
+
+  it('leaves the base mesh alone, like every other modifier', () => {
+    const source = createBox(2);
+    evaluateModifiers(source, [remesh({ targetFaces: 400 })]);
+
+    expect(source.faces.size).toBe(6);
+    expect(source.verts.size).toBe(8);
+  });
+
+  it('passes the mesh straight through rather than throwing on an input it cannot rebuild', () => {
+    // A modifier runs while the viewport is drawing, so a throw here would be a
+    // blank screen instead of a message. An empty mesh has nothing to remesh
+    // and a reduce that keeps everything has nothing to collapse; both come
+    // back as they went in.
+    const empty = new BMesh();
+    expect(evaluateModifiers(empty, [remesh()]).faces.size).toBe(0);
+
+    const cube = createBox(2);
+    const untouched = evaluateModifiers(cube, [
+      remesh({ method: 'decimate', adaptive: false, ratio: 1 }),
+    ]);
+    expect(untouched.faces.size).toBe(6);
+  });
+
+  it('runs after the modifier that made the geometry it rebuilds', () => {
+    const plane = createPlane(2);
+    const result = evaluateModifiers(plane, [
+      { ...(createModifier('solidify') as SolidifyModifier), thickness: 0.4 },
+      remesh({ adaptive: false, voxelSize: 0.15 }),
+    ]);
+
+    // The solidified slab is closed, so the shell around it has no holes.
+    // Not every edge is manifold: naive surface nets puts one vertex in a cell
+    // however many sheets of the surface pass through it, and the slab's rim is
+    // thin against the voxel size — the same handful of junctions the voxel
+    // remesh has always left there.
+    expect(holes(result)).toBe(0);
+    expect(result.faces.size).toBeGreaterThan(50);
   });
 });

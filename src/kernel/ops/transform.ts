@@ -76,7 +76,8 @@ export function translateVerts(
   applyDisplacement(
     mesh,
     verts,
-    (vert, influence) => add(vert.co, { x: offset.x * influence, y: offset.y * influence, z: offset.z * influence }),
+    (vert, influence) =>
+      add(vert.co, { x: offset.x * influence, y: offset.y * influence, z: offset.z * influence }),
     proportional,
   );
 }

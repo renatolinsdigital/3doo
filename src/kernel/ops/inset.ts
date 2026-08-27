@@ -2,7 +2,13 @@ import { type Vec3, add, mul } from '../math';
 import type { BMesh } from '../mesh';
 import type { Face, Vert } from '../mesh/types';
 
-import { analyseRegion, averageNormal, detachRegion, loopInwardDirection, miterOffset } from './region';
+import {
+  analyseRegion,
+  averageNormal,
+  detachRegion,
+  loopInwardDirection,
+  miterOffset,
+} from './region';
 
 export interface InsetOptions {
   thickness?: number;

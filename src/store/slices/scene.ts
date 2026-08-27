@@ -24,6 +24,7 @@ import {
   createPrimitive,
   createTransform,
   deserializeProject,
+  equals,
   evaluateModifiers,
   execOperator,
   flipNormals,
@@ -96,9 +97,7 @@ export interface SceneSlice {
   addPrimitive: (kind: PrimitiveKind, params?: Partial<PrimitiveParams>) => void;
   updatePrimitiveParams: (params: Partial<PrimitiveParams>) => void;
   patchActiveObject: (
-    patch:
-      | Partial<SceneObject>
-      | ((object: SceneObject) => Partial<SceneObject> | null),
+    patch: Partial<SceneObject> | ((object: SceneObject) => Partial<SceneObject> | null),
     options?: { touchGeometry?: boolean; status?: string },
   ) => void;
   setActiveObject: (id: string | null, additive?: boolean) => void;
@@ -1045,9 +1044,6 @@ export const createSceneSlice: StateCreator<
       activeObjectId: restored.activeObjectId,
       selectedObjectIds: restored.activeObjectId ? [restored.activeObjectId] : [],
       meshVersion: state.meshVersion + 1,
-      // The mesh a remesh preview was standing in for has just been replaced
-      // wholesale, so the preview has nothing left to put back.
-      remeshPreview: null,
     }));
   },
 
@@ -1067,8 +1063,6 @@ export const createSceneSlice: StateCreator<
       lastOperator: null,
       lockedAttempt: null,
       recentVerts: null,
-      remeshPreview: null,
-      remeshReport: null,
       meshVersion: get().meshVersion + 1,
       // Edit mode with no object is not a reachable state, so a new scene has
       // to drop back to object mode along with the tool that was active.
@@ -1101,8 +1095,22 @@ function selectionAnchor(state: EditorStore): Vec3 | null {
     state.selectedObjectIds.includes(candidate.id),
   );
   if (selected.length === 0) return null;
-  return centroid(selected.map((candidate) => displayCenter(candidate, evaluatedMesh(candidate, state.cursor))));
+  return centroid(
+    selected.map((candidate) =>
+      displayCenter(candidate, evaluatedMesh(candidate, state.cursor, state.meshVersion)),
+    ),
+  );
 }
+
+interface EvaluatedStack {
+  version: number;
+  modifiers: readonly Modifier[];
+  cursor: Vec3;
+  result: BMesh;
+}
+
+/** Last stack result per object, so an unchanged stack is not run twice. */
+const evaluatedStacks = new Map<string, EvaluatedStack>();
 
 /**
  * Display mesh for an object: its base mesh run through the modifier stack.
@@ -1110,13 +1118,50 @@ function selectionAnchor(state: EditorStore): Vec3 | null {
  * The 3D cursor arrives in world space and is handed to the kernel in the
  * object's own local frame, which is the only coordinate system a modifier
  * knows about.
+ *
+ * `version` is the store's `meshVersion`, and passing it turns on the memo.
+ * The viewport re-syncs on far more than geometry — selecting an object,
+ * entering edit mode, changing the shading — and every one of those was
+ * re-running the whole stack for every object in the scene. That was tolerable
+ * while the dearest modifier was a subdivision; a REMESH is the better part of
+ * a second on its own, and without this a click anywhere would pay for it. The
+ * mesh is edited in place, so the version is what says it changed; a caller
+ * with no version to offer gets a fresh evaluation.
  */
-export function evaluatedMesh(object: SceneObject, cursor: Vec3 = vec3()) {
-  return object.modifiers.length > 0
-    ? evaluateModifiers(object.mesh, object.modifiers, {
-        cursor: inverseTransformPoint(object.transform, cursor),
-      })
-    : object.mesh;
+export function evaluatedMesh(object: SceneObject, cursor: Vec3 = vec3(), version?: number) {
+  if (object.modifiers.length === 0) return object.mesh;
+
+  const cached = evaluatedStacks.get(object.id);
+  if (
+    version !== undefined &&
+    cached &&
+    cached.version === version &&
+    cached.modifiers === object.modifiers &&
+    equals(cached.cursor, cursor, 0)
+  ) {
+    return cached.result;
+  }
+
+  const result = evaluateModifiers(object.mesh, object.modifiers, {
+    cursor: inverseTransformPoint(object.transform, cursor),
+  });
+
+  if (version !== undefined) {
+    // Entries for objects that have since been deleted would otherwise sit on
+    // a display mesh each for the rest of the session.
+    if (evaluatedStacks.size > 64) {
+      for (const [id, entry] of evaluatedStacks) {
+        if (entry.version !== version) evaluatedStacks.delete(id);
+      }
+    }
+    evaluatedStacks.set(object.id, {
+      version,
+      modifiers: object.modifiers,
+      cursor: { ...cursor },
+      result,
+    });
+  }
+  return result;
 }
 
 /**

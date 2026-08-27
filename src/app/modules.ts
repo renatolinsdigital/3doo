@@ -1,4 +1,4 @@
-export type ModuleId = 'home' | 'modeling' | 'remesh' | 'docs';
+export type ModuleId = 'home' | 'modeling' | 'docs';
 
 /**
  * One area of the application, reachable from the brand switcher.
@@ -32,13 +32,6 @@ export const APP_MODULES: readonly AppModule[] = [
     label: 'MODELING',
     brand: '3DOO - MODELING',
     summary: 'Build and edit meshes, then export them',
-  },
-  {
-    id: 'remesh',
-    path: '/remesh',
-    label: 'REMESH',
-    brand: '3DOO - REMESH',
-    summary: 'Rebuild a mesh topology automatically',
   },
   {
     id: 'docs',

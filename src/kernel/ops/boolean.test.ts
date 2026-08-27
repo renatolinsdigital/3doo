@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
 import { type Vec3, add, dot, polygonNormal, vec3 } from '../math';
-import type { BMesh } from '../mesh';
+import { BMesh } from '../mesh';
+import type { Vert } from '../mesh/types';
 import { triangulatePolygon } from '../mesh/triangulate';
 import {
   createBox,
   createCapsule,
   createCone,
   createCylinder,
+  createGrid,
   createIcoSphere,
   createTorus,
   createUVSphere,
@@ -277,5 +279,85 @@ describe('mesh booleans', () => {
     // count at three per face.
     expect(result.verts.size).toBeLessThan(result.faces.size * 3);
     expect([...result.edges.values()].some((edge) => edge.loops.length === 2)).toBe(true);
+  });
+});
+
+describe('operands that arrive inside out', () => {
+  /** The same geometry with every face wound the other way round. */
+  function inverted(mesh: BMesh): BMesh {
+    const flipped = new BMesh();
+    const moved = new Map<number, Vert>();
+    for (const vert of mesh.verts.values()) moved.set(vert.id, flipped.addVert({ ...vert.co }));
+    for (const face of mesh.faces.values()) {
+      const ring = mesh.faceVerts(face).flatMap((vert) => moved.get(vert.id) ?? []);
+      flipped.addFace([...ring].reverse());
+    }
+    flipped.computeNormals();
+    return flipped;
+  }
+
+  /** A quarter turn about Z, which keeps handedness. */
+  const turned = (point: Vec3): Vec3 => ({ x: point.y, y: -point.x, z: point.z });
+
+  /** The same quarter turn with two axes swapped instead, which reverses it. */
+  const mirrored = (point: Vec3): Vec3 => ({ x: point.y, y: point.x, z: point.z });
+
+  it('reads a mirrored tool the same as a turned one', () => {
+    // Two crossed cylinders. A scene is free to hold an object mirrored by a
+    // negative scale, and the map that carries it into the target's space then
+    // reverses every ring — which used to reach the BSP as a solid whose inside
+    // and outside had swapped places. Nothing errored: the union came back as
+    // two disjoint shells with one of the arms missing altogether.
+    const arm = () => createCylinder(0.5, 2.4, 24, true);
+
+    const turn = booleanMesh('union', arm(), arm(), turned);
+    const mirror = booleanMesh('union', arm(), arm(), mirrored);
+
+    expect(isClosed(mirror)).toBe(true);
+    expect(volume(mirror)).toBeCloseTo(volume(turn), 6);
+    expect(bounds(mirror).min.y).toBeCloseTo(-1.2, 6);
+    expect(bounds(mirror).max.y).toBeCloseTo(1.2, 6);
+  });
+
+  it('cuts with a mirrored tool rather than returning it', () => {
+    // The same reversal on a difference handed back the cutter itself in place
+    // of the cut, which is the whole box gone and the bore left standing.
+    const bore = () => createCylinder(0.45, 3, 24, true);
+
+    const result = booleanMesh('difference', createBox(2), bore(), mirrored);
+
+    expect(isClosed(result)).toBe(true);
+    expect(volume(result)).toBeCloseTo(8 - Math.PI * 0.45 * 0.45 * 2, 1);
+    for (const axis of ['x', 'y', 'z'] as const) {
+      expect(bounds(result).min[axis]).toBeCloseTo(-1, 6);
+      expect(bounds(result).max[axis]).toBeCloseTo(1, 6);
+    }
+  });
+
+  it('reads a mesh that was already wound inward the same as one that was not', () => {
+    // Not only the transform: a solid whose own faces point inward is no more
+    // usable to the BSP, and either operand can be the one at fault.
+    const expected = volume(booleanMesh('union', createBox(2), createBox(2), offsetBy(vec3(1))));
+
+    for (const [target, tool] of [
+      [createBox(2), inverted(createBox(2))],
+      [inverted(createBox(2)), createBox(2)],
+      [inverted(createBox(2)), inverted(createBox(2))],
+    ] as const) {
+      const result = booleanMesh('union', target, tool, offsetBy(vec3(1)));
+
+      expect(isClosed(result)).toBe(true);
+      expect(volume(result)).toBeCloseTo(expected, 6);
+    }
+  });
+
+  it('leaves an open shell alone, having no inside to read a direction off', () => {
+    // The sign of the volume of something that encloses nothing says only where
+    // it happens to sit relative to the origin, so it is no evidence at all.
+    const near = booleanMesh('union', createGrid(3, 4), createBox(1), offsetBy(vec3()));
+    const far = booleanMesh('union', createGrid(3, 4), createBox(1), offsetBy(vec3(0, 40, 0)));
+
+    expect(near.faces.size).toBeGreaterThan(0);
+    expect(far.faces.size).toBeGreaterThan(0);
   });
 });

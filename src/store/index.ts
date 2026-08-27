@@ -4,12 +4,6 @@ export { useEditorStore, editorStore, type EditorStore } from './useEditorStore'
 export { displayCenter, evaluatedMesh } from './slices/scene';
 export { SELECT_SHAPES } from './slices/tool';
 export {
-  meshCounts,
-  type RemeshCounts,
-  type RemeshPreview,
-  type RemeshReport,
-} from './slices/remesh';
-export {
   DEFAULT_PREFERENCES,
   MAX_GRID_SCALE,
   MAX_GRID_SUBDIVISIONS,

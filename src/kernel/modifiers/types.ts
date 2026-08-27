@@ -1,4 +1,6 @@
-export type ModifierType = 'mirror' | 'array' | 'solidify' | 'weld' | 'subdivide';
+import { DEFAULT_REMESH_SETTINGS, type RemeshSettings } from '../remesh';
+
+export type ModifierType = 'mirror' | 'array' | 'solidify' | 'weld' | 'subdivide' | 'remesh';
 
 export interface ModifierBase {
   id: string;
@@ -58,12 +60,25 @@ export interface SubdivideModifier extends ModifierBase {
   smooth: number;
 }
 
+/**
+ * Rebuilds the topology wholesale: the one modifier that throws away the
+ * geometry it was given rather than adding to it.
+ *
+ * Carries the remesher's whole settings record rather than a chosen subset, so
+ * every control the kernel reads is one the stack can set — there is no second
+ * place for a default to live and disagree with.
+ */
+export interface RemeshModifier extends ModifierBase, RemeshSettings {
+  type: 'remesh';
+}
+
 export type Modifier =
   | MirrorModifier
   | ArrayModifier
   | SolidifyModifier
   | WeldModifier
-  | SubdivideModifier;
+  | SubdivideModifier
+  | RemeshModifier;
 
 let counter = 0;
 
@@ -127,6 +142,14 @@ export function createModifier(type: ModifierType): Modifier {
         enabled: true,
         levels: 1,
         smooth: 1,
+      };
+    case 'remesh':
+      return {
+        ...DEFAULT_REMESH_SETTINGS,
+        id: nextId(type),
+        type,
+        name: 'REMESH',
+        enabled: true,
       };
   }
 }

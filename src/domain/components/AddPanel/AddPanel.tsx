@@ -63,7 +63,12 @@ const PRIMITIVE_HINTS: Record<PrimitiveKind, string> = {
 
 const SELECT_MODE_OPTIONS = [
   { value: 'vertex', label: 'VERT', shortcut: '1', hint: 'Select individual vertices (1)' },
-  { value: 'edge', label: 'EDGE', shortcut: '2', hint: 'Select edges; Alt+click follows a loop (2)' },
+  {
+    value: 'edge',
+    label: 'EDGE',
+    shortcut: '2',
+    hint: 'Select edges; Alt+click follows a loop (2)',
+  },
   { value: 'face', label: 'FACE', shortcut: '3', hint: 'Select whole faces (3)' },
 ] as const;
 

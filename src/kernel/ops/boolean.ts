@@ -382,11 +382,48 @@ export function csg(
 }
 
 /**
+ * Six times the volume the polygons enclose, signed by which way they face.
+ *
+ * The divergence theorem on the position field: each triangle contributes the
+ * signed volume of the tetrahedron it makes with the origin, and on a closed
+ * surface everything outside the solid cancels. Positive means the polygons
+ * face out of what they enclose, which is the one thing every test in the BSP
+ * takes for granted.
+ */
+function sixVolume(polys: readonly Poly[]): number {
+  let total = 0;
+
+  for (const poly of polys) {
+    const a = poly.points[0];
+    for (let i = 1; i + 1 < poly.points.length; i++) {
+      total += dot(a, cross(poly.points[i], poly.points[i + 1]));
+    }
+  }
+
+  return total;
+}
+
+/** Closed and manifold: every edge has a face on both sides. */
+function isClosed(mesh: BMesh): boolean {
+  for (const edge of mesh.edges.values()) if (edge.loops.length !== 2) return false;
+  return mesh.faces.size > 0;
+}
+
+/**
  * Reads a mesh out as triangles in the target's space.
  *
  * `toTarget` carries each point through the source object's transform and back
  * through the target's, because a boolean is only meaningful where the two
  * solids actually sit relative to each other.
+ *
+ * A closed solid comes out facing outward whatever it arrived as. That matters
+ * because `toTarget` is free to reverse handedness — an object mirrored by a
+ * negative scale on one axis, which is an ordinary thing to have in a scene —
+ * and a reversed map turns every ring the other way round, so the solid reaches
+ * the BSP inside out. Nothing then errors: "inside" and "outside" are simply
+ * exchanged for that operand, and the answer comes back confidently wrong. A
+ * union returns a fragment, a difference returns the cutter. Reading the sign
+ * off the volume catches a source mesh that was already inverted as well.
  */
 export function meshToPolys(
   mesh: BMesh,
@@ -425,7 +462,11 @@ export function meshToPolys(
     }
   }
 
-  return polys;
+  // Only for a closed mesh: an open shell encloses nothing, so the sign of its
+  // volume is an accident of where it sits relative to the origin and reversing
+  // it on that evidence would be worse than leaving it alone.
+  if (!isClosed(mesh)) return polys;
+  return sixVolume(polys) < 0 ? polys.map(flipPoly) : polys;
 }
 
 /** A uniform grid over a point set, for "what is near this box" lookups. */

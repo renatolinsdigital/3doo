@@ -119,11 +119,7 @@ export function inverseTransformDirection(transform: Transform, direction: Vec3)
     );
   };
   return normalize(
-    vec3(
-      along(0, transform.scale.x),
-      along(1, transform.scale.y),
-      along(2, transform.scale.z),
-    ),
+    vec3(along(0, transform.scale.x), along(1, transform.scale.y), along(2, transform.scale.z)),
   );
 }
 
@@ -175,7 +171,11 @@ export function translationMatrix(offset: Vec3): Mat4 {
  */
 export function normalMatrix(transform: Transform): Mat4 {
   const safe = (value: number) => (Math.abs(value) < 1e-12 ? 1e-12 : value);
-  const inverseScale = vec3(1 / safe(transform.scale.x), 1 / safe(transform.scale.y), 1 / safe(transform.scale.z));
+  const inverseScale = vec3(
+    1 / safe(transform.scale.x),
+    1 / safe(transform.scale.y),
+    1 / safe(transform.scale.z),
+  );
   return composeMatrix({
     position: vec3(),
     rotation: transform.rotation,

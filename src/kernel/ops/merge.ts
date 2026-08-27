@@ -31,7 +31,8 @@ export function weldVerts(mesh: BMesh, mapping: ReadonlyMap<number, Vert>): numb
       if (collapsed.length > 0 && collapsed[collapsed.length - 1] === vert) continue;
       collapsed.push(vert);
     }
-    while (collapsed.length > 1 && collapsed[0] === collapsed[collapsed.length - 1]) collapsed.pop();
+    while (collapsed.length > 1 && collapsed[0] === collapsed[collapsed.length - 1])
+      collapsed.pop();
 
     doomedFaces.push(face);
     if (new Set(collapsed.map((vert) => vert.id)).size < 3) continue;
@@ -94,10 +95,7 @@ export function weldVerts(mesh: BMesh, mapping: ReadonlyMap<number, Vert>): numb
  * Exposed separately so the UI can show a live "N vertices will be removed"
  * count before the user commits.
  */
-export function planMergeByDistance(
-  verts: readonly Vert[],
-  threshold: number,
-): Map<number, Vert> {
+export function planMergeByDistance(verts: readonly Vert[], threshold: number): Map<number, Vert> {
   const mapping = new Map<number, Vert>();
   if (threshold <= 0 || verts.length < 2) return mapping;
 

@@ -17,9 +17,7 @@ function signedArea(points: readonly Point2[]): number {
 }
 
 function isConvex(prev: Point2, current: Point2, next: Point2): boolean {
-  return (
-    (current.x - prev.x) * (next.y - prev.y) - (current.y - prev.y) * (next.x - prev.x) > 0
-  );
+  return (current.x - prev.x) * (next.y - prev.y) - (current.y - prev.y) * (next.x - prev.x) > 0;
 }
 
 function pointInTriangle(p: Point2, a: Point2, b: Point2, c: Point2): boolean {

@@ -1,4 +1,13 @@
-import type { Modifier, ModifierType } from '@kernel/index';
+import {
+  type Modifier,
+  type ModifierType,
+  MAX_SHARP_ANGLE,
+  MAX_SMOOTHING,
+  MAX_TARGET_FACES,
+  MAX_VOXEL_SIZE,
+  MIN_TARGET_FACES,
+  MIN_VOXEL_SIZE,
+} from '@kernel/index';
 import { NumberField, Panel, Select, Toggle } from '@shared/components';
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
 import { useActiveObject, useEditorStore } from '@store/index';
@@ -30,6 +39,11 @@ const MODIFIER_INFO: Record<ModifierType, { label: string; description: string }
     label: 'SUBDIVISION',
     description:
       'Splits every face into smaller ones and pulls them toward the Catmull-Clark limit surface, rounding the shape off.',
+  },
+  remesh: {
+    label: 'REMESH',
+    description:
+      'Rebuilds the topology from scratch. VOXEL converts the shape to a grid, then aims to rebuild an even shell. BLOCKS uses the grid directly, preserving its blocky structure. REDUCE simply collapses edges to reduce geometry, so it usually goes last in the stack.',
   },
 };
 
@@ -317,6 +331,127 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
         hint="How far apart two vertices can sit and still be fused into one"
         onChange={(threshold) => onChange({ threshold })}
       />
+    );
+  }
+
+  if (modifier.type === 'remesh') {
+    const grid = modifier.method === 'voxel' || modifier.method === 'blocks';
+    return (
+      <>
+        <Select
+          label="METHOD"
+          value={modifier.method}
+          options={[
+            { value: 'voxel', label: 'VOXEL' },
+            { value: 'blocks', label: 'BLOCKS' },
+            { value: 'decimate', label: 'REDUCE' },
+          ]}
+          hint="Contour a distance grid, read that grid off blocky, or collapse the cheapest edges"
+          onChange={(method) => onChange({ method })}
+        />
+        <Toggle
+          label="TARGET FACES"
+          checked={modifier.adaptive}
+          hint={
+            grid
+              ? 'Name the face count you want and let it solve the voxel size out of that'
+              : 'Name the face count you want instead of a fraction to keep'
+          }
+          onChange={(adaptive) => onChange({ adaptive })}
+        />
+        <NumberField
+          label="FACES"
+          value={modifier.targetFaces}
+          integer
+          min={MIN_TARGET_FACES}
+          max={MAX_TARGET_FACES}
+          step={100}
+          disabled={!modifier.adaptive}
+          hint="Roughly how many faces to come out with"
+          onChange={(targetFaces) => onChange({ targetFaces })}
+        />
+        {grid ? (
+          <NumberField
+            label="VOXEL SIZE"
+            value={modifier.voxelSize}
+            step={0.01}
+            min={MIN_VOXEL_SIZE}
+            max={MAX_VOXEL_SIZE}
+            precision={4}
+            disabled={modifier.adaptive}
+            hint="Edge length of one voxel: the finest detail the grid can hold"
+            onChange={(voxelSize) => onChange({ voxelSize })}
+          />
+        ) : (
+          <NumberField
+            label="KEEP"
+            value={modifier.ratio}
+            step={0.05}
+            min={0.01}
+            max={1}
+            precision={2}
+            disabled={modifier.adaptive}
+            hint="Fraction of the triangles to keep when no face count is named"
+            onChange={(ratio) => onChange({ ratio })}
+          />
+        )}
+        {modifier.method === 'voxel' ? (
+          <>
+            <NumberField
+              label="SMOOTHING"
+              value={modifier.smoothing}
+              integer
+              min={0}
+              max={MAX_SMOOTHING}
+              hint="Relaxation passes over the new shell, evening out the contour's staircase"
+              onChange={(smoothing) => onChange({ smoothing })}
+            />
+            <NumberField
+              label="PROJECTION"
+              value={modifier.projection}
+              step={0.1}
+              min={0}
+              max={1}
+              hint="How far each relaxed vertex is pulled back onto the original surface"
+              onChange={(projection) => onChange({ projection })}
+            />
+            <NumberField
+              label="SHARP EDGE"
+              value={modifier.sharpAngle}
+              integer
+              min={0}
+              max={MAX_SHARP_ANGLE}
+              suffix="°"
+              hint="Edges of the original that turn by more than this are held as creases. Zero rounds every one of them off"
+              onChange={(sharpAngle) => onChange({ sharpAngle })}
+            />
+          </>
+        ) : null}
+        {modifier.method === 'decimate' ? (
+          <Toggle
+            label="KEEP BORDER"
+            checked={modifier.preserveBoundary}
+            hint="Refuse to move the open border of a mesh that is not closed"
+            onChange={(preserveBoundary) => onChange({ preserveBoundary })}
+          />
+        ) : null}
+        <Select
+          label="TOPOLOGY"
+          value={modifier.topology}
+          options={[
+            { value: 'quads', label: 'QUADS' },
+            { value: 'triangles', label: 'TRIANGLES' },
+          ]}
+          hint="Whether the result is left as quads or cut into triangles"
+          onChange={(topology) => onChange({ topology })}
+        />
+        <Toggle
+          label="SMOOTH SHADING"
+          checked={modifier.smoothShading}
+          hint="Shade the result smooth rather than faceted"
+          onChange={(smoothShading) => onChange({ smoothShading })}
+        />
+      </>
     );
   }
 

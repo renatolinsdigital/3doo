@@ -68,7 +68,10 @@ export class BMesh {
    * demand. Returns the existing face when one already spans the same ring,
    * which keeps operations that re-fill a region idempotent.
    */
-  addFace(verts: readonly Vert[], options: { materialIndex?: number; smooth?: boolean } = {}): Face {
+  addFace(
+    verts: readonly Vert[],
+    options: { materialIndex?: number; smooth?: boolean } = {},
+  ): Face {
     if (verts.length < 3) {
       throw new Error(`A face needs at least 3 vertices, received ${verts.length}`);
     }
@@ -429,7 +432,8 @@ export class BMesh {
 
     for (const vert of this.verts.values()) {
       for (const edge of vert.edges) {
-        if (!this.edges.has(edge.id)) problems.push(`vert ${vert.id} references dead edge ${edge.id}`);
+        if (!this.edges.has(edge.id))
+          problems.push(`vert ${vert.id} references dead edge ${edge.id}`);
         if (edge.v0 !== vert && edge.v1 !== vert) {
           problems.push(`vert ${vert.id} references edge ${edge.id} that does not contain it`);
         }
@@ -442,7 +446,8 @@ export class BMesh {
       }
       if (edge.v0 === edge.v1) problems.push(`edge ${edge.id} is degenerate`);
       for (const loop of edge.loops) {
-        if (!this.faces.has(loop.face.id)) problems.push(`edge ${edge.id} holds a loop of dead face ${loop.face.id}`);
+        if (!this.faces.has(loop.face.id))
+          problems.push(`edge ${edge.id} holds a loop of dead face ${loop.face.id}`);
       }
     }
 

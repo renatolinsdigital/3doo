@@ -9,10 +9,13 @@ export function ShortcutOverlay() {
   const open = useEditorStore((state) => state.dialog === 'shortcuts');
   const closeDialog = useEditorStore((state) => state.closeDialog);
 
-  const groups = DEFAULT_KEYMAP.reduce<Record<string, typeof DEFAULT_KEYMAP>>((accumulator, binding) => {
-    (accumulator[binding.group] ??= []).push(binding);
-    return accumulator;
-  }, {});
+  const groups = DEFAULT_KEYMAP.reduce<Record<string, typeof DEFAULT_KEYMAP>>(
+    (accumulator, binding) => {
+      (accumulator[binding.group] ??= []).push(binding);
+      return accumulator;
+    },
+    {},
+  );
 
   return (
     <Modal title="KEYBOARD SHORTCUTS" open={open} onClose={closeDialog}>
@@ -29,9 +32,7 @@ export function ShortcutOverlay() {
                   <dt className="shortcuts__keys">{formatBinding(binding)}</dt>
                   <dd className="shortcuts__action">
                     {binding.label}
-                    {binding.mode ? (
-                      <span className="shortcuts__mode">{binding.mode}</span>
-                    ) : null}
+                    {binding.mode ? <span className="shortcuts__mode">{binding.mode}</span> : null}
                   </dd>
                 </div>
               ))}

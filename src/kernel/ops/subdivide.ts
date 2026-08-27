@@ -155,10 +155,7 @@ function subdividePass(mesh: BMesh, faces: readonly Face[], smooth: number): Fac
           vert.edges.map((edge) => mul(add(edge.v0.co, edge.v1.co), 0.5)),
         );
         const limit = mul(
-          add(
-            add(faceAverage, mul(edgeAverage, 2)),
-            mul(vert.co, valence - 3),
-          ),
+          add(add(faceAverage, mul(edgeAverage, 2)), mul(vert.co, valence - 3)),
           1 / valence,
         );
         relaxed.set(vert.id, lerp(vert.co, limit, smooth));

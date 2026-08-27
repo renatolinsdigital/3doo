@@ -32,7 +32,10 @@ export interface ExportOptions {
   preset: AxisPreset;
 }
 
-export const AXIS_PRESETS: Record<Exclude<AxisPreset, 'custom'>, Pick<ExportOptions, 'upAxis' | 'unit' | 'scale'>> = {
+export const AXIS_PRESETS: Record<
+  Exclude<AxisPreset, 'custom'>,
+  Pick<ExportOptions, 'upAxis' | 'unit' | 'scale'>
+> = {
   unity: { upAxis: 'y', unit: 'meters', scale: 1 },
   unreal: { upAxis: 'z', unit: 'centimeters', scale: 1 },
   blender: { upAxis: 'z', unit: 'meters', scale: 1 },

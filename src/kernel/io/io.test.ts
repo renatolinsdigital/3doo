@@ -35,7 +35,11 @@ describe('OBJ export', () => {
   it('uses 1-based indices', () => {
     const { obj } = exportOBJ([cubeExport()]);
     const faceLine = obj.split('\n').find((line) => line.startsWith('f '));
-    const indices = faceLine?.slice(2).split(' ').map((token) => Number(token.split('/')[0])) ?? [];
+    const indices =
+      faceLine
+        ?.slice(2)
+        .split(' ')
+        .map((token) => Number(token.split('/')[0])) ?? [];
 
     expect(indices).toHaveLength(4);
     expect(Math.min(...indices)).toBeGreaterThanOrEqual(1);
@@ -84,9 +88,13 @@ describe('OBJ export', () => {
   });
 
   it('handles negative and slash-formatted face indices', () => {
-    const source = ['v 0 0 0', 'v 1 0 0', 'v 1 0 1', 'v 0 0 1', 'f -4/1/1 -3/2/2 -2/3/3 -1/4/4'].join(
-      '\n',
-    );
+    const source = [
+      'v 0 0 0',
+      'v 1 0 0',
+      'v 1 0 1',
+      'v 0 0 1',
+      'f -4/1/1 -3/2/2 -2/3/3 -1/4/4',
+    ].join('\n');
 
     const [imported] = importOBJ(source);
 
@@ -387,9 +395,9 @@ describe('operator registry', () => {
 
   it('reports unknown operators with the available list', () => {
     const mesh = createBox(2);
-    expect(() =>
-      execOperator({ mesh, selectMode: 'face', cursor: vec3() }, 'nope'),
-    ).toThrow(/Unknown operator "nope"/);
+    expect(() => execOperator({ mesh, selectMode: 'face', cursor: vec3() }, 'nope')).toThrow(
+      /Unknown operator "nope"/,
+    );
   });
 
   it('falls back to defaults for malformed params', () => {

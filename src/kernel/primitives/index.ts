@@ -299,7 +299,12 @@ export function createCapsule(radius = 0.5, height = 2, segments = 24, rings = 1
   for (let row = 0; row < grid.length - 1; row++) {
     for (let column = 0; column < columns; column++) {
       const next = (column + 1) % columns;
-      mesh.addFace([grid[row][column], grid[row][next], grid[row + 1][next], grid[row + 1][column]]);
+      mesh.addFace([
+        grid[row][column],
+        grid[row][next],
+        grid[row + 1][next],
+        grid[row + 1][column],
+      ]);
     }
   }
 
@@ -323,9 +328,7 @@ export function createUVSphere(radius = 0.5, segments = 24, rings = 12): BMesh {
     const ring: Vert[] = [];
     for (let column = 0; column < columns; column++) {
       const theta = (column / columns) * Math.PI * 2;
-      ring.push(
-        mesh.addVert(vec3(Math.cos(theta) * ringRadius, y, Math.sin(theta) * ringRadius)),
-      );
+      ring.push(mesh.addVert(vec3(Math.cos(theta) * ringRadius, y, Math.sin(theta) * ringRadius)));
     }
     grid.push(ring);
   }
@@ -339,7 +342,12 @@ export function createUVSphere(radius = 0.5, segments = 24, rings = 12): BMesh {
   for (let row = 0; row < grid.length - 1; row++) {
     for (let column = 0; column < columns; column++) {
       const next = (column + 1) % columns;
-      mesh.addFace([grid[row][column], grid[row][next], grid[row + 1][next], grid[row + 1][column]]);
+      mesh.addFace([
+        grid[row][column],
+        grid[row][next],
+        grid[row + 1][next],
+        grid[row + 1][column],
+      ]);
     }
   }
 
@@ -365,10 +373,26 @@ export function createIcoSphere(radius = 0.5, subdivisions = 2): BMesh {
   ];
 
   let triangles: [number, number, number][] = [
-    [0, 11, 5], [0, 5, 1], [0, 1, 7], [0, 7, 10], [0, 10, 11],
-    [1, 5, 9], [5, 11, 4], [11, 10, 2], [10, 7, 6], [7, 1, 8],
-    [3, 9, 4], [3, 4, 2], [3, 2, 6], [3, 6, 8], [3, 8, 9],
-    [4, 9, 5], [2, 4, 11], [6, 2, 10], [8, 6, 7], [9, 8, 1],
+    [0, 11, 5],
+    [0, 5, 1],
+    [0, 1, 7],
+    [0, 7, 10],
+    [0, 10, 11],
+    [1, 5, 9],
+    [5, 11, 4],
+    [11, 10, 2],
+    [10, 7, 6],
+    [7, 1, 8],
+    [3, 9, 4],
+    [3, 4, 2],
+    [3, 2, 6],
+    [3, 6, 8],
+    [3, 8, 9],
+    [4, 9, 5],
+    [2, 4, 11],
+    [6, 2, 10],
+    [8, 6, 7],
+    [9, 8, 1],
   ];
 
   const points = [...basePoints];
@@ -425,7 +449,9 @@ export function createTorus(radius = 0.5, tubeRadius = 0.2, segments = 24, rings
       const v = (j / minor) * Math.PI * 2;
       const distance = radius + tubeRadius * Math.cos(v);
       ring.push(
-        mesh.addVert(vec3(Math.cos(u) * distance, tubeRadius * Math.sin(v), Math.sin(u) * distance)),
+        mesh.addVert(
+          vec3(Math.cos(u) * distance, tubeRadius * Math.sin(v), Math.sin(u) * distance),
+        ),
       );
     }
     grid.push(ring);

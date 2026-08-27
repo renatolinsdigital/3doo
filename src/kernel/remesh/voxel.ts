@@ -1,5 +1,7 @@
 import { type Vec3, vec3 } from '../math';
 
+import type { FeatureIndex } from './features';
+
 import {
   type SurfaceIndex,
   type SurfaceTriangle,
@@ -19,6 +21,14 @@ const PADDING = 3;
 
 /** Half-width of the exact band, in voxels. */
 const BAND = 2;
+
+/**
+ * How near the surface a grid point has to be to count as lying on it.
+ *
+ * Nine orders of magnitude below a voxel: far above the 1e-16 of noise that a
+ * point on the surface actually measures, and far below anything a model means.
+ */
+const ON_SURFACE_FRACTION = 1e-9;
 
 export interface VoxelGrid {
   /** Signed distance at every grid corner; negative inside. */
@@ -79,6 +89,7 @@ export function buildVoxelField(
   const field = new Float32Array(nx * ny * nz);
   const known = new Uint8Array(nx * ny * nz);
   const band = BAND * voxelSize;
+  const onSurface = voxelSize * ON_SURFACE_FRACTION;
   const index = (i: number, j: number, k: number) => (i * ny + j) * nz + k;
 
   for (const triangle of triangles) {
@@ -116,8 +127,20 @@ export function buildVoxelField(
           if (known[cell] && distance >= Math.abs(field[cell])) continue;
 
           const normal = blendNormal(triangle, hit.u, hit.v, hit.w);
-          const outward = dx * normal.x + dy * normal.y + dz * normal.z >= 0;
-          field[cell] = outward ? distance : -distance;
+          // A grid point sitting *on* the surface has no direction to read a
+          // side off: the vector to its own closest point is rounding error, so
+          // the dot product below is a coin toss. It is not a rare case either
+          // — the grid is laid from the model's own bounding box, so an
+          // axis-aligned face on the minimum side lands exactly on a grid
+          // plane, and a plain box puts several hundred points there. Signed at
+          // random, that plane comes out of the contour shredded into rosettes
+          // of pentagons while the other three sides stay clean.
+          //
+          // The surface belongs to the solid, so anything on it is inside, and
+          // strictly so: negative zero fails `< 0` and would put the coin back
+          // in the air.
+          const inward = distance <= onSurface || dx * normal.x + dy * normal.y + dz * normal.z < 0;
+          field[cell] = inward ? -Math.max(distance, onSurface) : distance;
           known[cell] = 1;
         }
       }
@@ -378,25 +401,58 @@ export function surfaceNets(grid: VoxelGrid, options: SurfaceNetOptions): Surfac
 }
 
 export interface RelaxOptions {
-  /** Taubin passes; each is one shrinking and one unshrinking step. */
+  /** Relaxation passes over the new surface. */
   smoothing: number;
   /** How far a vertex is pulled back onto the original surface, 0 to 1. */
   projection: number;
+  /** Creases to hold the new surface to, or null to let it round them off. */
+  features: FeatureIndex | null;
+  /** How near a crease a vertex has to land before it is pulled onto it. */
+  featureRadius: number;
+  /**
+   * The same for a corner, and wider.
+   *
+   * A crease is a line the contour crosses head-on, so the vertex it puts there
+   * is about half a voxel off it. A corner is a single point, and the nearest
+   * vertex the grid has to offer can be most of a cell diagonal away — held to
+   * the crease radius, every corner of a cube goes unclaimed.
+   */
+  cornerRadius: number;
 }
 
-const TAUBIN_LAMBDA = 0.5;
-const TAUBIN_MU = -0.53;
+export interface RelaxReport {
+  /** Vertices pinned to a hard corner of the source. */
+  corners: number;
+  /** Vertices held on a crease line. */
+  creases: number;
+}
+
+/** How far a vertex travels towards where the forces below want it, per pass. */
+const RELAX_RATE = 0.6;
+
+/** Split of the move between evening out the staircase and setting the spacing. */
+const SMOOTH_WEIGHT = 0.5;
+const SPRING_WEIGHT = 0.5;
 
 /**
- * The retopology loop: relax the net, then pull it back onto the model.
+ * The retopology loop: relax the net, hold it to the model's creases, then pull
+ * it back onto the surface.
  *
- * Relaxing alone evens out the staircase the grid leaves behind but rounds off
- * everything else with it; re-projecting after each pass is what puts the
- * detail back, and is the difference between a voxel remesh and a blob.
+ * The relaxation is tangential — the component of the move along the surface
+ * normal is thrown away — which is what separates it from the Laplacian pass
+ * this used to run. A Laplacian evens out the staircase the grid leaves behind
+ * by shrinking the model into itself, and needs the re-projection to undo its
+ * own damage; sliding along the surface instead means the projection only has
+ * the grid's error left to correct, and the quads come out both rounder and in
+ * the right place.
  */
-export function relaxSurfaceNet(net: SurfaceNet, index: SurfaceIndex, options: RelaxOptions): void {
+export function relaxSurfaceNet(
+  net: SurfaceNet,
+  index: SurfaceIndex,
+  options: RelaxOptions,
+): RelaxReport {
   const count = net.positions.length;
-  if (count === 0) return;
+  if (count === 0) return { corners: 0, creases: 0 };
 
   const neighbours: number[][] = Array.from({ length: count }, () => []);
   for (const quad of net.quads) {
@@ -408,36 +464,166 @@ export function relaxSurfaceNet(net: SurfaceNet, index: SurfaceIndex, options: R
     }
   }
 
-  const step = (factor: number) => {
+  const features = options.features?.empty ? null : options.features;
+  const pinned: (Vec3 | null)[] = new Array(count).fill(null);
+  const onCrease = new Uint8Array(count);
+  let corners = 0;
+  let creases = 0;
+
+  if (features) {
+    // One vertex per corner, and the nearest one wins it: pinning every vertex
+    // that came within reach would fold the whole cell ring onto a point.
+    const claims = new Map<number, { vertex: number; distance: number }>();
+    for (let i = 0; i < count; i++) {
+      const hit = features.nearestCorner(net.positions[i], options.cornerRadius);
+      if (!hit) continue;
+      const held = claims.get(hit.index);
+      if (!held || hit.distance < held.distance) {
+        claims.set(hit.index, { vertex: i, distance: hit.distance });
+      }
+    }
+    for (const [cornerIndex, held] of claims) {
+      const corner = features.corners[cornerIndex];
+      pinned[held.vertex] = corner;
+      net.positions[held.vertex] = { ...corner };
+      corners++;
+    }
+
+    // And one vertex per point of a crease, on the same rule and for the same
+    // reason. Along an edge where both faces meet the grid squarely the contour
+    // has two or three cells to offer per step, and every one of them projects
+    // onto the very same point of the line — landing them on top of each other,
+    // which is a zero-length edge and a collapsed quad behind it. Nearest first,
+    // and the ones that lose stay where the contour put them.
+    const claimed = new PointClaims(options.featureRadius);
+    for (const held of claims.values()) claimed.take(net.positions[held.vertex]);
+
+    const candidates: { vertex: number; point: Vec3; distance: number }[] = [];
+    for (let i = 0; i < count; i++) {
+      if (pinned[i]) continue;
+      const hit = features.nearestOnSegment(net.positions[i], options.featureRadius);
+      if (hit) candidates.push({ vertex: i, point: hit.point, distance: hit.distance });
+    }
+    candidates.sort((one, other) => one.distance - other.distance);
+
+    for (const candidate of candidates) {
+      if (claimed.taken(candidate.point)) {
+        // Put it on the face beside the crease rather than leaving it hovering
+        // where the contour dropped it: it came within a crease radius of the
+        // edge, so it is the projection that has the furthest to drag it back,
+        // and a partial one leaves the silhouette lumpy along every edge.
+        const hit = index.closest(net.positions[candidate.vertex]);
+        if (hit) net.positions[candidate.vertex] = { ...hit.point };
+        continue;
+      }
+      claimed.take(candidate.point);
+      onCrease[candidate.vertex] = 1;
+      net.positions[candidate.vertex] = candidate.point;
+      creases++;
+    }
+  }
+
+  const normals: Vec3[] = new Array(count).fill(vec3(0, 1, 0));
+  const refreshNormal = (i: number): void => {
+    const hit = index.closest(net.positions[i]);
+    if (hit) normals[i] = hit.normal;
+  };
+  for (let i = 0; i < count; i++) refreshNormal(i);
+
+  // The length an edge is aiming for at average density; the springs below are
+  // stated relative to it, so the mesh keeps the scale it was contoured at.
+  let restLength = 0;
+  let restCount = 0;
+  for (let i = 0; i < count; i++) {
+    for (const other of neighbours[i]) {
+      if (other <= i) continue;
+      restLength += distanceBetween(net.positions[i], net.positions[other]);
+      restCount++;
+    }
+  }
+  restLength = restCount > 0 ? restLength / restCount : 0;
+
+  const step = (): void => {
     const moved: Vec3[] = new Array(count);
+
     for (let i = 0; i < count; i++) {
       const ring = neighbours[i];
       const position = net.positions[i];
-      if (ring.length === 0) {
+      if (pinned[i] || ring.length === 0) {
         moved[i] = position;
         continue;
       }
-      let x = 0;
-      let y = 0;
-      let z = 0;
+
+      // Two forces, both tangential. The centroid evens out the staircase the
+      // grid leaves behind; the springs pull every edge towards one length, so
+      // a row that the contour left stretched over a slope gets its spacing
+      // back rather than only being straightened.
+      let centroidX = 0;
+      let centroidY = 0;
+      let centroidZ = 0;
+      let springX = 0;
+      let springY = 0;
+      let springZ = 0;
+
       for (const other of ring) {
-        x += net.positions[other].x;
-        y += net.positions[other].y;
-        z += net.positions[other].z;
+        const neighbour = net.positions[other];
+        centroidX += neighbour.x;
+        centroidY += neighbour.y;
+        centroidZ += neighbour.z;
+
+        const edgeX = position.x - neighbour.x;
+        const edgeY = position.y - neighbour.y;
+        const edgeZ = position.z - neighbour.z;
+        const length = Math.sqrt(edgeX * edgeX + edgeY * edgeY + edgeZ * edgeZ);
+        if (length < 1e-12) continue;
+
+        const push = (restLength - length) / length;
+        springX += edgeX * push;
+        springY += edgeY * push;
+        springZ += edgeZ * push;
       }
-      const inv = 1 / ring.length;
+
+      const inverse = 1 / ring.length;
+      const deltaX =
+        (centroidX * inverse - position.x) * SMOOTH_WEIGHT + springX * inverse * SPRING_WEIGHT;
+      const deltaY =
+        (centroidY * inverse - position.y) * SMOOTH_WEIGHT + springY * inverse * SPRING_WEIGHT;
+      const deltaZ =
+        (centroidZ * inverse - position.z) * SMOOTH_WEIGHT + springZ * inverse * SPRING_WEIGHT;
+
+      const normal = normals[i];
+      const off = deltaX * normal.x + deltaY * normal.y + deltaZ * normal.z;
+
       moved[i] = vec3(
-        position.x + (x * inv - position.x) * factor,
-        position.y + (y * inv - position.y) * factor,
-        position.z + (z * inv - position.z) * factor,
+        position.x + (deltaX - normal.x * off) * RELAX_RATE,
+        position.y + (deltaY - normal.y * off) * RELAX_RATE,
+        position.z + (deltaZ - normal.z * off) * RELAX_RATE,
       );
     }
+
     net.positions = moved;
   };
 
-  const project = (strength: number) => {
-    if (strength <= 0) return;
+  /** Puts every vertex back where it is allowed to be after a relaxation pass. */
+  const settle = (strength: number): void => {
     for (let i = 0; i < count; i++) {
+      const pin = pinned[i];
+      if (pin) {
+        net.positions[i] = { ...pin };
+        continue;
+      }
+
+      if (onCrease[i] && features) {
+        // Re-found rather than remembered, so a vertex that slid past the end
+        // of one segment carries on along the next one of the same crease.
+        const hit = features.nearestOnSegment(net.positions[i], options.featureRadius * 2);
+        if (hit) {
+          net.positions[i] = hit.point;
+          continue;
+        }
+      }
+
+      if (strength <= 0) continue;
       const hit = index.closest(net.positions[i]);
       if (!hit) continue;
       const position = net.positions[i];
@@ -446,17 +632,70 @@ export function relaxSurfaceNet(net: SurfaceNet, index: SurfaceIndex, options: R
         position.y + (hit.point.y - position.y) * strength,
         position.z + (hit.point.z - position.z) * strength,
       );
+      normals[i] = hit.normal;
     }
   };
 
   const passes = Math.max(0, Math.round(options.smoothing));
   for (let pass = 0; pass < passes; pass++) {
-    step(TAUBIN_LAMBDA);
-    step(TAUBIN_MU);
-    project(options.projection);
+    step();
+    settle(options.projection);
   }
 
   // Projection on its own is still worth a pass: it is what snaps the raw
   // staircase back onto a flat wall the grid cut diagonally.
-  if (passes === 0) project(options.projection);
+  if (passes === 0) settle(options.projection);
+
+  return { corners, creases };
+}
+
+/**
+ * Points already spoken for, and whether another lands too near one.
+ *
+ * Hashed into cells the width of the exclusion radius, so a candidate is only
+ * measured against the twenty-seven cells around it rather than against every
+ * point taken so far.
+ */
+class PointClaims {
+  private readonly cells = new Map<string, Vec3[]>();
+  private readonly radius: number;
+
+  constructor(radius: number) {
+    this.radius = Math.max(radius, 1e-9);
+  }
+
+  taken(point: Vec3): boolean {
+    const limit = this.radius * this.radius;
+    const ix = Math.floor(point.x / this.radius);
+    const iy = Math.floor(point.y / this.radius);
+    const iz = Math.floor(point.z / this.radius);
+
+    for (let x = ix - 1; x <= ix + 1; x++) {
+      for (let y = iy - 1; y <= iy + 1; y++) {
+        for (let z = iz - 1; z <= iz + 1; z++) {
+          for (const other of this.cells.get(`${x},${y},${z}`) ?? []) {
+            const dx = other.x - point.x;
+            const dy = other.y - point.y;
+            const dz = other.z - point.z;
+            if (dx * dx + dy * dy + dz * dz < limit) return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  take(point: Vec3): void {
+    const key = `${Math.floor(point.x / this.radius)},${Math.floor(point.y / this.radius)},${Math.floor(point.z / this.radius)}`;
+    const bucket = this.cells.get(key);
+    if (bucket) bucket.push(point);
+    else this.cells.set(key, [point]);
+  }
+}
+
+function distanceBetween(a: Vec3, b: Vec3): number {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  const dz = a.z - b.z;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }

@@ -3,7 +3,6 @@ import { useEffect } from 'react';
 import { DocsModule } from '../modules/docs/DocsModule';
 import { HomeModule } from '../modules/home/HomeModule';
 import { ModelingModule } from '../modules/modeling/ModelingModule';
-import { RemeshModule } from '../modules/remesh/RemeshModule';
 
 import { moduleForPath } from './modules';
 import { usePathname } from './router';
@@ -24,7 +23,6 @@ export function App() {
   }, [active]);
 
   if (active.id === 'modeling') return <ModelingModule />;
-  if (active.id === 'remesh') return <RemeshModule />;
   if (active.id === 'docs') return <DocsModule />;
   return <HomeModule />;
 }

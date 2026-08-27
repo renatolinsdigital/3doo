@@ -306,9 +306,7 @@ describe('subdivide', () => {
     // Catmull-Clark leaves face points on the face centres, so the bounding box
     // still touches 1. What must shrink is the corners it rounds off.
     const furthest = Math.max(
-      ...[...cube.verts.values()].map((vert) =>
-        Math.hypot(vert.co.x, vert.co.y, vert.co.z),
-      ),
+      ...[...cube.verts.values()].map((vert) => Math.hypot(vert.co.x, vert.co.y, vert.co.z)),
     );
     expect(furthest).toBeLessThan(cornerDistance);
     expect(cube.validate()).toEqual([]);
@@ -974,8 +972,16 @@ describe('selection walks', () => {
     // leave things. A selected neighbour on one edge of the clicked face used
     // to rename its loop, and once a second edge had one the click stopped
     // selecting anything new at all.
-    const below = faceLoopAtClick(grid, faceAtCenter(grid, vec3(-2.5, 0, -3.5)), vec3(-2.9, 0, -3.5));
-    const beside = faceLoopAtClick(grid, faceAtCenter(grid, vec3(-3.5, 0, -2.5)), vec3(-3.5, 0, -2.9));
+    const below = faceLoopAtClick(
+      grid,
+      faceAtCenter(grid, vec3(-2.5, 0, -3.5)),
+      vec3(-2.9, 0, -3.5),
+    );
+    const beside = faceLoopAtClick(
+      grid,
+      faceAtCenter(grid, vec3(-3.5, 0, -2.5)),
+      vec3(-3.5, 0, -2.9),
+    );
     for (const face of [...below, ...beside]) face.selected = true;
 
     const loop = faceLoopAtClick(grid, clicked, vec3(-2.9, 0, -2.5));

@@ -155,7 +155,11 @@ export function parseProject(text: string): ProjectDocument {
   }
 
   for (const object of candidate.objects) {
-    if (!object.mesh || !Array.isArray(object.mesh.positions) || !Array.isArray(object.mesh.faces)) {
+    if (
+      !object.mesh ||
+      !Array.isArray(object.mesh.positions) ||
+      !Array.isArray(object.mesh.faces)
+    ) {
       throw new Error(`Object "${object.name ?? 'unnamed'}" has no usable mesh data`);
     }
   }

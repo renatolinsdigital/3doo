@@ -137,13 +137,11 @@ describe('importing a preferences file', () => {
 
   it('round-trips what the export button writes', async () => {
     const store = await freshStore();
-    store
-      .getState()
-      .setPreferences({
-        selectionLineWidth: 5,
-        selectionLineColor: '#f2a03d',
-        viewportBackground: '#0b0b0b',
-      });
+    store.getState().setPreferences({
+      selectionLineWidth: 5,
+      selectionLineColor: '#f2a03d',
+      viewportBackground: '#0b0b0b',
+    });
     const exported = JSON.stringify(store.getState().currentPreferences());
 
     store.getState().resetPreferences();

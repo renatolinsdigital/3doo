@@ -56,13 +56,7 @@ export function bevelEdges(
     for (const face of mesh.edgeFaces(edge)) affectedFaces.set(face.id, face);
   }
 
-  const splitVerts = collectTerminationSplits(
-    mesh,
-    affectedFaces,
-    beveledIds,
-    width,
-    newVerts,
-  );
+  const splitVerts = collectTerminationSplits(mesh, affectedFaces, beveledIds, width, newVerts);
   const cornerPoint = computeCornerPoints(
     mesh,
     affectedFaces,
@@ -141,7 +135,11 @@ function collectTerminationSplits(
 
       if (nextBeveled) {
         const direction = normalize(sub(loop.prev.vert.co, loop.vert.co));
-        request(loop.prev.edge, loop.vert, travelAlong(direction, loopInwardDirection(loop), width));
+        request(
+          loop.prev.edge,
+          loop.vert,
+          travelAlong(direction, loopInwardDirection(loop), width),
+        );
       } else {
         const direction = normalize(sub(loop.next.vert.co, loop.vert.co));
         request(
@@ -285,10 +283,7 @@ interface StripPlan {
   smooth: boolean;
 }
 
-function planStrip(
-  edge: Edge,
-  cornerPoint: ReadonlyMap<string, Vert>,
-): StripPlan | null {
+function planStrip(edge: Edge, cornerPoint: ReadonlyMap<string, Vert>): StripPlan | null {
   const [near, far] = edge.loops;
   if (!near || !far) return null;
 

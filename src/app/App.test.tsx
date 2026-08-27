@@ -197,9 +197,7 @@ describe('App shell', () => {
 
     // Query the rendered stack entry, not the <option> of the same name.
     expect(within(modifiers).queryByText(/Stack is empty/i)).not.toBeInTheDocument();
-    expect(
-      within(modifiers).getByRole('button', { name: 'Remove MIRROR' }),
-    ).toBeInTheDocument();
+    expect(within(modifiers).getByRole('button', { name: 'Remove MIRROR' })).toBeInTheDocument();
     // Role query, not getByLabelText: the label also holds the checked glyph.
     expect(within(modifiers).getByRole('checkbox', { name: 'AXIS X' })).toBeChecked();
     expect(within(modifiers).getByText(/Reflects the mesh across a plane/i)).toBeInTheDocument();
@@ -402,9 +400,7 @@ describe('App shell', () => {
     render(<App />);
     await userEvent.click(screen.getByRole('button', { name: 'PREFS' }));
     const dialog = screen.getByRole('dialog', { name: 'PREFERENCES' });
-    await userEvent.click(
-      within(dialog).getByRole('checkbox', { name: 'SHOW HINT TOOLTIPS' }),
-    );
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'SHOW HINT TOOLTIPS' }));
     await userEvent.keyboard('{Escape}');
     expect(useEditorStore.getState().tooltipsEnabled).toBe(false);
 

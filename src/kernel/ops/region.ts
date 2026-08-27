@@ -145,5 +145,7 @@ export function averageNormal(faces: readonly Face[]): Vec3 {
   let sum = vec3();
   for (const face of faces) sum = add(sum, face.normal);
   const normalized = normalize(sum);
-  return normalized.x === 0 && normalized.y === 0 && normalized.z === 0 ? vec3(0, 1, 0) : normalized;
+  return normalized.x === 0 && normalized.y === 0 && normalized.z === 0
+    ? vec3(0, 1, 0)
+    : normalized;
 }

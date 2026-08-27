@@ -144,9 +144,7 @@ export function OperationsPanel() {
               ? 'Chamfer the selected edges (Ctrl+B)'
               : 'Bevelling chamfers edges — select some first (Ctrl+B)'
           }
-          onClick={() =>
-            exec('bevel', { width: bevelWidth, segments: bevelSegments }, 'Bevel')
-          }
+          onClick={() => exec('bevel', { width: bevelWidth, segments: bevelSegments }, 'Bevel')}
         />
       </FieldRow>
 

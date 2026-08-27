@@ -3,11 +3,13 @@ import { BMesh, cloneMesh } from '../mesh';
 import type { Face, Vert } from '../mesh/types';
 import { mergeByDistance, weldVerts } from '../ops/merge';
 import { subdivideFaces } from '../ops/subdivide';
+import { remeshMesh } from '../remesh';
 
 import type {
   ArrayModifier,
   MirrorModifier,
   Modifier,
+  RemeshModifier,
   SolidifyModifier,
   SubdivideModifier,
   WeldModifier,
@@ -61,6 +63,8 @@ export function applyModifier(
       return applyWeld(mesh, modifier);
     case 'subdivide':
       return applySubdivide(mesh, modifier);
+    case 'remesh':
+      return applyRemesh(mesh, modifier);
   }
 }
 
@@ -74,8 +78,7 @@ function applyMirror(mesh: BMesh, modifier: MirrorModifier, context: ModifierCon
   const threshold = Math.max(0, modifier.mergeThreshold);
   // The plane passes through the object's own origin unless the modifier is set
   // to follow the 3D cursor, which arrives already converted to local space.
-  const plane: Vec3 =
-    modifier.origin === 'cursor' && context.cursor ? context.cursor : vec3();
+  const plane: Vec3 = modifier.origin === 'cursor' && context.cursor ? context.cursor : vec3();
 
   for (const axis of axes) {
     const at = plane[axis];
@@ -336,3 +339,21 @@ function applySubdivide(mesh: BMesh, modifier: SubdivideModifier): BMesh {
   return mesh;
 }
 
+/**
+ * Rebuilds the topology, or leaves the mesh exactly as it was.
+ *
+ * The remesher refuses some inputs outright — a mesh with no faces, a reduce
+ * target that collapses everything — and the rest of the stack has no way to
+ * answer a thrown error. This runs while the viewport is drawing, so a throw
+ * here is a blank screen rather than a message; a settings combination that
+ * cannot be built is one the modifier simply does not apply, and the mesh comes
+ * through untouched for the user to see and adjust.
+ */
+function applyRemesh(mesh: BMesh, modifier: RemeshModifier): BMesh {
+  if (mesh.faces.size === 0) return mesh;
+  try {
+    return remeshMesh(mesh, modifier).mesh;
+  } catch {
+    return mesh;
+  }
+}

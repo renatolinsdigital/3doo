@@ -282,58 +282,31 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Merges vertices closer together than a threshold, across the whole evaluated result.',
           ],
           ['Subdivision', 'Catmull-Clark smoothing at a display level you choose.'],
+          [
+            'Remesh',
+            'Rebuilds the topology outright, by one of three methods. VOXEL samples the shape into a signed distance grid and contours an even quad shell back out of it. BLOCKS reads that same grid straight off the lattice with every face axis-aligned — a voxel study of the shape rather than a surface to carry on working. REDUCE rebuilds nothing: it collapses the edges that cost the least to lose, leaving every other vertex exactly where it was, and it is the only one that keeps material slots.',
+          ],
         ],
       },
       {
         kind: 'note',
         text: 'Reorder the stack to change the outcome — mirroring after an array is not the same shape as arraying after a mirror. APPLY bakes a modifier into the real mesh when you are ready to commit to it.',
       },
-    ],
-  },
-  {
-    id: 'remesh',
-    title: 'REMESH',
-    blurb: 'Rebuilding a mesh topology automatically',
-    blocks: [
       {
         kind: 'prose',
-        text: 'The REMESH module is the same scene and the same viewport as MODELING, with a different set of panels over it. It answers one question: the shape is right, but the topology is not — a boolean left a mess of slivers, an import arrived as one dense triangle soup, or a sculpt needs an even quad cage to work on.',
+        text: 'REMESH answers one question: the shape is right but the topology is not — a boolean left a mess of slivers, an import arrived as one dense triangle soup, or a sculpt needs an even cage to work on. Because it throws away the geometry it was handed, it belongs at the end of a stack rather than the middle. Density is the control to reach for first: TARGET FACES names the count you want and solves the voxel size out of it, or turn it off and set VOXEL SIZE — or KEEP, the fraction of triangles REDUCE holds on to — by hand.',
       },
       {
-        kind: 'table',
-        head: ['METHOD', 'WHAT IT DOES'],
-        rows: [
-          [
-            'Voxel',
-            'Samples the model into a signed distance grid and contours it back out as an even, watertight quad shell. Topology, seams and anything finer than one voxel are replaced. This is the auto-retopology pass.',
-          ],
-          [
-            'Blocks',
-            'The same grid, read straight off the lattice with every face axis-aligned — a voxel study of the shape rather than a surface to carry on working.',
-          ],
-          [
-            'Reduce',
-            'Quadric error decimation: collapses the edges that cost the least to lose and leaves everything else exactly where it is. The only method that keeps material slots, and the only one that never closes an open mesh.',
-          ],
-        ],
-      },
-      {
-        kind: 'steps',
-        items: [
-          'Select an object, then pick a preset in PRESETS or set the method yourself in TOPOLOGY.',
-          'DENSITY decides how much comes out. TARGET FACE COUNT names the figure you want and solves the voxel size back out of it; turn it off to set the voxel size (or the fraction to keep) by hand.',
-          'REFINE tunes the voxel result: SMOOTHING evens out the staircase the grid leaves behind, and PROJECTION pulls each relaxed vertex back onto the original surface, which is what puts the detail back.',
-          'Press REMESH. The object shows the result straight away, but nothing is committed — look at it, change a setting, RUN AGAIN as often as you like.',
-          'APPLY keeps it as one undo step. REVERT puts the original mesh back and forgets it.',
-        ],
+        kind: 'prose',
+        text: 'SHARP EDGE is what makes the voxel method usable on a hard surface. A grid has no way to hold an edge that does not run along it, so a cube comes back with every edge chamfered unless it is told otherwise. Set an angle and the edges of the original that turn by more than it are read off as creases: the corners where they meet are pinned, and a vertex may slide along a crease but never off it. Turn it down to zero for organic work, where holding a crease a sculpt is about to move is worse than rounding it off.',
       },
       {
         kind: 'note',
-        text: 'An uncommitted result is reverted automatically if you select another object, enter edit mode or leave the module, so a preview can never be mistaken for the mesh you kept. RESULT reports before and after counts, the quad share and the grid the solve ran at.',
+        text: 'The voxel methods always produce a closed solid — an open surface is closed over, and holes finer than the grid disappear. REDUCE is the one that leaves an open mesh open. Apply the object transform first if the object is scaled, so the voxel size means what it says.',
       },
       {
         kind: 'note',
-        text: 'A voxel remesh always produces a closed solid — an open surface is closed over, and holes narrower than a voxel disappear. Use REDUCE when the mesh has to stay open, and apply the object transform first if it is scaled, so the voxel size means what it says.',
+        text: 'REMESH is far and away the dearest thing the stack can run, so its result is held and only rebuilt when the mesh or the settings actually change — selecting, orbiting and switching modes cost nothing. Reach for a coarse density while you are still deciding.',
       },
     ],
   },

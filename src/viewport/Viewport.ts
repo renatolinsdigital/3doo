@@ -669,7 +669,7 @@ export class Viewport {
         this.scene.add(view.group);
       }
 
-      const display = evaluatedMesh(object, state.cursor);
+      const display = evaluatedMesh(object, state.cursor, state.meshVersion);
       view.update(object, display, {
         mode: state.mode,
         selectMode: state.selectMode,
@@ -1752,7 +1752,7 @@ export class Viewport {
       const view = this.views.get(object.id);
       if (!view) continue;
 
-      const mesh = evaluatedMesh(object, state.cursor);
+      const mesh = evaluatedMesh(object, state.cursor, state.meshVersion);
       const matrix = view.group.matrix;
       const toWorld = (point: Vec3): Vec3 => {
         const world = new THREE.Vector3(point.x, point.y, point.z).applyMatrix4(matrix);

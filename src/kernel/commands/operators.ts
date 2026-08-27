@@ -272,7 +272,12 @@ export const OPERATORS: Record<string, OperatorHandler> = {
   },
 
   dissolve: ({ mesh }, params) => {
-    const mode = readString(params, 'mode', ['verts', 'edges', 'faces', 'limited'] as const, 'edges');
+    const mode = readString(
+      params,
+      'mode',
+      ['verts', 'edges', 'faces', 'limited'] as const,
+      'edges',
+    );
     const { verts, edges, faces } = selection(mesh);
 
     // Dissolving faces merges adjacent ones into a single n-gon, so one face on
@@ -362,7 +367,10 @@ export const OPERATORS: Record<string, OperatorHandler> = {
 
   bridge: ({ mesh }) => {
     const created = bridgeEdgeLoops(mesh, mesh.selectedEdges());
-    return { status: created.length > 0 ? `Bridged into ${created.length} quads` : 'Select two equal loops' };
+    return {
+      status:
+        created.length > 0 ? `Bridged into ${created.length} quads` : 'Select two equal loops',
+    };
   },
 
   recalculateNormals: ({ mesh }, params) => {

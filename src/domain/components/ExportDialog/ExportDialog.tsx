@@ -96,12 +96,7 @@ export function ExportDialog() {
       ) : null}
 
       <FieldRow legend="GEOMETRY" columns={1}>
-        <Toggle
-          label="APPLY MODIFIERS"
-          checked
-          disabled
-          onChange={() => {}}
-        />
+        <Toggle label="APPLY MODIFIERS" checked disabled onChange={() => {}} />
         <Toggle
           label="APPLY TRANSFORMS"
           checked={options.applyTransform}

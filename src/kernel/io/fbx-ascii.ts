@@ -57,11 +57,7 @@ function arrayNode(depth: number, name: string, values: readonly (number | strin
     rows.push(values.slice(i, i + perRow).join(','));
   }
 
-  return [
-    `${pad}${name}: *${values.length} {`,
-    `${pad}\ta: ${rows.join(`\n${pad}\t`)}`,
-    `${pad}}`,
-  ];
+  return [`${pad}${name}: *${values.length} {`, `${pad}\ta: ${rows.join(`\n${pad}\t`)}`, `${pad}}`];
 }
 
 interface GeometryData {

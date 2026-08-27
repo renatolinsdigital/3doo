@@ -2,6 +2,7 @@ import { centroid } from '../math';
 import { BMesh, cloneMesh } from '../mesh';
 import { triangulateFaces, trisToQuads } from '../ops/subdivide';
 
+import { type FeatureSegment, type FeatureSet, FeatureIndex, detectFeatures } from './features';
 import { type DecimateOptions, type DecimateResult, decimateMesh } from './simplify';
 import {
   type Bounds,
@@ -14,6 +15,7 @@ import {
   surfaceBounds,
 } from './surface';
 import {
+  type RelaxReport,
   type SurfaceNet,
   type VoxelGrid,
   buildVoxelField,
@@ -25,6 +27,8 @@ export {
   buildSurface,
   buildVoxelField,
   crossingArea,
+  detectFeatures,
+  FeatureIndex,
   decimateMesh,
   relaxSurfaceNet,
   surfaceArea,
@@ -36,6 +40,9 @@ export type {
   Bounds,
   DecimateOptions,
   DecimateResult,
+  FeatureSegment,
+  FeatureSet,
+  RelaxReport,
   SurfaceHit,
   SurfaceNet,
   SurfaceTriangle,
@@ -46,9 +53,9 @@ export type {
  * How the topology is rebuilt.
  *
  * `voxel` and `blocks` share one pipeline — sample the model into a signed
- * distance grid, then contour it — and differ only in whether the contour is
- * allowed to leave the middle of its cell. `decimate` never rebuilds anything:
- * it collapses the edges that cost the least to lose.
+ * distance grid, then contour it — and differ only in whether the contour may
+ * leave the middle of its cell. `decimate` never rebuilds anything: it
+ * collapses the edges that cost the least to lose.
  */
 export type RemeshMethod = 'voxel' | 'blocks' | 'decimate';
 
@@ -71,6 +78,11 @@ export interface RemeshSettings {
   smoothing: number;
   /** How far each relaxed vertex is pulled back onto the original surface, 0 to 1. */
   projection: number;
+  /**
+   * Dihedral angle, in degrees, above which an edge of the source is a crease
+   * the result has to keep. Zero lets the grid round every edge off.
+   */
+  sharpAngle: number;
   /** Fraction of the triangles the decimator keeps when it is not given a target. */
   ratio: number;
   /** Refuse to move the open border of a non-closed mesh. */
@@ -84,6 +96,27 @@ export const MAX_VOXEL_SIZE = 10;
 export const MIN_TARGET_FACES = 20;
 export const MAX_TARGET_FACES = 200_000;
 export const MAX_SMOOTHING = 20;
+export const MAX_SHARP_ANGLE = 180;
+
+/**
+ * How near a crease a new vertex has to land before it is pulled onto it, as a
+ * fraction of the voxel size.
+ *
+ * Three quarters of a voxel: the cells the crease passes through put their
+ * vertex within about half a voxel of it, and anything looser starts dragging
+ * the row of quads behind the crease onto it as well, which flattens the
+ * surface either side into a ridge.
+ */
+export const FEATURE_SNAP_RADIUS = 0.75;
+
+/**
+ * The same for a corner, in voxels.
+ *
+ * A corner is one point rather than a line, and the nearest vertex the contour
+ * has to offer it can be most of a cell diagonal away — half of a cube would go
+ * unpinned at the crease radius.
+ */
+export const CORNER_SNAP_RADIUS = 1.5;
 
 /**
  * Grid points the sampler may allocate.
@@ -100,79 +133,20 @@ export const DEFAULT_REMESH_SETTINGS: RemeshSettings = {
   targetFaces: 2000,
   smoothing: 2,
   projection: 0.6,
+  sharpAngle: 30,
   ratio: 0.5,
   preserveBoundary: true,
   topology: 'quads',
   smoothShading: false,
 };
 
-export interface RemeshPreset {
-  id: string;
-  label: string;
-  hint: string;
-  settings: Partial<RemeshSettings>;
-}
-
-export const REMESH_PRESETS: readonly RemeshPreset[] = [
-  {
-    id: 'gameAsset',
-    label: 'GAME ASSET',
-    hint: 'Quad shell at a low, even density — the topology a real-time asset wants',
-    settings: {
-      method: 'voxel',
-      adaptive: true,
-      targetFaces: 1500,
-      smoothing: 3,
-      projection: 0.7,
-      topology: 'quads',
-      smoothShading: true,
-    },
-  },
-  {
-    id: 'sculptBase',
-    label: 'SCULPT BASE',
-    hint: 'Dense, evenly spaced quads with no long triangles for a sculpt to catch on',
-    settings: {
-      method: 'voxel',
-      adaptive: true,
-      targetFaces: 12000,
-      smoothing: 2,
-      projection: 0.5,
-      topology: 'quads',
-      smoothShading: true,
-    },
-  },
-  {
-    id: 'keepDetail',
-    label: 'KEEP DETAIL',
-    hint: 'Collapses the flat areas and leaves the curvature alone, keeping material slots',
-    settings: {
-      method: 'decimate',
-      adaptive: false,
-      ratio: 0.35,
-      preserveBoundary: true,
-      topology: 'triangles',
-    },
-  },
-  {
-    id: 'blockOut',
-    label: 'BLOCK OUT',
-    hint: 'Straight off the grid, corners and all — a voxel study of the shape',
-    settings: {
-      method: 'blocks',
-      adaptive: false,
-      voxelSize: 0.2,
-      topology: 'quads',
-      smoothShading: false,
-    },
-  },
-];
-
 export interface RemeshResult {
   mesh: BMesh;
   /** The voxel size the grid actually ran at; coarser than asked means it was capped. */
   voxelSize: number;
   resolution: { x: number; y: number; z: number };
+  /** Creases and corners of the source the result was held to. */
+  sharp: RelaxReport;
   warnings: string[];
 }
 
@@ -189,6 +163,7 @@ export function normalizeRemeshSettings(settings: RemeshSettings): RemeshSetting
     targetFaces: Math.round(clamp(settings.targetFaces, MIN_TARGET_FACES, MAX_TARGET_FACES)),
     smoothing: Math.round(clamp(settings.smoothing, 0, MAX_SMOOTHING)),
     projection: clamp(settings.projection, 0, 1),
+    sharpAngle: clamp(settings.sharpAngle, 0, MAX_SHARP_ANGLE),
     ratio: clamp(settings.ratio, 0.01, 1),
   };
 }
@@ -265,11 +240,28 @@ export function remeshMesh(mesh: BMesh, raw: RemeshSettings): RemeshResult {
   }
 
   const index = new SurfaceIndex(triangles);
+  let kept: RelaxReport = { corners: 0, creases: 0 };
+
   if (settings.method === 'voxel') {
-    relaxSurfaceNet(net, index, {
+    // Blocks deliberately skips all of this: its whole look is the grid, and a
+    // crease it snapped to would be the one thing not on the lattice.
+    const detected = detectFeatures(mesh, settings.sharpAngle);
+    const features =
+      detected.segments.length > 0 ? new FeatureIndex(detected, grid.voxelSize) : null;
+
+    kept = relaxSurfaceNet(net, index, {
       smoothing: settings.smoothing,
       projection: settings.projection,
+      features,
+      featureRadius: grid.voxelSize * FEATURE_SNAP_RADIUS,
+      cornerRadius: grid.voxelSize * CORNER_SNAP_RADIUS,
     });
+
+    if (detected.corners.length > kept.corners) {
+      warnings.push(
+        `${detected.corners.length - kept.corners} of ${detected.corners.length} sharp corner(s) were finer than one voxel and rounded off — raise the density to hold them`,
+      );
+    }
   }
 
   const result = new BMesh();
@@ -296,6 +288,7 @@ export function remeshMesh(mesh: BMesh, raw: RemeshSettings): RemeshResult {
     mesh: result,
     voxelSize: grid.voxelSize,
     resolution: { x: grid.nx - 1, y: grid.ny - 1, z: grid.nz - 1 },
+    sharp: kept,
     warnings,
   };
 }
@@ -318,7 +311,13 @@ function decimate(mesh: BMesh, settings: RemeshSettings, warnings: string[]): Re
         ? `Nothing to collapse — this mesh is already down to ${mesh.faces.size.toLocaleString()} faces, below the target of ${settings.targetFaces.toLocaleString()}. Lower the target, or turn TARGET FACE COUNT off and keep a fraction instead.`
         : 'Nothing to collapse — a KEEP of 1 keeps every face. Lower it below 1 to reduce anything.',
     );
-    return { mesh: cloneMesh(mesh), voxelSize: 0, resolution: { x: 0, y: 0, z: 0 }, warnings };
+    return {
+      mesh: cloneMesh(mesh),
+      voxelSize: 0,
+      resolution: { x: 0, y: 0, z: 0 },
+      sharp: { corners: 0, creases: 0 },
+      warnings,
+    };
   }
 
   const { mesh: decimated, collapsed } = decimateMesh(mesh, {
@@ -339,6 +338,7 @@ function decimate(mesh: BMesh, settings: RemeshSettings, warnings: string[]): Re
     mesh: decimated,
     voxelSize: 0,
     resolution: { x: 0, y: 0, z: 0 },
+    sharp: { corners: 0, creases: 0 },
     warnings,
   };
 }

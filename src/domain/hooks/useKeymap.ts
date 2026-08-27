@@ -237,7 +237,8 @@ export function useKeymap(): void {
           state.setAxisView('y');
           break;
         case 'toggleWireframe': {
-          const next = SHADING_CYCLE[(SHADING_CYCLE.indexOf(state.shading) + 1) % SHADING_CYCLE.length];
+          const next =
+            SHADING_CYCLE[(SHADING_CYCLE.indexOf(state.shading) + 1) % SHADING_CYCLE.length];
           state.setShading(next);
           break;
         }

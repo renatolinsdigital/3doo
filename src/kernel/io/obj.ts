@@ -47,7 +47,9 @@ export function exportOBJ(
 
   for (const object of objects) {
     const mesh = prepareMesh(object, resolved);
-    const matrix = resolved.applyTransform ? composeMatrix(object.transform) : composeMatrix(createTransform());
+    const matrix = resolved.applyTransform
+      ? composeMatrix(object.transform)
+      : composeMatrix(createTransform());
     const normals = normalMatrix(resolved.applyTransform ? object.transform : createTransform());
 
     lines.push(`o ${object.name.replace(/\s+/g, '_')}`);

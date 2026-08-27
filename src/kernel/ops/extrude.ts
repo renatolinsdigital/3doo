@@ -46,9 +46,7 @@ export function extrudeFaces(
   }
 
   mesh.computeNormals();
-  const direction = options.direction
-    ? normalize(options.direction)
-    : averageNormal(faces);
+  const direction = options.direction ? normalize(options.direction) : averageNormal(faces);
 
   const result = detachRegion(mesh, faces, (vert) =>
     options.alongNormals ? mul(vert.normal, offset) : mul(direction, offset),

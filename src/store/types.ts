@@ -18,15 +18,7 @@ export type ShadingMode = 'solid' | 'wireframe' | 'solidWire' | 'xray' | 'matcap
 export type SelectShape = 'box' | 'circle' | 'lasso';
 
 export type ToolId =
-  | 'select'
-  | 'move'
-  | 'rotate'
-  | 'scale'
-  | 'extrude'
-  | 'inset'
-  | 'bevel'
-  | 'loopcut'
-  | 'merge';
+  'select' | 'move' | 'rotate' | 'scale' | 'extrude' | 'inset' | 'bevel' | 'loopcut' | 'merge';
 
 export type SnapMode = 'increment' | 'vertex' | 'edge' | 'face';
 

@@ -2,21 +2,15 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 
 import { type PreferencesSlice, createPreferencesSlice } from './slices/preferences';
-import { type RemeshSlice, createRemeshSlice } from './slices/remesh';
 import { type SceneSlice, createSceneSlice } from './slices/scene';
 import { type ToolSlice, createToolSlice } from './slices/tool';
 import { type UiSlice, createUiSlice } from './slices/ui';
 import { type ViewportSlice, createViewportSlice } from './slices/viewport';
 
-export type EditorStore = SceneSlice &
-  ToolSlice &
-  ViewportSlice &
-  UiSlice &
-  PreferencesSlice &
-  RemeshSlice;
+export type EditorStore = SceneSlice & ToolSlice & ViewportSlice & UiSlice & PreferencesSlice;
 
 /**
- * One store, six slices.
+ * One store, five slices.
  *
  * `subscribeWithSelector` is what lets the Three.js viewport — which is not a
  * React component — watch narrow pieces of state imperatively, and lets panels
@@ -30,7 +24,6 @@ export const useEditorStore = create<EditorStore>()(
     ...createViewportSlice(...args),
     ...createUiSlice(...args),
     ...createPreferencesSlice(...args),
-    ...createRemeshSlice(...args),
   })),
 );
 

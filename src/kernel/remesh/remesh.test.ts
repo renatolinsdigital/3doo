@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
 import { BMesh } from '../mesh';
-import { createBox, createGrid, createUVSphere } from '../primitives';
+import {
+  createBox,
+  createCylinder,
+  createGrid,
+  createIcoSphere,
+  createUVSphere,
+} from '../primitives';
 
 import {
   DEFAULT_REMESH_SETTINGS,
   type RemeshSettings,
+  detectFeatures,
   faceKinds,
   remeshMesh,
   voxelSizeForFaces,
@@ -13,8 +20,9 @@ import {
 import { decimateMesh } from './simplify';
 import { SurfaceIndex, buildSurface, surfaceArea, surfaceBounds } from './surface';
 
+/** Defaults with the method pinned: these blocks are about the voxel path. */
 function settings(patch: Partial<RemeshSettings> = {}): RemeshSettings {
-  return { ...DEFAULT_REMESH_SETTINGS, ...patch };
+  return { ...DEFAULT_REMESH_SETTINGS, method: 'voxel', ...patch };
 }
 
 /** Closed and manifold: every edge is shared by exactly two faces. */
@@ -24,8 +32,43 @@ function openEdges(mesh: BMesh): number {
   return open;
 }
 
+/** Edges with only one face: a hole in the surface, as opposed to a seam. */
+function borderEdges(mesh: BMesh): number {
+  let open = 0;
+  for (const edge of mesh.edges.values()) if (edge.loops.length === 1) open++;
+  return open;
+}
+
 function bounds(mesh: BMesh) {
   return surfaceBounds(buildSurface(mesh));
+}
+
+/** The eight corners of a box of side two, centred on the origin. */
+const CUBE_CORNERS = [-1, 1].flatMap((x) =>
+  [-1, 1].flatMap((y) => [-1, 1].map((z) => ({ x, y, z }))),
+);
+
+/** How many edges each vertex carries, tallied. */
+function valences(mesh: BMesh): Map<number, number> {
+  const tally = new Map<number, number>();
+  for (const vert of mesh.verts.values()) {
+    tally.set(vert.edges.length, (tally.get(vert.edges.length) ?? 0) + 1);
+  }
+  return tally;
+}
+
+/** The shortest edge of any face, against the voxel size it was built at. */
+function shortestEdge(mesh: BMesh): number {
+  let shortest = Infinity;
+  for (const face of mesh.faces.values()) {
+    const ring = mesh.facePoints(face);
+    for (let i = 0; i < ring.length; i++) {
+      const a = ring[i];
+      const b = ring[(i + 1) % ring.length];
+      shortest = Math.min(shortest, Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z));
+    }
+  }
+  return shortest;
 }
 
 describe('surface sampling', () => {
@@ -184,8 +227,176 @@ describe('voxel remesh', () => {
     expect(slots).toContain(1);
   });
 
+  it('lays a plain grid on every face of a cube, the ones flat on the lattice included', () => {
+    // The grid is laid out from the model's own bounding box, so the three
+    // faces on the minimum side land *exactly* on grid planes. Every grid point
+    // there measures a distance of about 1e-16 to the surface, and the vector
+    // it would read a side off is pure rounding error — so those planes used to
+    // come back signed at random, and the contour shredded them into rosettes
+    // of pentagons while the other three sides stayed clean. On a cube every
+    // interior vertex owes four edges and only the eight corners may owe three.
+    for (const targetFaces of [600, 1506, 5000]) {
+      const result = remeshMesh(createBox(2), settings({ targetFaces }));
+      const tally = valences(result.mesh);
+
+      expect(tally.get(3)).toBe(8);
+      expect(tally.get(4)).toBe(result.mesh.verts.size - 8);
+      expect(faceKinds(result.mesh).quads).toBe(result.mesh.faces.size);
+      expect(openEdges(result.mesh)).toBe(0);
+    }
+  });
+
+  it('leaves no edge collapsed along a crease, at any smoothing', () => {
+    // Where two faces both meet the grid squarely the contour has two or three
+    // cells to offer per step along their edge, and every one of them projects
+    // onto the same point of the crease. Snapping all of them lands them on top
+    // of one another: an edge of no length and a collapsed quad behind it.
+    for (const smoothing of [0, 1, 2, 4]) {
+      const result = remeshMesh(createBox(2), settings({ targetFaces: 1506, smoothing }));
+      expect(shortestEdge(result.mesh)).toBeGreaterThan(result.voxelSize * 0.2);
+    }
+  });
+
   it('refuses a mesh with nothing in it', () => {
     expect(() => remeshMesh(new BMesh(), settings())).toThrow(/no faces/);
+  });
+});
+
+describe('sharp features', () => {
+  /** Mean and worst distance from the result's vertices to the original surface. */
+  function drift(source: BMesh, result: BMesh) {
+    const index = new SurfaceIndex(buildSurface(source));
+    let worst = 0;
+    let total = 0;
+    for (const vert of result.verts.values()) {
+      const distance = index.closest(vert.co)?.distance ?? 0;
+      worst = Math.max(worst, distance);
+      total += distance;
+    }
+    return { worst, mean: total / result.verts.size };
+  }
+
+  it('finds the creases and corners of a cube', () => {
+    const features = detectFeatures(createBox(2), 30);
+
+    expect(features.segments).toHaveLength(12);
+    expect(features.corners).toHaveLength(8);
+  });
+
+  it('leaves a smooth surface alone', () => {
+    // Every edge of a fine sphere turns by a few degrees, so nothing there is a
+    // crease and the snapping has nothing to do.
+    expect(detectFeatures(createUVSphere(1, 32, 16), 30).segments).toHaveLength(0);
+  });
+
+  it('takes the open border of a surface as a crease whatever angle it sits at', () => {
+    const features = detectFeatures(createGrid(2, 4), 30);
+
+    // The border of a flat grid: four sides of four segments each.
+    expect(features.segments).toHaveLength(16);
+    expect(features.corners).toHaveLength(4);
+  });
+
+  it('keeps a rim smooth enough to slide along free of corners', () => {
+    // A 32-sided cylinder turns 11 degrees per rim segment: a crease to hold,
+    // but not a ring of pins that would stop the quads evening out along it.
+    const features = detectFeatures(createCylinder(0.6, 2, 32, true), 30);
+
+    expect(features.segments.length).toBeGreaterThan(0);
+    expect(features.corners).toHaveLength(0);
+  });
+
+  it('holds a remeshed cube to its own edges', () => {
+    const source = createBox(2);
+    const rounded = remeshMesh(
+      source,
+      settings({ adaptive: false, voxelSize: 0.25, sharpAngle: 0 }),
+    );
+    const sharp = remeshMesh(
+      source,
+      settings({ adaptive: false, voxelSize: 0.25, sharpAngle: 30 }),
+    );
+
+    expect(sharp.sharp.corners).toBe(8);
+    expect(sharp.sharp.creases).toBeGreaterThan(0);
+
+    // Measured as how far the result stops short of the model's own corners,
+    // which is what "holds the edges" actually means. Comparing the drift of
+    // the vertices onto the surface — what this asked for before — no longer
+    // separates the two at all: both land on the surface to within six
+    // thousandths, and the only reason it ever passed was that the contour was
+    // tearing itself apart on the faces that lay flat on the grid. That was the
+    // bug, not the feature, so the test was reading the wrong number.
+    const gap = (mesh: BMesh) => {
+      let worst = 0;
+      for (const corner of CUBE_CORNERS) {
+        let nearest = Infinity;
+        for (const vert of mesh.verts.values()) {
+          nearest = Math.min(
+            nearest,
+            Math.hypot(vert.co.x - corner.x, vert.co.y - corner.y, vert.co.z - corner.z),
+          );
+        }
+        worst = Math.max(worst, nearest);
+      }
+      return worst;
+    };
+
+    expect(gap(sharp.mesh)).toBeLessThan(1e-9);
+    expect(gap(rounded.mesh)).toBeGreaterThan(0.002);
+    // Both stay on the surface; holding the creases is what puts them on the
+    // edges of it as well.
+    expect(drift(source, sharp.mesh).worst).toBeLessThan(0.01);
+  });
+
+  it('puts a vertex on every corner of the cube, exactly', () => {
+    const result = remeshMesh(
+      createBox(2),
+      settings({ adaptive: false, voxelSize: 0.25, sharpAngle: 30 }),
+    );
+
+    for (const corner of [
+      { x: 1, y: 1, z: 1 },
+      { x: -1, y: 1, z: 1 },
+      { x: 1, y: -1, z: 1 },
+      { x: 1, y: 1, z: -1 },
+      { x: -1, y: -1, z: -1 },
+    ]) {
+      const landed = [...result.mesh.verts.values()].some(
+        (vert) =>
+          Math.abs(vert.co.x - corner.x) < 1e-6 &&
+          Math.abs(vert.co.y - corner.y) < 1e-6 &&
+          Math.abs(vert.co.z - corner.z) < 1e-6,
+      );
+      expect(landed).toBe(true);
+    }
+  });
+
+  it('still comes out all-quad and unbroken with the creases held', () => {
+    const source = createCylinder(0.6, 2, 32, true);
+    const held = settings({ adaptive: false, voxelSize: 0.12, sharpAngle: 30 });
+    const result = remeshMesh(source, held);
+    const rounded = remeshMesh(source, { ...held, sharpAngle: 0 });
+
+    expect(faceKinds(result.mesh).quads).toBe(result.mesh.faces.size);
+    expect(borderEdges(result.mesh)).toBe(0);
+    // Naive surface nets puts one vertex in a cell however many sheets of the
+    // surface pass through it, so a rim this thin against the voxel size leaves
+    // a handful of non-manifold junctions either way. Holding the creases must
+    // not add to them, which is what this pins down.
+    expect(openEdges(result.mesh)).toBe(openEdges(rounded.mesh));
+  });
+
+  it('says when corners were finer than the grid could hold', () => {
+    // Every edge of an icosphere is a crease at five degrees, so every vertex
+    // is a corner — far more of them than a coarse grid has vertices to pin,
+    // and the ones that go are worth saying out loud.
+    const source = createIcoSphere(1, 2);
+    const detected = detectFeatures(source, 5);
+    const result = remeshMesh(source, settings({ adaptive: false, voxelSize: 0.3, sharpAngle: 5 }));
+
+    expect(detected.corners.length).toBeGreaterThan(result.sharp.corners);
+    expect(result.warnings.join(' ')).toMatch(/finer than one voxel/);
   });
 });
 

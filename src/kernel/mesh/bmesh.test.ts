@@ -170,13 +170,7 @@ describe('triangulation', () => {
   });
 
   it('handles a concave polygon without dropping area', () => {
-    const points = [
-      vec3(0, 0, 0),
-      vec3(3, 0, 0),
-      vec3(3, 0, 3),
-      vec3(1.5, 0, 1),
-      vec3(0, 0, 3),
-    ];
+    const points = [vec3(0, 0, 0), vec3(3, 0, 0), vec3(3, 0, 3), vec3(1.5, 0, 1), vec3(0, 0, 3)];
     const indices = triangulatePolygon(points, vec3(0, -1, 0));
     expect(indices).toHaveLength(9);
   });
