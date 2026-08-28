@@ -1,7 +1,9 @@
 import {
   type Vec3,
+  basisFromNormal,
   centroid,
   cross,
+  degToRad,
   distanceSq,
   dot,
   lengthSq,
@@ -12,7 +14,7 @@ import {
   sub,
 } from '../math';
 import { BMesh, triangulatePolygon } from '../mesh';
-import type { Face, Loop, Vert } from '../mesh/types';
+import type { Edge, Face, Loop, Vert } from '../mesh/types';
 
 import { dissolveVerts } from './dissolve';
 import { trisToQuads } from './subdivide';
@@ -890,19 +892,353 @@ function traceBorder(border: ReadonlyMap<number, Loop>): Vert[] | null {
 }
 
 /**
+ * How far the outline has to turn at a vertex for it to count as a corner.
+ *
+ * A holed surface is split along seams run out to corners, which is what lets
+ * every other vertex of the outline keep nothing but its two collinear edges
+ * and be dissolved. See `splitAcrossHole`.
+ */
+const SEAM_CORNER_DEGREES = 10;
+
+/** How many places on one outline a seam is allowed to be looked for. */
+const SEAM_ANCHOR_LIMIT = 12;
+
+/** A point on the plane a coplanar region lies in. */
+interface Flat {
+  x: number;
+  y: number;
+}
+
+/**
+ * The boundary of a set of faces, as one cycle per closed loop.
+ *
+ * A region with nothing inside it gives one cycle; one with a hole gives two.
+ * Null when the boundary is not a set of clean loops at all — pinched at a
+ * vertex, or torn in a way that leaves the walk a choice to make.
+ */
+function boundaryCycles(mesh: BMesh, region: readonly Face[]): Vert[][] | null {
+  const ids = new Set(region.map((face) => face.id));
+  const onward = new Map<number, Loop>();
+
+  for (const face of region) {
+    for (const loop of mesh.faceLoops(face)) {
+      if (mesh.edgeFaces(loop.edge).filter((other) => ids.has(other.id)).length !== 1) continue;
+      if (onward.has(loop.vert.id)) return null;
+      onward.set(loop.vert.id, loop);
+    }
+  }
+
+  const cycles: Vert[][] = [];
+  const walked = new Set<number>();
+
+  for (const start of onward.values()) {
+    if (walked.has(start.vert.id)) continue;
+
+    const cycle: Vert[] = [];
+    let current = start;
+    do {
+      walked.add(current.vert.id);
+      cycle.push(current.vert);
+      const next = onward.get(current.next.vert.id);
+      if (!next) return null;
+      current = next;
+    } while (current !== start && !walked.has(current.vert.id));
+
+    // Anything but a return to the start means the walk ran into a loop it was
+    // not on, which is not a boundary the split below could work from.
+    if (current !== start || cycle.length < 3) return null;
+    cycles.push(cycle);
+  }
+
+  return cycles;
+}
+
+/** The stretch of a cycle from `start` to `end` inclusive, going forwards. */
+function arc(cycle: readonly Vert[], start: number, end: number): Vert[] {
+  const run: Vert[] = [];
+  for (let i = start; ; i = (i + 1) % cycle.length) {
+    run.push(cycle[i]);
+    if (i === end) break;
+  }
+  return run;
+}
+
+function signedArea(ring: readonly Flat[]): number {
+  let total = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i];
+    const b = ring[(i + 1) % ring.length];
+    total += a.x * b.y - b.x * a.y;
+  }
+  return total / 2;
+}
+
+function turnOf(a: Flat, b: Flat, c: Flat): number {
+  return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+}
+
+/** Whether two segments cross properly; meeting at an endpoint does not count. */
+function segmentsCross(a: Flat, b: Flat, c: Flat, d: Flat): boolean {
+  return turnOf(a, b, c) * turnOf(a, b, d) < 0 && turnOf(c, d, a) * turnOf(c, d, b) < 0;
+}
+
+/** Whether `point` is enclosed by `ring`, by the parity of a ray cast east. */
+function enclosedBy(point: Flat, ring: readonly Flat[]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i];
+    const b = ring[j];
+    if (a.y > point.y === b.y > point.y) continue;
+    if (point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+function nearSegment(point: Flat, a: Flat, b: Flat, reach: number): boolean {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const span = dx * dx + dy * dy;
+  if (span === 0) return false;
+  const t = Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / span));
+  return Math.hypot(point.x - (a.x + dx * t), point.y - (a.y + dy * t)) <= reach;
+}
+
+/**
+ * Whether a seam from `outer[i]` to `hole[j]` stays on the surface.
+ *
+ * It has to cross neither outline, pass through no other vertex — a seam that
+ * grazed one would join the two halves there as well as along itself, which is
+ * a pinch — and run over material rather than through the hole or off the face.
+ */
+function seamFits(
+  outer: readonly Flat[],
+  hole: readonly Flat[],
+  i: number,
+  j: number,
+  reach: number,
+): boolean {
+  const from = outer[i];
+  const to = hole[j];
+
+  for (let k = 0; k < outer.length; k++) {
+    if (k === i || (k + 1) % outer.length === i) continue;
+    if (segmentsCross(from, to, outer[k], outer[(k + 1) % outer.length])) return false;
+  }
+  for (let k = 0; k < hole.length; k++) {
+    if (k === j || (k + 1) % hole.length === j) continue;
+    if (segmentsCross(from, to, hole[k], hole[(k + 1) % hole.length])) return false;
+  }
+
+  for (let k = 0; k < outer.length; k++) {
+    if (k !== i && nearSegment(outer[k], from, to, reach)) return false;
+  }
+  for (let k = 0; k < hole.length; k++) {
+    if (k !== j && nearSegment(hole[k], from, to, reach)) return false;
+  }
+
+  const middle = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+  return enclosedBy(middle, outer) && !enclosedBy(middle, hole);
+}
+
+/**
+ * Outline positions a seam is allowed to land on.
+ *
+ * Corners if the outline has any: a seam pins whatever vertex it meets, and a
+ * corner was never going to dissolve anyway. Where the outline is a curve —
+ * a bore through a cylinder's cap — nothing turns far enough to be a corner,
+ * and then anything that turns at all will do, since the dissolve pass would
+ * have kept it regardless. Either way the list is thinned, because the search
+ * that follows is quadratic in it and a fine curve has hundreds.
+ */
+function seamAnchors(ring: readonly Flat[]): number[] {
+  const corner = Math.cos(degToRad(SEAM_CORNER_DEGREES));
+  const turns = ring.map((point, i) => {
+    const previous = ring[(i - 1 + ring.length) % ring.length];
+    const next = ring[(i + 1) % ring.length];
+    const into = { x: point.x - previous.x, y: point.y - previous.y };
+    const away = { x: next.x - point.x, y: next.y - point.y };
+    const span = Math.hypot(into.x, into.y) * Math.hypot(away.x, away.y);
+    return span === 0 ? 1 : (into.x * away.x + into.y * away.y) / span;
+  });
+
+  const corners = turns.flatMap((turn, i) => (turn < corner ? [i] : []));
+  // The same limit the dissolve pass reads a vertex as straight by, so nothing
+  // is pinned that would otherwise have gone.
+  const bent = turns.flatMap((turn, i) => (turn < 1 - PLANE_EPSILON ? [i] : []));
+
+  const anchors = corners.length >= 2 ? corners : bent;
+  const stride = Math.max(1, Math.ceil(anchors.length / SEAM_ANCHOR_LIMIT));
+  return anchors.filter((_, i) => i % stride === 0);
+}
+
+/**
+ * Opens a surface with a hole in it into two faces, along two seams.
+ *
+ * Two is the fewest a hole can be stated in. A face carries one ring, so a
+ * single one would have to reach into the hole and back out along its own
+ * path, and an ear clipper handed that fills straight across and paints over
+ * the hole. Opened in two places instead, both halves are ordinary simple
+ * polygons that fill the way anything else does.
+ *
+ * Where the seams land is the whole question, and the answer is corners. Every
+ * vertex a seam touches is pinned to the outline: it keeps a third edge, so
+ * the pass that dissolves what the cut left behind walks past it. Pinning a
+ * corner costs nothing — a corner was never going to dissolve. Pinning a point
+ * part-way along a straight edge keeps a vertex the shape has no use for, and
+ * that edge is shared with the wall behind it, so a box bored through the top
+ * comes back with a six-sided side face the cutter never went near.
+ *
+ * Null when no pair of seams works, which leaves the region to be grown as
+ * discs instead rather than forcing a split that runs off the surface.
+ */
+function splitAcrossHole(mesh: BMesh, region: readonly Face[]): Vert[][] | null {
+  const cycles = boundaryCycles(mesh, region);
+  if (!cycles || cycles.length !== 2) return null;
+
+  const { u, v } = basisFromNormal(normalize(polygonNormal(cycles[0].map((vert) => vert.co))));
+  const flats = cycles.map((cycle) =>
+    cycle.map((vert) => ({ x: dot(vert.co, u), y: dot(vert.co, v) })),
+  );
+
+  // The outer boundary is the one enclosing the most: a hole is by definition
+  // inside it, so it can never be the larger of the two.
+  const outerAt = Math.abs(signedArea(flats[0])) >= Math.abs(signedArea(flats[1])) ? 0 : 1;
+  const outer = cycles[outerAt];
+  const outerFlat = flats[outerAt];
+  let hole = cycles[1 - outerAt];
+  let holeFlat = flats[1 - outerAt];
+
+  // Both halves are read off in one direction, so the hole has to run against
+  // the outline rather than with it.
+  if (signedArea(outerFlat) * signedArea(holeFlat) > 0) {
+    hole = [...hole].reverse();
+    holeFlat = [...holeFlat].reverse();
+  }
+
+  // How close a vertex may sit to a seam and still not count as on it, taken
+  // from the outline's own size rather than from where it happens to sit.
+  let low = { x: Infinity, y: Infinity };
+  let high = { x: -Infinity, y: -Infinity };
+  for (const point of outerFlat) {
+    low = { x: Math.min(low.x, point.x), y: Math.min(low.y, point.y) };
+    high = { x: Math.max(high.x, point.x), y: Math.max(high.y, point.y) };
+  }
+  const reach = Math.max(high.x - low.x, high.y - low.y, Number.EPSILON) * 1e-9;
+  const centre = {
+    x: holeFlat.reduce((sum, point) => sum + point.x, 0) / holeFlat.length,
+    y: holeFlat.reduce((sum, point) => sum + point.y, 0) / holeFlat.length,
+  };
+
+  const seams: { on: number; of: number; bearing: number }[] = [];
+  for (const on of seamAnchors(outerFlat)) {
+    let best = -1;
+    let shortest = Infinity;
+    for (let of = 0; of < holeFlat.length; of++) {
+      const gap = (outerFlat[on].x - holeFlat[of].x) ** 2 + (outerFlat[on].y - holeFlat[of].y) ** 2;
+      if (gap >= shortest) continue;
+      if (!seamFits(outerFlat, holeFlat, on, of, reach)) continue;
+      shortest = gap;
+      best = of;
+    }
+    if (best < 0) continue;
+    const bearing = Math.atan2(outerFlat[on].y - centre.y, outerFlat[on].x - centre.x);
+    seams.push({ on, of: best, bearing });
+  }
+  if (seams.length < 2) return null;
+
+  // The pair facing most nearly away from each other, so the two halves come
+  // out even rather than as a splinter and a horseshoe.
+  let pair: [number, number] | null = null;
+  let widest = -Infinity;
+  for (let a = 0; a < seams.length; a++) {
+    for (let b = a + 1; b < seams.length; b++) {
+      if (seams[a].of === seams[b].of) continue;
+      const turn = seams[a].bearing - seams[b].bearing;
+      const apart = Math.abs(Math.atan2(Math.sin(turn), Math.cos(turn)));
+      if (apart <= widest) continue;
+      if (
+        segmentsCross(
+          outerFlat[seams[a].on],
+          holeFlat[seams[a].of],
+          outerFlat[seams[b].on],
+          holeFlat[seams[b].of],
+        )
+      ) {
+        continue;
+      }
+      widest = apart;
+      pair = [a, b];
+    }
+  }
+  if (!pair) return null;
+
+  const [first, second] = [seams[pair[0]], seams[pair[1]]];
+  const halves = [
+    [...arc(outer, first.on, second.on), ...arc(hole, second.of, first.of)],
+    [...arc(outer, second.on, first.on), ...arc(hole, first.of, second.of)],
+  ];
+  if (halves.some((half) => half.length < 3)) return null;
+
+  // What the halves cover has to be what the fragments covered. A ring put
+  // together the wrong way round, or one that doubles back over itself, comes
+  // out with the wrong area and is dropped rather than drawn.
+  const covered = halves.reduce((sum, half) => sum + polygonArea(half.map((vert) => vert.co)), 0);
+  const before = region.reduce((sum, face) => sum + mesh.faceArea(face), 0);
+  if (before <= 0 || Math.abs(covered - before) > before * 1e-6) return null;
+
+  return halves;
+}
+
+/** Replaces a set of faces with new rings, clearing the edges left behind. */
+function rebuildAs(mesh: BMesh, region: readonly Face[], rings: readonly Vert[][]): Face[] {
+  const { materialIndex, smooth } = region[0];
+  const ids = new Set(region.map((face) => face.id));
+  const interior = new Set<Edge>();
+
+  for (const face of region) {
+    for (const edge of mesh.faceEdges(face)) {
+      if (mesh.edgeFaces(edge).filter((other) => ids.has(other.id)).length === 2)
+        interior.add(edge);
+    }
+  }
+
+  for (const face of region) mesh.removeFace(face);
+  for (const edge of interior) {
+    if (mesh.edges.has(edge.id) && edge.loops.length === 0) mesh.removeEdge(edge);
+  }
+
+  const made = rings.map((ring) => mesh.addFace(ring, { materialIndex, smooth }));
+  mesh.removeLooseVerts();
+  return made;
+}
+
+/** Whether `region` is already exactly the faces `rings` describes. */
+function alreadyIs(mesh: BMesh, region: readonly Face[], rings: readonly Vert[][]): boolean {
+  if (region.length !== rings.length) return false;
+  const held = region.map((face) => new Set(mesh.faceVerts(face).map((vert) => vert.id)));
+  return rings.every((ring) =>
+    held.some((set) => set.size === ring.length && ring.every((vert) => set.has(vert.id))),
+  );
+}
+
+/**
  * Rebuilds one region of same-source fragments as few faces as it can be.
  *
- * A face carries a single ring, so a region with a hole in it — the surface a
- * tool left around its own footprint — can never be one face however it is
- * approached. It is taken as discs instead: each grows until one more fragment
- * would close the ring, and each becomes one n-gon whose outline is edges the
- * cut actually made. Nothing is bridged, nothing is threaded through a hole,
- * and no face is handed a ring that crosses itself.
+ * A region with a hole in it — the surface a tool left around its own
+ * footprint — is opened along two seams run out to corners of its outline, so
+ * that the split costs the shape no vertex it would not have had anyway. That
+ * is `splitAcrossHole`, and it is the case a bore through a flat face lands in.
  *
- * A region with no hole is one disc and comes back as one face, which is the
- * ordinary case and the one that matters most.
+ * Everything else is grown as discs: each takes fragments until one more would
+ * close a ring, and each becomes one n-gon whose outline is edges the cut
+ * actually made. A region with no hole is one disc and comes back as one face,
+ * which is the ordinary case and the one that matters most. It is also where a
+ * torn region ends up, the seams having nowhere sound to land.
  */
 function mergeRegion(mesh: BMesh, region: readonly Face[]): Face[] {
+  const halves = splitAcrossHole(mesh, region);
+  if (halves) return alreadyIs(mesh, region, halves) ? [] : rebuildAs(mesh, region, halves);
+
   const pool = new Map(region.map((face) => [face.id, face]));
   const made: Face[] = [];
 

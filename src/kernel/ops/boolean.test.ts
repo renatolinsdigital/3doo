@@ -412,6 +412,54 @@ describe('mesh booleans', () => {
     expect(filled).toBeCloseTo(4 - disc, 1);
   });
 
+  it('bores a face without marking the walls behind it', () => {
+    // Splitting a holed face has to break its outline in two places, and
+    // wherever it breaks it, a vertex is pinned there for good: it keeps a
+    // third edge, so the pass that dissolves what the cut left behind walks
+    // past it. That outline is the box's own top edge, shared with the wall
+    // below it — which is how a cylinder sunk into the top used to leave the
+    // side of the box a six-sided face the cutter had never gone near.
+    const result = booleanMesh(
+      'difference',
+      createBox(2),
+      createCylinder(0.4, 1, 24),
+      offsetBy(vec3(0, 1.3, 0)),
+    );
+
+    expect(isClosed(result)).toBe(true);
+
+    const walls: [string, (point: Vec3) => boolean][] = [
+      ['bottom', (point) => Math.abs(point.y + 1) < 1e-9],
+      ['x=1', (point) => Math.abs(point.x - 1) < 1e-9],
+      ['x=-1', (point) => Math.abs(point.x + 1) < 1e-9],
+      ['z=1', (point) => Math.abs(point.z - 1) < 1e-9],
+      ['z=-1', (point) => Math.abs(point.z + 1) < 1e-9],
+    ];
+
+    for (const [wall, onWall] of walls) {
+      const faces = [...result.faces.values()].filter((face) =>
+        result.facePoints(face).every(onWall),
+      );
+      const corners = faces.map((face) => result.faceLoops(face).length);
+      expect({ wall, corners }).toEqual({ wall, corners: [4] });
+    }
+
+    // And the bored face keeps its own outline too: the seams run out to two
+    // of the square's corners, so the four it came in with are still all it has.
+    const top = [...result.faces.values()].filter((face) =>
+      result.facePoints(face).every((point) => Math.abs(point.y - 1) < 1e-9),
+    );
+    expect(top.length).toBe(2);
+
+    const outline = new Set(
+      top
+        .flatMap((face) => result.facePoints(face))
+        .filter((point) => Math.abs(point.x) > 1 - 1e-9 || Math.abs(point.z) > 1 - 1e-9)
+        .map((point) => `${point.x},${point.z}`),
+    );
+    expect([...outline].sort()).toEqual(['-1,-1', '-1,1', '1,-1', '1,1']);
+  });
+
   it('puts the cut face back together even where the cut tore the surface', () => {
     const tool = shaken(0.8, 0.05);
     const result = booleanMesh('union', createBox(2), tool, offsetBy(vec3(0.12, 1.05, -0.07)));
