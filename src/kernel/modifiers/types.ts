@@ -150,7 +150,7 @@ export function createModifier(type: ModifierType): Modifier {
         name: 'SUBDIVISION',
         enabled: true,
         levels: 1,
-        smooth: 1,
+        smooth: 0,
       };
     case 'remesh':
       return {
