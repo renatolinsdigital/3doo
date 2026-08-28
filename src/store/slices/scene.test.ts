@@ -194,3 +194,88 @@ describe('material slots', () => {
     expect(useEditorStore.getState().objects[0].materials).toHaveLength(3);
   });
 });
+
+describe('booleans against an unapplied modifier stack', () => {
+  /** A box and a sphere, both selected, the box keeping the result. */
+  function pair() {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    // Toasts outlive a scene reset, and these tests are counting them.
+    useEditorStore.setState({ toasts: [] });
+    store.addPrimitive('box');
+    store.addPrimitive('uvSphere');
+
+    const [box, sphere] = useEditorStore.getState().objects;
+    useEditorStore.getState().setActiveObject(sphere.id);
+    useEditorStore.getState().setActiveObject(box.id, true);
+    return { box, sphere };
+  }
+
+  const names = () => useEditorStore.getState().objects.map((object) => object.name);
+
+  it('refuses while the active object still has a live stack', async () => {
+    const { box } = pair();
+    useEditorStore.getState().setActiveObject(box.id, true);
+    useEditorStore.getState().addModifier('subdivide');
+
+    await useEditorStore.getState().booleanWithSelected('union');
+
+    // Nothing consumed, and the mesh it would have cut is untouched.
+    expect(names()).toEqual(['BOX', 'UV SPHERE']);
+    expect(useEditorStore.getState().objects[0].mesh.faces.size).toBe(box.mesh.faces.size);
+  });
+
+  it('refuses when it is the cutter carrying the stack', async () => {
+    const { box, sphere } = pair();
+    useEditorStore.getState().setActiveObject(sphere.id);
+    useEditorStore.getState().addModifier('subdivide');
+    useEditorStore.getState().setActiveObject(box.id);
+    useEditorStore.getState().setActiveObject(sphere.id, true);
+
+    await useEditorStore.getState().booleanWithSelected('difference');
+
+    expect(names()).toEqual(['BOX', 'UV SPHERE']);
+  });
+
+  it('says which object is holding it up, and says it as a toast', async () => {
+    const { box } = pair();
+    useEditorStore.getState().setActiveObject(box.id, true);
+    useEditorStore.getState().addModifier('subdivide');
+
+    await useEditorStore.getState().booleanWithSelected('union');
+
+    const toasts = useEditorStore.getState().toasts;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].variant).toBe('error');
+    expect(toasts[0].message).toMatch(/BOX/);
+    expect(toasts[0].message).toMatch(/modifiers/i);
+  });
+
+  it('lets a disabled modifier through, since it changes nothing on screen', async () => {
+    const { box } = pair();
+    useEditorStore.getState().setActiveObject(box.id, true);
+    useEditorStore.getState().addModifier('subdivide');
+
+    const modifier = useEditorStore.getState().objects[0].modifiers[0];
+    useEditorStore.getState().updateModifier(modifier.id, { enabled: false });
+
+    await useEditorStore.getState().booleanWithSelected('union');
+
+    expect(names()).toEqual(['BOX']);
+    expect(useEditorStore.getState().toasts).toHaveLength(0);
+  });
+
+  it('goes ahead once the stack has been applied', async () => {
+    const { box } = pair();
+    useEditorStore.getState().setActiveObject(box.id, true);
+    useEditorStore.getState().addModifier('subdivide');
+
+    const modifier = useEditorStore.getState().objects[0].modifiers[0];
+    useEditorStore.getState().applyModifierToMesh(modifier.id);
+    await useEditorStore.getState().booleanWithSelected('union');
+
+    // The cutter is consumed, so one object is left holding the result.
+    expect(names()).toEqual(['BOX']);
+    expect(useEditorStore.getState().toasts).toHaveLength(0);
+  });
+});

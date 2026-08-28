@@ -1,3 +1,5 @@
+import { useShallow } from 'zustand/react/shallow';
+
 import { Button, FieldRow, Panel } from '@shared/components';
 import { activeObject, useEditorStore } from '@store/index';
 
@@ -14,15 +16,38 @@ export function BooleanPanel() {
   const tools = useEditorStore(
     (state) => state.selectedObjectIds.filter((id) => id !== state.activeObjectId).length,
   );
+  const busy = useEditorStore((state) => state.busy);
+  // Named rather than counted, so the hint can say which object is holding
+  // things up. The buttons stay live: clicking is how the toast gets said,
+  // and a dead button explains nothing.
+  const unapplied = useEditorStore(
+    useShallow((state) =>
+      state.objects
+        .filter(
+          (object) =>
+            (object.id === state.activeObjectId ||
+              state.selectedObjectIds.includes(object.id)) &&
+            object.modifiers.some((modifier) => modifier.enabled),
+        )
+        .map((object) => object.name),
+    ),
+  );
 
   // Every operation needs the same two things, so they share one explanation
   // of what is missing rather than each guessing at it.
-  const ready = active !== null && tools > 0;
+  const ready = active !== null && tools > 0 && !busy;
   const missing = !active
     ? 'Select two objects — the last one clicked keeps the result'
     : `Select a cutter as well; ${active.name} keeps the result`;
 
-  const hint = (available: string) => (ready ? `${available} (${active.name} keeps it)` : missing);
+  const hint = (available: string) =>
+    busy
+      ? 'A boolean is already running — the status bar shows how far along it is'
+      : unapplied.length > 0
+        ? `Apply the modifiers on ${unapplied.join(', ')} first — a boolean cuts the mesh underneath the stack`
+        : ready
+          ? `${available} (${active.name} keeps it)`
+          : missing;
 
   return (
     <Panel title="BOOLEAN">

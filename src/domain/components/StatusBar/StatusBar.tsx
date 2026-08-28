@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 
 import { cx } from '@shared/utils/cx';
 import { useEditorStore, useSceneStats } from '@store/index';
-import type { ModalTransform } from '@store/types';
+import type { ModalTransform, OperationProgress } from '@store/types';
 
 import './StatusBar.scss';
 
@@ -31,14 +31,19 @@ export function StatusBar() {
   const pivot = useEditorStore((state) => state.pivot);
   const modal = useEditorStore((state) => state.modal);
   const showStatistics = useEditorStore((state) => state.overlays.statistics);
+  const progress = useEditorStore((state) => state.progress);
 
   return (
     <footer className="status-bar">
       <div className="status-bar__section status-bar__section--message">
-        <span className="status-bar__label">STATUS</span>
-        <span className="status-bar__value" role="status" aria-live="polite">
-          {modal ? `${modalLabel(modal)} — LMB confirm, Esc cancel` : status}
-        </span>
+        <span className="status-bar__label">{progress ? progress.label : 'STATUS'}</span>
+        {progress ? (
+          <Progress progress={progress} />
+        ) : (
+          <span className="status-bar__value" role="status" aria-live="polite">
+            {modal ? `${modalLabel(modal)} — LMB confirm, Esc cancel` : status}
+          </span>
+        )}
       </div>
 
       {showStatistics ? (
@@ -70,6 +75,32 @@ export function StatusBar() {
         </Flag>
       </div>
     </footer>
+  );
+}
+
+/**
+ * How far along a long operation is.
+ *
+ * A real `progressbar` rather than a styled div, so a screen reader announces
+ * the percentage as it climbs instead of reading a decorative bar as nothing.
+ */
+function Progress({ progress }: { progress: OperationProgress }) {
+  const percent = Math.round(Math.min(1, Math.max(0, progress.value)) * 100);
+
+  return (
+    <span
+      className="status-bar__progress"
+      role="progressbar"
+      aria-label={progress.label}
+      aria-valuenow={percent}
+      aria-valuemin={0}
+      aria-valuemax={100}
+    >
+      <span className="status-bar__progress-track">
+        <span className="status-bar__progress-fill" style={{ width: `${percent}%` }} />
+      </span>
+      <span className="status-bar__progress-value">{percent}%</span>
+    </span>
   );
 }
 

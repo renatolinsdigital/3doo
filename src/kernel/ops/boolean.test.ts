@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { type Vec3, add, dot, polygonArea, polygonNormal, vec3 } from '../math';
+import {
+  type Vec3,
+  add,
+  basisFromNormal,
+  dot,
+  normalize,
+  polygonArea,
+  polygonNormal,
+  vec3,
+} from '../math';
 import { BMesh } from '../mesh';
 import type { Vert } from '../mesh/types';
 import { triangulatePolygon } from '../mesh/triangulate';
@@ -15,7 +24,14 @@ import {
   createUVSphere,
 } from '../primitives';
 
-import { booleanMesh } from './boolean';
+import { booleanMesh, booleanMeshStaged } from './boolean';
+
+/** Runs a staged operation to its end, keeping only the result. */
+function drainStages<T>(steps: Generator<number, T>): T {
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+}
 
 /** Every edge shared by exactly two faces: the result is a closed solid. */
 function isClosed(mesh: BMesh): boolean {
@@ -62,6 +78,62 @@ function ngonCount(mesh: BMesh): number {
     if (corners > 4) ngons += count;
   }
   return ngons;
+}
+
+/**
+ * A dense sphere shaken off its lattice, so nothing lines up by accident.
+ *
+ * A cut through a surface this irregular is where a boolean's arithmetic shows:
+ * the split leaves slivers with no area to speak of, they are dropped, and the
+ * surface comes back with a few edges that have nothing on the far side. That
+ * is what a real model does to it, and the same jitter every time so a failure
+ * can be looked at twice.
+ */
+function shaken(radius: number, amount: number): BMesh {
+  const mesh = createUVSphere(radius, 48, 24);
+  let seed = 1;
+  const next = () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    return seed / 2147483648 - 0.5;
+  };
+
+  for (const vert of mesh.verts.values()) {
+    vert.co = {
+      x: vert.co.x + next() * amount,
+      y: vert.co.y + next() * amount,
+      z: vert.co.z + next() * amount,
+    };
+  }
+
+  mesh.computeNormals();
+  return mesh;
+}
+
+/**
+ * Whether a face's outline runs over itself once flattened onto its own plane.
+ *
+ * Such a ring has no honest inside. Nothing errors on one — it is closed, it
+ * has an area, it triangulates — but the triangles miss part of the surface
+ * and cover ground the face never had, which the viewport draws as a hole
+ * straight through solid material.
+ */
+function crossesItself(points: readonly Vec3[]): boolean {
+  const { u, v } = basisFromNormal(normalize(polygonNormal(points)));
+  const flat = points.map((point) => ({ x: dot(point, u), y: dot(point, v) }));
+  const turn = (a: { x: number; y: number }, b: typeof a, c: typeof a) =>
+    Math.sign((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x));
+
+  for (let i = 0; i < flat.length; i++) {
+    for (let j = i + 1; j < flat.length; j++) {
+      // Segments next to each other share an endpoint, which is not a crossing.
+      if ((i + 1) % flat.length === j || (j + 1) % flat.length === i) continue;
+      const [a, b] = [flat[i], flat[(i + 1) % flat.length]];
+      const [c, d] = [flat[j], flat[(j + 1) % flat.length]];
+      if (turn(a, b, c) * turn(a, b, d) < 0 && turn(c, d, a) * turn(c, d, b) < 0) return true;
+    }
+  }
+
+  return false;
 }
 
 describe('mesh booleans', () => {
@@ -218,18 +290,23 @@ describe('mesh booleans', () => {
     expect(result.faces.size).toBe(9);
   });
 
-  it('keeps quads in the majority on every cut in the survey above', () => {
+  it('leaves no splinters behind on a cut', () => {
     const cases = [
       booleanMesh('difference', createBox(2), createCylinder(0.5, 4), offsetBy(vec3())),
       booleanMesh('difference', createBox(2), createUVSphere(0.8), offsetBy(vec3())),
       booleanMesh('difference', createTorus(), createBox(0.6), offsetBy(vec3(0.5, 0, 0))),
     ];
 
-    // The n-gons a cut keeps are the few faces its rim crossed; everything the
-    // tool left alone still comes back as the quads it arrived as.
+    // Triangles are what a boolean falls back on when it cannot state a piece
+    // of surface any better. A handful along a curved seam is expected; a
+    // result made mostly of them is one that has shattered.
+    //
+    // Counted rather than weighed against the quads: merging a bored-through
+    // face into two whole rings removes a dozen quads and improves the mesh,
+    // which a quad *share* reads as a step backwards.
     for (const result of cases) {
-      const quads = faceSizes(result).get(4) ?? 0;
-      expect(quads).toBeGreaterThan(result.faces.size * 0.8);
+      const tris = faceSizes(result).get(3) ?? 0;
+      expect(tris).toBeLessThan(result.faces.size * 0.2);
     }
   });
 
@@ -260,6 +337,125 @@ describe('mesh booleans', () => {
 
     expect(isClosed(result)).toBe(true);
     expect(ngonCount(result)).toBe(3);
+  });
+
+  it('fuses where the solids touch without carving the faces around it', () => {
+    // A sphere sitting in the middle of the top face — the case that used to
+    // come back with that face shredded into thirty splintered strips, one per
+    // segment of the seam, because a ring of surface around a hole cannot be
+    // closed by merging neighbours pairwise.
+    const result = booleanMesh(
+      'union',
+      createBox(2),
+      createUVSphere(1, 32, 16),
+      offsetBy(vec3(0, 1.7, 0)),
+    );
+
+    expect(isClosed(result)).toBe(true);
+
+    const walls: [string, (point: Vec3) => boolean][] = [
+      ['top', (point) => Math.abs(point.y - 1) < 1e-9],
+      ['bottom', (point) => Math.abs(point.y + 1) < 1e-9],
+      ['x=1', (point) => Math.abs(point.x - 1) < 1e-9],
+      ['x=-1', (point) => Math.abs(point.x + 1) < 1e-9],
+      ['z=1', (point) => Math.abs(point.z - 1) < 1e-9],
+      ['z=-1', (point) => Math.abs(point.z + 1) < 1e-9],
+    ];
+
+    for (const [wall, onWall] of walls) {
+      const faces = [...result.faces.values()].filter((face) =>
+        result.facePoints(face).every(onWall),
+      );
+      // The five walls the sphere never reaches stay one face each. The top,
+      // which it lands in the middle of, becomes a ring of surface around a
+      // hole — two faces, because one ring cannot state a hole.
+      const expected = wall === 'top' ? 2 : 1;
+      expect({ wall, faces: faces.length }).toEqual({ wall, faces: expected });
+    }
+
+    // And the surface it does keep is the whole of the box bar the disc.
+    const disc = Math.PI * (1 - 0.7 * 0.7);
+    const boxArea = walls.reduce(
+      (total, [, onWall]) =>
+        total +
+        [...result.faces.values()]
+          .filter((face) => result.facePoints(face).every(onWall))
+          .reduce((sum, face) => sum + polygonArea(result.facePoints(face)), 0),
+      0,
+    );
+    expect(boxArea).toBeCloseTo(6 * 4 - disc, 1);
+  });
+
+  it('does not paint the split face back over the hole it goes round', () => {
+    // The two halves are ordinary simple polygons, so an ear clipper fills
+    // them without reaching across. Stated as area: a fill that closed over
+    // the seam would cover the disc as well and come out too large.
+    const result = booleanMesh(
+      'union',
+      createBox(2),
+      createUVSphere(1, 24, 12),
+      offsetBy(vec3(0, 1.7, 0)),
+    );
+
+    let filled = 0;
+    for (const face of result.faces.values()) {
+      const points = result.facePoints(face);
+      if (!points.every((point) => Math.abs(point.y - 1) < 1e-9)) continue;
+
+      const indices = triangulatePolygon(points);
+      for (let i = 0; i < indices.length; i += 3) {
+        filled += polygonArea([points[indices[i]], points[indices[i + 1]], points[indices[i + 2]]]);
+      }
+    }
+
+    const disc = Math.PI * (1 - 0.7 * 0.7);
+    expect(filled).toBeCloseTo(4 - disc, 1);
+  });
+
+  it('puts the cut face back together even where the cut tore the surface', () => {
+    const tool = shaken(0.8, 0.05);
+    const result = booleanMesh('union', createBox(2), tool, offsetBy(vec3(0.12, 1.05, -0.07)));
+
+    const onTop = [...result.faces.values()].filter((face) =>
+      result.facePoints(face).every((point) => Math.abs(point.y - 1) < 1e-9),
+    );
+
+    // A tear somewhere along a face's outline is a local thing, and the face is
+    // still a face. Giving up on the whole surface over one hands back the
+    // hundreds of strips the split carved it into, which is the state this
+    // pass exists to undo.
+    expect(onTop.length).toBeLessThanOrEqual(2);
+    expect(onTop.filter((face) => crossesItself(result.facePoints(face))).length).toBe(0);
+  });
+
+  it('never hands back a face whose outline crosses itself', () => {
+    // A sphere landing off-centre leaves a ring of surface around its
+    // footprint, and a ring is the one thing a single face cannot state.
+    // Threading a seam out to the hole and back does state it — as an outline
+    // that runs over itself the moment the seam is drawn anywhere but straight
+    // across the ring, which is what these placements are chosen to be.
+    const placements: [number, Vec3][] = [
+      [0.7, vec3(0.3, 1, 0.25)],
+      [0.9, vec3(0.15, 0.6, 0)],
+      [1.1, vec3(0.3, 0.6, 0.25)],
+    ];
+
+    for (const [radius, at] of placements) {
+      const result = booleanMesh(
+        'union',
+        createBox(2),
+        createUVSphere(radius, 32, 16),
+        offsetBy(at),
+      );
+
+      const crossing = [...result.faces.values()].filter((face) =>
+        crossesItself(result.facePoints(face)),
+      );
+      expect({ radius, crossing: crossing.length }).toEqual({ radius, crossing: 0 });
+      // Two faces bridged across a hole also meet along the bridge twice over,
+      // which leaves edges the seam has no second face for.
+      expect({ radius, closed: isClosed(result) }).toEqual({ radius, closed: true });
+    }
   });
 
   it('leaves no face reaching out over the cut', () => {
@@ -412,6 +608,53 @@ describe('what a boolean must not touch', () => {
     expect(onTop.length).toBeGreaterThan(0);
     expect(onTop.length).toBeLessThan(40);
   });
+});
+
+describe('reporting progress', () => {
+  it('climbs from nought to one without ever going backwards', () => {
+    const steps = booleanMeshStaged(
+      'union',
+      createBox(2),
+      createUVSphere(1, 16, 8),
+      offsetBy(vec3(0, 1.5, 0)),
+    );
+
+    const reported: number[] = [];
+    let step = steps.next();
+    while (!step.done) {
+      reported.push(step.value);
+      step = steps.next();
+    }
+
+    expect(reported.length).toBeGreaterThan(2);
+    for (const value of reported) {
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThanOrEqual(1);
+    }
+    // A bar that goes back on itself reads as a fault in the operation.
+    for (let i = 1; i < reported.length; i++) {
+      expect(reported[i]).toBeGreaterThanOrEqual(reported[i - 1]);
+    }
+  });
+
+  it.each(['union', 'difference', 'intersect'] as const)(
+    'gives a %s the same mesh whether it reports or not',
+    (op) => {
+      const args = () =>
+        [createBox(2), createUVSphere(1, 16, 8), offsetBy(vec3(0, 1.5, 0))] as const;
+
+      const [t1, u1, m1] = args();
+      const direct = booleanMesh(op, t1, u1, m1);
+      const [t2, u2, m2] = args();
+      const staged = drainStages(booleanMeshStaged(op, t2, u2, m2));
+
+      // `booleanMesh` is the staged run drained, so this is really a guard
+      // against the two ever being given separate implementations.
+      expect(staged.faces.size).toBe(direct.faces.size);
+      expect(staged.verts.size).toBe(direct.verts.size);
+      expect(volume(staged)).toBeCloseTo(volume(direct), 9);
+    },
+  );
 });
 
 describe('operands that arrive inside out', () => {

@@ -12,9 +12,9 @@ import {
   sub,
 } from '../math';
 import { BMesh, triangulatePolygon } from '../mesh';
-import type { Edge, Face, Vert } from '../mesh/types';
+import type { Face, Loop, Vert } from '../mesh/types';
 
-import { dissolveEdges, dissolveFaces, dissolveVerts } from './dissolve';
+import { dissolveVerts } from './dissolve';
 import { trisToQuads } from './subdivide';
 
 export type BooleanOp = 'union' | 'difference' | 'intersect';
@@ -60,6 +60,13 @@ const QUAD_PAIR_LIMIT_DEGREES = 1;
  * enough that any real cut is seen.
  */
 const AREA_EPSILON = 1e-6;
+
+/**
+ * How the work of one boolean divides up, measured on a cut dense enough to be
+ * worth a progress bar at all. The remainder after these two is `resolve`.
+ */
+const CSG_SHARE = 0.88;
+const REBUILD_SHARE = 0.07;
 
 /** The largest side of the box the polygons fill; the model's own scale. */
 function extentOf(polys: readonly Poly[]): number {
@@ -370,14 +377,37 @@ function treeFrom(polys: readonly Poly[], epsilon: number): Node {
  * of the combined solid. It assumes both inputs are closed — an open shell has
  * no inside for the tests to answer about, and the result will show it.
  */
-function csg(
+/**
+ * Runs a staged operation straight through, ignoring the progress it reports.
+ *
+ * The stages exist so a caller that wants to paint between them can; one that
+ * does not should not have to know they are there.
+ */
+function drain<T>(steps: Generator<number, T>): T {
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+}
+
+/**
+ * The CSG itself, pausing where it can afford to.
+ *
+ * The fractions are measured, not guessed: building the two BSP trees is about
+ * sixty per cent of the work and the final rebuild most of the rest, while the
+ * clips together are barely one. They are also the only seams available — each
+ * of those calls recurses over a whole tree in one go, so a bar cannot move
+ * inside them without the tree build itself being taken apart.
+ */
+function* csgStaged(
   op: BooleanOp,
   a: readonly Poly[],
   b: readonly Poly[],
   epsilon = PLANE_EPSILON * extentOf([...a, ...b]),
-): Poly[] {
+): Generator<number, Poly[]> {
   const left = treeFrom(a, epsilon);
+  yield 0.34;
   const right = treeFrom(b, epsilon);
+  yield 0.68;
 
   if (op === 'union') {
     clipTo(left, right, epsilon);
@@ -385,6 +415,7 @@ function csg(
     invert(right);
     clipTo(right, left, epsilon);
     invert(right);
+    yield 0.69;
     build(left, allPolys(right), epsilon);
     return allPolys(left);
   }
@@ -396,6 +427,7 @@ function csg(
     invert(right);
     clipTo(right, left, epsilon);
     invert(right);
+    yield 0.69;
     build(left, allPolys(right), epsilon);
     invert(left);
     return allPolys(left);
@@ -406,6 +438,7 @@ function csg(
   invert(right);
   clipTo(left, right, epsilon);
   clipTo(right, left, epsilon);
+  yield 0.69;
   build(left, allPolys(right), epsilon);
   invert(left);
   return allPolys(left);
@@ -671,6 +704,228 @@ function polysToMesh(
 }
 
 /**
+ * A set of coplanar fragments grown back into one face, and its outline.
+ *
+ * `ring` is null when the set never became something a face could hold, which
+ * leaves its fragments alone rather than rebuilding them as something wrong.
+ */
+interface Disc {
+  faces: Face[];
+  ring: Vert[] | null;
+  /** Edges that ended up between two of the disc's faces; the merge is done with them. */
+  interior: Set<number>;
+}
+
+/**
+ * The largest disc that can be grown out of `pool`, starting from `seed`.
+ *
+ * Two discs glued along a single unbroken run of shared edges give a disc.
+ * Glued along two separate runs they give a ring, which encloses a hole; met at
+ * a lone vertex they pinch. Neither has an outline one face could carry, so
+ * each candidate is turned away as it comes rather than the whole region being
+ * thrown back once the damage is done.
+ *
+ * The bookkeeping is over the region's own boundary — the edges carrying
+ * exactly one of its faces — rather than over which faces are in it. That is
+ * what makes it hold on real boolean output instead of only on the clean
+ * manifold the argument above assumes: a crack where a sliver was dropped
+ * leaves an edge with one face in the entire mesh, and it belongs to the
+ * outline like any other edge does, while an edge that somehow carries three
+ * faces must not be allowed to take a fourth.
+ *
+ * Greedy, and swept until a whole pass adds nothing: a fragment turned away
+ * because its shared edges came in two runs becomes addable the moment the gap
+ * between them is filled, and around a hole that happens constantly. Faces
+ * taken are removed from `pool`, so repeated calls partition it.
+ */
+function growDisc(mesh: BMesh, seed: Face, pool: Map<number, Face>): Disc {
+  const faces: Face[] = [];
+  const interior = new Set<number>();
+  const verts = new Set<number>();
+  /** Edge id to the loop of this region that walks it, for its boundary only. */
+  const border = new Map<number, Loop>();
+  /** Boundary edges leaving each vertex. A disc's outline never has two. */
+  const leaving = new Map<number, Set<number>>();
+  let frontier: Face[] = [];
+
+  const attach = (loop: Loop) => {
+    border.set(loop.edge.id, loop);
+    const at = leaving.get(loop.vert.id);
+    if (at) at.add(loop.edge.id);
+    else leaving.set(loop.vert.id, new Set([loop.edge.id]));
+  };
+
+  const detach = (loop: Loop) => {
+    border.delete(loop.edge.id);
+    leaving.get(loop.vert.id)?.delete(loop.edge.id);
+  };
+
+  /** Adds a face and hands back the undo, because some are only tried. */
+  const take = (face: Face) => {
+    const held: Loop[] = [];
+    const laid: Loop[] = [];
+    const fresh: number[] = [];
+
+    faces.push(face);
+    pool.delete(face.id);
+
+    for (const loop of mesh.faceLoops(face)) {
+      if (!verts.has(loop.vert.id)) {
+        verts.add(loop.vert.id);
+        fresh.push(loop.vert.id);
+      }
+
+      const met = border.get(loop.edge.id);
+      if (met) {
+        detach(met);
+        interior.add(loop.edge.id);
+        held.push(met);
+      } else {
+        attach(loop);
+        laid.push(loop);
+      }
+
+      for (const neighbour of mesh.edgeFaces(loop.edge)) {
+        if (pool.has(neighbour.id)) frontier.push(neighbour);
+      }
+    }
+
+    return () => {
+      for (const loop of laid) detach(loop);
+      for (const loop of held) {
+        interior.delete(loop.edge.id);
+        attach(loop);
+      }
+      for (const vert of fresh) verts.delete(vert);
+      faces.pop();
+      pool.set(face.id, face);
+    };
+  };
+
+  /** Whether the outline still leaves every vertex of `face` at most once. */
+  const simple = (face: Face) =>
+    mesh.faceLoops(face).every((loop) => (leaving.get(loop.vert.id)?.size ?? 0) <= 1);
+
+  const worthTrying = (face: Face): boolean => {
+    const loops = mesh.faceLoops(face);
+    // An edge already between two of the region's faces cannot take a third.
+    if (loops.some((loop) => interior.has(loop.edge.id))) return false;
+
+    const shared = loops.map((loop) => border.has(loop.edge.id));
+    let runs = 0;
+    for (let i = 0; i < shared.length; i++) {
+      if (shared[i] && !shared[(i - 1 + shared.length) % shared.length]) runs += 1;
+    }
+    // Zero covers both a face sharing nothing and a face sharing everything —
+    // the second closes the region into a shell rather than widening it.
+    if (runs !== 1) return false;
+
+    // `shared[i]` is the edge leaving vertex `i`, so vertex `i` sits on the run
+    // when the edge before it or the edge after it is part of that run.
+    for (let i = 0; i < loops.length; i++) {
+      if (!verts.has(loops[i].vert.id)) continue;
+      if (shared[i] || shared[(i - 1 + loops.length) % loops.length]) continue;
+      return false;
+    }
+
+    return true;
+  };
+
+  take(seed);
+  // A fragment whose own ring passes the same vertex twice is already pinched,
+  // and nothing grown from it could come back as one face.
+  if (!simple(seed)) return { faces, ring: null, interior };
+
+  while (frontier.length > 0) {
+    const wave = frontier;
+    frontier = [];
+
+    const deferred: Face[] = [];
+    let added = 0;
+    for (const face of wave) {
+      if (!pool.has(face.id)) continue;
+
+      if (worthTrying(face)) {
+        const undo = take(face);
+        if (simple(face)) {
+          added += 1;
+          continue;
+        }
+        undo();
+      }
+      deferred.push(face);
+    }
+
+    // Nothing added means nothing moved, so the deferred would only fail
+    // again; they are left to seed a disc of their own.
+    if (added > 0) frontier.push(...deferred);
+  }
+
+  return { faces, ring: traceBorder(border), interior };
+}
+
+/** Walks a region's boundary into one ring, or gives up on finding it is two. */
+function traceBorder(border: ReadonlyMap<number, Loop>): Vert[] | null {
+  if (border.size < 3) return null;
+
+  const onward = new Map<number, Loop>();
+  for (const loop of border.values()) {
+    if (onward.has(loop.vert.id)) return null;
+    onward.set(loop.vert.id, loop);
+  }
+
+  const start = onward.values().next().value as Loop;
+  const ring: Vert[] = [];
+  let current = start;
+  do {
+    ring.push(current.vert);
+    const next = onward.get(current.next.vert.id);
+    if (!next) return null;
+    current = next;
+  } while (current !== start && ring.length <= onward.size);
+
+  // Short of every boundary edge means the walk closed early, and what it left
+  // out is a second outline — a hole — sitting somewhere it never reached.
+  return current === start && ring.length === onward.size ? ring : null;
+}
+
+/**
+ * Rebuilds one region of same-source fragments as few faces as it can be.
+ *
+ * A face carries a single ring, so a region with a hole in it — the surface a
+ * tool left around its own footprint — can never be one face however it is
+ * approached. It is taken as discs instead: each grows until one more fragment
+ * would close the ring, and each becomes one n-gon whose outline is edges the
+ * cut actually made. Nothing is bridged, nothing is threaded through a hole,
+ * and no face is handed a ring that crosses itself.
+ *
+ * A region with no hole is one disc and comes back as one face, which is the
+ * ordinary case and the one that matters most.
+ */
+function mergeRegion(mesh: BMesh, region: readonly Face[]): Face[] {
+  const pool = new Map(region.map((face) => [face.id, face]));
+  const made: Face[] = [];
+
+  while (pool.size > 0) {
+    const seed = pool.values().next().value as Face;
+    const { faces, ring, interior } = growDisc(mesh, seed, pool);
+    if (faces.length < 2 || !ring) continue;
+
+    const { materialIndex, smooth } = faces[0];
+    for (const face of faces) mesh.removeFace(face);
+    for (const id of interior) {
+      const edge = mesh.edges.get(id);
+      if (edge && edge.loops.length === 0) mesh.removeEdge(edge);
+    }
+
+    made.push(mesh.addFace(ring, { materialIndex, smooth }));
+  }
+
+  if (made.length > 0) mesh.removeLooseVerts();
+  return made;
+}
+
+/**
  * Puts each input face back together from the fragments the BSP cut it into.
  *
  * Grouping by source rather than by angle is the whole point. Every fragment of
@@ -693,39 +948,51 @@ function mergeSourceFragments(mesh: BMesh, sourceOf: Map<number, number>): numbe
   let merged = 0;
   for (const [source, faces] of bySource) {
     if (faces.length < 2) continue;
-    // Region at a time: a BSP carves a face into strips that often meet along
-    // two separate edges, and the last interior edge of a fan always ends up
+
+    // Whole region at a time. A BSP carves a face into strips that often meet
+    // along two separate edges, and the last interior edge of a fan ends up
     // with both loops on one face, which no pairwise merge can resolve.
-    for (const face of dissolveFaces(mesh, faces)) {
-      sourceOf.set(face.id, source);
-      merged += 1;
+    for (const region of connectedRegions(mesh, faces)) {
+      if (region.length < 2) continue;
+      for (const face of mergeRegion(mesh, region)) {
+        sourceOf.set(face.id, source);
+        merged += 1;
+      }
     }
   }
 
-  // A region with a hole in it has two boundary rings, so it cannot become a
-  // single face and the region merge steps around it. Its strips still deserve
-  // joining up pairwise, which is all a bored-through face ever needs. One
-  // sweep of the edges for the whole mesh: an interior edge is one whose two
-  // faces came from the same input face, which is exactly an edge a split made.
-  const leftovers = new Map<number, Edge[]>();
-  for (const edge of mesh.edges.values()) {
-    const sides = mesh.edgeFaces(edge);
-    if (sides.length !== 2) continue;
-    const source = sourceOf.get(sides[0].id);
-    if (source === undefined || source !== sourceOf.get(sides[1].id)) continue;
-    const bucket = leftovers.get(source);
-    if (bucket) bucket.push(edge);
-    else leftovers.set(source, [edge]);
-  }
-
-  for (const [source, edges] of leftovers) {
-    for (const face of dissolveEdges(mesh, edges)) {
-      sourceOf.set(face.id, source);
-      merged += 1;
-    }
-  }
-
+  mesh.computeNormals();
   return merged;
+}
+
+/** Groups faces into islands joined through shared edges. */
+function connectedRegions(mesh: BMesh, faces: readonly Face[]): Face[][] {
+  const pool = new Map(
+    faces.filter((face) => mesh.faces.has(face.id)).map((face) => [face.id, face]),
+  );
+  const regions: Face[][] = [];
+
+  while (pool.size > 0) {
+    const seed = pool.values().next().value as Face;
+    pool.delete(seed.id);
+
+    const region: Face[] = [];
+    const queue: Face[] = [seed];
+    while (queue.length > 0) {
+      const current = queue.pop() as Face;
+      region.push(current);
+      for (const edge of mesh.faceEdges(current)) {
+        for (const neighbour of mesh.edgeFaces(edge)) {
+          if (!pool.has(neighbour.id)) continue;
+          pool.delete(neighbour.id);
+          queue.push(neighbour);
+        }
+      }
+    }
+    regions.push(region);
+  }
+
+  return regions;
 }
 
 /**
@@ -836,9 +1103,6 @@ function resolve(
   // shared edge, and removing that vertex can free the next merge along. One
   // pass of each leaves most of a stepped union still carved into strips.
   for (let pass = 0; pass < RESOLVE_PASSES; pass++) {
-    // A region with a hole in it has two boundary rings, which the region
-    // merge steps around; its strips still deserve joining up pairwise, which
-    // is all a bored-through face ever needs.
     const merged = mergeSourceFragments(mesh, sourceOf);
 
     const stranded = [...mesh.verts.values()].filter((vert) => isRedundant(mesh, vert, epsilon));
@@ -879,6 +1143,27 @@ export function booleanMesh(
   toTarget: (point: Vec3) => Vec3,
   toolSlot: (face: Face) => number = (face) => face.materialIndex,
 ): BMesh {
+  return drain(booleanMeshStaged(op, target, tool, toTarget, toolSlot));
+}
+
+/**
+ * The same boolean, reporting how far along it is between stages.
+ *
+ * Yields a fraction from 0 to 1 at each point it can safely be interrupted, so
+ * a caller driving it can let the browser paint. This is what the editor uses:
+ * a cut between two dense meshes runs for a couple of seconds, and a frozen
+ * window with no explanation reads as a crash rather than as work in progress.
+ *
+ * `booleanMesh` is this function run straight through, so there is one
+ * implementation and the two can never drift.
+ */
+export function* booleanMeshStaged(
+  op: BooleanOp,
+  target: BMesh,
+  tool: BMesh,
+  toTarget: (point: Vec3) => Vec3,
+  toolSlot: (face: Face) => number = (face) => face.materialIndex,
+): Generator<number, BMesh> {
   const areaOf = new Map<number, number>();
   const a = meshToPolys(target, (point) => point, undefined, 0, areaOf);
   // Past every id the target could have used, so a face of one operand is
@@ -889,10 +1174,18 @@ export function booleanMesh(
   // small tool cutting a large target has to be measured against the pair,
   // not against whichever of them happens to be under the tolerance first.
   const scale = extentOf([...a, ...b]);
-  const { mesh, sourceOf } = polysToMesh(
-    csg(op, a, b, PLANE_EPSILON * scale),
-    WELD_EPSILON * scale,
-  );
+
+  // The CSG carries most of the cost, so its own stages are passed straight
+  // through; rebuilding the mesh and resolving it share what is left.
+  const steps = csgStaged(op, a, b, PLANE_EPSILON * scale);
+  let step = steps.next();
+  while (!step.done) {
+    yield step.value * CSG_SHARE;
+    step = steps.next();
+  }
+
+  const { mesh, sourceOf } = polysToMesh(step.value, WELD_EPSILON * scale);
+  yield CSG_SHARE + REBUILD_SHARE;
 
   resolve(mesh, PLANE_EPSILON, sourceOf, areaOf);
   mesh.computeNormals();

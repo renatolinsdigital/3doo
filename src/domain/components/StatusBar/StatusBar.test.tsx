@@ -85,3 +85,40 @@ describe('StatusBar', () => {
     expect(screen.getByText('SNAP VERTEX')).toBeInTheDocument();
   });
 });
+
+describe('progress readout', () => {
+  it('shows the percentage and the operation while one is running', () => {
+    act(() => useEditorStore.setState({ progress: { label: 'UNION', value: 0.9 } }));
+    render(<StatusBar />);
+
+    const bar = screen.getByRole('progressbar', { name: 'UNION' });
+    expect(bar).toHaveAttribute('aria-valuenow', '90');
+    expect(screen.getByText('90%')).toBeInTheDocument();
+    expect(screen.getByText('UNION')).toBeInTheDocument();
+  });
+
+  it('gives the slot back to the status message once it is done', () => {
+    act(() =>
+      useEditorStore.setState({ progress: null, status: 'Union of 2 objects', modal: null }),
+    );
+    render(<StatusBar />);
+
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+    expect(screen.getByText('Union of 2 objects')).toBeInTheDocument();
+  });
+
+  it('rounds to whole percent and never reports past the ends', () => {
+    for (const [value, shown] of [
+      [0, '0%'],
+      [0.666, '67%'],
+      [1, '100%'],
+      [1.4, '100%'],
+      [-0.2, '0%'],
+    ] as const) {
+      act(() => useEditorStore.setState({ progress: { label: 'REMESH', value } }));
+      const view = render(<StatusBar />);
+      expect(screen.getByText(shown)).toBeInTheDocument();
+      view.unmount();
+    }
+  });
+});

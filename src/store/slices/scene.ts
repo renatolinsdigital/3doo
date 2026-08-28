@@ -16,7 +16,7 @@ import {
   SELECTION_OPERATORS,
   add,
   applyModifier,
-  booleanMesh,
+  booleanMeshStaged,
   centroid,
   cloneMesh,
   composeMatrix,
@@ -112,8 +112,14 @@ export interface SceneSlice {
   clearRecentVerts: () => void;
   duplicateSelected: (linked?: boolean) => void;
   mergeSelected: () => void;
-  /** Cuts the selected objects against the active one, which keeps the result. */
-  booleanWithSelected: (op: BooleanOp) => void;
+  /**
+   * Cuts the selected objects against the active one, which keeps the result.
+   *
+   * Asynchronous so the status bar can move while it runs: a cut between two
+   * dense meshes takes seconds, and it pauses between stages to let the window
+   * repaint. The mesh is not touched until every tool has been applied.
+   */
+  booleanWithSelected: (op: BooleanOp) => Promise<void>;
   separateLooseParts: () => void;
   /** Deletes the selection, or the objects named — the outliner's row menu names one. */
   deleteSelected: (ids?: readonly string[]) => void;
@@ -548,8 +554,9 @@ export const createSceneSlice: StateCreator<
     }));
   },
 
-  booleanWithSelected: (op) => {
+  booleanWithSelected: async (op) => {
     const state = get();
+    if (state.busy) return;
     const { objects, selectedObjectIds } = state;
     const target = activeObject(state);
     if (!target) {
@@ -570,6 +577,24 @@ export const createSceneSlice: StateCreator<
       return;
     }
 
+    // A boolean reads the mesh under the stack, not the shape the stack draws:
+    // cutting against a sphere with a live REMESH would use the sphere it was
+    // built from and hand back a result matching nothing on screen. Refused
+    // rather than quietly evaluated, because applying a stack is destructive
+    // and is the user's call to make, not this operation's.
+    const unapplied = [target, ...tools].filter((object) =>
+      object.modifiers.some((modifier) => modifier.enabled),
+    );
+    if (unapplied.length > 0) {
+      const names = unapplied.map((object) => object.name).join(', ');
+      get().pushToast(
+        'error',
+        `Apply the modifiers on ${names} first — a boolean cuts the mesh underneath the stack, not the shape you see.`,
+      );
+      set({ status: `Apply the modifiers on ${names} before a boolean` });
+      return;
+    }
+
     get().recordHistory(BOOLEAN_LABELS[op]);
 
     // No clone guard as in a merge: each pass builds a new mesh rather than
@@ -578,7 +603,7 @@ export const createSceneSlice: StateCreator<
     const materials = [...target.materials];
     let mesh = target.mesh;
 
-    for (const tool of tools) {
+    for (const [index, tool] of tools.entries()) {
       // Slots are merged by identity so a cutter's material does not arrive as
       // a second slot pointing at the one the target already has.
       const slots = tool.materials.map((material) => {
@@ -589,12 +614,26 @@ export const createSceneSlice: StateCreator<
       });
 
       const matrix = composeMatrix(tool.transform);
-      mesh = booleanMesh(
-        op,
-        mesh,
-        tool.mesh,
-        (point) => inverseTransformPoint(target.transform, transformPoint(matrix, point)),
-        (face) => slots[face.materialIndex] ?? 0,
+      // Each tool is a slice of the bar, so cutting with three of them runs
+      // once from end to end rather than three times from zero.
+      mesh = await get().runStaged(
+        BOOLEAN_LABELS[op].toUpperCase(),
+        (function* (steps) {
+          let step = steps.next();
+          while (!step.done) {
+            yield (index + step.value) / tools.length;
+            step = steps.next();
+          }
+          return step.value;
+        })(
+          booleanMeshStaged(
+            op,
+            mesh,
+            tool.mesh,
+            (point) => inverseTransformPoint(target.transform, transformPoint(matrix, point)),
+            (face) => slots[face.materialIndex] ?? 0,
+          ),
+        ),
       );
     }
 

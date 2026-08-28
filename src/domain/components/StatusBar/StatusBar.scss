@@ -53,6 +53,52 @@
     min-width: 0;
   }
 
+  // Bracketed like a readout rather than a rounded meter: the editor draws
+  // everything else on this bar as hard-edged type, and a soft bar reads as
+  // borrowed from somewhere else.
+  &__progress {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex: 0 0 auto;
+
+    &::before {
+      content: '[';
+    }
+
+    &::after {
+      content: ']';
+    }
+  }
+
+  &__progress-track {
+    position: relative;
+    display: block;
+    width: 120px;
+    height: 10px;
+    background: var(--void);
+    border: var(--border-thin) solid var(--bone);
+    overflow: hidden;
+  }
+
+  &__progress-fill {
+    display: block;
+    height: 100%;
+    background: var(--amber);
+    // Eases between the stages the operation actually reports, so the bar
+    // travels instead of jumping. Kept short: it must never lag far enough
+    // behind to still be moving after the work has finished.
+    transition: width 120ms linear;
+  }
+
+  &__progress-value {
+    @include mono-value;
+
+    min-width: 4ch;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
   &__flag {
     @include label-text;
 

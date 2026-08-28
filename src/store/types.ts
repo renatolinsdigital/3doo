@@ -26,6 +26,14 @@ export type PivotMode = 'median' | 'cursor' | 'individual' | 'active';
 
 export type NavigationPreset = 'blender' | 'maya';
 
+/** A long operation's progress, for the status bar. Null when nothing is running. */
+export interface OperationProgress {
+  /** What is running, in the status bar's voice: "UNION", "REMESH". */
+  label: string;
+  /** How far along, 0 to 1. */
+  value: number;
+}
+
 export interface SceneObject {
   id: string;
   name: string;
