@@ -298,6 +298,46 @@ describe('subdivide', () => {
     expect(cube.validate()).toEqual([]);
   });
 
+  it('takes exactly the cuts it is given, and no more', () => {
+    // Four cuts is a five by five grid, not four rounds of the one-cut scheme:
+    // that would cut every edge sixteen ways and hand back 256 faces.
+    const cube = createBox(2);
+    const top = faceAt(cube, vec3(0, 1, 0));
+
+    subdivideFaces(cube, [top], { cuts: 4 });
+
+    expect(cube.faces.size).toBe(25 + 5);
+    expect([...cube.faces.values()].every((face) => cube.faceLoops(face).length <= 8)).toBe(true);
+    expect(isClosed(cube)).toBe(true);
+    expect(eulerCharacteristic(cube)).toBe(2);
+    expect(cube.validate()).toEqual([]);
+  });
+
+  it('grids the neighbour a previous cut left carrying a row of vertices', () => {
+    // The face beside a subdivided one is a square with five vertices along one
+    // side. Counting its ring calls it an eight-gon and fans eight slivers off
+    // its middle; reading where it turns calls it the square it is and grids it.
+    const cube = createBox(2);
+    const area = () => [...cube.faces.values()].reduce((sum, face) => sum + cube.faceArea(face), 0);
+    const before = area();
+
+    subdivideFaces(cube, [faceAt(cube, vec3(0, 1, 0))], { cuts: 4 });
+    subdivideFaces(cube, [faceAt(cube, vec3(1, 0, 0))], { cuts: 4 });
+
+    expect(cube.faces.size).toBe(25 + 25 + 4);
+    expect(area()).toBeCloseTo(before, 9);
+    expect(isClosed(cube)).toBe(true);
+    expect(eulerCharacteristic(cube)).toBe(2);
+    expect(cube.validate()).toEqual([]);
+
+    // A fan would leave a hub carrying every quad of the face at once; a grid
+    // leaves four apiece.
+    const crowded = Math.max(
+      ...[...cube.verts.values()].map((vert) => cube.vertFaces(vert).length),
+    );
+    expect(crowded).toBeLessThanOrEqual(4);
+  });
+
   it('pulls corners toward the limit surface when smoothing', () => {
     const cube = createBox(2);
     const cornerDistance = Math.sqrt(3);

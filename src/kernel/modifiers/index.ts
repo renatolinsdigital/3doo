@@ -334,8 +334,12 @@ function applyWeld(mesh: BMesh, modifier: WeldModifier): BMesh {
 
 function applySubdivide(mesh: BMesh, modifier: SubdivideModifier): BMesh {
   const levels = Math.max(0, Math.min(3, Math.floor(modifier.levels)));
-  if (levels === 0) return mesh;
-  subdivideFaces(mesh, [...mesh.faces.values()], { cuts: levels, smooth: modifier.smooth });
+  // A level is a whole pass of the scheme over the result of the last one,
+  // which is what makes the surface converge; one pass cutting every edge
+  // `levels` times would be a finer cage, not a smoother limit.
+  for (let level = 0; level < levels; level++) {
+    subdivideFaces(mesh, [...mesh.faces.values()], { cuts: 1, smooth: modifier.smooth });
+  }
   return mesh;
 }
 

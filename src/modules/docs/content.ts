@@ -221,7 +221,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Subdivide (Ctrl+D)',
-            'In face mode, splits each face into four with optional Catmull-Clark smoothing. In edge mode, adds midpoint vertices to the selected edges.',
+            'In face mode, cuts every edge of the face CUTS times and fills it with the grid that leaves — one cut gives four faces, three gives sixteen — with optional Catmull-Clark smoothing. In edge mode, adds that many vertices along each selected edge.',
           ],
           [
             'Merge (M) and merge by distance',

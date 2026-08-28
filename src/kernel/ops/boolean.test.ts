@@ -666,18 +666,18 @@ describe('what a boolean costs', () => {
     // fast machine and a slow one — and it is the ratio that gives away a step
     // that walks the whole mesh once per region of it, which is what a dense
     // boolean used to do and what froze the window for ten seconds.
-    const cut = (levels: number) => {
+    const cut = (cuts: number) => {
       const box = createBox(2);
-      subdivideFaces(box, [...box.faces.values()], { cuts: levels, smooth: 0 });
+      subdivideFaces(box, [...box.faces.values()], { cuts, smooth: 0 });
       const tool = createUVSphere(0.9, 32, 16);
       const started = performance.now();
       booleanMesh('union', box, tool, offsetBy(vec3(1, 0, 0)));
       return performance.now() - started;
     };
 
-    cut(3); // warm the code paths up, so the first timed run is not the slow one
-    const small = cut(4);
-    const large = cut(6);
+    cut(7); // warm the code paths up, so the first timed run is not the slow one
+    const small = cut(15);
+    const large = cut(63);
 
     // Sixteen times the faces. Linear would be sixteen, and the rebuild it does
     // on top of the cut is not linear, so there is room; quadratic would be far

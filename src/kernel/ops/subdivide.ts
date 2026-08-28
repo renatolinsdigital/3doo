@@ -1,12 +1,14 @@
 import {
   type Vec3,
   add,
+  addScaled,
   basisFromNormal,
   centroid,
   clamp,
   cross,
   distanceSq,
   dot,
+  length,
   lerp,
   mul,
   normalize,
@@ -17,9 +19,10 @@ import {
 } from '../math';
 import type { BMesh } from '../mesh';
 import { triangulatePolygon } from '../mesh';
-import type { Edge, Face, Vert } from '../mesh/types';
+import type { Edge, Face, Loop, Vert } from '../mesh/types';
 
 export interface SubdivideOptions {
+  /** Cuts taken out of every edge: 1 leaves a quad as four, 3 as sixteen. */
   cuts?: number;
   /** 0 keeps the cage, 1 pulls new points onto the Catmull-Clark limit points. */
   smooth?: number;
@@ -28,8 +31,19 @@ export interface SubdivideOptions {
 /**
  * Catmull-Clark style subdivision of the selected faces.
  *
- * Each selected face becomes one quad per corner. Faces bordering the selection
- * keep their shape but gain the new edge points, so the mesh stays watertight.
+ * One pass, however many cuts: a quad comes back as a grid of (cuts + 1) by
+ * (cuts + 1), which is what a count of cuts reads as everywhere else. Running
+ * the one-cut scheme `cuts` times instead — which is what this used to do —
+ * cuts every edge two to the power of it, so four asked for came back as
+ * sixteen.
+ *
+ * At a single cut it is exactly Catmull-Clark, which is what the modifier
+ * stacks a level at a time: a quad becomes four, a face of any other shape
+ * becomes one quad per corner around its face point, and `smooth` blends the
+ * new points onto the limit surface.
+ *
+ * Faces bordering the selection keep their shape but gain the new edge points,
+ * so the mesh stays watertight.
  */
 export function subdivideFaces(
   mesh: BMesh,
@@ -38,13 +52,7 @@ export function subdivideFaces(
 ): Face[] {
   const cuts = Math.max(1, Math.floor(options.cuts ?? 1));
   const smooth = clamp(options.smooth ?? 0, 0, 1);
-
-  let current = [...faces];
-  for (let pass = 0; pass < cuts; pass++) {
-    current = subdividePass(mesh, current, smooth);
-    if (current.length === 0) break;
-  }
-  return current;
+  return subdividePass(mesh, faces, cuts, smooth);
 }
 
 /**
@@ -440,14 +448,231 @@ function openFace(mesh: BMesh, face: Face): Face[] {
   );
 }
 
-function subdividePass(mesh: BMesh, faces: readonly Face[], smooth: number): Face[] {
+/**
+ * Whether the outline turns at a vertex, or merely runs through it.
+ *
+ * Subdividing one face of a box leaves each neighbour carrying a row of
+ * vertices along the shared edge: still a square, no longer a quad by its
+ * vertex count. Reading where the outline actually turns is what lets the next
+ * subdivision grid it like the square it is, rather than fanning a sliver off
+ * every one of those vertices.
+ */
+const COLLINEAR = 1e-3;
+
+function turnsAt(previous: Vec3, at: Vec3, next: Vec3): boolean {
+  const into = sub(at, previous);
+  const away = sub(next, at);
+  const reach = length(into) * length(away);
+  if (reach === 0) return true;
+  return length(cross(into, away)) / reach > COLLINEAR || dot(into, away) < 0;
+}
+
+function greatestCommonDivisor(a: number, b: number): number {
+  return b === 0 ? a : greatestCommonDivisor(b, a % b);
+}
+
+/**
+ * How many segments a set of facing sides is cut into.
+ *
+ * At least what was asked for, never fewer than a side already carries, and a
+ * whole multiple of each of them: a side left five edges long by an earlier
+ * subdivision is re-cut in fives, so the grid meets it instead of hanging
+ * T-junctions off it. Sides that have never been cut are the common case, and
+ * come out at exactly the cuts asked for.
+ */
+function conformed(existing: readonly number[], least: number, even: boolean): number {
+  let step = existing.reduce((all, count) => (all * count) / greatestCommonDivisor(all, count), 1);
+  // A face fanned off its middle needs a vertex halfway along each side to fan
+  // from, so its sides are cut in twos.
+  if (even && step % 2 === 1) step *= 2;
+  return Math.ceil(Math.max(least, ...existing) / step) * step;
+}
+
+/** A face's outline, grouped into the sides between the corners it turns at. */
+interface Outline {
+  sides: Loop[][];
+  /** Segments each side is to end up cut into. */
+  divisions: number[];
+  /** Four corners: cut into a grid. Anything else: one quad per corner. */
+  grid: boolean;
+}
+
+function outlineOf(mesh: BMesh, face: Face, cuts: number): Outline | null {
+  const loops = mesh.faceLoops(face);
+  const count = loops.length;
+  if (count < 3) return null;
+
+  const corners: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const previous = loops[(i - 1 + count) % count].vert.co;
+    const next = loops[(i + 1) % count].vert.co;
+    if (turnsAt(previous, loops[i].vert.co, next)) corners.push(i);
+  }
+  if (corners.length < 3) return null;
+
+  const sides: Loop[][] = [];
+  for (let c = 0; c < corners.length; c++) {
+    const until = corners[(c + 1) % corners.length];
+    const run: Loop[] = [];
+    for (let i = corners[c]; i !== until; i = (i + 1) % count) run.push(loops[i]);
+    sides.push(run);
+  }
+
+  const lengths = sides.map((side) => side.length);
+  const grid = sides.length === 4;
+  const divisions = grid
+    ? // Facing sides have to agree for a grid to close, so they are conformed
+      // as a pair; the two directions are free of each other.
+      [0, 1, 0, 1].map((axis) => conformed([lengths[axis], lengths[axis + 2]], cuts + 1, false))
+    : lengths.map(() => conformed(lengths, cuts + 1, true));
+
+  return { sides, divisions, grid };
+}
+
+/**
+ * A point inside a patch, from its four boundaries: Coons interpolation.
+ *
+ * The two rulings between facing boundaries, less the bilinear surface through
+ * the corners they share, which each of them already carries. A flat patch with
+ * straight sides comes back as an even grid; one whose boundary was bowed by
+ * smoothing comes back following it rather than cutting the corner.
+ */
+function coonsPoint(
+  bottom: Vec3,
+  top: Vec3,
+  left: Vec3,
+  right: Vec3,
+  corners: readonly Vec3[],
+  u: number,
+  v: number,
+): Vec3 {
+  const rulings = add(add(mul(bottom, 1 - v), mul(top, v)), add(mul(left, 1 - u), mul(right, u)));
+  const span = add(
+    add(mul(corners[0], (1 - u) * (1 - v)), mul(corners[1], u * (1 - v))),
+    add(mul(corners[2], u * v), mul(corners[3], (1 - u) * v)),
+  );
+  return sub(rulings, span);
+}
+
+/**
+ * Fills a four-sided patch with quads, as rings ready to be added.
+ *
+ * The boundaries run bottom `C0 -> C1`, right `C1 -> C2`, top `C3 -> C2` and
+ * left `C0 -> C3`, and facing pairs must carry the same number of segments.
+ * `middle` overrides the one interior point of a two-by-two patch: that is the
+ * Catmull-Clark case, where the point is the face point and nothing else.
+ */
+function gridRings(
+  mesh: BMesh,
+  bottom: readonly Vert[],
+  right: readonly Vert[],
+  top: readonly Vert[],
+  left: readonly Vert[],
+  middle: Vec3 | null,
+): Vert[][] {
+  const across = bottom.length - 1;
+  const down = left.length - 1;
+  const corners = [bottom[0].co, bottom[across].co, top[across].co, top[0].co];
+
+  const grid: Vert[][] = [];
+  for (let i = 0; i <= across; i++) {
+    const column: Vert[] = [];
+    for (let j = 0; j <= down; j++) {
+      if (j === 0) column.push(bottom[i]);
+      else if (j === down) column.push(top[i]);
+      else if (i === 0) column.push(left[j]);
+      else if (i === across) column.push(right[j]);
+      else if (middle && across === 2 && down === 2) column.push(mesh.addVert(middle));
+      else {
+        column.push(
+          mesh.addVert(
+            coonsPoint(
+              bottom[i].co,
+              top[i].co,
+              left[j].co,
+              right[j].co,
+              corners,
+              i / across,
+              j / down,
+            ),
+          ),
+        );
+      }
+    }
+    grid.push(column);
+  }
+
+  const rings: Vert[][] = [];
+  for (let i = 0; i < across; i++) {
+    for (let j = 0; j < down; j++) {
+      rings.push([grid[i][j], grid[i + 1][j], grid[i + 1][j + 1], grid[i][j + 1]]);
+    }
+  }
+  return rings;
+}
+
+/**
+ * The quads a face comes apart into, or null if its sides no longer agree.
+ *
+ * Four corners give a grid. Anything else is cut the way Catmull-Clark cuts it:
+ * one quad per corner, reaching back to a point in the middle of the face —
+ * gridded in turn when the sides carry more than the one cut that scheme needs.
+ */
+function patchRings(mesh: BMesh, outline: Outline, runs: Vert[][], middle: Vec3): Vert[][] | null {
+  const lengths = runs.map((run) => run.length - 1);
+
+  if (outline.grid) {
+    if (lengths[0] !== lengths[2] || lengths[1] !== lengths[3]) return null;
+    return gridRings(
+      mesh,
+      runs[0],
+      runs[1],
+      [...runs[2]].reverse(),
+      [...runs[3]].reverse(),
+      middle,
+    );
+  }
+
+  const across = lengths[0];
+  if (across % 2 !== 0 || lengths.some((count) => count !== across)) return null;
+  const half = across / 2;
+
+  const centre = mesh.addVert(middle);
+  // One spoke per side, from the point halfway along it to the middle. Shared
+  // by the two corner quads either side of it, so it is drawn once.
+  const spokes = runs.map((run) => {
+    const from = run[half];
+    const spoke: Vert[] = [from];
+    for (let k = 1; k < half; k++) spoke.push(mesh.addVert(lerp(from.co, middle, k / half)));
+    spoke.push(centre);
+    return spoke;
+  });
+
+  const rings: Vert[][] = [];
+  for (let c = 0; c < runs.length; c++) {
+    const before = (c - 1 + runs.length) % runs.length;
+    rings.push(
+      ...gridRings(
+        mesh,
+        runs[c].slice(0, half + 1),
+        spokes[c],
+        spokes[before],
+        [...runs[before].slice(half)].reverse(),
+        null,
+      ),
+    );
+  }
+  return rings;
+}
+
+function subdividePass(mesh: BMesh, faces: readonly Face[], cuts: number, smooth: number): Face[] {
   const live = faces.filter((face) => mesh.faces.has(face.id));
   if (live.length === 0) return [];
 
   // A face no point in it can see the whole of is cut into convex pieces before
-  // anything else happens, because the fan below only tiles a face its centre
-  // can see. The ring a boolean leaves around a hole is the case that matters,
-  // and left whole it comes back as a starburst across the hole.
+  // anything else happens, because the quads fanned off a face only tile it
+  // when its middle can see every edge. The ring a boolean leaves around a hole
+  // is the case that matters, and left whole it comes back as a starburst.
   const selected: Face[] = [];
   for (const face of live) {
     const points = mesh.facePoints(face);
@@ -458,7 +683,7 @@ function subdividePass(mesh: BMesh, faces: readonly Face[], smooth: number): Fac
   const selectedIds = new Set(selected.map((face) => face.id));
 
   // Read once per face and shared by all three rules below, so the edge points,
-  // the relaxed corners and the centre a face is fanned from all agree.
+  // the relaxed corners and the middle a face is cut around all agree.
   const points = new Map<number, Vec3>();
   const facePoint = (face: Face) => {
     const held = points.get(face.id);
@@ -468,24 +693,51 @@ function subdividePass(mesh: BMesh, faces: readonly Face[], smooth: number): Fac
     return found;
   };
 
-  const splitEdges = new Map<number, Edge>();
+  const outlines = new Map<number, Outline>();
+  const splits = new Map<Edge, number>();
+  const demand = (edge: Edge, count: number) =>
+    splits.set(edge, Math.max(splits.get(edge) ?? 0, count));
+
   for (const face of selected) {
-    for (const edge of mesh.faceEdges(face)) splitEdges.set(edge.id, edge);
+    const outline = outlineOf(mesh, face, cuts);
+    if (!outline) {
+      // No outline to read: cut every edge once, which is all Catmull-Clark
+      // ever asks for, and let the face keep its ring below.
+      for (const edge of mesh.faceEdges(face)) demand(edge, 1);
+      continue;
+    }
+    outlines.set(face.id, outline);
+    outline.sides.forEach((side, index) => {
+      for (const loop of side) demand(loop.edge, outline.divisions[index] / side.length - 1);
+    });
   }
 
-  const edgePoint = new Map<number, Vert>();
-  for (const edge of splitEdges.values()) {
+  const edgePoints = new Map<Edge, Vert[]>();
+  for (const [edge, count] of splits) {
+    if (count < 1) continue;
     const midpoint = mul(add(edge.v0.co, edge.v1.co), 0.5);
     const adjacent = mesh.edgeFaces(edge);
     const limit =
       adjacent.length === 2
         ? centroid([edge.v0.co, edge.v1.co, ...adjacent.map(facePoint)])
         : midpoint;
-    edgePoint.set(edge.id, mesh.addVert(smooth > 0 ? lerp(midpoint, limit, smooth) : midpoint));
+    const pull = sub(limit, midpoint);
+
+    const inserted: Vert[] = [];
+    for (let i = 1; i <= count; i++) {
+      const t = i / (count + 1);
+      const along = lerp(edge.v0.co, edge.v1.co, t);
+      // Weighted to nothing at the ends and to the whole of the pull in the
+      // middle: one cut then lands exactly on the Catmull-Clark edge point, and
+      // a row of them bows the edge rather than stepping it.
+      const weight = 4 * t * (1 - t) * smooth;
+      inserted.push(mesh.addVert(weight > 0 ? addScaled(along, pull, weight) : along));
+    }
+    edgePoints.set(edge, inserted);
   }
 
   const neighbours = new Map<number, Face>();
-  for (const edge of splitEdges.values()) {
+  for (const edge of edgePoints.keys()) {
     for (const face of mesh.edgeFaces(edge)) {
       if (!selectedIds.has(face.id)) neighbours.set(face.id, face);
     }
@@ -518,6 +770,26 @@ function subdividePass(mesh: BMesh, faces: readonly Face[], smooth: number): Fac
     }
   }
 
+  /** The points cut into one edge, running the way this loop crosses it. */
+  const alongLoop = (loop: Loop) => {
+    const inserted = edgePoints.get(loop.edge) ?? [];
+    return loop.edge.v0 === loop.vert ? inserted : [...inserted].reverse();
+  };
+
+  /** One side of a face, corner to corner, with the new points spliced in. */
+  const sideVerts = (side: Loop[]) => {
+    const run: Vert[] = [side[0].vert];
+    for (const loop of side) run.push(...alongLoop(loop), loop.next.vert);
+    return run;
+  };
+
+  /** The face's own ring with the new points spliced into it. */
+  const widened = (face: Face) => {
+    const ring: Vert[] = [];
+    for (const loop of mesh.faceLoops(face)) ring.push(loop.vert, ...alongLoop(loop));
+    return ring;
+  };
+
   interface FaceSpec {
     ring: Vert[];
     materialIndex: number;
@@ -526,41 +798,21 @@ function subdividePass(mesh: BMesh, faces: readonly Face[], smooth: number): Fac
   }
   const created: FaceSpec[] = [];
 
-  /** The face's own ring with the new edge points spliced into it. */
-  const widened = (face: Face) => {
-    const ring: Vert[] = [];
-    for (const loop of mesh.faceLoops(face)) {
-      ring.push(loop.vert);
-      const point = edgePoint.get(loop.edge.id);
-      if (point) ring.push(point);
-    }
-    return ring;
-  };
-
   for (const face of selected) {
+    const outline = outlines.get(face.id);
     const middle = facePoint(face);
+    // A face no point can see the whole of keeps its ring instead of being cut
+    // up. It still takes the new points, so the mesh stays watertight and its
+    // corners still relax with everything else; it simply is not carved, because
+    // the only way to carve it is into quads that miss it.
+    const rings =
+      outline && fansCleanly(mesh.facePoints(face), middle)
+        ? patchRings(mesh, outline, outline.sides.map(sideVerts), middle)
+        : null;
 
-    // A face no point can see the whole of keeps its ring instead of being
-    // fanned. It still takes the new edge points, so the mesh stays watertight
-    // and its corners still relax with everything else; it simply is not carved
-    // up, because the only way to carve it is into quads that miss it.
-    if (!fansCleanly(mesh.facePoints(face), middle)) {
+    for (const ring of rings ?? [widened(face)]) {
       created.push({
-        ring: widened(face),
-        materialIndex: face.materialIndex,
-        smooth: face.smooth,
-        fromSelection: true,
-      });
-      continue;
-    }
-
-    const center = mesh.addVert(middle);
-    for (const loop of mesh.faceLoops(face)) {
-      const incoming = edgePoint.get(loop.prev.edge.id);
-      const outgoing = edgePoint.get(loop.edge.id);
-      if (!incoming || !outgoing) continue;
-      created.push({
-        ring: [loop.vert, outgoing, center, incoming],
+        ring,
         materialIndex: face.materialIndex,
         smooth: face.smooth,
         fromSelection: true,

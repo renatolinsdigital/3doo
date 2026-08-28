@@ -154,11 +154,13 @@ export function OperationsPanel() {
           value={subdivideCuts}
           integer
           min={1}
-          max={4}
+          // Cuts cost what they say now: sixteen of them is a 17 by 17 grid,
+          // where four rounds of the old scheme was already 16 by 16.
+          max={16}
           hint={
             edgeMode
               ? 'How many vertices to add along each selected edge'
-              : 'How many times to split each selected face'
+              : 'How many cuts to take out of each edge of the face: 1 leaves four faces, 3 leaves sixteen'
           }
           onChange={setSubdivideCuts}
         />
@@ -185,8 +187,8 @@ export function OperationsPanel() {
                 ? 'Add a vertex at the midpoint of each selected edge (Ctrl+D)'
                 : 'Select edges to add a midpoint vertex to (Ctrl+D)'
               : selection.faces > 0
-                ? 'Split each selected face into four smaller faces (Ctrl+D)'
-                : 'Select faces to split into smaller ones (Ctrl+D)'
+                ? 'Cut each selected face into a grid of smaller faces (Ctrl+D)'
+                : 'Select faces to cut into smaller ones (Ctrl+D)'
           }
           onClick={() =>
             exec('subdivide', { cuts: subdivideCuts, smooth: subdivideSmooth }, 'Subdivide')
