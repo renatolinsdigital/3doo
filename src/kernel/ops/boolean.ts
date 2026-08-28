@@ -12,9 +12,9 @@ import {
   sub,
 } from '../math';
 import { BMesh, triangulatePolygon } from '../mesh';
-import type { Face, Vert } from '../mesh/types';
+import type { Edge, Face, Vert } from '../mesh/types';
 
-import { dissolveFaces, dissolveVerts, limitedDissolve } from './dissolve';
+import { dissolveEdges, dissolveFaces, dissolveVerts } from './dissolve';
 import { trisToQuads } from './subdivide';
 
 export type BooleanOp = 'union' | 'difference' | 'intersect';
@@ -46,13 +46,20 @@ const WELD_EPSILON = 5e-7;
 const RESOLVE_PASSES = 8;
 
 /**
- * How far two faces may fold and still be merged back into one.
+ * How far two coplanar triangles may fold and still be paired into a quad.
  *
- * Tight on purpose. The point is to undo splits the BSP made along planes that
- * do not bound the finished solid, and those leave the two halves exactly
- * coplanar. Anything looser starts flattening the crease the cut just made.
+ * Only the tidying pass at the end of `resolve` reads this. Which faces may be
+ * merged at all is decided by provenance, not by angle — see
+ * `mergeSourceFragments`.
  */
-const COPLANAR_LIMIT_DEGREES = 0.5;
+const QUAD_PAIR_LIMIT_DEGREES = 1;
+
+/**
+ * How much of its area a face may lose and still count as having come through
+ * untouched. Loose enough to ignore a clip that shaved off a sliver, tight
+ * enough that any real cut is seen.
+ */
+const AREA_EPSILON = 1e-6;
 
 /** The largest side of the box the polygons fill; the model's own scale. */
 function extentOf(polys: readonly Poly[]): number {
@@ -84,11 +91,21 @@ interface Plane {
   w: number;
 }
 
-/** A convex polygon — always a triangle here — carrying the slot it came from. */
+/** A polygon, carrying the slot and the input face it came from. */
 interface Poly {
   points: Vec3[];
   plane: Plane;
   materialIndex: number;
+  /**
+   * The input face this is a piece of, unique across both operands.
+   *
+   * A BSP splits a face by every plane in the tree, not only by the ones that
+   * end up bounding the solid, so the surface arrives carved along lines the
+   * finished shape has no reason to show. Knowing which pieces were one face is
+   * what lets those cuts be undone without touching anything else — see
+   * `mergeSourceFragments`.
+   */
+  source: number;
 }
 
 const COPLANAR = 0;
@@ -151,6 +168,7 @@ function flipPoly(poly: Poly): Poly {
     points: [...poly.points].reverse(),
     plane: flipPlane(poly.plane),
     materialIndex: poly.materialIndex,
+    source: poly.source,
   };
 }
 
@@ -216,11 +234,23 @@ function splitPoly(
 
   // A split can leave a two-point sliver on one side; it has no area, and
   // feeding it back in would give it a garbage plane.
+  // Both halves keep the parent's plane, so every fragment of one input face
+  // stays exactly coplanar with its siblings however many times it is cut.
   if (frontPoints.length >= 3) {
-    front.push({ points: frontPoints, plane: poly.plane, materialIndex: poly.materialIndex });
+    front.push({
+      points: frontPoints,
+      plane: poly.plane,
+      materialIndex: poly.materialIndex,
+      source: poly.source,
+    });
   }
   if (backPoints.length >= 3) {
-    back.push({ points: backPoints, plane: poly.plane, materialIndex: poly.materialIndex });
+    back.push({
+      points: backPoints,
+      plane: poly.plane,
+      materialIndex: poly.materialIndex,
+      source: poly.source,
+    });
   }
 }
 
@@ -429,9 +459,14 @@ function meshToPolys(
   mesh: BMesh,
   toTarget: (point: Vec3) => Vec3,
   slotFor: (face: Face) => number = (face) => face.materialIndex,
+  /** Start of this operand's source ids; the two operands must not overlap. */
+  base = 0,
+  /** Filled with the area each input face came in with; see `untouchedSources`. */
+  areaOf?: Map<number, number>,
   epsilon = PLANE_EPSILON,
 ): Poly[] {
   const polys: Poly[] = [];
+  let source = base;
 
   for (const face of mesh.faces.values()) {
     const points = mesh.facePoints(face).map(toTarget);
@@ -439,6 +474,8 @@ function meshToPolys(
 
     const normal = polygonNormal(points);
     const slot = slotFor(face);
+    source += 1;
+    areaOf?.set(source, polygonArea(points));
 
     // A face the boolean never touches should come out the far side as the
     // same face. Triangulating everything on the way in is what left a plain
@@ -446,7 +483,7 @@ function meshToPolys(
     if (isSplittable(points, normal, epsilon)) {
       const plane = planeFrom(points);
       if (usablePlane(plane)) {
-        polys.push({ points, plane, materialIndex: slot });
+        polys.push({ points, plane, materialIndex: slot, source });
         continue;
       }
     }
@@ -458,7 +495,7 @@ function meshToPolys(
       // A degenerate triangle has no usable plane, and one bad plane in the
       // tree misroutes every polygon sorted against it.
       if (!usablePlane(plane)) continue;
-      polys.push({ points: tri, plane, materialIndex: slot });
+      polys.push({ points: tri, plane, materialIndex: slot, source });
     }
   }
 
@@ -546,8 +583,9 @@ function grid(verts: readonly Vert[], resolution: number) {
 function polysToMesh(
   polys: readonly Poly[],
   tolerance = WELD_EPSILON * extentOf(polys),
-): BMesh {
+): { mesh: BMesh; sourceOf: Map<number, number> } {
   const mesh = new BMesh();
+  const sourceOf = new Map<number, number>();
   const cell = Math.max(tolerance, Number.EPSILON) * 2;
   const buckets = new Map<string, Vert[]>();
   const limitSq = tolerance * tolerance;
@@ -580,13 +618,13 @@ function polysToMesh(
     return vert;
   };
 
-  const rings: { verts: Vert[]; materialIndex: number }[] = [];
+  const rings: { verts: Vert[]; materialIndex: number; source: number }[] = [];
   for (const poly of polys) {
     const verts = poly.points.map(weld);
     // The weld can collapse a sliver onto itself, which is no longer a face.
     const ring = verts.filter((vert, index) => vert !== verts[(index + 1) % verts.length]);
     if (ring.length < 3) continue;
-    rings.push({ verts: ring, materialIndex: poly.materialIndex });
+    rings.push({ verts: ring, materialIndex: poly.materialIndex, source: poly.source });
   }
 
   const all = [...mesh.verts.values()];
@@ -623,63 +661,104 @@ function polysToMesh(
     }
 
     if (polygonArea(expanded.map((vert) => vert.co)) > Number.EPSILON) {
-      mesh.addFace(expanded, { materialIndex: ring.materialIndex });
+      const face = mesh.addFace(expanded, { materialIndex: ring.materialIndex });
+      sourceOf.set(face.id, ring.source);
     }
   }
 
   mesh.computeNormals();
-  return mesh;
+  return { mesh, sourceOf };
 }
 
 /**
- * Merges every run of touching coplanar faces back into one face.
+ * Puts each input face back together from the fragments the BSP cut it into.
  *
- * Region at a time rather than edge at a time. A BSP carves a face into strips
- * that often meet each other along two separate edges, and a pairwise merge
- * cannot join those: the ring it would build passes through the same vertex
- * twice, so it gives up and leaves the strips. Rebuilding the region's outline
- * in one go has no such trouble — and it steps around a region with a hole in
- * it, whose boundary is two rings rather than one, by leaving it alone.
+ * Grouping by source rather than by angle is the whole point. Every fragment of
+ * one face carries that face's own plane, so siblings are exactly coplanar and
+ * no tolerance is needed to recognise them — while two neighbouring faces of a
+ * finely tessellated mesh sit well inside any usable coplanarity limit and are
+ * not siblings at all. Merging those is not undoing a split; it is dissolving
+ * the surface the user brought in, and a dense sphere lost its poles to it.
  */
-function mergeCoplanar(mesh: BMesh, limitDegrees: number): number {
-  const limit = Math.cos((limitDegrees * Math.PI) / 180);
-  const group = new Map<number, number>();
-  for (const face of mesh.faces.values()) group.set(face.id, face.id);
-
-  const rootOf = (id: number): number => {
-    let root = id;
-    while (group.get(root) !== root) root = group.get(root) as number;
-    let walk = id;
-    while (group.get(walk) !== root) {
-      const next = group.get(walk) as number;
-      group.set(walk, root);
-      walk = next;
-    }
-    return root;
-  };
-
-  for (const edge of mesh.edges.values()) {
-    const faces = mesh.edgeFaces(edge);
-    if (faces.length !== 2) continue;
-    if (dot(faces[0].normal, faces[1].normal) < limit) continue;
-    group.set(rootOf(faces[0].id), rootOf(faces[1].id));
-  }
-
-  const regions = new Map<number, Face[]>();
+function mergeSourceFragments(mesh: BMesh, sourceOf: Map<number, number>): number {
+  const bySource = new Map<number, Face[]>();
   for (const face of mesh.faces.values()) {
-    const root = rootOf(face.id);
-    const region = regions.get(root);
-    if (region) region.push(face);
-    else regions.set(root, [face]);
+    const source = sourceOf.get(face.id);
+    if (source === undefined) continue;
+    const bucket = bySource.get(source);
+    if (bucket) bucket.push(face);
+    else bySource.set(source, [face]);
   }
 
   let merged = 0;
-  for (const region of regions.values()) {
-    // Regions are disjoint, so the faces of the ones still to come are never
-    // the ones a merge just removed.
-    if (region.length > 1) merged += dissolveFaces(mesh, region).length;
+  for (const [source, faces] of bySource) {
+    if (faces.length < 2) continue;
+    // Region at a time: a BSP carves a face into strips that often meet along
+    // two separate edges, and the last interior edge of a fan always ends up
+    // with both loops on one face, which no pairwise merge can resolve.
+    for (const face of dissolveFaces(mesh, faces)) {
+      sourceOf.set(face.id, source);
+      merged += 1;
+    }
   }
+
+  // A region with a hole in it has two boundary rings, so it cannot become a
+  // single face and the region merge steps around it. Its strips still deserve
+  // joining up pairwise, which is all a bored-through face ever needs. One
+  // sweep of the edges for the whole mesh: an interior edge is one whose two
+  // faces came from the same input face, which is exactly an edge a split made.
+  const leftovers = new Map<number, Edge[]>();
+  for (const edge of mesh.edges.values()) {
+    const sides = mesh.edgeFaces(edge);
+    if (sides.length !== 2) continue;
+    const source = sourceOf.get(sides[0].id);
+    if (source === undefined || source !== sourceOf.get(sides[1].id)) continue;
+    const bucket = leftovers.get(source);
+    if (bucket) bucket.push(edge);
+    else leftovers.set(source, [edge]);
+  }
+
+  for (const [source, edges] of leftovers) {
+    for (const face of dissolveEdges(mesh, edges)) {
+      sourceOf.set(face.id, source);
+      merged += 1;
+    }
+  }
+
   return merged;
+}
+
+/**
+ * Drops the stranded vertices, keeping every face's provenance across the pass.
+ *
+ * `dissolveVerts` rebuilds a face rather than editing it, so the face comes back
+ * under a new id and its source would be lost with it — and a face with no
+ * source reads as one the cut reshaped, which is how a reassembled face ends up
+ * being tiled into hundreds of pieces. A rebuilt face is its old self minus the
+ * vertex that went, so the old ring containing all of the new one's vertices is
+ * the face it came from.
+ */
+function dissolveStranded(
+  mesh: BMesh,
+  verts: readonly Vert[],
+  sourceOf: Map<number, number>,
+): void {
+  const before: { source: number; verts: Set<number> }[] = [];
+  for (const face of mesh.faces.values()) {
+    const source = sourceOf.get(face.id);
+    if (source !== undefined) {
+      before.push({ source, verts: new Set(mesh.faceVerts(face).map((vert) => vert.id)) });
+    }
+  }
+
+  dissolveVerts(mesh, verts);
+
+  for (const face of mesh.faces.values()) {
+    if (sourceOf.has(face.id)) continue;
+    const ids = mesh.faceVerts(face).map((vert) => vert.id);
+    const parent = before.find((entry) => ids.every((id) => entry.verts.has(id)));
+    if (parent) sourceOf.set(face.id, parent.source);
+  }
 }
 
 /** Whether a vertex is nothing but a point part-way along a straight edge. */
@@ -696,142 +775,38 @@ function isRedundant(mesh: BMesh, vert: Vert, epsilon: number): boolean {
   return dot(left, right) / span < -1 + epsilon;
 }
 
-/** Whether a ring turns the same way at every corner, so it reads as a quad. */
-function isConvexRing(points: readonly Vec3[], normal: Vec3): boolean {
-  for (let i = 0; i < points.length; i++) {
-    const a = points[i];
-    const b = points[(i + 1) % points.length];
-    const c = points[(i + 2) % points.length];
-    if (dot(cross(sub(b, a), sub(c, b)), normal) < 0) return false;
-  }
-  return true;
-}
-
 /**
- * Pairs a polygon's triangles up into quads, taking as many pairs as it can.
+ * The input faces that came through the boolean whole.
  *
- * The triangles of a simple polygon meet along their shared edges in a tree, so
- * repeatedly matching whichever triangle has the fewest partners left takes the
- * maximum number of pairs — a leaf has one chance and has to use it, and
- * spending it can never cost more than it saves. That is the difference between
- * an L-shaped region coming back as two quads and coming back as a quad with
- * two triangles hanging off it.
+ * Read off the raw output before anything has been merged, and judged by area
+ * rather than by piece count: a face the BSP split arrives as several pieces,
+ * but a face it merely clipped arrives as one smaller piece and is just as
+ * changed. Only a lone piece still carrying its whole area is the face the user
+ * modelled, and nothing below has any business tiling that into quads or
+ * pairing it with a neighbour.
  */
-function pairTriangles(triangles: readonly number[][], normal: Vec3, points: readonly Vec3[]) {
-  const edgeKey = (a: number, b: number) => (a < b ? `${a}:${b}` : `${b}:${a}`);
-  const byEdge = new Map<string, number[]>();
-
-  triangles.forEach((tri, index) => {
-    for (let i = 0; i < 3; i++) {
-      const key = edgeKey(tri[i], tri[(i + 1) % 3]);
-      const bucket = byEdge.get(key);
-      if (bucket) bucket.push(index);
-      else byEdge.set(key, [index]);
-    }
-  });
-
-  /** The quad two triangles make, or null when it would fold back on itself. */
-  const quadOf = (left: number, right: number): number[] | null => {
-    const a = triangles[left];
-    const b = triangles[right];
-    const shared = a.filter((index) => b.includes(index));
-    if (shared.length !== 2) return null;
-
-    const lone = a.find((index) => !shared.includes(index));
-    const apex = b.find((index) => !shared.includes(index));
-    if (lone === undefined || apex === undefined) return null;
-
-    // Wound off the first triangle: its own corner, then round through the
-    // partner's, so the ring traces the pair's outline rather than crossing it.
-    const start = a.indexOf(lone);
-    const quad = [lone, a[(start + 1) % 3], apex, a[(start + 2) % 3]];
-    return isConvexRing(
-      quad.map((index) => points[index]),
-      normal,
-    )
-      ? quad
-      : null;
-  };
-
-  const partners = triangles.map((_, index) => {
-    const found = new Set<number>();
-    for (const bucket of byEdge.values()) {
-      if (!bucket.includes(index)) continue;
-      for (const other of bucket) {
-        if (other !== index && quadOf(index, other)) found.add(other);
-      }
-    }
-    return found;
-  });
-
-  const taken = new Set<number>();
-  const rings: number[][] = [];
-
-  for (;;) {
-    let next = -1;
-    let fewest = Infinity;
-    for (let i = 0; i < triangles.length; i++) {
-      if (taken.has(i)) continue;
-      const open = [...partners[i]].filter((other) => !taken.has(other));
-      if (open.length > 0 && open.length < fewest) {
-        fewest = open.length;
-        next = i;
-      }
-    }
-    if (next === -1) break;
-
-    const partner = [...partners[next]].find((other) => !taken.has(other)) as number;
-    const quad = quadOf(next, partner);
-    taken.add(next);
-    taken.add(partner);
-    rings.push(quad ?? triangles[next]);
-    if (!quad) taken.delete(partner);
+function untouchedSources(
+  mesh: BMesh,
+  sourceOf: Map<number, number>,
+  areaOf: Map<number, number>,
+): Set<number> {
+  const pieces = new Map<number, Face[]>();
+  for (const face of mesh.faces.values()) {
+    const source = sourceOf.get(face.id);
+    if (source === undefined) continue;
+    const bucket = pieces.get(source);
+    if (bucket) bucket.push(face);
+    else pieces.set(source, [face]);
   }
 
-  for (let i = 0; i < triangles.length; i++) {
-    if (!taken.has(i)) rings.push(triangles[i]);
+  const whole = new Set<number>();
+  for (const [source, faces] of pieces) {
+    const before = areaOf.get(source);
+    if (faces.length !== 1 || before === undefined || before <= 0) continue;
+    const after = polygonArea(mesh.facePoints(faces[0]));
+    if (Math.abs(after - before) <= before * AREA_EPSILON) whole.add(source);
   }
-
-  return rings;
-}
-
-/**
- * Splits every n-gon into quads and triangles.
- *
- * Ear clipping rather than a fan from one corner: after the merge above, a
- * region can be an L and a fan would reach straight across the notch. The
- * clipper also takes strictly-turning corners only, so it works around the
- * vertices left sitting part-way along a straight side rather than making
- * pieces with no area out of them. The pieces are then paired back up, so what
- * comes out is quads wherever the region's vertex count allows.
- */
-function retile(mesh: BMesh): void {
-  for (const face of [...mesh.faces.values()]) {
-    const ring = mesh.faceVerts(face);
-    if (ring.length <= 4) continue;
-
-    const { materialIndex, smooth } = face;
-    const points = ring.map((vert) => vert.co);
-    const normal = polygonNormal(points);
-    const indices = triangulatePolygon(points, normal);
-    if (indices.length < 3) continue;
-
-    const triangles: number[][] = [];
-    for (let i = 0; i < indices.length; i += 3) {
-      const tri = [indices[i], indices[i + 1], indices[i + 2]];
-      if (new Set(tri).size === 3) triangles.push(tri);
-    }
-
-    mesh.removeFace(face);
-    for (const piece of pairTriangles(triangles, normal, points)) {
-      // No area test: the tiling covers the ring exactly, so leaving a piece
-      // out is what would open it up.
-      mesh.addFace(
-        piece.map((index) => ring[index]),
-        { materialIndex, smooth },
-      );
-    }
-  }
+  return whole;
 }
 
 /**
@@ -839,12 +814,23 @@ function retile(mesh: BMesh): void {
  *
  * A BSP splits every polygon by every plane in the tree, not only by the ones
  * that end up bounding the solid, so the surface comes back carved along lines
- * the finished shape has no reason to show. Merging the coplanar neighbours
- * back together undoes that; the vertices left stranded mid-edge by it are then
- * no longer holding anything, and go too. Only what survives both is a real
- * feature of the cut, and only that gets tiled.
+ * the finished shape has no reason to show. Putting each input face back
+ * together out of its own fragments undoes exactly that and nothing else; the
+ * vertices left stranded mid-edge by it are then no longer holding anything,
+ * and go too.
+ *
+ * Every operation is treated alike. What a boolean owes the user is the shape,
+ * plus as much of the two surfaces they modelled as the shape allows — and that
+ * is the same debt whether the tool added material or took it away.
  */
-function resolve(mesh: BMesh, op: BooleanOp, epsilon: number): void {
+function resolve(
+  mesh: BMesh,
+  epsilon: number,
+  sourceOf: Map<number, number>,
+  areaOf: Map<number, number>,
+): void {
+  const whole = untouchedSources(mesh, sourceOf, areaOf);
+
   // Both halves feed each other, so they run until neither has anything left
   // to do: merging two faces can strand the vertex that was holding their
   // shared edge, and removing that vertex can free the next merge along. One
@@ -853,30 +839,27 @@ function resolve(mesh: BMesh, op: BooleanOp, epsilon: number): void {
     // A region with a hole in it has two boundary rings, which the region
     // merge steps around; its strips still deserve joining up pairwise, which
     // is all a bored-through face ever needs.
-    const merged =
-      mergeCoplanar(mesh, COPLANAR_LIMIT_DEGREES) +
-      limitedDissolve(mesh, COPLANAR_LIMIT_DEGREES).length;
+    const merged = mergeSourceFragments(mesh, sourceOf);
 
     const stranded = [...mesh.verts.values()].filter((vert) => isRedundant(mesh, vert, epsilon));
-    if (stranded.length > 0) dissolveVerts(mesh, stranded);
+    if (stranded.length > 0) dissolveStranded(mesh, stranded, sourceOf);
 
     if (merged === 0 && stranded.length === 0) break;
   }
 
-  // A difference is judged on the shape it leaves, and the face it opens up is
-  // whatever outline the tool's rim traced across it. That outline is already
-  // exact as one ring; tiling it back into quads can only approximate the curve
-  // it is holding, and every added edge is a place for the fill to lift off the
-  // surface. So the ring stands as an n-gon — which is what Blender leaves for
-  // the same reason, and what the rest of this editor reads happily enough.
-  //
-  // Union and intersect keep both solids' surfaces intact, and those are the
-  // surfaces the user goes on to model with, so there the quads are worth it.
-  if (op !== 'difference') retile(mesh);
-
-  // Pairing leftover coplanar triangles costs the cut nothing either way: it
-  // merges two faces that already lie in one plane and never splits a ring.
-  trisToQuads(mesh, [...mesh.faces.values()], 1);
+  // What the cut actually broke. A face that came through whole is left out of
+  // the pass below entirely: it is the face the user modelled, down to its
+  // winding, and the boolean has no business touching it.
+  const reshaped = [...mesh.faces.values()].filter((face) => {
+    const source = sourceOf.get(face.id);
+    return source === undefined || !whole.has(source);
+  });
+  // Only the seam is left to tidy, and only ever by merging: pairing two
+  // coplanar triangles into a quad removes a face, it never adds one. Nothing
+  // splits a ring any more — a face this boolean put back together is the face
+  // the user modelled, and cutting it up again to chase quads is what turned
+  // one face of a cube into three hundred.
+  trisToQuads(mesh, reshaped, QUAD_PAIR_LIMIT_DEGREES);
 }
 
 /**
@@ -896,16 +879,22 @@ export function booleanMesh(
   toTarget: (point: Vec3) => Vec3,
   toolSlot: (face: Face) => number = (face) => face.materialIndex,
 ): BMesh {
-  const a = meshToPolys(target, (point) => point);
-  const b = meshToPolys(tool, toTarget, toolSlot);
+  const areaOf = new Map<number, number>();
+  const a = meshToPolys(target, (point) => point, undefined, 0, areaOf);
+  // Past every id the target could have used, so a face of one operand is
+  // never mistaken for a face of the other.
+  const b = meshToPolys(tool, toTarget, toolSlot, target.faces.size + 1, areaOf);
 
   // One scale for the whole operation, taken from both solids together: a
   // small tool cutting a large target has to be measured against the pair,
   // not against whichever of them happens to be under the tolerance first.
   const scale = extentOf([...a, ...b]);
-  const mesh = polysToMesh(csg(op, a, b, PLANE_EPSILON * scale), WELD_EPSILON * scale);
+  const { mesh, sourceOf } = polysToMesh(
+    csg(op, a, b, PLANE_EPSILON * scale),
+    WELD_EPSILON * scale,
+  );
 
-  resolve(mesh, op, PLANE_EPSILON);
+  resolve(mesh, PLANE_EPSILON, sourceOf, areaOf);
   mesh.computeNormals();
   return mesh;
 }

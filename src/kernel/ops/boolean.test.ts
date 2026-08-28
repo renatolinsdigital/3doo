@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { type Vec3, add, dot, polygonNormal, vec3 } from '../math';
+import { type Vec3, add, dot, polygonArea, polygonNormal, vec3 } from '../math';
 import { BMesh } from '../mesh';
 import type { Vert } from '../mesh/types';
 import { triangulatePolygon } from '../mesh/triangulate';
@@ -159,13 +159,6 @@ describe('mesh booleans', () => {
       expect(result.faces.size).toBeGreaterThan(0);
       expect(isClosed(result)).toBe(true);
       expect(volume(result)).toBeGreaterThan(0);
-
-      // A union or an intersect keeps both solids' surfaces, which the user
-      // goes on to model with, so those come back tiled into quads. A
-      // difference is judged on the shape it leaves instead: the outline its
-      // rim traced is already exact as one ring, and cutting that ring up
-      // could only approximate the curve it holds.
-      if (op !== 'difference') expect(ngonCount(result)).toBe(0);
     });
   });
 
@@ -197,13 +190,14 @@ describe('mesh booleans', () => {
 
   it('cuts a stepped union only where the shape actually steps', () => {
     // Two cubes offset on all three axes. Three of each cube's faces are clear
-    // of the other and stay whole; the three that overlap lose a corner each,
-    // which is an L and takes two quads. Nine faces per cube, no triangles and
+    // of the other and stay the quads they came in as; the three that overlap
+    // lose a corner each, which is an L. Six faces per cube, no triangles and
     // nothing carved along a plane the finished shape does not show.
     const result = booleanMesh('union', createBox(2), createBox(2), offsetBy(vec3(1, 0.5, 0.5)));
 
-    expect(result.faces.size).toBe(18);
-    expect(faceSizes(result).get(4)).toBe(18);
+    expect(result.faces.size).toBe(12);
+    expect(faceSizes(result).get(4)).toBe(6);
+    expect(faceSizes(result).get(6)).toBe(6);
   });
 
   it('cuts a stepped difference only where the shape actually steps', () => {
@@ -254,7 +248,9 @@ describe('mesh booleans', () => {
     expect(ngonCount(result)).toBe(3);
   });
 
-  it('still tiles a union into quads, where the surface is there to model on', () => {
+  it('reads a union of the same pair the same way', () => {
+    // The face the rim traced is the face the rim traced, whichever side of it
+    // the operation kept: three bitten box faces, one ring each.
     const result = booleanMesh(
       'union',
       createBox(2),
@@ -263,7 +259,7 @@ describe('mesh booleans', () => {
     );
 
     expect(isClosed(result)).toBe(true);
-    expect(ngonCount(result)).toBe(0);
+    expect(ngonCount(result)).toBe(3);
   });
 
   it('leaves no face reaching out over the cut', () => {
@@ -316,6 +312,105 @@ describe('mesh booleans', () => {
     // count at three per face.
     expect(result.verts.size).toBeLessThan(result.faces.size * 3);
     expect([...result.edges.values()].some((edge) => edge.loops.length === 2)).toBe(true);
+  });
+});
+
+describe('what a boolean must not touch', () => {
+  /** A face as a position-keyed string, so "the very same face" is testable. */
+  const shapeOf = (points: readonly Vec3[]) =>
+    points
+      .map((point) => `${point.x.toFixed(5)},${point.y.toFixed(5)},${point.z.toFixed(5)}`)
+      .sort()
+      .join('|');
+
+  function shapes(mesh: BMesh, move: (point: Vec3) => Vec3 = (point) => point): Set<string> {
+    const all = new Set<string>();
+    for (const face of mesh.faces.values()) all.add(shapeOf(mesh.facePoints(face).map(move)));
+    return all;
+  }
+
+  /**
+   * A sphere resting in the top face of a cube, at three tessellations.
+   *
+   * Everything above the cube's top is outside it, so the union has nothing to
+   * say about those faces and must hand them back exactly. The fine sphere is
+   * the case that matters: its pole cap folds by about half a degree from one
+   * facet to the next, which a coplanarity limit cannot tell apart from the
+   * splits a BSP makes, and the cap used to be dissolved away by it. Provenance
+   * is what separates the two — a fragment knows which face it is part of.
+   */
+  it.each([16, 32, 64])('hands back every sphere face clear of the box, at %i segments', (seg) => {
+    const shift = vec3(0, 1.8, 0);
+    const sphere = createUVSphere(1, seg, seg / 2);
+    const result = booleanMesh(
+      'union',
+      createBox(2),
+      createUVSphere(1, seg, seg / 2),
+      offsetBy(shift),
+    );
+
+    const clear = [...sphere.faces.values()]
+      .map((face) => sphere.facePoints(face).map(offsetBy(shift)))
+      .filter((points) => points.every((point) => point.y > 1 + 1e-9));
+
+    const survived = shapes(result);
+    const kept = clear.filter((points) => survived.has(shapeOf(points)));
+
+    expect(clear.length).toBeGreaterThan(0);
+    expect(kept.length).toBe(clear.length);
+  });
+
+  it('leaves the faces a union never reached as one face each, not as many', () => {
+    const result = booleanMesh(
+      'union',
+      createBox(2),
+      createUVSphere(0.5, 24, 12),
+      offsetBy(vec3(0, 1, 0)),
+    );
+
+    // Only the top of the box is cut — the sphere is a 0.5 radius sitting on
+    // the middle of it. Each of the other five faces has to come back as the
+    // one face it went in as, covering the same ground: re-tiling used to hand
+    // back twenty-two faces between them.
+    //
+    // Counted as faces and area rather than as an identical ring, because a
+    // side face legitimately picks up points along its top edge, where the cut
+    // face's own edges land on it. Those keep the surface watertight; they add
+    // no faces and move nothing.
+    const walls: [string, (point: Vec3) => boolean][] = [
+      ['y=-1', (point) => Math.abs(point.y + 1) < 1e-9],
+      ['x=1', (point) => Math.abs(point.x - 1) < 1e-9],
+      ['x=-1', (point) => Math.abs(point.x + 1) < 1e-9],
+      ['z=1', (point) => Math.abs(point.z - 1) < 1e-9],
+      ['z=-1', (point) => Math.abs(point.z + 1) < 1e-9],
+    ];
+
+    for (const [wall, onWall] of walls) {
+      const faces = [...result.faces.values()].filter((face) =>
+        result.facePoints(face).every(onWall),
+      );
+      expect({ wall, faces: faces.length }).toEqual({ wall, faces: 1 });
+      expect(polygonArea(result.facePoints(faces[0]))).toBeCloseTo(4, 9);
+    }
+  });
+
+  it('does not shatter the one face it does cut', () => {
+    const result = booleanMesh(
+      'union',
+      createBox(2),
+      createUVSphere(0.5, 24, 12),
+      offsetBy(vec3(0, 1, 0)),
+    );
+
+    // The cut face is the box's top. Tiling its ring back into quads turned it
+    // into hundreds of slivers; reassembled and left alone it is a handful of
+    // faces tracing the seam.
+    const onTop = [...result.faces.values()].filter((face) =>
+      result.facePoints(face).every((point) => Math.abs(point.y - 1) < 1e-9),
+    );
+
+    expect(onTop.length).toBeGreaterThan(0);
+    expect(onTop.length).toBeLessThan(40);
   });
 });
 
