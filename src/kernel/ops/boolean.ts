@@ -1189,7 +1189,13 @@ function splitAcrossHole(mesh: BMesh, region: readonly Face[]): Vert[][] | null 
   return halves;
 }
 
-/** Replaces a set of faces with new rings, clearing the edges left behind. */
+/**
+ * Replaces a set of faces with new rings, clearing the edges left behind.
+ *
+ * The vertices the removal strands are left for the caller to sweep once at the
+ * end: dropping them is a walk of the whole mesh, and doing it per region turns
+ * a pass over a dense cut into a walk per region of it.
+ */
 function rebuildAs(mesh: BMesh, region: readonly Face[], rings: readonly Vert[][]): Face[] {
   const { materialIndex, smooth } = region[0];
   const ids = new Set(region.map((face) => face.id));
@@ -1207,9 +1213,7 @@ function rebuildAs(mesh: BMesh, region: readonly Face[], rings: readonly Vert[][
     if (mesh.edges.has(edge.id) && edge.loops.length === 0) mesh.removeEdge(edge);
   }
 
-  const made = rings.map((ring) => mesh.addFace(ring, { materialIndex, smooth }));
-  mesh.removeLooseVerts();
-  return made;
+  return rings.map((ring) => mesh.addFace(ring, { materialIndex, smooth }));
 }
 
 /** Whether `region` is already exactly the faces `rings` describes. */
@@ -1237,8 +1241,11 @@ function alreadyIs(mesh: BMesh, region: readonly Face[], rings: readonly Vert[][
  */
 function mergeRegion(mesh: BMesh, region: readonly Face[]): Face[] {
   const halves = splitAcrossHole(mesh, region);
-  if (halves) return alreadyIs(mesh, region, halves) ? [] : rebuildAs(mesh, region, halves);
+  if (halves === null) return mergeRegionGreedy(mesh, region);
+  return alreadyIs(mesh, region, halves) ? [] : rebuildAs(mesh, region, halves);
+}
 
+function mergeRegionGreedy(mesh: BMesh, region: readonly Face[]): Face[] {
   const pool = new Map(region.map((face) => [face.id, face]));
   const made: Face[] = [];
 
@@ -1257,7 +1264,6 @@ function mergeRegion(mesh: BMesh, region: readonly Face[]): Face[] {
     made.push(mesh.addFace(ring, { materialIndex, smooth }));
   }
 
-  if (made.length > 0) mesh.removeLooseVerts();
   return made;
 }
 
@@ -1297,6 +1303,9 @@ function mergeSourceFragments(mesh: BMesh, sourceOf: Map<number, number>): numbe
     }
   }
 
+  // Once, not once per region: the sweep walks every vertex in the mesh, and a
+  // dense cut has thousands of regions to merge.
+  if (merged > 0) mesh.removeLooseVerts();
   mesh.computeNormals();
   return merged;
 }
@@ -1347,10 +1356,22 @@ function dissolveStranded(
   sourceOf: Map<number, number>,
 ): void {
   const before: { source: number; verts: Set<number> }[] = [];
+  // Indexed by the vertices each old ring held, because the search below is
+  // otherwise a walk of every face for every face, which on a dense cut is the
+  // slowest thing the boolean does.
+  const holding = new Map<number, number[]>();
+
   for (const face of mesh.faces.values()) {
     const source = sourceOf.get(face.id);
-    if (source !== undefined) {
-      before.push({ source, verts: new Set(mesh.faceVerts(face).map((vert) => vert.id)) });
+    if (source === undefined) continue;
+
+    const ids = mesh.faceVerts(face).map((vert) => vert.id);
+    const at = before.length;
+    before.push({ source, verts: new Set(ids) });
+    for (const id of ids) {
+      const bucket = holding.get(id);
+      if (bucket) bucket.push(at);
+      else holding.set(id, [at]);
     }
   }
 
@@ -1359,8 +1380,13 @@ function dissolveStranded(
   for (const face of mesh.faces.values()) {
     if (sourceOf.has(face.id)) continue;
     const ids = mesh.faceVerts(face).map((vert) => vert.id);
-    const parent = before.find((entry) => ids.every((id) => entry.verts.has(id)));
-    if (parent) sourceOf.set(face.id, parent.source);
+    // Any ring containing all of them contains the first, so only the rings
+    // that held that one are worth testing.
+    for (const at of holding.get(ids[0]) ?? []) {
+      if (!ids.every((id) => before[at].verts.has(id))) continue;
+      sourceOf.set(face.id, before[at].source);
+      break;
+    }
   }
 }
 

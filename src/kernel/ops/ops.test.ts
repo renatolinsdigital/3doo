@@ -13,6 +13,7 @@ import {
 } from '../primitives';
 
 import { bevelEdges } from './bevel';
+import { booleanMesh } from './boolean';
 import { connectVerts } from './connect';
 import { deleteGeometry } from './delete';
 import {
@@ -310,6 +311,95 @@ describe('subdivide', () => {
     );
     expect(furthest).toBeLessThan(cornerDistance);
     expect(cube.validate()).toEqual([]);
+  });
+
+  it('keeps a face it cannot fan whole, rather than starring across the gap in it', () => {
+    // A C: a square with a slot cut in from one side. The average of its
+    // corners lands in the slot, off the face entirely, and the quads
+    // subdivision fans off each corner would sweep across the slot to reach it.
+    // The same shape a boolean leaves around a hole it cut, and the same
+    // starburst if it is fanned anyway.
+    const mesh = new BMesh();
+    const ring = [
+      vec3(-1, 0, -1),
+      vec3(1, 0, -1),
+      vec3(1, 0, -0.2),
+      vec3(0, 0, -0.2),
+      vec3(0, 0, 0.2),
+      vec3(1, 0, 0.2),
+      vec3(1, 0, 1),
+      vec3(-1, 0, 1),
+    ].map((point) => mesh.addVert(point));
+    mesh.addFace(ring);
+
+    const before = mesh.faceArea([...mesh.faces.values()][0]);
+    expect(before).toBeCloseTo(4 - 0.4, 9);
+
+    // Smoothing off, so the split is topology alone and the surface it covers
+    // cannot have changed by so much as a rounding error.
+    subdivideFaces(mesh, [...mesh.faces.values()], { cuts: 1, smooth: 0 });
+
+    const after = [...mesh.faces.values()].reduce((sum, face) => sum + mesh.faceArea(face), 0);
+    expect(after).toBeCloseTo(before, 9);
+    expect(mesh.validate()).toEqual([]);
+  });
+
+  it('does not fold a face with a hole in it, however fine the hole is', () => {
+    // The shape every boolean leaves behind: a slab with a hole, stated as the
+    // two faces one ring each can manage. Fanning either from the middle of its
+    // corners paints over the hole, and cutting either into splinters folds the
+    // slab into fins once the smoothing pulls on them. Both show up as surface
+    // that was not there before.
+    const slab = (segments: number): BMesh => {
+      const mesh = new BMesh();
+      const square = [vec3(-1, 0, -1), vec3(1, 0, -1), vec3(1, 0, 1), vec3(-1, 0, 1)].map((point) =>
+        mesh.addVert(point),
+      );
+      const hole = Array.from({ length: segments }, (_, i) => {
+        const turn = (-2 * Math.PI * i) / segments;
+        return mesh.addVert(vec3(0.7 * Math.cos(turn), 0, 0.7 * Math.sin(turn)));
+      });
+      const half = Math.floor(segments / 2);
+      mesh.addFace([square[0], square[1], square[2], ...hole.slice(0, half + 1)]);
+      mesh.addFace([square[2], square[3], square[0], ...hole.slice(half), hole[0]]);
+      mesh.computeNormals();
+      return mesh;
+    };
+    const area = (mesh: BMesh) =>
+      [...mesh.faces.values()].reduce((sum, face) => sum + mesh.faceArea(face), 0);
+
+    for (const segments of [8, 16, 32, 64]) {
+      const before = area(slab(segments));
+
+      const split = slab(segments);
+      subdivideFaces(split, [...split.faces.values()], { cuts: 1, smooth: 0 });
+      expect(area(split)).toBeCloseTo(before, 9);
+
+      // Smoothing pulls the surface in, never out: anything larger than the
+      // cage is surface folded back over itself.
+      const smoothed = slab(segments);
+      subdivideFaces(smoothed, [...smoothed.faces.values()], { cuts: 1, smooth: 1 });
+      expect(area(smoothed)).toBeLessThan(before);
+      expect(smoothed.validate()).toEqual([]);
+    }
+  });
+
+  it('leaves the surface of a bored solid the size it was', () => {
+    // The whole of it: the bored face comes back as two rings of surface around
+    // the hole, and fanning either one from the middle of its corners paints
+    // over the bore.
+    const bored = booleanMesh('difference', createBox(2), createCylinder(0.4, 1, 24), (point) => ({
+      ...point,
+      y: point.y + 1.3,
+    }));
+
+    const before = [...bored.faces.values()].reduce((sum, face) => sum + bored.faceArea(face), 0);
+    subdivideFaces(bored, [...bored.faces.values()], { cuts: 1, smooth: 0 });
+    const after = [...bored.faces.values()].reduce((sum, face) => sum + bored.faceArea(face), 0);
+
+    expect(after).toBeCloseTo(before, 9);
+    expect(isClosed(bored)).toBe(true);
+    expect(bored.validate()).toEqual([]);
   });
 
   it('triangulates and rebuilds quads', () => {

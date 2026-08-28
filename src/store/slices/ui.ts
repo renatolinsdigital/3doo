@@ -46,7 +46,10 @@ export interface UiSlice {
    * Runs a staged operation, showing its progress once it is slow enough to
    * be worth saying anything about.
    */
-  runStaged: <T>(label: string, steps: Generator<number, T>) => Promise<T>;
+  runStaged: <T>(
+    label: string,
+    steps: Generator<number, T> | AsyncGenerator<number, T>,
+  ) => Promise<T>;
 }
 
 /**
@@ -137,7 +140,10 @@ export const createUiSlice: StateCreator<
 
     try {
       let showing = false;
-      let step = steps.next();
+      // Awaited whether or not the source is asynchronous: an operation running
+      // on a worker hands its stages back as promises, one running here does
+      // not, and the bar cannot tell the difference.
+      let step = await steps.next();
 
       while (!step.done) {
         // The work between two stages has already happened by the time we get
@@ -149,7 +155,7 @@ export const createUiSlice: StateCreator<
           set({ progress: { label, value: step.value } });
           await paint();
         }
-        step = steps.next();
+        step = await steps.next();
       }
 
       return step.value;

@@ -39,6 +39,7 @@ import {
   vec3,
 } from '@kernel/index';
 
+import { WorkerUnavailable, booleanOffThread, canRunOffThread } from '../booleanOffThread';
 import type { EditorStore } from '../useEditorStore';
 import type { LastOperator, Material, SceneObject } from '../types';
 
@@ -614,27 +615,47 @@ export const createSceneSlice: StateCreator<
       });
 
       const matrix = composeMatrix(tool.transform);
+      const inPlace = () =>
+        booleanMeshStaged(
+          op,
+          mesh,
+          tool.mesh,
+          (point) => inverseTransformPoint(target.transform, transformPoint(matrix, point)),
+          (face) => slots[face.materialIndex] ?? 0,
+        );
+
       // Each tool is a slice of the bar, so cutting with three of them runs
       // once from end to end rather than three times from zero.
-      mesh = await get().runStaged(
-        BOOLEAN_LABELS[op].toUpperCase(),
-        (function* (steps) {
-          let step = steps.next();
-          while (!step.done) {
-            yield (index + step.value) / tools.length;
-            step = steps.next();
-          }
-          return step.value;
-        })(
-          booleanMeshStaged(
-            op,
-            mesh,
-            tool.mesh,
-            (point) => inverseTransformPoint(target.transform, transformPoint(matrix, point)),
-            (face) => slots[face.materialIndex] ?? 0,
-          ),
-        ),
-      );
+      const staged = (cut: Generator<number, BMesh> | AsyncGenerator<number, BMesh>) =>
+        get().runStaged(
+          BOOLEAN_LABELS[op].toUpperCase(),
+          (async function* () {
+            let step = await cut.next();
+            while (!step.done) {
+              yield (index + step.value) / tools.length;
+              step = await cut.next();
+            }
+            return step.value;
+          })(),
+        );
+
+      // A worker where there is one. The cut is the same either way; what the
+      // worker buys is a window that keeps drawing, because a dense boolean
+      // holds whichever thread runs it for seconds and nothing else on that
+      // thread gets a turn. Nothing has been written yet at this point, so a
+      // worker that never started can simply be done again here.
+      if (!canRunOffThread()) {
+        mesh = await staged(inPlace());
+      } else {
+        try {
+          mesh = await staged(
+            booleanOffThread(op, mesh, tool.mesh, target.transform, tool.transform, slots),
+          );
+        } catch (error) {
+          if (!(error instanceof WorkerUnavailable)) throw error;
+          mesh = await staged(inPlace());
+        }
+      }
     }
 
     const consumed = new Set(tools.map((object) => object.id));
