@@ -7,36 +7,64 @@
   height: 100%;
   background: var(--ash);
 
+  // The viewport is the whole page between the two bars, and every tool
+  // surface floats over it. A single grid cell holds the canvas — the rail and
+  // the two panel columns are taken out of flow, so nothing they do resizes
+  // what the user is modelling.
   &__main {
+    position: relative;
     display: grid;
-    // Tool rail, left tool panels, viewport, right column.
-    grid-template-columns: var(--rail-size) 224px minmax(0, 1fr) 264px;
-    gap: var(--panel-gap);
     min-height: 0;
-    padding: var(--panel-gap);
-    padding-inline-start: 0;
     background: var(--ash);
+  }
+
+  .tool-rail {
+    position: absolute;
+    z-index: var(--z-panel);
+    inset-block-start: var(--panel-gap);
+    inset-inline-start: var(--panel-gap);
+    max-height: calc(100% - var(--panel-gap) * 2);
   }
 
   &__left,
   &__right {
     @include scrollbar;
 
+    position: absolute;
+    z-index: var(--z-panel);
+    inset-block: var(--panel-gap);
     display: flex;
     flex-direction: column;
     gap: var(--panel-gap);
-    min-height: 0;
+    // Room inside the scroll box for the panels' shadows, which the column
+    // would otherwise clip against its own edge.
+    padding: 0 var(--shadow-offset) var(--shadow-offset) 0;
     overflow-y: auto;
+    // The column is a slot, not a surface: it spans the height so the panels
+    // stack and scroll as one, and lets every click it does not carry a panel
+    // over through to the viewport underneath.
+    pointer-events: none;
 
     // Panels keep their own height and the column scrolls as one. Letting them
     // shrink instead handed every panel a scrollbar of its own and squeezed the
     // tallest one — the modifier stack — down to a couple of visible rows.
     > * {
+      @include brutal-shadow;
+
       flex: 0 0 auto;
+      pointer-events: auto;
     }
   }
 
+  &__left {
+    inset-inline-start: calc(var(--rail-size) + var(--panel-gap) * 2);
+    width: 224px;
+  }
+
   &__right {
+    inset-inline-end: var(--panel-gap);
+    width: 264px;
+
     // The outliner scrolls inside itself rather than pushing the panels below
     // it out of reach as the scene grows.
     > :first-child {
@@ -45,20 +73,16 @@
   }
 
   @include tablet-down {
-    &__main {
-      grid-template-columns: var(--rail-size) minmax(0, 1fr) 224px;
-    }
-
     &__left {
       display: none;
+    }
+
+    &__right {
+      width: 224px;
     }
   }
 
   @include mobile {
-    &__main {
-      grid-template-columns: var(--rail-size) minmax(0, 1fr);
-    }
-
     &__right {
       display: none;
     }

@@ -1,10 +1,16 @@
+@use '@global-styles/helpers' as *;
+
+// Floats over the viewport like the panels beside it, so it wears the same
+// hard frame and offset shadow rather than a single dividing edge.
 .tool-rail {
+  @include brutal-border;
+  @include brutal-shadow;
+
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   width: var(--rail-size);
   padding: var(--space-1);
   background: var(--bone);
-  border-right: var(--border-width) solid var(--void);
   overflow-y: auto;
 }

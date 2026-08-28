@@ -2,8 +2,8 @@
   position: relative;
   min-width: 0;
   min-height: 0;
-  // The viewport bleeds edge to edge but keeps a hard frame.
-  border: var(--border-width) solid var(--void);
+  // Edge to edge between the top bar and the status bar, whose own borders
+  // frame it: a border here would double those up and eat viewport.
   background: var(--ash);
   overflow: hidden;
 
