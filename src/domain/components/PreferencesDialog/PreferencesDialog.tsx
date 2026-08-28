@@ -91,7 +91,7 @@ export function PreferencesDialog() {
         </>
       }
     >
-      <Accordion title="INTERFACE" defaultOpen>
+      <Accordion title="INTERFACE">
         <Toggle
           label="SHOW HINT TOOLTIPS"
           checked={tooltipsEnabled}

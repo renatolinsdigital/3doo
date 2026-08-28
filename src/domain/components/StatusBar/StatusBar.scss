@@ -3,8 +3,8 @@
 .status-bar {
   display: flex;
   align-items: center;
-  gap: var(--space-5);
-  padding: var(--space-2) var(--space-4);
+  gap: var(--space-4);
+  padding: var(--space-1) var(--space-3);
   background: var(--oxblood);
   color: var(--bone);
   border-top: var(--border-width) solid var(--void);
@@ -74,8 +74,8 @@
   &__progress-track {
     position: relative;
     display: block;
-    width: 120px;
-    height: 10px;
+    width: 104px;
+    height: 8px;
     background: var(--void);
     border: var(--border-thin) solid var(--bone);
     overflow: hidden;
@@ -102,7 +102,7 @@
   &__flag {
     @include label-text;
 
-    padding: var(--space-1) var(--space-3);
+    padding: 0 var(--space-2);
     border: var(--border-thin) solid var(--bone);
     opacity: 0.6;
 

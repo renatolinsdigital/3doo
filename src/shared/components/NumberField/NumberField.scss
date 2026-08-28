@@ -2,23 +2,12 @@
 
 .number-field {
   @include brutal-focus-field;
-
-  display: grid;
-  grid-template-columns: minmax(64px, 40%) 1fr;
-  align-items: stretch;
-  min-height: 28px;
+  @include field-grid;
 
   &__label {
-    @include label-text;
+    @include field-label;
 
-    display: flex;
-    align-items: center;
-    padding: var(--space-2) var(--space-3);
-    background: var(--bone-shade);
-    border: var(--border-thin) solid var(--void);
-    border-right: none;
     cursor: ew-resize;
-    user-select: none;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -36,7 +25,7 @@
 
     width: 100%;
     min-width: 0;
-    padding: var(--space-2) var(--space-3);
+    padding: var(--space-1) var(--space-3);
     background: transparent;
     color: var(--void);
     border: none;

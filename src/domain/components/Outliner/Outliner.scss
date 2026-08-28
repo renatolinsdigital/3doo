@@ -4,7 +4,7 @@
   &__empty {
     @include mono-value;
 
-    padding: var(--space-3);
+    padding: var(--space-2);
     color: var(--ink-muted);
   }
 
@@ -39,8 +39,8 @@
     @include label-text;
     @include brutal-focus;
 
-    min-height: 28px;
-    padding: var(--space-2) var(--space-3);
+    min-height: var(--field-height);
+    padding: var(--space-1) var(--space-3);
     text-align: left;
     color: inherit;
     overflow: hidden;
@@ -68,7 +68,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
+    width: var(--field-height);
     color: inherit;
     border-left: var(--border-thin) solid var(--void);
 
@@ -101,7 +101,7 @@
 
   &__glyph {
     display: block;
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
   }
 }

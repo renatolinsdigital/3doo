@@ -15,7 +15,7 @@
   .panel__body {
     display: flex;
     flex-direction: column;
-    gap: var(--space-4);
+    gap: var(--space-3);
   }
 
   &__materials {
@@ -26,7 +26,7 @@
 
   &__material {
     display: grid;
-    grid-template-columns: 1fr 36px;
+    grid-template-columns: 1fr var(--field-height);
     border: var(--border-thin) solid var(--void);
   }
 
@@ -34,8 +34,8 @@
     @include label-text;
     @include brutal-focus;
 
-    min-height: 28px;
-    padding: var(--space-2) var(--space-3);
+    min-height: var(--field-height);
+    padding: var(--space-1) var(--space-3);
     text-align: left;
     background: var(--bone);
 

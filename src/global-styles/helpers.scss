@@ -82,6 +82,51 @@
   font-variant-numeric: tabular-nums;
 }
 
+/// A field row: a label cell of a shared width and the control filling the
+/// rest, the two sharing one hard border between them. Number, colour and
+/// select rows all wear it, so a panel of mixed fields lines its values up on
+/// one column.
+@mixin field-grid {
+  display: grid;
+  grid-template-columns: minmax(var(--field-label-min), 40%) 1fr;
+  align-items: stretch;
+  min-height: var(--field-height);
+}
+
+@mixin field-label {
+  @include label-text;
+
+  display: flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  background: var(--bone-shade);
+  border: var(--border-thin) solid var(--void);
+  border-right: none;
+  user-select: none;
+}
+
+/// A small square button riding a coloured header strip — the modal's close,
+/// the modifier rows' reorder and apply controls. Outlined in bone on the
+/// strip and inverted on hover, so it takes the strip's own colour.
+@mixin header-button($host) {
+  @include brutal-focus(var(--bone));
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--field-height);
+  height: var(--field-height);
+  font-size: var(--text-xs);
+  line-height: 1;
+  color: var(--bone);
+  border: var(--border-thin) solid var(--bone);
+
+  &:hover:not(:disabled):not([aria-disabled='true']) {
+    background: var(--bone);
+    color: $host;
+  }
+}
+
 /// Panel header strip: oxblood bar with a hard divider beneath it.
 @mixin panel-header {
   @include label-text;
@@ -89,8 +134,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   background: var(--oxblood);
   color: var(--bone);
   border-bottom: var(--border-width) solid var(--void);
@@ -116,8 +161,8 @@
   scrollbar-color: var(--rust) var(--bone-shade);
 
   &::-webkit-scrollbar {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
   }
 
   &::-webkit-scrollbar-track {

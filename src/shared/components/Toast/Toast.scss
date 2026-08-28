@@ -8,8 +8,8 @@
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
-  width: 320px;
-  padding: var(--space-3) var(--space-4);
+  width: 288px;
+  padding: var(--space-2) var(--space-3);
   background: var(--bone);
   animation: toast-in 120ms ease-out;
   overflow: hidden;
@@ -19,8 +19,8 @@
     align-items: center;
     justify-content: center;
     flex: 0 0 auto;
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     font-family: var(--font-display);
     font-size: var(--text-sm);
     border: var(--border-thin) solid var(--void);

@@ -11,8 +11,8 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  min-height: var(--hit-target);
-  padding: var(--space-2) var(--space-4);
+  min-height: var(--control-height);
+  padding: var(--space-1) var(--space-3);
   background: var(--bone);
   color: var(--void);
   transition: background-color 80ms linear;

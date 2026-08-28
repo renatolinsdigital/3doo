@@ -12,8 +12,8 @@
   justify-content: center;
   gap: 1px;
   width: 100%;
-  min-height: var(--hit-target);
-  padding: var(--space-2);
+  min-height: var(--control-height);
+  padding: var(--space-1);
   background: var(--bone);
   color: var(--void);
 
@@ -44,7 +44,7 @@
   }
 
   &__shortcut {
-    font-size: 8px;
+    font-size: var(--text-xs);
     letter-spacing: 0.08em;
     opacity: 0.75;
   }

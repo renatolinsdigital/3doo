@@ -445,6 +445,7 @@ describe('App shell', () => {
     render(<App />);
     await userEvent.click(screen.getByRole('button', { name: 'PREFS' }));
     const dialog = screen.getByRole('dialog', { name: 'PREFERENCES' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'INTERFACE' }));
     await userEvent.click(within(dialog).getByRole('checkbox', { name: 'SHOW HINT TOOLTIPS' }));
     await userEvent.keyboard('{Escape}');
     expect(useEditorStore.getState().tooltipsEnabled).toBe(false);

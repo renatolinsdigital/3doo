@@ -11,15 +11,15 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-4);
-    padding: var(--space-3) var(--space-4);
+    gap: var(--space-3);
+    padding: var(--space-2) var(--space-3);
     background: var(--bone);
     border-bottom: var(--border-width) solid var(--void);
   }
 
   &__body {
     display: grid;
-    grid-template-columns: 280px minmax(0, 1fr);
+    grid-template-columns: 248px minmax(0, 1fr);
     gap: var(--panel-gap);
     min-height: 0;
     padding: var(--panel-gap);
@@ -48,7 +48,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
-    padding: var(--space-3) var(--space-4);
+    padding: var(--space-2) var(--space-3);
     text-align: left;
     cursor: pointer;
     border-bottom: var(--border-thin) solid var(--void);
@@ -94,7 +94,7 @@
     flex-direction: column;
     gap: var(--space-4);
     min-height: 0;
-    padding: var(--space-6);
+    padding: var(--space-5);
     overflow-y: auto;
     background: var(--bone);
 
@@ -110,7 +110,7 @@
   &__title {
     @include display-text;
 
-    font-size: clamp(22px, 3vw, 32px);
+    font-size: clamp(20px, 2.6vw, 28px);
     color: var(--void);
   }
 
@@ -122,12 +122,14 @@
     border-bottom: var(--border-width) solid var(--void);
   }
 
+  // Running documentation rather than chrome: the one place that reads as a
+  // page, so it keeps the body size the panels step down from.
   &__prose,
   &__step {
     @include mono-value;
 
     max-width: 78ch;
-    font-size: var(--text-sm);
+    font-size: var(--text-md);
     line-height: 1.7;
     color: var(--void);
   }
@@ -136,8 +138,8 @@
     @include mono-value;
 
     max-width: 78ch;
-    padding: var(--space-4);
-    font-size: var(--text-sm);
+    padding: var(--space-3);
+    font-size: var(--text-md);
     line-height: 1.7;
     color: var(--ink-muted);
     border: var(--border-thin) dashed var(--void);
@@ -170,7 +172,7 @@
 
     th,
     td {
-      padding: var(--space-3) var(--space-4);
+      padding: var(--space-2) var(--space-3);
       text-align: left;
       vertical-align: top;
       border-bottom: var(--border-thin) solid var(--void);
@@ -187,7 +189,7 @@
       @include mono-value;
 
       width: 30%;
-      min-width: 160px;
+      min-width: 140px;
       font-weight: 700;
       color: var(--void);
       background: var(--bone-dim);
@@ -196,7 +198,7 @@
     tbody td {
       @include mono-value;
 
-      font-size: var(--text-sm);
+      font-size: var(--text-md);
       line-height: 1.6;
       color: var(--ink-muted);
     }
@@ -209,7 +211,7 @@
 
   @include tablet-down {
     &__body {
-      grid-template-columns: 220px minmax(0, 1fr);
+      grid-template-columns: 200px minmax(0, 1fr);
     }
   }
 

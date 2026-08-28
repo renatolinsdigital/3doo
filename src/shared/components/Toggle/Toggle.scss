@@ -8,7 +8,7 @@
   position: relative;
   display: flex;
   align-items: center;
-  min-height: 28px;
+  min-height: var(--field-height);
 
   &__input {
     @include visually-hidden;
@@ -47,8 +47,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
+    width: var(--box-size);
+    height: var(--box-size);
     font-size: var(--text-md);
     line-height: 1;
     background: var(--bone);

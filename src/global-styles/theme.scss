@@ -21,12 +21,30 @@
   --ink-muted: #57534c;
 
   // Structure
+  //
+  // Borders and shadows are the one part of the system that does not scale with
+  // the controls: the weight of the frame is the aesthetic, so a denser panel
+  // gets smaller type and tighter rows, never a thinner line.
   --border-width: 3px;
   --border-thin: 2px;
   --shadow-offset: 4px;
   --panel-gap: 8px;
-  --hit-target: 40px;
-  --rail-size: 56px;
+
+  // Control sizing.
+  //
+  // Three rungs, and every clickable thing lands on one of them:
+  // `--control-height` is the default target (buttons, rail icons, the modal
+  // footer), `--control-sm` the compact rung (segmented sets, menu rows), and
+  // `--field-height` the label/value rows that stack densely down a panel.
+  // The shortest rung still clears the 24px minimum target.
+  --control-height: 34px;
+  --control-sm: 28px;
+  --field-height: 24px;
+  // The label cell of a field row. Shared so a stack of mixed fields lines its
+  // values up on one column.
+  --field-label-min: 56px;
+  --box-size: 16px;
+  --rail-size: 48px;
 
   // Spacing scale
   --space-1: 2px;
@@ -40,10 +58,14 @@
   --font-display: 'Archivo Black', 'Arial Black', sans-serif;
   --font-mono: 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
 
-  --text-xs: 10px;
-  --text-sm: 11px;
-  --text-md: 13px;
-  --text-lg: 16px;
+  // Four rungs, by role rather than by place: `xs` is every uppercase label and
+  // micro caption, `sm` every value and every line of running copy in the
+  // chrome, `md` the body default and the glyphs that sit inside a control,
+  // `lg` the few things that lead — the brand and a rail icon.
+  --text-xs: 9px;
+  --text-sm: 10px;
+  --text-md: 12px;
+  --text-lg: 14px;
 
   // Z-index scale
   --z-panel: 10;

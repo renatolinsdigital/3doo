@@ -8,15 +8,13 @@
   z-index: 40;
   display: flex;
   flex-direction: column;
-  min-width: 190px;
+  min-width: 168px;
   padding: 0 0 var(--space-1);
   background: var(--bone);
 }
 
 .context-menu__title {
   @include panel-header;
-
-  padding: var(--space-2) var(--space-4);
 }
 
 .context-menu__item {
@@ -25,8 +23,8 @@
 
   display: flex;
   align-items: center;
-  min-height: var(--hit-target);
-  padding: var(--space-2) var(--space-4);
+  min-height: var(--control-sm);
+  padding: var(--space-1) var(--space-3);
   color: var(--void);
   text-align: left;
 
@@ -54,8 +52,8 @@
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: 18px;
-  height: 18px;
+  width: var(--box-size);
+  height: var(--box-size);
   font-size: var(--text-md);
   line-height: 1;
   background: var(--bone);
