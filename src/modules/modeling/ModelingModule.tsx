@@ -19,6 +19,7 @@ import {
   StatusBar,
   ToolRail,
   TopBar,
+  TopologyPanel,
   ViewportCanvas,
 } from '@domain/components';
 import { useAutosave } from '@domain/hooks/useAutosave';
@@ -76,7 +77,10 @@ export function ModelingModule() {
               <BooleanPanel />
             </>
           ) : (
-            <OperationsPanel />
+            <>
+              <OperationsPanel />
+              <TopologyPanel />
+            </>
           )}
         </div>
 

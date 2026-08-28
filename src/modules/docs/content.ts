@@ -54,7 +54,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           'Open the MODELING module from the plate in the top-left corner.',
           'In the ADD panel on the left, click a primitive — BOX is the usual place to start. It drops into the scene already selected.',
           'While it is still freshly added, the PROPERTIES panel lets you change its parameters — size, segments, rings — and the mesh is rebuilt each time.',
-          'Press Tab to enter edit mode. The left panel swaps to OPERATIONS and the tool rail switches to vertex, edge and face selection.',
+          'Press Tab to enter edit mode. The left panels swap to SELECT, OPERATIONS and TOPOLOGY, and the tool rail switches to vertex, edge and face selection.',
           'Select some geometry and run an operation: E extrudes, I insets, Ctrl+R cuts a loop.',
           'Press Ctrl+E to export as OBJ or FBX, or Ctrl+S to save the project as a file you can reopen later.',
         ],
@@ -88,7 +88,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Left panels',
-            'ADD, OBJECT and BOOLEAN in object mode. SELECT and OPERATIONS replace them in edit mode.',
+            'ADD, OBJECT and BOOLEAN in object mode. SELECT, OPERATIONS and TOPOLOGY replace them in edit mode.',
           ],
           [
             'Panel titles',
@@ -197,7 +197,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'Every operator below lives in the OPERATIONS panel with its parameters, and most have a shortcut. A button is disabled whenever the current selection cannot feed it, and its hint says what to select instead — so the panel doubles as a guide to what each one needs.',
+        text: 'Every operator below lives in one of the two edit-mode panels: OPERATIONS holds the ones that take parameters — extrude, inset, bevel, loop cut, subdivide — and TOPOLOGY the ones that join, weld, clean up or widen the selection. Most have a shortcut. A button is disabled whenever the current selection cannot feed it, and its hint says what to select instead, so the panels double as a guide to what each one needs.',
       },
       {
         kind: 'table',
@@ -251,7 +251,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'Proportional editing, at the bottom of the OPERATIONS panel, spreads a transform into the unselected geometry around it through one of six falloff curves. Turn it on, set a radius, and a single vertex drags the surface with it.',
+        text: 'Proportional editing, at the bottom of the TOPOLOGY panel, spreads a transform into the unselected geometry around it through one of six falloff curves. Turn it on, set a radius, and a single vertex drags the surface with it.',
       },
     ],
   },

@@ -10,8 +10,6 @@ import { Button, FieldRow, Panel, SegmentedControl } from '@shared/components';
 import { useEditorStore } from '@store/index';
 import type { SelectMode } from '@store/types';
 
-import './AddPanel.scss';
-
 const PRIMITIVE_ORDER: PrimitiveKind[] = [
   'box',
   'plane',
@@ -79,7 +77,7 @@ export function AddPanel() {
   const addPrimitive = useEditorStore((state) => state.addPrimitive);
 
   return (
-    <Panel title={mode === 'object' ? 'ADD' : 'SELECT'} className="add-panel">
+    <Panel title={mode === 'object' ? 'ADD' : 'SELECT'}>
       {mode === 'object' ? (
         <FieldRow legend="PRIMITIVES" columns={2}>
           {PRIMITIVE_ORDER.map((kind) => (
