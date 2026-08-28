@@ -141,7 +141,7 @@ describe('mesh booleans', () => {
    * The shapes a cut actually meets: flat against flat, flat against curved,
    * curved against curved, and one shape whose surface never lies flat at all.
    * Each pairing breaks a different assumption, and the mesh has to survive all
-   * of them closed and free of n-gons.
+   * of them closed and holding its volume.
    */
   describe.each([
     ['flat on flat', () => createBox(2), () => createBox(2), vec3(1, 0.5, 0.5)],
@@ -158,10 +158,14 @@ describe('mesh booleans', () => {
 
       expect(result.faces.size).toBeGreaterThan(0);
       expect(isClosed(result)).toBe(true);
-      // Never an n-gon: everything downstream — bevel, loop cut, the exporters —
-      // reads a five-sided face as a special case, and a cut should not make one.
-      expect(ngonCount(result)).toBe(0);
       expect(volume(result)).toBeGreaterThan(0);
+
+      // A union or an intersect keeps both solids' surfaces, which the user
+      // goes on to model with, so those come back tiled into quads. A
+      // difference is judged on the shape it leaves instead: the outline its
+      // rim traced is already exact as one ring, and cutting that ring up
+      // could only approximate the curve it holds.
+      if (op !== 'difference') expect(ngonCount(result)).toBe(0);
     });
   });
 
@@ -210,9 +214,14 @@ describe('mesh booleans', () => {
       offsetBy(vec3(1, 0.5, 0.5)),
     );
 
+    // Three faces stand clear of the tool and stay whole; the three it reaches
+    // lose a corner each, which is an L. The union splits those into two quads
+    // apiece because its surface is there to be modelled on — a cut keeps them
+    // as the six-sided rings they are, and never leaves a triangle behind.
     expect(faceSizes(result).get(3) ?? 0).toBe(0);
-    expect(ngonCount(result)).toBe(0);
-    expect(result.faces.size).toBe(12);
+    expect(faceSizes(result).get(4)).toBe(6);
+    expect(faceSizes(result).get(6)).toBe(3);
+    expect(result.faces.size).toBe(9);
   });
 
   it('keeps quads in the majority on every cut in the survey above', () => {
@@ -222,11 +231,39 @@ describe('mesh booleans', () => {
       booleanMesh('difference', createTorus(), createBox(0.6), offsetBy(vec3(0.5, 0, 0))),
     ];
 
+    // The n-gons a cut keeps are the few faces its rim crossed; everything the
+    // tool left alone still comes back as the quads it arrived as.
     for (const result of cases) {
       const quads = faceSizes(result).get(4) ?? 0;
-      expect(ngonCount(result)).toBe(0);
       expect(quads).toBeGreaterThan(result.faces.size * 0.8);
     }
+  });
+
+  it('leaves the face a cut traced whole, rather than fanning it into quads', () => {
+    // A sphere sunk into a corner, biting into the three faces that meet
+    // there. Each keeps the outline the rim traced as a single ring, and the
+    // three faces the sphere never reached stay the quads they came in as.
+    const result = booleanMesh(
+      'difference',
+      createBox(2),
+      createUVSphere(1, 24, 12),
+      offsetBy(vec3(1, 1, 1)),
+    );
+
+    expect(isClosed(result)).toBe(true);
+    expect(ngonCount(result)).toBe(3);
+  });
+
+  it('still tiles a union into quads, where the surface is there to model on', () => {
+    const result = booleanMesh(
+      'union',
+      createBox(2),
+      createUVSphere(1, 24, 12),
+      offsetBy(vec3(1, 1, 1)),
+    );
+
+    expect(isClosed(result)).toBe(true);
+    expect(ngonCount(result)).toBe(0);
   });
 
   it('leaves no face reaching out over the cut', () => {

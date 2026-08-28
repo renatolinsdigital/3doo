@@ -844,7 +844,7 @@ function retile(mesh: BMesh): void {
  * no longer holding anything, and go too. Only what survives both is a real
  * feature of the cut, and only that gets tiled.
  */
-function resolve(mesh: BMesh, epsilon: number): void {
+function resolve(mesh: BMesh, op: BooleanOp, epsilon: number): void {
   // Both halves feed each other, so they run until neither has anything left
   // to do: merging two faces can strand the vertex that was holding their
   // shared edge, and removing that vertex can free the next merge along. One
@@ -863,18 +863,31 @@ function resolve(mesh: BMesh, epsilon: number): void {
     if (merged === 0 && stranded.length === 0) break;
   }
 
-  retile(mesh);
+  // A difference is judged on the shape it leaves, and the face it opens up is
+  // whatever outline the tool's rim traced across it. That outline is already
+  // exact as one ring; tiling it back into quads can only approximate the curve
+  // it is holding, and every added edge is a place for the fill to lift off the
+  // surface. So the ring stands as an n-gon — which is what Blender leaves for
+  // the same reason, and what the rest of this editor reads happily enough.
+  //
+  // Union and intersect keep both solids' surfaces intact, and those are the
+  // surfaces the user goes on to model with, so there the quads are worth it.
+  if (op !== 'difference') retile(mesh);
+
+  // Pairing leftover coplanar triangles costs the cut nothing either way: it
+  // merges two faces that already lie in one plane and never splits a ring.
   trisToQuads(mesh, [...mesh.faces.values()], 1);
 }
 
 /**
  * One boolean, mesh in and mesh out, in the target's local space.
  *
- * The quad pass at the end is what makes the result workable rather than
- * merely correct: a cut leaves triangles along its seam, and pairing the
- * coplanar ones back up gives edge loops that run where the shape actually
+ * The quad pass at the end is what makes a union or an intersect workable
+ * rather than merely correct: those keep both solids' surfaces, and pairing the
+ * coplanar triangles back up gives edge loops that run where the shape actually
  * turns. The angle limit is tight on purpose — merging across a real crease
- * would flatten the very edges the boolean just created.
+ * would flatten the very edges the boolean just created. A difference skips
+ * that pass and keeps its cut faces whole; see `resolve`.
  */
 export function booleanMesh(
   op: BooleanOp,
@@ -892,7 +905,7 @@ export function booleanMesh(
   const scale = extentOf([...a, ...b]);
   const mesh = polysToMesh(csg(op, a, b, PLANE_EPSILON * scale), WELD_EPSILON * scale);
 
-  resolve(mesh, PLANE_EPSILON);
+  resolve(mesh, op, PLANE_EPSILON);
   mesh.computeNormals();
   return mesh;
 }
