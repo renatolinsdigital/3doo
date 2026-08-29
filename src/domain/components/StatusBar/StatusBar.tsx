@@ -21,6 +21,12 @@ function modalLabel(modal: ModalTransform): string {
   // A rotation carries its angle in x whatever axis it turns about, and there is
   // one angle, not three, and the axis is already spelled out beside it.
   if (modal.kind === 'rotate') return `${kind}${axis} ${modal.value.x.toFixed(1)}°`;
+
+  // A bevel, an inset or an extrude is one distance dragged against the model,
+  // and it rides in x for the same reason.
+  if (modal.kind === 'bevel' || modal.kind === 'inset' || modal.kind === 'extrude') {
+    return `${kind} ${modal.value.x.toFixed(3)}`;
+  }
   if (modal.kind !== 'scale') return `${kind}${axis}`;
 
   const factor = modal.axis ? modal.value[modal.axis] : modal.value.x;

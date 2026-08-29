@@ -118,32 +118,101 @@ Four responsibilities, kept strictly apart:
 
 ## Keyboard
 
-Blender defaults, because that is the muscle memory users arrive with. Press
-<kbd>Shift</kbd> + <kbd>?</kbd> in the app for the full list.
+Blender defaults, because that is the muscle memory users arrive with. The
+bindings live in one table, [keymap.ts](src/domain/keymap/keymap.ts), which the
+in-app overlay (<kbd>Shift</kbd> + <kbd>?</kbd>) and the Docs module both build
+their lists from. What follows is that table, in full.
+
+### Modes and selection
 
 | Key | Action |
 | --- | --- |
 | `Tab` | Toggle edit mode |
-| `1` / `2` / `3` | Vertex / edge / face select |
-| `G` / `R` / `S` | Move / rotate / scale |
-| `E` / `I` | Extrude / inset |
-| `Ctrl+B` / `Ctrl+R` | Bevel / loop cut |
+| `1` / `2` / `3` | Vertex / edge / face select (edit mode) |
+| `V` | Select tool: press again for the next region shape (box, circle, lasso) |
+| `A` / `Alt+A` | Select all / deselect all |
+| `Ctrl+I` | Invert the selection |
+| `Alt+L` | Select the face loop running through two adjacent faces (edit mode) |
+| `]` / `[` | Grow / shrink the selection (edit mode) |
+| `Esc` | Clear the selection and put the gizmo away |
+
+### Transform
+
+| Key | Action |
+| --- | --- |
+| `G` | Move tool: the gizmo handles do the dragging |
+| `R` / `S` | Rotate / scale, running off the pointer from the keypress |
+| `X` / `Y` / `Z` | Mid rotate or scale: pin it to that axis, press again to lift |
+| `Shift+G` | Slide vertices along their edges, or edges across their faces (edit mode) |
+
+### Modelling
+
+| Key | Action |
+| --- | --- |
+| `E` | Extrude, the distance dragged along the region normal (edit mode) |
+| `I` | Inset, the thickness dragged in toward the selection (edit mode) |
+| `Ctrl+B` | Bevel, the width dragged away from the selection (edit mode) |
+| `Ctrl+R` | Loop cut across the quad ring the selected edge runs through (edit mode) |
 | `Ctrl+D` | Subdivide: splits selected edges at their midpoint, or cuts up faces |
 | `M` | Object mode: merge the selected objects; edit mode: merge by distance |
+| `F` | Fill a boundary loop with a face (edit mode) |
+| `J` | Connect two selected vertices with an edge (edit mode) |
+| `Alt+B` | Bridge two open edge loops with a band of quads (edit mode) |
+| `Alt+T` / `Alt+J` | Triangulate / merge near-coplanar triangle pairs back into quads (edit mode) |
+| `Shift+N` | Recalculate normals, pointing them outward |
+
+### Objects, history and files
+
+| Key | Action |
+| --- | --- |
 | `Shift+D` / `Alt+D` | Duplicate / linked duplicate, the copy sharing the mesh data |
 | `P` | Separate the loose parts into an object each |
 | `Ctrl+A` | Apply rotation and scale into the mesh |
-| `Shift+N` | Recalculate normals, pointing them outward |
-| `J` | Connect two selected vertices with an edge |
 | `X` | Delete. Object mode: the object; edit mode: the selection, leaving a hole |
 | `Delete` | Object mode: the object; edit mode: dissolve the selection, keeping the surface |
-| `A` / `Alt+A` | Select all / deselect |
-| `.` | Frame selected |
-| `Ctrl+S` / `Ctrl+E` | Save / export |
+| `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
+| `Ctrl+S` / `Ctrl+O` / `Ctrl+E` | Save / open / export |
+| `Shift+?` | The shortcut overlay |
+
+### Viewport and the 3D cursor
+
+| Key | Action |
+| --- | --- |
+| `.` / `Home` | Frame selected / frame all |
+| `5` | Orthographic / perspective |
+| `Ctrl+1` / `Ctrl+3` / `7` | Front / side / top view |
+| `Shift+Z` | Cycle shading: solid, solid + wireframe, wireframe, x-ray, matcap |
 | `Shift+C` | 3D cursor to the world origin |
 | `Ctrl+Shift+C` | 3D cursor to the selection |
 | `Shift+V` | Selection to the 3D cursor |
 | `Ctrl+.` | Toggle the pivot between median and 3D cursor |
+
+The mouse carries a few of its own: <kbd>Alt</kbd>+click selects an edge loop,
+right-click opens the 3D cursor menu, and <kbd>Ctrl</kbd>+scroll resizes the
+proportional-editing falloff, which plain scroll also does mid-transform.
+
+### Extrude, inset and bevel run off the pointer
+
+<kbd>E</kbd>, <kbd>I</kbd> and <kbd>Ctrl</kbd>+<kbd>B</kbd> take one distance
+each, and a distance typed in before the shape it makes has been seen is
+guesswork. The key puts a dashed guide up and the mesh follows the pointer from
+there, live, until a click or <kbd>Enter</kbd> confirms it and <kbd>Esc</kbd>
+puts it back. The status bar reads the distance out as it goes.
+
+Which way to move is Blender's pairing. A bevel grows as the pointer is pulled
+away from the selection, out past the edge being chamfered. An inset grows the
+other way, as the pointer is pushed in toward the middle of the face, so press
+<kbd>I</kbd> with the pointer out from the face and then move in. An extrude
+travels along the region normal alone: the guide is drawn along that axis
+through the selection, only travel along it counts, and dragging back past the
+start sinks the region into the surface rather than raising it off.
+
+None of the three nudges what is already there, so every pointer move re-runs
+the operator from the mesh as it stood at the keypress rather than layering
+another cut on the last one. Confirming without having moved leaves the mesh
+alone and records no undo step, so a stray <kbd>E</kbd> or <kbd>I</kbd> costs
+nothing. The OPERATIONS panel keeps its number fields for when the exact figure
+is the point.
 
 <kbd>Ctrl</kbd>+<kbd>D</kbd> follows the select mode too: in edge mode it splits
 each selected edge, dropping a vertex at its midpoint and splicing it into the

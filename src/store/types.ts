@@ -184,7 +184,7 @@ export interface LastOperator {
 }
 
 export interface ModalTransform {
-  kind: 'move' | 'rotate' | 'scale' | 'slide';
+  kind: 'move' | 'rotate' | 'scale' | 'slide' | 'bevel' | 'inset' | 'extrude';
   /** Which kind of element a slide is moving. Absent for the other transforms. */
   element?: 'vertex' | 'edge';
   axis: 'x' | 'y' | 'z' | null;
@@ -192,6 +192,7 @@ export interface ModalTransform {
   excludeAxis: boolean;
   /** Digits typed so far for an exact numeric entry. */
   typed: string;
+  /** A bevel, an inset or an extrude carries its one distance in x, as a rotation does its angle. */
   value: Vec3;
 }
 

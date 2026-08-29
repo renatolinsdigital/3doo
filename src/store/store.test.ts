@@ -326,6 +326,74 @@ describe('editor store', () => {
     expect(store().status).toMatch(/select vertices to slide/i);
   });
 
+  it('starts a bevel off the keyboard when there are edges to chamfer', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    store().setSelectMode('edge');
+    store().exec('selectAll', {}, 'Select all');
+
+    store().beginOffset('bevel');
+
+    // Nothing is cut yet: the width opens at zero and the pointer drags it out.
+    expect(store().modal).toMatchObject({ kind: 'bevel', value: { x: 0 } });
+    expect(activeObject().mesh.faces.size).toBe(6);
+  });
+
+  it('turns a bevel away with no edges selected, and says so', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    store().setSelectMode('edge');
+    activeObject().mesh.deselectAll();
+
+    store().beginOffset('bevel');
+
+    expect(store().modal).toBeNull();
+    expect(store().status).toMatch(/select edges to bevel/i);
+  });
+
+  it('turns an inset away with no faces selected, and says so', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    activeObject().mesh.deselectAll();
+
+    store().beginOffset('inset');
+
+    expect(store().modal).toBeNull();
+    expect(store().status).toMatch(/select faces to inset/i);
+  });
+
+  it('turns an inset away in object mode, where there is no face to shrink', () => {
+    store().addPrimitive('box');
+
+    store().beginOffset('inset');
+
+    expect(store().modal).toBeNull();
+    expect(store().status).toMatch(/edit mode/i);
+  });
+
+  it('starts an extrude off the keyboard, adding nothing until the pointer moves', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    store().setSelectMode('face');
+    store().exec('selectAll', {}, 'Select all');
+
+    store().beginOffset('extrude');
+
+    expect(store().modal).toMatchObject({ kind: 'extrude', value: { x: 0 } });
+    expect(activeObject().mesh.faces.size).toBe(6);
+  });
+
+  it('turns an extrude away with nothing selected, and says so', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    activeObject().mesh.deselectAll();
+
+    store().beginOffset('extrude');
+
+    expect(store().modal).toBeNull();
+    expect(store().status).toMatch(/select faces or edges to extrude/i);
+  });
+
   it('turns a slide away in object mode, where there is no mesh element to move', () => {
     store().addPrimitive('box');
 

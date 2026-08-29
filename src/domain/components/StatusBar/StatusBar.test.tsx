@@ -46,6 +46,19 @@ describe('StatusBar', () => {
     expect(screen.getByRole('status')).toHaveTextContent('SLIDE EDGE -0.420');
   });
 
+  it('reads out how wide a bevel has been dragged so far', () => {
+    useEditorStore.getState().addPrimitive('box');
+    act(() => {
+      useEditorStore.getState().beginModal('bevel');
+      useEditorStore.getState().updateModal({ value: { x: 0.125, y: 0, z: 0 } });
+    });
+
+    render(<StatusBar />);
+
+    // One distance, carried in x the way a rotation carries its one angle.
+    expect(screen.getByRole('status')).toHaveTextContent('BEVEL 0.125');
+  });
+
   it('flags auto merge while it is switched on', () => {
     useEditorStore.getState().setAutoMerge({ enabled: true, threshold: 0.02 });
 

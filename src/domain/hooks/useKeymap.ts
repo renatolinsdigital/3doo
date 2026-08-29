@@ -116,14 +116,16 @@ export function useKeymap(): void {
           state.beginSlide();
           break;
 
+        // All three take their distance from the pointer, the way Blender's do:
+        // the store checks the selection can feed one and the viewport runs it.
         case 'extrude':
-          state.exec('extrude', { offset: 1 }, 'Extrude');
+          state.beginOffset('extrude');
           break;
         case 'inset':
-          state.exec('inset', { thickness: 0.2 }, 'Inset');
+          state.beginOffset('inset');
           break;
         case 'bevel':
-          state.exec('bevel', { width: 0.2, segments: 1 }, 'Bevel');
+          state.beginOffset('bevel');
           break;
         case 'loopCut':
           state.exec('loopCut', { cuts: 1 }, 'Loop cut');

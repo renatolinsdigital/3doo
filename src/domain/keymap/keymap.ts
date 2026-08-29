@@ -38,9 +38,30 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
     group: 'Transform',
   },
 
-  { id: 'extrude', key: 'e', label: 'Extrude', mode: 'edit', group: 'Modelling' },
-  { id: 'inset', key: 'i', label: 'Inset', mode: 'edit', group: 'Modelling' },
-  { id: 'bevel', key: 'b', ctrl: true, label: 'Bevel', mode: 'edit', group: 'Modelling' },
+  // One key each, and each starts a drag rather than a fixed cut: a second way
+  // in would be a second way to open a modal that already owns the pointer.
+  {
+    id: 'extrude',
+    key: 'e',
+    mode: 'edit',
+    label: 'Extrude: drag the distance along the region normal',
+    group: 'Modelling',
+  },
+  {
+    id: 'inset',
+    key: 'i',
+    mode: 'edit',
+    label: 'Inset: drag the thickness in toward the selection',
+    group: 'Modelling',
+  },
+  {
+    id: 'bevel',
+    key: 'b',
+    ctrl: true,
+    mode: 'edit',
+    label: 'Bevel: drag the width away from the selection',
+    group: 'Modelling',
+  },
   { id: 'loopCut', key: 'r', ctrl: true, label: 'Loop cut', mode: 'edit', group: 'Modelling' },
   { id: 'merge', key: 'm', label: 'Merge by distance', mode: 'edit', group: 'Modelling' },
   {

@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand';
 
-import type { SelectMode } from '@kernel/index';
+import type { BMesh, SelectMode } from '@kernel/index';
 
 import type { EditorStore } from '../useEditorStore';
 import { activeObject } from './scene';
@@ -14,6 +14,43 @@ import type {
   SnapSettings,
   ToolId,
 } from '../types';
+
+/**
+ * How each modal operation is driven, for the hint the status bar carries.
+ *
+ * Only a move, a turn and a scale have an axis to pin, which is what X, Y and Z
+ * offer mid-drag. A slide is already running along one, the edge under it, and
+ * the three pointer-driven operators are one distance each with nothing to pin
+ * it to: what they need saying instead is which way that distance opens.
+ */
+const MODAL_HINTS: Record<ModalTransform['kind'], string> = {
+  move: 'move the mouse, X/Y/Z to constrain',
+  rotate: 'move the mouse, X/Y/Z to constrain',
+  scale: 'move the mouse, X/Y/Z to constrain',
+  slide: 'move the mouse',
+  bevel: 'pull the pointer away from the selection',
+  inset: 'push the pointer in toward the selection',
+  extrude: 'move the pointer along the normal',
+};
+
+/** What each pointer-driven operator is called, and what it needs selected. */
+const OFFSET_OPERATORS = {
+  bevel: {
+    label: 'Bevelling',
+    refusal: 'Select edges to bevel',
+    ready: (mesh: BMesh) => mesh.selectedEdges().length > 0,
+  },
+  inset: {
+    label: 'Insetting',
+    refusal: 'Select faces to inset',
+    ready: (mesh: BMesh) => mesh.selectedFaces().length > 0,
+  },
+  extrude: {
+    label: 'Extruding',
+    refusal: 'Select faces or edges to extrude',
+    ready: (mesh: BMesh) => mesh.selectedFaces().length > 0 || mesh.selectedEdges().length > 0,
+  },
+} as const;
 
 /** The order V steps through, and the order the select tool's menu lists. */
 export const SELECT_SHAPES: readonly SelectShape[] = ['box', 'circle', 'lasso'];
@@ -41,6 +78,7 @@ export interface ToolSlice {
   setProportional: (patch: Partial<ProportionalSettings>) => void;
   setAutoMerge: (patch: Partial<AutoMergeSettings>) => void;
   beginSlide: () => void;
+  beginOffset: (kind: 'bevel' | 'inset' | 'extrude') => void;
   beginModal: (kind: ModalTransform['kind'], element?: ModalTransform['element']) => void;
   updateModal: (patch: Partial<ModalTransform>) => void;
   endModal: (status?: string) => void;
@@ -162,6 +200,36 @@ export const createToolSlice: StateCreator<
     get().beginModal('slide', element);
   },
 
+  /**
+   * Starts a bevel, an inset or an extrude whose distance comes from the
+   * pointer, or says why it cannot.
+   *
+   * All three take one distance, and a distance typed in before the shape it
+   * makes has been seen is guesswork. The shortcuts drag it out against the
+   * model instead, the way Blender's do; the OPERATIONS panel keeps its number
+   * fields for when the exact figure is the point.
+   */
+  beginOffset: (kind) => {
+    const state = get();
+    const object = activeObject(state);
+    const { label, refusal, ready } = OFFSET_OPERATORS[kind];
+
+    if (state.mode !== 'edit' || !object) {
+      set({ status: `${label} works on mesh elements: enter edit mode first (Tab)` });
+      return;
+    }
+    if (object.locked) {
+      get().noteLockedAttempt(object.id);
+      return;
+    }
+    if (!ready(object.mesh)) {
+      set({ status: refusal });
+      return;
+    }
+
+    get().beginModal(kind);
+  },
+
   beginModal: (kind, element) => {
     set({
       modal: {
@@ -173,12 +241,7 @@ export const createToolSlice: StateCreator<
         // A scale of nothing is 1, and the status bar reads this out live.
         value: kind === 'scale' ? { x: 1, y: 1, z: 1 } : { x: 0, y: 0, z: 0 },
       },
-      // A slide has no axis to constrain: it already runs along one, the edge
-      // under it.
-      status:
-        kind === 'slide'
-          ? 'SLIDE: move the mouse, click or Enter to confirm, Esc to cancel'
-          : `${kind.toUpperCase()}: move the mouse, X/Y/Z to constrain, click or Enter to confirm, Esc to cancel`,
+      status: `${kind.toUpperCase()}: ${MODAL_HINTS[kind]}, click or Enter to confirm, Esc to cancel`,
     });
   },
 

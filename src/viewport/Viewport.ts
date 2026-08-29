@@ -13,8 +13,11 @@ import {
   type Vert,
   applySlide,
   autoMergeVerts,
+  averageNormal,
   axisVector,
   centroid,
+  cloneMesh,
+  execOperator,
   faceLoopAtClick,
   inverseTransformDirection,
   inverseTransformPoint,
@@ -218,6 +221,103 @@ export function slideFactor(
   return -Math.min(Math.max(back, 0), 1);
 }
 
+/** How far each way an extrude's axis line is drawn through the selection. */
+const MODAL_AXIS_REACH_PX = 400;
+
+/**
+ * Which way the pointer travels to open each operator out.
+ *
+ * Blender's pairing, and the one the shapes themselves suggest: a chamfer
+ * follows the pointer out past the edge it is cutting, while an inset border
+ * closes in behind a pointer pushed toward the middle of the face.
+ */
+const OFFSET_SENSE: Record<'bevel' | 'inset', 1 | -1> = { bevel: 1, inset: -1 };
+
+/** What each pointer-driven operator's undo step is called. */
+const OFFSET_LABELS: Record<OffsetDrag['kind'], string> = {
+  bevel: 'Bevel',
+  inset: 'Inset',
+  extrude: 'Extrude',
+};
+
+/** The one parameter each of them spends its distance on. */
+function offsetParams(kind: OffsetDrag['kind'], amount: number): Record<string, number> {
+  if (kind === 'bevel') return { width: amount };
+  if (kind === 'inset') return { thickness: amount };
+  return { offset: amount };
+}
+
+/**
+ * How wide a bevel or an inset the pointer is asking for.
+ *
+ * Measured from where the drag began rather than from the selection itself, so
+ * it opens at nothing wherever the pointer happened to be sitting when the key
+ * was pressed. `sense` is which way it then has to travel to grow. Going the
+ * other way closes it back to nothing rather than turning it inside out.
+ */
+export function offsetAmount(
+  pointerPx: number,
+  referencePx: number,
+  unitsPerPixel: number,
+  sense: 1 | -1 = 1,
+): number {
+  const amount = (pointerPx - referencePx) * sense * unitsPerPixel;
+  return Number.isFinite(amount) ? Math.max(0, amount) : 0;
+}
+
+/**
+ * How far along the extrude axis the pointer has been dragged.
+ *
+ * Signed, unlike a bevel or an inset: pulled back past the start, the region
+ * sinks into the surface instead of rising off it, and a clamp at zero would
+ * put that shape out of reach. Only travel along `screenAxis` counts, so the
+ * pointer can wander off the axis without the distance following it.
+ */
+export function axisAmount(
+  travel: THREE.Vector2,
+  screenAxis: THREE.Vector2 | null,
+  unitsPerPixel: number,
+): number {
+  // An axis pointing back at the camera has no length on screen to measure
+  // along. Pulling up is pulling out is the reading left, and canvas y grows
+  // downward, which is what the negation is for.
+  const along = screenAxis ? travel.dot(screenAxis) : -travel.y;
+  const amount = along * unitsPerPixel;
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+/**
+ * A bevel, an inset or an extrude taking its one distance from the pointer.
+ *
+ * None of the three nudges what is already there: each cuts fresh topology, so
+ * a wider chamfer is not the last one moved outward but the original edges
+ * bevelled again. That is why the mesh as it stood at the keypress is kept
+ * whole here: every preview runs on a copy of it, and a cancel puts it back.
+ */
+interface OffsetDrag {
+  kind: 'bevel' | 'inset' | 'extrude';
+  original: BMesh;
+  /** The selection's median, which the guide line is drawn from or through. */
+  pivot: THREE.Vector3;
+  pivotPixels: THREE.Vector2;
+  /** Where the pointer sat when the drag was seeded, which an extrude measures from. */
+  from: THREE.Vector2;
+  /** Its distance from the pivot then, which is where a bevel or an inset reads zero. */
+  reference: number;
+  /** Whether that has been read yet, which takes a pointer position. */
+  seeded: boolean;
+  /** Object-space units per pixel of travel, so the shape keeps up with the pointer. */
+  unitsPerPixel: number;
+  /** The world direction an extrude travels along. Null for the other two. */
+  axis: THREE.Vector3 | null;
+  /** That axis as it lies on the canvas, or null when it points at the camera. */
+  screenAxis: THREE.Vector2 | null;
+  /** The distance the last preview ran with. */
+  amount: number;
+  /** What that preview reported, which is what the status bar says at the end. */
+  status: string | null;
+}
+
 /** A slide running off the bare pointer: what moves, how far, and how to put it back. */
 interface SlideDrag {
   mesh: BMesh;
@@ -326,6 +426,7 @@ export class Viewport {
   /** The overlay's SVG shapes, built on first use. */
   private shapeLayer: MarqueeLayer | null = null;
   private slideDrag: SlideDrag | null = null;
+  private offsetDrag: OffsetDrag | null = null;
   /** The rails a slide may travel along, drawn while one is running. */
   private readonly slideGuide: THREE.LineSegments;
   private gizmoBaseline: GizmoBaseline | null = null;
@@ -741,11 +842,19 @@ export class Viewport {
           if (modal?.kind === 'scale') this.beginModalScale();
           else if (modal?.kind === 'rotate') this.beginModalRotate();
           else if (modal?.kind === 'slide') this.beginModalSlide();
+          else if (
+            modal?.kind === 'bevel' ||
+            modal?.kind === 'inset' ||
+            modal?.kind === 'extrude'
+          ) {
+            this.beginOffsetDrag(modal.kind);
+          }
           // Cleared from somewhere else (a mode change, a reset) while a
           // modal transform is still live: put everything back.
           else if (!modal && this.scaleDrag?.modal) this.finishModalScale(true);
           else if (!modal && this.rotateDrag?.modal) this.finishModalRotate(true);
           else if (!modal && this.slideDrag) this.finishModalSlide(true);
+          else if (!modal && this.offsetDrag) this.finishOffsetDrag(true);
         },
       ),
       // An operator reporting new vertices flags them for a moment. The expiry
@@ -1690,11 +1799,12 @@ export class Viewport {
     return removed;
   }
 
-  /** Whichever modal transform is running off the bare pointer, if any is. */
-  private activeModal(): 'scale' | 'rotate' | 'slide' | null {
+  /** Whichever modal operation is running off the bare pointer, if any is. */
+  private activeModal(): 'scale' | 'rotate' | 'slide' | OffsetDrag['kind'] | null {
     if (this.scaleDrag?.modal) return 'scale';
     if (this.rotateDrag?.modal) return 'rotate';
     if (this.slideDrag) return 'slide';
+    if (this.offsetDrag) return this.offsetDrag.kind;
     return null;
   }
 
@@ -1702,6 +1812,7 @@ export class Viewport {
     if (this.scaleDrag?.modal) this.finishModalScale(cancelled);
     else if (this.rotateDrag?.modal) this.finishModalRotate(cancelled);
     else if (this.slideDrag) this.finishModalSlide(cancelled);
+    else if (this.offsetDrag) this.finishOffsetDrag(cancelled);
   }
 
   private handleModalKey = (event: KeyboardEvent): void => {
@@ -1717,10 +1828,11 @@ export class Viewport {
     if (key === 'escape') return this.finishModal(true);
     if (key === 'enter') return this.finishModal(false);
 
-    // A slide has no axis to pin: it is already running along one, the edge
-    // under it. The keys are swallowed all the same, so a stray X mid-slide
-    // cannot reach the delete operator behind it.
-    if (kind === 'slide') return;
+    // Only a scale or a turn has an axis to pin: a slide is already running
+    // along one, the edge under it, and a bevel or an inset is one distance.
+    // The keys are swallowed all the same, so a stray X mid-slide cannot reach
+    // the delete operator behind it.
+    if (kind !== 'scale' && kind !== 'rotate') return;
 
     // Pressing the same axis again lifts the constraint, as it does in Blender.
     if (kind === 'rotate') {
@@ -1811,29 +1923,236 @@ export class Viewport {
     this.applyEditTransform(state, object, step);
   }
 
-  /** Redraws the dashed line from the pivot out to the pointer. */
-  private updateModalLine(): void {
-    const drag = this.scaleDrag ?? this.rotateDrag;
-    if (!drag || !this.modalLine.visible) return;
+  /**
+   * Starts a bevel, an inset or an extrude that takes its distance from the
+   * pointer.
+   *
+   * The same shape as the modal scale and slide: no button is held, so it ends
+   * on a click, Enter or Escape, and the history entry goes in before anything
+   * changes so a cancel can drop it. A bevel and an inset read their distance
+   * off how far the pointer has been pulled from the selection, so they get the
+   * line a scale draws out to it. An extrude runs along one direction, the
+   * region normal, so it gets that axis drawn through the geometry instead.
+   */
+  private beginOffsetDrag(kind: OffsetDrag['kind']): void {
+    if (this.offsetDrag || this.scaleDrag || this.rotateDrag || this.slideDrag) return;
 
-    // Unprojected at the pivot's own depth, so the line lands under the pointer
-    // whatever the projection is doing.
-    const depth = drag.pivot.clone().project(this.camera).z;
-    const pointer = new THREE.Vector3(
+    const state = useEditorStore.getState();
+    const object = activeObject(state);
+    const view = object ? this.views.get(object.id) : undefined;
+    const selected = object?.mesh.selectedVerts() ?? [];
+    if (!object || !view || selected.length === 0) {
+      state.endModal();
+      return;
+    }
+
+    const median = medianPoint(selected);
+    const pivot = new THREE.Vector3(median.x, median.y, median.z).applyMatrix4(view.group.matrix);
+    // The distance is an object-space one while the pointer travels across the
+    // screen, so the object's own scale sits between the two. A non-uniform one
+    // has no single answer, and the mean is what the falloff ring averages to
+    // as well.
+    const { scale } = object.transform;
+    const meanScale = (Math.abs(scale.x) + Math.abs(scale.y) + Math.abs(scale.z)) / 3;
+
+    state.recordHistory(OFFSET_LABELS[kind]);
+    state.patchActiveObject({ primitive: null }, { touchGeometry: false });
+
+    const original = cloneMesh(object.mesh);
+    const axis = kind === 'extrude' ? this.extrudeAxis(original, view.group.matrix) : null;
+
+    this.offsetDrag = {
+      kind,
+      original,
+      pivot,
+      pivotPixels: this.projectToPixels(pivot),
+      from: this.pointerPixels.clone(),
+      reference: 0,
+      seeded: false,
+      unitsPerPixel: this.worldPerPixel(pivot) / Math.max(meanScale, 1e-6),
+      axis,
+      screenAxis: axis ? this.projectDirection(pivot, axis) : null,
+      amount: 0,
+      status: null,
+    };
+
+    this.modalLine.visible = true;
+    // With the line up the handles say nothing it does not, and they sit over
+    // the very geometry being cut. `updateGizmo` brings them back at the end.
+    this.standDownGizmo();
+    this.updateModalLine();
+
+    window.addEventListener('keydown', this.handleModalKey, true);
+    window.addEventListener('pointerdown', this.handleModalPointer, true);
+    window.addEventListener('contextmenu', this.handleModalContextMenu, true);
+  }
+
+  /** Runs the operator out to whatever distance the pointer has been dragged. */
+  private applyOffsetDrag(): void {
+    const drag = this.offsetDrag;
+    if (!drag) return;
+
+    this.updateModalLine();
+
+    // A keypress carries no pointer position, so where the drag started from is
+    // only known once the pointer first moves. Measuring from there is what
+    // opens the distance at nothing however far out the pointer was sitting.
+    if (!drag.seeded) {
+      drag.from = this.pointerPixels.clone();
+      drag.reference = this.pointerPixels.distanceTo(drag.pivotPixels);
+      drag.seeded = true;
+      return;
+    }
+
+    const amount =
+      drag.kind === 'extrude'
+        ? axisAmount(this.pointerPixels.clone().sub(drag.from), drag.screenAxis, drag.unitsPerPixel)
+        : offsetAmount(
+            this.pointerPixels.distanceTo(drag.pivotPixels),
+            drag.reference,
+            drag.unitsPerPixel,
+            OFFSET_SENSE[drag.kind],
+          );
+    if (Math.abs(amount - drag.amount) < 1e-5) return;
+
+    drag.amount = amount;
+    this.previewOffset(drag);
+  }
+
+  /**
+   * Rebuilds the mesh at the distance the drag has reached.
+   *
+   * Always from the copy taken when the drag began, never from what is on
+   * screen: bevelling a chamfer that is already there chamfers the chamfer, and
+   * every move would leave another one behind it.
+   */
+  private previewOffset(drag: OffsetDrag): void {
+    const state = useEditorStore.getState();
+    const mesh = cloneMesh(drag.original);
+
+    // Zero is the shape that was already there. Running any of the three at it
+    // would still cut the new geometry in, so none of them runs until there is
+    // a distance to cut with.
+    if (drag.amount !== 0) {
+      const result = execOperator(
+        {
+          mesh,
+          selectMode: state.selectMode,
+          cursor: state.cursor,
+          proportional: state.proportional,
+        },
+        drag.kind,
+        offsetParams(drag.kind, drag.amount),
+      );
+      drag.status = result.status;
+    } else {
+      drag.status = null;
+    }
+
+    state.patchActiveObject({ mesh });
+    state.updateModal({ value: vec3(drag.amount, 0, 0) });
+  }
+
+  private finishOffsetDrag(cancelled: boolean): void {
+    const drag = this.offsetDrag;
+    if (!drag) return;
+
+    window.removeEventListener('keydown', this.handleModalKey, true);
+    window.removeEventListener('pointerdown', this.handleModalPointer, true);
+    window.removeEventListener('contextmenu', this.handleModalContextMenu, true);
+
+    // A confirm that never left the start has nothing to keep either: the
+    // operator has not run, and the entry recorded before it would undo to the
+    // scene the user is already looking at.
+    const state = useEditorStore.getState();
+    const abandoned = cancelled || drag.amount === 0;
+    if (abandoned) {
+      state.patchActiveObject({ mesh: drag.original });
+      state.discardHistory();
+    }
+
+    // Cleared before the store is told, so the modal subscription sees nothing
+    // left to cancel, and the handles are free to come back.
+    this.offsetDrag = null;
+    this.modalLine.visible = false;
+
+    state.endModal(abandoned ? undefined : (drag.status ?? undefined));
+    state.touchMesh();
+  }
+
+  /**
+   * The direction an extrude pulls the selection along, in world space.
+   *
+   * A region of faces travels along the normal they average to. Edges have no
+   * region to average, and the operator walls them into quads along the
+   * object's own Y, so that is what the guide line has to show for them.
+   */
+  private extrudeAxis(mesh: BMesh, matrix: THREE.Matrix4): THREE.Vector3 {
+    const faces = mesh.selectedFaces();
+    if (faces.length > 0) mesh.computeNormals();
+    const normal = faces.length > 0 ? averageNormal(faces) : vec3(0, 1, 0);
+    return new THREE.Vector3(normal.x, normal.y, normal.z).transformDirection(matrix);
+  }
+
+  /**
+   * Which way a world direction runs across the canvas, as a unit vector.
+   *
+   * Measured over a hundred pixels' worth of it rather than over one world
+   * unit, so the answer does not change with the zoom. A direction pointing at
+   * the camera collapses to almost nothing on screen, and there is no reading
+   * travel along a few pixels: null says so, and the caller falls back.
+   */
+  private projectDirection(origin: THREE.Vector3, direction: THREE.Vector3): THREE.Vector2 | null {
+    const probe = origin.clone().addScaledVector(direction, this.worldPerPixel(origin) * 100);
+    const offset = this.projectToPixels(probe).sub(this.projectToPixels(origin));
+    return offset.length() < 10 ? null : offset.normalize();
+  }
+
+  /** The pointer unprojected at a point's own depth, so a line to it lands under it. */
+  private pointerAtDepthOf(point: THREE.Vector3): THREE.Vector3 {
+    const depth = point.clone().project(this.camera).z;
+    return new THREE.Vector3(
       (this.pointerPixels.x / Math.max(this.canvas.clientWidth, 1)) * 2 - 1,
       -(this.pointerPixels.y / Math.max(this.canvas.clientHeight, 1)) * 2 + 1,
       depth,
     ).unproject(this.camera);
+  }
+
+  /**
+   * Where an extrude's axis line starts and ends.
+   *
+   * Drawn through the selection and out both ways rather than from it to the
+   * pointer: the travel is pinned to this one direction whatever the pointer
+   * does off it, and the half behind the surface is where a negative distance
+   * takes the region.
+   */
+  private axisLineEnds(pivot: THREE.Vector3, axis: THREE.Vector3): [THREE.Vector3, THREE.Vector3] {
+    const reach = Math.max(this.worldPerPixel(pivot), 1e-6) * MODAL_AXIS_REACH_PX;
+    return [
+      pivot.clone().addScaledVector(axis, -reach),
+      pivot.clone().addScaledVector(axis, reach),
+    ];
+  }
+
+  /** Redraws the dashed guide: out to the pointer, or along the axis an extrude runs on. */
+  private updateModalLine(): void {
+    const drag = this.scaleDrag ?? this.rotateDrag ?? this.offsetDrag;
+    if (!drag || !this.modalLine.visible) return;
+
+    const axis = this.offsetDrag?.axis;
+    const [from, to] = axis
+      ? this.axisLineEnds(drag.pivot, axis)
+      : [drag.pivot, this.pointerAtDepthOf(drag.pivot)];
 
     const positions = this.modalLine.geometry.getAttribute('position') as THREE.BufferAttribute;
-    positions.setXYZ(0, drag.pivot.x, drag.pivot.y, drag.pivot.z);
-    positions.setXYZ(1, pointer.x, pointer.y, pointer.z);
+    positions.setXYZ(0, from.x, from.y, from.z);
+    positions.setXYZ(1, to.x, to.y, to.z);
     positions.needsUpdate = true;
 
     const material = this.modalLine.material as THREE.LineDashedMaterial;
     // Guarded: a zero dash size divides by zero in the dash shader, and the
     // line vanishes the moment the pointer sits on the pivot.
-    const length = Math.max(drag.pivot.distanceTo(pointer), 1e-4);
+    const length = Math.max(from.distanceTo(to), 1e-4);
     material.dashSize = length / 30;
     material.gapSize = length / 45;
     this.modalLine.computeLineDistances();
@@ -2025,6 +2344,10 @@ export class Viewport {
     }
     if (this.slideDrag) {
       this.applySlideDrag();
+      return;
+    }
+    if (this.offsetDrag) {
+      this.applyOffsetDrag();
       return;
     }
     if (this.controls.onPointerMove(event)) {

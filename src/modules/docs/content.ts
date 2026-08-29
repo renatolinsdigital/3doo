@@ -226,15 +226,15 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'Extrude (E)',
-            'Pulls the selected faces or edges out into new geometry. INDIVIDUAL extrudes each face along its own normal instead of as one region.',
+            'Pulls the selected faces or edges out into new geometry. INDIVIDUAL extrudes each face along its own normal instead of as one region. Started with E, the distance comes from the pointer instead of the field.',
           ],
           [
             'Inset (I)',
-            'Shrinks faces inward, leaving a border ring. DEPTH pushes the inset face along the normal at the same time.',
+            'Shrinks faces inward, leaving a border ring. DEPTH pushes the inset face along the normal at the same time. Started with I, the thickness comes from the pointer instead of the field.',
           ],
           [
             'Bevel (Ctrl+B)',
-            'Chamfers the selected edges. More SEGMENTS round the chamfer instead of leaving it flat.',
+            'Chamfers the selected edges. More SEGMENTS round the chamfer instead of leaving it flat. Started with Ctrl+B, the width comes from the pointer instead of the field.',
           ],
           [
             'Loop cut (Ctrl+R)',
@@ -285,6 +285,18 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       {
         kind: 'note',
         text: 'Proportional editing, at the bottom of the TOPOLOGY panel, spreads a transform into the unselected geometry around it through one of six falloff curves. Turn it on, set a radius, and a single vertex drags the surface with it.',
+      },
+      {
+        kind: 'note',
+        text: 'Extrude, inset and bevel take their distance from the pointer when they are started from the keyboard. E, I or Ctrl+B puts a dashed guide up and the mesh follows the pointer from there: pull away from the selection to widen a bevel, push in toward the middle of the face to deepen an inset, and travel along the line an extrude draws through the selection to raise the region. The status bar reads the distance out as it goes, a click or Enter confirms, and Esc puts the mesh back as it was.',
+      },
+      {
+        kind: 'note',
+        text: 'Which way each one opens follows Blender. An inset grows as the pointer comes in toward the selection, so press I with the pointer out from the face you are insetting and then move in. A bevel grows the other way, following the pointer out past the edge it is chamfering. An extrude reads only travel along the normal, so the pointer can wander off that line without dragging the distance with it, and pulling back past the start sinks the region into the surface rather than raising it off.',
+      },
+      {
+        kind: 'note',
+        text: 'The OPERATIONS panel stays exact, running at whatever the OFFSET, THICKNESS, DEPTH, WIDTH and SEGMENTS fields say, which is the way in when the figure is one you already know, and the tool rail down the left runs extrude and inset at a set distance for a one-click cut. Pressing the key and confirming without moving the pointer leaves the mesh alone and records no undo step, so a stray E or I costs nothing.',
       },
       {
         kind: 'note',

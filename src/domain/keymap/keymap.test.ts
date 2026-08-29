@@ -127,6 +127,15 @@ describe('keymap', () => {
     expect(reserved).toEqual([]);
   });
 
+  it('gives extrude, inset and bevel one key each', () => {
+    // Each of the three starts a drag that owns the pointer until it is
+    // confirmed. A second key onto the same one is a second way into that, and
+    // the overlay would list the operator twice with nothing to tell them apart.
+    for (const id of ['extrude', 'inset', 'bevel']) {
+      expect(DEFAULT_KEYMAP.filter((binding) => binding.id === id)).toHaveLength(1);
+    }
+  });
+
   it('has no duplicate binding signatures within a mode', () => {
     const seen = new Set<string>();
     for (const binding of DEFAULT_KEYMAP) {
