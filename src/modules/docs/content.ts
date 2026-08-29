@@ -288,11 +288,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'Extrude, inset and bevel take their distance from the pointer when they are started from the keyboard. E, I or Ctrl+B puts a dashed guide up and the mesh follows the pointer from there: pull away from the selection to widen a bevel, push in toward the middle of the face to deepen an inset, and travel along the line an extrude draws through the selection to raise the region. The status bar reads the distance out as it goes, a click or Enter confirms, and Esc puts the mesh back as it was.',
+        text: 'Extrude, inset and bevel take their distance from the pointer when they are started from the keyboard. E, I or Ctrl+B puts a dashed guide up and the mesh follows the pointer from there: push in toward the selection to open a bevel or an inset, and travel along the line an extrude draws through the selection to raise the region. The status bar reads the distance out as it goes, a click or Enter confirms, and Esc puts the mesh back as it was.',
       },
       {
         kind: 'note',
-        text: 'Which way each one opens follows Blender. An inset grows as the pointer comes in toward the selection, so press I with the pointer out from the face you are insetting and then move in. A bevel grows the other way, following the pointer out past the edge it is chamfering. An extrude reads only travel along the normal, so the pointer can wander off that line without dragging the distance with it, and pulling back past the start sinks the region into the surface rather than raising it off.',
+        text: 'A bevel and an inset open the same way round, so there is one gesture to learn for the pair: push the pointer in toward the geometry being cut and the chamfer or the border ring grows with the travel. The way in is fixed when the drag starts, running from wherever the pointer was to the selection, and it keeps reading past the far end: sweep the pointer on across the model and the cut goes on widening rather than closing again. Pull back the way you came to close it. An extrude reads only travel along the normal, so the pointer can wander off that line without dragging the distance with it, and pulling back past the start sinks the region into the surface rather than raising it off.',
       },
       {
         kind: 'note',

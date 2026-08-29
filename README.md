@@ -151,7 +151,7 @@ their lists from. What follows is that table, in full.
 | --- | --- |
 | `E` | Extrude, the distance dragged along the region normal (edit mode) |
 | `I` | Inset, the thickness dragged in toward the selection (edit mode) |
-| `Ctrl+B` | Bevel, the width dragged away from the selection (edit mode) |
+| `Ctrl+B` | Bevel, the width dragged in toward the selection (edit mode) |
 | `Ctrl+R` | Loop cut across the quad ring the selected edge runs through (edit mode) |
 | `Ctrl+D` | Subdivide: splits selected edges at their midpoint, or cuts up faces |
 | `M` | Object mode: merge the selected objects; edit mode: merge by distance |
@@ -199,10 +199,12 @@ guesswork. The key puts a dashed guide up and the mesh follows the pointer from
 there, live, until a click or <kbd>Enter</kbd> confirms it and <kbd>Esc</kbd>
 puts it back. The status bar reads the distance out as it goes.
 
-Which way to move is Blender's pairing. A bevel grows as the pointer is pulled
-away from the selection, out past the edge being chamfered. An inset grows the
-other way, as the pointer is pushed in toward the middle of the face, so press
-<kbd>I</kbd> with the pointer out from the face and then move in. An extrude
+A bevel and an inset open the same way round, so the pair has one gesture
+between them: push the pointer in toward the geometry being cut. The way in is
+fixed when the drag starts, running from wherever the pointer was to the
+selection, and travel is read along that line rather than as a distance from
+the selection, so sweeping the pointer on past the middle keeps widening the cut
+instead of closing it again. Pull back the way you came to close it. An extrude
 travels along the region normal alone: the guide is drawn along that axis
 through the selection, only travel along it counts, and dragging back past the
 start sinks the region into the surface rather than raising it off.

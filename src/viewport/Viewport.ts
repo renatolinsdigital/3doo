@@ -225,13 +225,15 @@ export function slideFactor(
 const MODAL_AXIS_REACH_PX = 400;
 
 /**
- * Which way the pointer travels to open each operator out.
+ * How far the pointer has to sit from the selection for "toward it" to mean
+ * anything.
  *
- * Blender's pairing, and the one the shapes themselves suggest: a chamfer
- * follows the pointer out past the edge it is cutting, while an inset border
- * closes in behind a pointer pushed toward the middle of the face.
+ * The direction a bevel or an inset opens along is read once, when the drag is
+ * seeded, and holds for the whole of it. Reading it off a pointer already
+ * sitting on the selection would pin the drag to a line picked out of a few
+ * pixels of noise.
  */
-const OFFSET_SENSE: Record<'bevel' | 'inset', 1 | -1> = { bevel: 1, inset: -1 };
+const MIN_INWARD_PX = 8;
 
 /** What each pointer-driven operator's undo step is called. */
 const OFFSET_LABELS: Record<OffsetDrag['kind'], string> = {
@@ -248,42 +250,58 @@ function offsetParams(kind: OffsetDrag['kind'], amount: number): Record<string, 
 }
 
 /**
- * How wide a bevel or an inset the pointer is asking for.
+ * The way in: from the pointer toward the selection, as a unit vector on screen.
  *
- * Measured from where the drag began rather than from the selection itself, so
- * it opens at nothing wherever the pointer happened to be sitting when the key
- * was pressed. `sense` is which way it then has to travel to grow. Going the
- * other way closes it back to nothing rather than turning it inside out.
+ * The line a bevel and an inset are measured along, because both open as the
+ * pointer is pushed in toward the geometry they are cutting. Null when the
+ * pointer is already on the selection and there is no way in to read, which
+ * leaves `axisAmount` to fall back to the vertical.
  */
-export function offsetAmount(
-  pointerPx: number,
-  referencePx: number,
-  unitsPerPixel: number,
-  sense: 1 | -1 = 1,
-): number {
-  const amount = (pointerPx - referencePx) * sense * unitsPerPixel;
-  return Number.isFinite(amount) ? Math.max(0, amount) : 0;
+export function inwardDirection(
+  from: THREE.Vector2,
+  pivotPixels: THREE.Vector2,
+): THREE.Vector2 | null {
+  const offset = pivotPixels.clone().sub(from);
+  return offset.length() < MIN_INWARD_PX ? null : offset.normalize();
 }
 
 /**
- * How far along the extrude axis the pointer has been dragged.
+ * How far along a line on screen the pointer has been dragged, in object units.
  *
- * Signed, unlike a bevel or an inset: pulled back past the start, the region
- * sinks into the surface instead of rising off it, and a clamp at zero would
- * put that shape out of reach. Only travel along `screenAxis` counts, so the
- * pointer can wander off the axis without the distance following it.
+ * Only travel along the line counts, so the pointer can wander off it without
+ * dragging the distance with it, and it goes on reading past the far end:
+ * pushing an inset on through the face and out the other side keeps widening it
+ * rather than dead-ending halfway.
  */
 export function axisAmount(
   travel: THREE.Vector2,
   screenAxis: THREE.Vector2 | null,
   unitsPerPixel: number,
 ): number {
-  // An axis pointing back at the camera has no length on screen to measure
-  // along. Pulling up is pulling out is the reading left, and canvas y grows
-  // downward, which is what the negation is for.
+  // No line to measure along: an extrude pointing back at the camera, or a drag
+  // that began on top of the selection. Pulling up is pulling out is the
+  // reading left, and canvas y grows downward, hence the negation.
   const along = screenAxis ? travel.dot(screenAxis) : -travel.y;
   const amount = along * unitsPerPixel;
   return Number.isFinite(amount) ? amount : 0;
+}
+
+/**
+ * The distance the pointer is asking for, on the side of zero the operator can use.
+ *
+ * A bevel run the wrong way is a chamfer cut backward, and a negative inset
+ * pushes the border out through the face beside it: both close back to nothing
+ * instead. An extrude is the one with a shape on the other side of zero, the
+ * region sinking into the surface rather than rising off it.
+ */
+export function offsetAmount(
+  kind: OffsetDrag['kind'],
+  travel: THREE.Vector2,
+  screenAxis: THREE.Vector2 | null,
+  unitsPerPixel: number,
+): number {
+  const amount = axisAmount(travel, screenAxis, unitsPerPixel);
+  return kind === 'extrude' ? amount : Math.max(0, amount);
 }
 
 /**
@@ -300,17 +318,15 @@ interface OffsetDrag {
   /** The selection's median, which the guide line is drawn from or through. */
   pivot: THREE.Vector3;
   pivotPixels: THREE.Vector2;
-  /** Where the pointer sat when the drag was seeded, which an extrude measures from. */
+  /** Where the pointer sat when the drag was seeded: where the distance reads zero. */
   from: THREE.Vector2;
-  /** Its distance from the pivot then, which is where a bevel or an inset reads zero. */
-  reference: number;
   /** Whether that has been read yet, which takes a pointer position. */
   seeded: boolean;
   /** Object-space units per pixel of travel, so the shape keeps up with the pointer. */
   unitsPerPixel: number;
   /** The world direction an extrude travels along. Null for the other two. */
   axis: THREE.Vector3 | null;
-  /** That axis as it lies on the canvas, or null when it points at the camera. */
+  /** The line on screen the travel is read along: that axis, or the way in. */
   screenAxis: THREE.Vector2 | null;
   /** The distance the last preview ran with. */
   amount: number;
@@ -1929,10 +1945,11 @@ export class Viewport {
    *
    * The same shape as the modal scale and slide: no button is held, so it ends
    * on a click, Enter or Escape, and the history entry goes in before anything
-   * changes so a cancel can drop it. A bevel and an inset read their distance
-   * off how far the pointer has been pulled from the selection, so they get the
-   * line a scale draws out to it. An extrude runs along one direction, the
-   * region normal, so it gets that axis drawn through the geometry instead.
+   * changes so a cancel can drop it. A bevel and an inset open as the pointer
+   * is pushed in toward the geometry they are cutting, so they get the line a
+   * scale draws, from the selection out to the pointer. An extrude runs along
+   * one direction of its own, the region normal, so it gets that axis drawn
+   * through the geometry instead.
    */
   private beginOffsetDrag(kind: OffsetDrag['kind']): void {
     if (this.offsetDrag || this.scaleDrag || this.rotateDrag || this.slideDrag) return;
@@ -1967,7 +1984,6 @@ export class Viewport {
       pivot,
       pivotPixels: this.projectToPixels(pivot),
       from: this.pointerPixels.clone(),
-      reference: 0,
       seeded: false,
       unitsPerPixel: this.worldPerPixel(pivot) / Math.max(meanScale, 1e-6),
       axis,
@@ -1996,23 +2012,25 @@ export class Viewport {
 
     // A keypress carries no pointer position, so where the drag started from is
     // only known once the pointer first moves. Measuring from there is what
-    // opens the distance at nothing however far out the pointer was sitting.
+    // opens the distance at nothing wherever the pointer was sitting.
     if (!drag.seeded) {
       drag.from = this.pointerPixels.clone();
-      drag.reference = this.pointerPixels.distanceTo(drag.pivotPixels);
+      // Which way is in only becomes known here, with a pointer position to
+      // read it from. An extrude has a line of its own, the region normal,
+      // taken when the drag began.
+      if (drag.kind !== 'extrude') {
+        drag.screenAxis = inwardDirection(drag.from, drag.pivotPixels);
+      }
       drag.seeded = true;
       return;
     }
 
-    const amount =
-      drag.kind === 'extrude'
-        ? axisAmount(this.pointerPixels.clone().sub(drag.from), drag.screenAxis, drag.unitsPerPixel)
-        : offsetAmount(
-            this.pointerPixels.distanceTo(drag.pivotPixels),
-            drag.reference,
-            drag.unitsPerPixel,
-            OFFSET_SENSE[drag.kind],
-          );
+    const amount = offsetAmount(
+      drag.kind,
+      this.pointerPixels.clone().sub(drag.from),
+      drag.screenAxis,
+      drag.unitsPerPixel,
+    );
     if (Math.abs(amount - drag.amount) < 1e-5) return;
 
     drag.amount = amount;
