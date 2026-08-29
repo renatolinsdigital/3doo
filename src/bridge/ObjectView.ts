@@ -10,6 +10,7 @@ import type { SceneObject, SelectMode, ShadingMode, ViewportSettings } from '@st
 import {
   VIEWPORT_COLORS,
   createFaceOrientationMaterial,
+  createHoverPointMaterial,
   createNormalsMaterial,
   createOutlineMaterial,
   createPointMaterial,
@@ -73,12 +74,18 @@ export class ObjectView {
   private readonly selectedFaces = new THREE.Mesh();
   private readonly selectedEdges = new THREE.LineSegments();
   private readonly points = new THREE.Points();
+  private readonly hoverPoint = new THREE.Points();
   private readonly recentPoints = new THREE.Points();
   private readonly normals = new THREE.LineSegments();
   private readonly outline = new LineSegments2();
 
   /** What the surface materials were last built from; see `updateSolid`. */
   private solidMaterialKey = '';
+
+  /** The one point the hover mark draws, written in place rather than rebuilt. */
+  private readonly hoverPosition = new Float32Array(3);
+  /** Whether the current mode has vertices to hover at all. */
+  private hoverable = false;
 
   /** Held for `refreshOutline`, which re-traces the silhouette as the camera moves. */
   private outlined: { mesh: BMesh; object: SceneObject } | null = null;
@@ -101,6 +108,7 @@ export class ObjectView {
     this.selectedEdges.material = createWireMaterial(true);
     this.selectedFaces.material = createSelectionOverlayMaterial();
     this.points.material = createPointMaterial();
+    this.hoverPoint.material = createHoverPointMaterial();
     this.recentPoints.material = createRecentPointMaterial();
     this.normals.material = createNormalsMaterial();
     this.outline.material = createOutlineMaterial({
@@ -112,7 +120,19 @@ export class ObjectView {
     this.selectedFaces.renderOrder = 2;
     this.selectedEdges.renderOrder = 3;
     this.points.renderOrder = 4;
-    this.recentPoints.renderOrder = 5;
+    // Over the dots, so the mark wins at the depth it shares with the vertex
+    // it marks, and over a second vertex sitting in exactly the same place.
+    this.hoverPoint.renderOrder = 5;
+    this.recentPoints.renderOrder = 6;
+
+    // One point, rewritten in place: a hover follows the pointer, and building
+    // a geometry per move would churn a buffer a frame. Never culled, since a
+    // single point has no bounding sphere worth testing.
+    const hover = new THREE.BufferGeometry();
+    hover.setAttribute('position', new THREE.BufferAttribute(this.hoverPosition, 3));
+    this.hoverPoint.geometry = hover;
+    this.hoverPoint.frustumCulled = false;
+    this.hoverPoint.visible = false;
 
     this.group.add(
       this.solid,
@@ -121,10 +141,31 @@ export class ObjectView {
       this.selectedFaces,
       this.selectedEdges,
       this.points,
+      this.hoverPoint,
       this.recentPoints,
       this.normals,
       this.outline,
     );
+  }
+
+  /**
+   * Marks the vertex a click would take, in object space, or clears the mark.
+   *
+   * Called straight from the viewport as the pointer moves rather than through
+   * `update`, which rebuilds every buffer the object has: a hover changes many
+   * times a second and nothing else about the object changes with it.
+   */
+  showHoverVert(position: Vec3 | null): void {
+    if (!position || !this.hoverable) {
+      this.hoverPoint.visible = false;
+      return;
+    }
+
+    this.hoverPosition[0] = position.x;
+    this.hoverPosition[1] = position.y;
+    this.hoverPosition[2] = position.z;
+    this.hoverPoint.geometry.getAttribute('position').needsUpdate = true;
+    this.hoverPoint.visible = true;
   }
 
   update(object: SceneObject, displayMesh: BMesh, state: ObjectViewState): void {
@@ -136,6 +177,7 @@ export class ObjectView {
       // Nothing of a hidden object is drawn, outline included, and dropping it
       // here is what stops the camera re-tracing a silhouette nobody can see.
       this.outlined = null;
+      this.hoverable = false;
       return;
     }
 
@@ -318,6 +360,11 @@ export class ObjectView {
     // Only vertex mode can act on vertices, so drawing them in edge/face mode
     // is noise sitting on top of the elements actually being selected.
     this.points.visible = state.mode === 'edit' && state.isActive && state.selectMode === 'vertex';
+
+    // The hover mark belongs to the dots it grows out of, and goes away with
+    // them. The viewport puts it back on the next pointer move or resync.
+    this.hoverable = this.points.visible;
+    if (!this.hoverable) this.hoverPoint.visible = false;
   }
 
   /**

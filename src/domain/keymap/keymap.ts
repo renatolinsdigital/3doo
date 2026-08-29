@@ -26,6 +26,17 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
   { id: 'move', key: 'g', label: 'Move', group: 'Transform' },
   { id: 'rotate', key: 'r', label: 'Rotate', group: 'Transform' },
   { id: 'scale', key: 's', label: 'Scale', group: 'Transform' },
+  // Shift+G rather than Blender's double-tapped G: a binding that depends on
+  // how fast the same key is pressed twice has nowhere to live in a table the
+  // shortcut overlay reads straight out.
+  {
+    id: 'slide',
+    key: 'g',
+    shift: true,
+    mode: 'edit',
+    label: 'Slide: vertices along their edges, or selected edges across their faces',
+    group: 'Transform',
+  },
 
   { id: 'extrude', key: 'e', label: 'Extrude', mode: 'edit', group: 'Modelling' },
   { id: 'inset', key: 'i', label: 'Inset', mode: 'edit', group: 'Modelling' },

@@ -29,6 +29,8 @@ export function TopologyPanel() {
   const openDialog = useEditorStore((state) => state.openDialog);
   const proportional = useEditorStore((state) => state.proportional);
   const setProportional = useEditorStore((state) => state.setProportional);
+  const autoMerge = useEditorStore((state) => state.autoMerge);
+  const setAutoMerge = useEditorStore((state) => state.setAutoMerge);
   // Merge and connect both work on individual vertices, so they have nothing
   // to act on in the other two select modes.
   const vertexMode = useEditorStore((state) => state.selectMode === 'vertex');
@@ -176,6 +178,21 @@ export function TopologyPanel() {
                   : 'Extend the selection along the whole loop those faces sit in (Alt+L)'
           }
           onClick={() => exec('selectFaceLoop', {}, 'Select face loop')}
+        />
+      </FieldRow>
+
+      <FieldRow legend="AUTO MERGE" columns={1}>
+        <p className="topology__note">
+          Switched on and off by the ⋈ button, up beside the mode buttons.
+        </p>
+        <NumberField
+          label="DISTANCE"
+          value={autoMerge.threshold}
+          step={0.005}
+          min={0}
+          disabled={!autoMerge.enabled}
+          hint="How close a transform has to leave two vertices for them to be welded into one. Measured in the object's own space, so it means the same at any object scale"
+          onChange={(threshold) => setAutoMerge({ threshold })}
         />
       </FieldRow>
 

@@ -14,6 +14,16 @@ export interface DocsSection {
   blocks: readonly DocsBlock[];
 }
 
+export interface DocsResult {
+  section: DocsSection;
+  /** The blocks that matched, tables and step lists cut down to matching rows. */
+  blocks: readonly DocsBlock[];
+  /** The query names the section itself, through its title or its blurb. */
+  named: boolean;
+  /** Rows, steps and paragraphs matched, which is the tally the left menu shows. */
+  count: number;
+}
+
 /**
  * The shortcut tables, built from the keymap the editor actually runs on.
  *
@@ -80,7 +90,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Top bar',
-            'FILE, PREFS and the project name on the left; then the object/edit mode switch, the proportional, orthographic and smooth-shading flags, the pivot picker, and the SHADING and OVERLAYS menus; the two framing buttons and the shortcut list on the right.',
+            'FILE, PREFS and the project name on the left; then the object/edit mode switch, the proportional, auto merge, orthographic and smooth-shading flags, the pivot picker, and the SHADING and OVERLAYS menus; the two framing buttons and the shortcut list on the right.',
           ],
           [
             'Tool rail, far left',
@@ -176,6 +186,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'A face loop',
             'Alt+click a face, near the edge you want the loop to run across: that edge is what says which of the two loops through the face you meant, so point at the side you are heading for rather than the middle. Shift+Alt+click adds a loop instead of replacing the selection, so bands stack up one click at a time. Alt+L still names one from two faces already picked.',
           ],
+          [
+            'What a click would take',
+            'In vertex select the vertex under the pointer is marked with a larger cyan square before you click it, and only ever one a click could actually take. That is what tells two vertices left in the same place apart, and it doubles as a check on whether what you are aiming at is reachable from where the camera is standing.',
+          ],
           ['Everything / nothing', 'A selects all, Alt+A deselects all, Ctrl+I inverts.'],
           [
             'Out of a selection',
@@ -231,6 +245,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Pulls the kinks out of a selected loop and evens out its spacing without changing the shape it runs over, the way the relax of LoopTools does in Blender. Each vertex is drawn onto the midpoint of its neighbours, the loop is then spread evenly along the line that leaves, and every vertex is dropped back onto the surface it came from, which is what KEEP SHAPE does, and why a relaxed loop slides across the mesh rather than sinking into it. Where the selection runs out, the vertex it ran out at holds still and the rest are spaced against it. A selection that is not a loop smooths against its whole neighbourhood instead, and an open border keeps its outline: there is no surface past a border to come back to, so its vertices only even out along it. FACTOR is how far each pass travels, ITERATIONS how many passes to take.',
           ],
           [
+            'Slide (Shift+G)',
+            'Moves the selection along the geometry it already sits on, without adding any. In vertex select each vertex runs down one of the edges leaving it; in edge select the whole selection runs across the faces to either side, which is how a loop is nudged into place after a loop cut. Face select has no single rail to run along, so it asks you to switch to 1 or 2 first.',
+          ],
+          [
             'Merge (M) and merge by distance',
             'Welds vertices together: either the selection onto one point, or every pair closer than a threshold, with a live preview count.',
           ],
@@ -263,6 +281,14 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       {
         kind: 'note',
         text: 'Proportional editing, at the bottom of the TOPOLOGY panel, spreads a transform into the unselected geometry around it through one of six falloff curves. Turn it on, set a radius, and a single vertex drags the surface with it.',
+      },
+      {
+        kind: 'note',
+        text: 'Slide has no panel button of its own: Shift+G in edit mode is the whole of it, and it runs off the bare pointer with no button held. Nothing is added and nothing leaves the surface, which is what makes it the way to adjust where a loop sits without changing the shape it runs over. The rails each vertex may travel along are drawn while it runs, the status bar reads out how far along it has gone, and a click or Enter confirms while Esc puts everything back. Which edge a vertex takes is decided by where the pointer is when you press the key: the edge reaching toward the cursor is the one it slides down, so aim before you press. Run it all the way to either end and the selection lands exactly on the neighbouring vertices, which is the case auto merge is there to collapse. With auto merge off the two stay as they are, one sitting on the other: the hover mark is what says which of them a click has hold of.',
+      },
+      {
+        kind: 'note',
+        text: 'Auto merge, the ⋈ flag in the top bar, welds vertices that a transform has left on top of each other, at the distance set in the AUTO MERGE row of the TOPOLOGY panel. It is what turns a slide run all the way onto the next loop into a collapse of the two rather than two loops in the same place. Only the vertices that just moved can be welded away, so geometry that was already sitting that close together is left alone, and the weld goes into the same undo step as the transform that caused it.',
       },
     ],
   },
@@ -450,3 +476,64 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     ],
   },
 ];
+
+/**
+ * The words a query is made of.
+ *
+ * Every one of them has to appear for something to match, so a two-word query
+ * narrows rather than widens: the way a reader expects a search box to behave.
+ */
+export function searchTerms(query: string): string[] {
+  return query.toLowerCase().split(/\s+/).filter(Boolean);
+}
+
+function hasEvery(text: string, terms: readonly string[]): boolean {
+  const haystack = text.toLowerCase();
+  return terms.every((term) => haystack.includes(term));
+}
+
+/**
+ * Searches the documentation, down to the row rather than the page.
+ *
+ * A table is cut to the rows that matched and a step list to the steps that
+ * did, because the sections are long: handing back a whole page because one
+ * cell in it mentioned the word is barely better than not searching at all.
+ */
+export function searchDocs(query: string): DocsResult[] {
+  const terms = searchTerms(query);
+  if (terms.length === 0) return [];
+
+  const results: DocsResult[] = [];
+
+  for (const section of DOCS_SECTIONS) {
+    const named = hasEvery(`${section.title} ${section.blurb}`, terms);
+    const blocks: DocsBlock[] = [];
+    let count = named ? 1 : 0;
+
+    for (const block of section.blocks) {
+      if (block.kind === 'table') {
+        const rows = block.rows.filter((row) => hasEvery(row.join(' '), terms));
+        if (rows.length > 0) {
+          blocks.push({ ...block, rows });
+          count += rows.length;
+        }
+      } else if (block.kind === 'steps') {
+        const items = block.items.filter((item) => hasEvery(item, terms));
+        if (items.length > 0) {
+          blocks.push({ ...block, items });
+          count += items.length;
+        }
+      } else if (hasEvery(block.text, terms)) {
+        blocks.push(block);
+        count += 1;
+      }
+    }
+
+    if (count > 0) results.push({ section, blocks, named, count });
+  }
+
+  // A section the query names comes first: someone typing "modifiers" wants
+  // that section, not the paragraphs elsewhere that happen to mention one.
+  // Sort is stable, so within each group the reading order survives.
+  return results.sort((a, b) => Number(b.named) - Number(a.named));
+}

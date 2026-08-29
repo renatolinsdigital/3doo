@@ -110,6 +110,12 @@ export function useKeymap(): void {
           break;
         }
 
+        case 'slide':
+          // Every check the slide needs is a question about the selection, so
+          // the store answers it and says why when the answer is no.
+          state.beginSlide();
+          break;
+
         case 'extrude':
           state.exec('extrude', { offset: 1 }, 'Extrude');
           break;

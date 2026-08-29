@@ -161,7 +161,7 @@ export interface SceneSlice {
   discardHistory: () => void;
   undo: () => void;
   redo: () => void;
-  touchMesh: () => void;
+  touchMesh: (status?: string) => void;
 
   /** `restoreLayout` puts the folded panels back too, for a file load, not for undo. */
   loadProjectDocument: (
@@ -192,7 +192,11 @@ export const createSceneSlice: StateCreator<
   lockedAttempt: null,
   recentVerts: null,
 
-  touchMesh: () => set((state) => ({ meshVersion: state.meshVersion + 1 })),
+  touchMesh: (status) =>
+    set((state) => ({
+      meshVersion: state.meshVersion + 1,
+      ...(status ? { status } : {}),
+    })),
 
   snapshotDocument: () => {
     const { projectName, objects, cursor, activeObjectId, collapsedPanels } = get();

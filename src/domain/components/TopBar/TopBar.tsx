@@ -89,6 +89,8 @@ export function TopBar({ brand }: TopBarProps) {
   const openDialog = useEditorStore((state) => state.openDialog);
   const proportional = useEditorStore((state) => state.proportional);
   const setProportional = useEditorStore((state) => state.setProportional);
+  const autoMerge = useEditorStore((state) => state.autoMerge);
+  const setAutoMerge = useEditorStore((state) => state.setAutoMerge);
   const orthographic = useEditorStore((state) => state.orthographic);
   const activeObject = useActiveObject();
   const smoothShaded = useActiveShadingSmooth();
@@ -203,6 +205,20 @@ export function TopBar({ brand }: TopBarProps) {
               : 'Proportional editing: edit mode only (Tab)'
           }
           onChange={(enabled) => setProportional({ enabled })}
+        />
+        <SegmentedToggle
+          label="AUTO MERGE"
+          // Two corners meeting at one point: the weld itself.
+          icon="⋈"
+          iconOnly
+          pressed={autoMerge.enabled}
+          disabled={mode !== 'edit'}
+          hint={
+            mode === 'edit'
+              ? `Auto merge: vertices left within ${autoMerge.threshold} of each other are merged into one. Configure the distance in the topology panel`
+              : 'Auto merge: edit mode only (Tab)'
+          }
+          onChange={(enabled) => setAutoMerge({ enabled })}
         />
         <SegmentedToggle
           label="ORTHO"

@@ -56,6 +56,18 @@ export interface SnapSettings {
   increment: number;
 }
 
+/**
+ * Auto merge: vertices that a transform leaves on top of each other are welded
+ * into one, the way Blender's does.
+ *
+ * The threshold is in object space, so it means the same thing however the
+ * object is scaled in the scene.
+ */
+export interface AutoMergeSettings {
+  enabled: boolean;
+  threshold: number;
+}
+
 export interface ProportionalSettings {
   enabled: boolean;
   radius: number;
@@ -173,7 +185,9 @@ export interface LastOperator {
 }
 
 export interface ModalTransform {
-  kind: 'move' | 'rotate' | 'scale';
+  kind: 'move' | 'rotate' | 'scale' | 'slide';
+  /** Which kind of element a slide is moving. Absent for the other transforms. */
+  element?: 'vertex' | 'edge';
   axis: 'x' | 'y' | 'z' | null;
   /** Axis excluded rather than constrained to, from Shift + axis. */
   excludeAxis: boolean;

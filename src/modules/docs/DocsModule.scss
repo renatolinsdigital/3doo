@@ -17,11 +17,18 @@
     border-bottom: var(--border-width) solid var(--void);
   }
 
+  // Capped and centred rather than stretched across the display. Running copy
+  // past a hundred characters a line is hard to track back from, and letting
+  // the panels have the whole of a wide monitor is what left the text stranded
+  // in one corner of it.
   &__body {
     display: grid;
     grid-template-columns: 248px minmax(0, 1fr);
     gap: var(--panel-gap);
+    width: 100%;
+    max-width: 1240px;
     min-height: 0;
+    margin-inline: auto;
     padding: var(--panel-gap);
   }
 
@@ -36,12 +43,53 @@
     background: var(--bone);
   }
 
-  &__nav-title {
-    @include panel-header;
-
+  // Title and search field ride together: the field is no use scrolled off the
+  // top of a list it is there to shorten.
+  &__nav-head {
     position: sticky;
     top: 0;
     z-index: 1;
+    background: var(--bone);
+  }
+
+  &__nav-title {
+    @include panel-header;
+  }
+
+  &__search {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border-bottom: var(--border-width) solid var(--void);
+  }
+
+  &__search-field {
+    flex: 1;
+
+    &::placeholder {
+      color: var(--ink-muted);
+      letter-spacing: 0.14em;
+    }
+  }
+
+  &__search-clear {
+    @include brutal-focus;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--control-sm);
+    height: var(--control-sm);
+    font-size: var(--text-sm);
+    line-height: 1;
+    color: var(--void);
+    border: var(--border-thin) solid var(--void);
+
+    &:hover {
+      color: var(--bone);
+      background: var(--red);
+    }
   }
 
   &__nav-item {
@@ -75,7 +123,17 @@
   &__nav-label {
     @include label-text;
 
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
     color: var(--void);
+  }
+
+  &__nav-count {
+    padding: 0 var(--space-2);
+    color: var(--bone);
+    background: var(--rust);
   }
 
   &__nav-blurb {
@@ -86,17 +144,27 @@
     color: var(--ink-muted);
   }
 
+  &__nav-none {
+    @include label-text;
+
+    padding: var(--space-3);
+    color: var(--ink-muted);
+  }
+
   &__content {
     @include brutal-border;
     @include scrollbar;
 
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
     min-height: 0;
     padding: var(--space-5);
     overflow-y: auto;
     background: var(--bone);
+  }
+
+  &__article {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
 
     // Blocks keep their natural height and the section scrolls as one. Letting
     // them shrink instead (the flex default) squeezed the taller shortcut
@@ -123,12 +191,14 @@
   }
 
   // Running documentation rather than chrome: the one place that reads as a
-  // page, so it keeps the body size the panels step down from.
+  // page, so it keeps the body size the panels step down from. The measure is
+  // set to land on roughly the width the table's own description column gets,
+  // which is what keeps prose and tables reading as one column.
   &__prose,
   &__step {
     @include mono-value;
 
-    max-width: 78ch;
+    max-width: 96ch;
     font-size: var(--text-md);
     line-height: 1.7;
     color: var(--void);
@@ -137,7 +207,7 @@
   &__note {
     @include mono-value;
 
-    max-width: 78ch;
+    max-width: 96ch;
     padding: var(--space-3);
     font-size: var(--text-md);
     line-height: 1.7;
@@ -157,6 +227,45 @@
     padding-inline-start: var(--space-2);
   }
 
+  mark {
+    padding: 0 1px;
+    color: var(--void);
+    background: var(--amber);
+  }
+
+  // One search hit, framed like a panel: the header strip is the way back to
+  // the section it was cut out of.
+  &__result {
+    display: flex;
+    flex-direction: column;
+    border: var(--border-thin) solid var(--void);
+  }
+
+  &__result-head {
+    @include panel-header;
+
+    cursor: pointer;
+    text-align: left;
+
+    &:hover,
+    &:focus-visible {
+      background: var(--red);
+      outline: none;
+    }
+  }
+
+  &__result-count {
+    white-space: nowrap;
+    opacity: 0.75;
+  }
+
+  &__result-body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+  }
+
   // No overflow of its own: a table is content, and setting one axis to `auto`
   // computes the other from `visible` to `auto` as well, which is where the
   // vertical scrollbar on the tables came from. The cells wrap, so there is
@@ -172,7 +281,7 @@
 
     th,
     td {
-      padding: var(--space-2) var(--space-3);
+      padding: var(--space-3);
       text-align: left;
       vertical-align: top;
       border-bottom: var(--border-thin) solid var(--void);
@@ -188,8 +297,8 @@
     tbody th {
       @include mono-value;
 
-      width: 30%;
-      min-width: 140px;
+      width: 24%;
+      min-width: 128px;
       font-weight: 700;
       color: var(--void);
       background: var(--bone-dim);

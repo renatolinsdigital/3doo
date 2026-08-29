@@ -6,8 +6,13 @@ import {
   type BMesh,
   type PivotTool,
   type SelectMode,
+  type SlidePlan,
+  type SlideRail,
   type Transform,
   type Vec3,
+  type Vert,
+  applySlide,
+  autoMergeVerts,
   axisVector,
   centroid,
   faceLoopAtClick,
@@ -16,6 +21,8 @@ import {
   medianPoint,
   mulVec,
   pivotPosition,
+  planEdgeSlide,
+  planVertexSlide,
   rotateVerts,
   scaleVerts,
   selectEdgeLoop,
@@ -177,6 +184,41 @@ interface GizmoPointer {
   button: number;
 }
 
+/**
+ * How far along its rail a slide has been dragged, from -1 to +1.
+ *
+ * Both ends are measured separately rather than as one signed axis: a rail can
+ * bend at the vertex, so the way back is not simply the negative of the way
+ * forward, and reading each side against its own end is what keeps the
+ * geometry under the pointer either way.
+ *
+ * Everything is in canvas pixels, offsets from where the pointer was when the
+ * slide began, which is what stops the selection jumping on the first move.
+ */
+export function slideFactor(
+  travelled: THREE.Vector2,
+  positive: THREE.Vector2,
+  negative: THREE.Vector2,
+): number {
+  const along = travelled.dot(positive) / Math.max(positive.lengthSq(), 1e-6);
+  if (along >= 0) return Math.min(along, 1);
+
+  const back = travelled.dot(negative) / Math.max(negative.lengthSq(), 1e-6);
+  return -Math.min(Math.max(back, 0), 1);
+}
+
+/** A slide running off the bare pointer: what moves, how far, and how to put it back. */
+interface SlideDrag {
+  mesh: BMesh;
+  plan: SlidePlan;
+  /** Canvas pixels at the keypress; the drag is measured from here. */
+  from: THREE.Vector2;
+  /** Screen offsets from the reference rail's origin out to each of its ends. */
+  positive: THREE.Vector2;
+  negative: THREE.Vector2;
+  factor: number;
+}
+
 interface GizmoBaseline {
   position: THREE.Vector3;
   quaternion: THREE.Quaternion;
@@ -213,6 +255,8 @@ export class Viewport {
   /** Whether the falloff ring was drawn last frame; a first showing is fitted to the view. */
   private proportionalShown = false;
   private pointerPixels = new THREE.Vector2();
+  /** Whether the pointer is over the canvas at all, which is what a hover needs. */
+  private pointerInside = false;
   /** Where the camera stood when the selection outlines were last traced. */
   private readonly outlineEye = new THREE.Vector3(Number.NaN, 0, 0);
   /** Canvas size in CSS pixels; the outline material sizes its line against it. */
@@ -267,6 +311,9 @@ export class Viewport {
   private dragPath: THREE.Vector2[] = [];
   /** The overlay's SVG shapes, built on first use. */
   private shapeLayer: MarqueeLayer | null = null;
+  private slideDrag: SlideDrag | null = null;
+  /** The rails a slide may travel along, drawn while one is running. */
+  private readonly slideGuide: THREE.LineSegments;
   private gizmoBaseline: GizmoBaseline | null = null;
   /** Ids of the selected, unlocked objects a group gizmo drag in object mode applies to. */
   private transformGroup: string[] = [];
@@ -325,6 +372,8 @@ export class Viewport {
     this.scene.add(this.modalLine);
     this.proportionalRing = this.createProportionalRing();
     this.scene.add(this.proportionalRing);
+    this.slideGuide = this.createSlideGuide();
+    this.scene.add(this.slideGuide);
     this.scene.add(this.gizmoProxy);
 
     this.controls = new CameraController(this.camera, canvas);
@@ -479,6 +528,30 @@ export class Viewport {
   }
 
   /**
+   * The rails a slide may travel along, one segment per moving vertex.
+   *
+   * Drawn through the geometry from one end of the travel to the other rather
+   * than out to the cursor: what a slide needs to show is how far it can go and
+   * where each vertex would land at the end of it. The scale and rotate lines
+   * answer a different question and reach out to the pointer instead.
+   */
+  private createSlideGuide(): THREE.LineSegments {
+    const line = new THREE.LineSegments(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({
+        color: VIEWPORT_COLORS.bone,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.55,
+      }),
+    );
+    line.visible = false;
+    line.renderOrder = 11;
+    line.frustumCulled = false;
+    return line;
+  }
+
+  /**
    * The circle marking how far proportional editing reaches.
    *
    * Unit radius, in the XY plane; `updateProportionalRing` turns it to face the
@@ -516,6 +589,7 @@ export class Viewport {
     this.canvas.addEventListener('pointerup', this.handlePointerUp);
     this.canvas.addEventListener('wheel', this.handleWheel, { passive: false });
     this.canvas.addEventListener('contextmenu', this.handleContextMenu);
+    this.canvas.addEventListener('pointerleave', this.handlePointerLeave);
     this.canvas.addEventListener('lostpointercapture', this.handleLostPointerCapture);
 
     this.gizmo.addEventListener('dragging-changed', this.handleGizmoDragging);
@@ -652,10 +726,12 @@ export class Viewport {
         (modal) => {
           if (modal?.kind === 'scale') this.beginModalScale();
           else if (modal?.kind === 'rotate') this.beginModalRotate();
+          else if (modal?.kind === 'slide') this.beginModalSlide();
           // Cleared from somewhere else (a mode change, a reset) while a
-          // modal scale is still live: put everything back.
+          // modal transform is still live: put everything back.
           else if (!modal && this.scaleDrag?.modal) this.finishModalScale(true);
           else if (!modal && this.rotateDrag?.modal) this.finishModalRotate(true);
+          else if (!modal && this.slideDrag) this.finishModalSlide(true);
         },
       ),
       // An operator reporting new vertices flags them for a moment. The expiry
@@ -748,6 +824,9 @@ export class Viewport {
 
     this.updateProportionalAnchor(state);
     this.updateGizmo();
+    // Every view has just rebuilt its buffers and dropped the mark with them,
+    // and the geometry under a still pointer may be different geometry now.
+    this.updateHoverVert();
   }
 
   /**
@@ -905,6 +984,11 @@ export class Viewport {
    * still highlight and still take a drag. Disabling the controls is what puts
    * the whole gizmo out of reach until the scale ends.
    */
+  /** Whether a modal transform has its own guide up, and the handles are away. */
+  private modalGuideUp(): boolean {
+    return this.modalLine.visible || this.slideGuide.visible;
+  }
+
   private standDownGizmo(): void {
     this.gizmo.enabled = false;
     this.gizmoHelper.visible = false;
@@ -955,8 +1039,8 @@ export class Viewport {
     }
 
     this.gizmo.setMode(gizmoMode);
-    this.gizmo.enabled = !this.modalLine.visible;
-    this.gizmoHelper.visible = !this.modalLine.visible;
+    this.gizmo.enabled = !this.modalGuideUp();
+    this.gizmoHelper.visible = !this.modalGuideUp();
     this.transformGroup = transformable.map((object) => object.id);
 
     if (state.pivot === 'cursor') {
@@ -1001,8 +1085,8 @@ export class Viewport {
     }
 
     this.gizmo.setMode(gizmoMode);
-    this.gizmo.enabled = !this.modalLine.visible;
-    this.gizmoHelper.visible = !this.modalLine.visible;
+    this.gizmo.enabled = !this.modalGuideUp();
+    this.gizmoHelper.visible = !this.modalGuideUp();
     this.transformGroup = [];
 
     const median = medianPoint(selected);
@@ -1057,6 +1141,7 @@ export class Viewport {
     }
 
     this.endScaleDrag();
+    this.autoMergeSelection();
 
     // `gizmoDragging` is already false, so this resync is the one that re-seats
     // the gizmo on where the selection actually landed.
@@ -1227,6 +1312,8 @@ export class Viewport {
       // The entry was recorded before anything moved, so with everything back
       // where it was it would undo to the state the scene is already in.
       state.discardHistory();
+    } else {
+      this.autoMergeSelection();
     }
 
     this.endRotateDrag();
@@ -1352,6 +1439,8 @@ export class Viewport {
       // The entry was recorded before anything moved, so with everything back
       // where it was it would undo to the state the scene is already in.
       state.discardHistory();
+    } else {
+      this.autoMergeSelection();
     }
 
     // Cleared before the store is told, so the modal subscription sees nothing
@@ -1361,16 +1450,233 @@ export class Viewport {
     state.touchMesh();
   }
 
-  /** Whichever modal transform is running off the bare pointer, if either is. */
-  private activeModal(): 'scale' | 'rotate' | null {
+  /**
+   * Starts a slide off the bare pointer, the way Blender's edge slide runs.
+   *
+   * The same shape as the modal scale and rotate: no button is held, so it ends
+   * on a click, Enter or Escape, and the history entry goes in before anything
+   * moves so a cancel can put it all back.
+   *
+   * Where the pointer already is decides which way a vertex slide runs: the
+   * edge reaching most nearly toward the cursor is the one it travels down, so
+   * the same keypress takes different edges depending on where you are looking.
+   */
+  private beginModalSlide(): void {
+    if (this.slideDrag || this.scaleDrag || this.rotateDrag) return;
+
+    const state = useEditorStore.getState();
+    const object = activeObject(state);
+    const view = object ? this.views.get(object.id) : undefined;
+    if (!object || !view) {
+      state.endModal();
+      return;
+    }
+
+    const mesh = object.mesh;
+    const matrix = view.group.matrix.clone();
+    const selected = mesh.selectedVerts();
+    const plan =
+      state.modal?.element === 'edge'
+        ? planEdgeSlide(mesh, mesh.selectedEdges())
+        : planVertexSlide(mesh, selected, this.slideHint(selected, object, matrix));
+
+    const reference = this.referenceRail(plan, matrix);
+    if (!reference) {
+      state.endModal('Nothing for this selection to slide along');
+      return;
+    }
+
+    state.recordHistory('SLIDE selection');
+    state.patchActiveObject({ primitive: null }, { touchGeometry: false });
+
+    this.slideDrag = {
+      mesh,
+      plan,
+      from: this.pointerPixels.clone(),
+      positive: reference.positive,
+      negative: reference.negative,
+      factor: 0,
+    };
+
+    this.showSlideGuide(plan.rails, matrix);
+    // The handles say nothing the rails do not, and they sit over the very
+    // geometry being slid. `updateGizmo` brings them back at the end.
+    this.standDownGizmo();
+
+    window.addEventListener('keydown', this.handleModalKey, true);
+    window.addEventListener('pointerdown', this.handleModalPointer, true);
+    window.addEventListener('contextmenu', this.handleModalContextMenu, true);
+  }
+
+  private finishModalSlide(cancelled: boolean): void {
+    const drag = this.slideDrag;
+    if (!drag) return;
+
+    window.removeEventListener('keydown', this.handleModalKey, true);
+    window.removeEventListener('pointerdown', this.handleModalPointer, true);
+    window.removeEventListener('contextmenu', this.handleModalContextMenu, true);
+
+    const state = useEditorStore.getState();
+    if (cancelled) {
+      applySlide(drag.mesh, drag.plan, 0);
+      // The entry was recorded before anything moved, so with everything back
+      // where it was it would undo to the state the scene is already in.
+      state.discardHistory();
+    }
+
+    // Cleared before the store is told, so the modal subscription sees nothing
+    // left to cancel, and the handles are free to come back.
+    this.slideDrag = null;
+    this.slideGuide.visible = false;
+
+    const moved = drag.plan.rails.length;
+    const welded = cancelled ? 0 : this.autoMergeSelection();
+    state.endModal(
+      cancelled
+        ? undefined
+        : `Slid ${moved} ${moved === 1 ? 'vertex' : 'vertices'}${welded > 0 ? `, auto merged ${welded}` : ''}`,
+    );
+    state.touchMesh();
+  }
+
+  /**
+   * Which way the pointer is asking a vertex slide to go, in object space.
+   *
+   * The direction on screen from the selection out to the cursor, lifted back
+   * into the scene along the camera's own axes. Null while the pointer sits on
+   * the selection itself, which names no direction at all.
+   */
+  private slideHint(
+    verts: readonly Vert[],
+    object: SceneObject,
+    matrix: THREE.Matrix4,
+  ): Vec3 | null {
+    if (verts.length === 0) return null;
+
+    const median = medianPoint(verts);
+    const anchor = new THREE.Vector3(median.x, median.y, median.z).applyMatrix4(matrix);
+    const offset = this.pointerPixels.clone().sub(this.projectToPixels(anchor));
+    if (offset.lengthSq() < 4) return null;
+
+    const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1);
+    // Canvas y grows downward, and the camera's up does not.
+    const world = right.multiplyScalar(offset.x).addScaledVector(up, -offset.y);
+    return inverseTransformDirection(object.transform, vec3(world.x, world.y, world.z));
+  }
+
+  /**
+   * The rail the drag is measured against: whichever is nearest the pointer.
+   *
+   * A loop's rails point all over the screen, so one of them has to speak for
+   * the rest, and the one under the cursor is the one the user is watching.
+   * Null when the plan has nothing to travel along, which is what turns the
+   * slide away rather than leaving it running with nowhere to go.
+   */
+  private referenceRail(
+    plan: SlidePlan,
+    matrix: THREE.Matrix4,
+  ): { positive: THREE.Vector2; negative: THREE.Vector2 } | null {
+    const at = (point: Vec3) =>
+      this.projectToPixels(new THREE.Vector3(point.x, point.y, point.z).applyMatrix4(matrix));
+
+    let best: SlideRail | null = null;
+    let found = Infinity;
+
+    for (const rail of plan.rails) {
+      const away = at(rail.origin).distanceToSquared(this.pointerPixels);
+      if (away < found) {
+        found = away;
+        best = rail;
+      }
+    }
+    if (!best) return null;
+
+    const origin = at(best.origin);
+    const positive = at(best.positive).sub(origin);
+    const negative = at(best.negative).sub(origin);
+
+    // Both ways closed, or a rail seen exactly end on: there is no direction to
+    // drag along, and every move would answer with nothing.
+    if (positive.lengthSq() < 1 && negative.lengthSq() < 1) return null;
+    return { positive, negative };
+  }
+
+  private showSlideGuide(rails: readonly SlideRail[], matrix: THREE.Matrix4): void {
+    const points = new Float32Array(rails.length * 6);
+    const point = new THREE.Vector3();
+
+    rails.forEach((rail, i) => {
+      point.set(rail.negative.x, rail.negative.y, rail.negative.z).applyMatrix4(matrix);
+      points.set([point.x, point.y, point.z], i * 6);
+      point.set(rail.positive.x, rail.positive.y, rail.positive.z).applyMatrix4(matrix);
+      points.set([point.x, point.y, point.z], i * 6 + 3);
+    });
+
+    // A slide plans its rails once and holds them for its whole run, so the
+    // geometry is built here rather than rewritten every frame.
+    this.slideGuide.geometry.dispose();
+    this.slideGuide.geometry = new THREE.BufferGeometry();
+    this.slideGuide.geometry.setAttribute('position', new THREE.BufferAttribute(points, 3));
+    this.slideGuide.visible = true;
+  }
+
+  /** Runs the slide out to wherever the pointer has been dragged. */
+  private applySlideDrag(): void {
+    const drag = this.slideDrag;
+    if (!drag) return;
+
+    const factor = slideFactor(
+      this.pointerPixels.clone().sub(drag.from),
+      drag.positive,
+      drag.negative,
+    );
+    if (Math.abs(factor - drag.factor) < 1e-4) return;
+
+    drag.factor = factor;
+    applySlide(drag.mesh, drag.plan, factor);
+
+    const state = useEditorStore.getState();
+    state.updateModal({ value: vec3(factor, 0, 0) });
+    state.touchMesh();
+  }
+
+  /**
+   * Welds what an edit-mode transform has just stacked on top of something else.
+   *
+   * Blender's auto merge, run once the transform ends rather than while it is
+   * running: welding mid-drag would delete the very vertices the drag is still
+   * holding on to. The history entry went in before the transform started, so
+   * the weld lands inside it and one undo takes back both.
+   */
+  private autoMergeSelection(): number {
+    const state = useEditorStore.getState();
+    if (state.mode !== 'edit' || !state.autoMerge.enabled) return 0;
+
+    const object = activeObject(state);
+    if (!object) return 0;
+
+    const { removed } = autoMergeVerts(
+      object.mesh,
+      object.mesh.selectedVerts(),
+      state.autoMerge.threshold,
+    );
+    if (removed > 0) object.mesh.flushSelection(state.selectMode);
+    return removed;
+  }
+
+  /** Whichever modal transform is running off the bare pointer, if any is. */
+  private activeModal(): 'scale' | 'rotate' | 'slide' | null {
     if (this.scaleDrag?.modal) return 'scale';
     if (this.rotateDrag?.modal) return 'rotate';
+    if (this.slideDrag) return 'slide';
     return null;
   }
 
   private finishModal(cancelled: boolean): void {
     if (this.scaleDrag?.modal) this.finishModalScale(cancelled);
     else if (this.rotateDrag?.modal) this.finishModalRotate(cancelled);
+    else if (this.slideDrag) this.finishModalSlide(cancelled);
   }
 
   private handleModalKey = (event: KeyboardEvent): void => {
@@ -1385,6 +1691,11 @@ export class Viewport {
 
     if (key === 'escape') return this.finishModal(true);
     if (key === 'enter') return this.finishModal(false);
+
+    // A slide has no axis to pin: it is already running along one, the edge
+    // under it. The keys are swallowed all the same, so a stray X mid-slide
+    // cannot reach the delete operator behind it.
+    if (kind === 'slide') return;
 
     // Pressing the same axis again lifts the constraint, as it does in Blender.
     if (kind === 'rotate') {
@@ -1663,6 +1974,7 @@ export class Viewport {
 
   private handlePointerDown = (event: PointerEvent): void => {
     this.pointerPixels = this.pointerPosition(event);
+    this.pointerInside = true;
     if (this.gizmo.dragging) return;
     if (this.controls.onPointerDown(event)) return;
     if (event.button !== 0) return;
@@ -1674,6 +1986,7 @@ export class Viewport {
 
   private handlePointerMove = (event: PointerEvent): void => {
     this.pointerPixels = this.pointerPosition(event);
+    this.pointerInside = true;
     // A scale drag is measured from the pointer itself, so it is driven here
     // rather than from three's change event: that fires before this handler
     // for the same move, and would always be working off the previous position.
@@ -1685,8 +1998,24 @@ export class Viewport {
       this.applyRotateDrag();
       return;
     }
-    if (this.controls.onPointerMove(event)) return;
-    if (!this.dragStart) return;
+    if (this.slideDrag) {
+      this.applySlideDrag();
+      return;
+    }
+    if (this.controls.onPointerMove(event)) {
+      // Orbiting: whatever was under the pointer before the camera moved is
+      // not what is under it now, and nothing is being aimed at mid-orbit.
+      this.clearHoverVert();
+      return;
+    }
+
+    // Only while nothing is being dragged out: a region drag aims at what it
+    // encloses rather than at one vertex, and the pick behind the mark is the
+    // dearest thing a pointer move could be made to run.
+    if (!this.dragStart) {
+      this.updateHoverVert();
+      return;
+    }
 
     this.dragCurrent = this.pointerPosition(event);
     if (this.promoteDeferredGrab()) return;
@@ -1955,6 +2284,11 @@ export class Viewport {
     this.gizmo.dragging = false;
   };
 
+  private handlePointerLeave = (): void => {
+    this.pointerInside = false;
+    this.clearHoverVert();
+  };
+
   private pointerPosition(event: PointerEvent): THREE.Vector2 {
     const rect = this.canvas.getBoundingClientRect();
     return new THREE.Vector2(event.clientX - rect.left, event.clientY - rect.top);
@@ -1990,6 +2324,64 @@ export class Viewport {
     const { shading } = useEditorStore.getState();
     if (shading === 'xray' || shading === 'wireframe') return null;
     return facingElements(mesh, view.group.matrix, this.camera);
+  }
+
+  /**
+   * Marks the vertex a click would take, and nothing when there is none.
+   *
+   * Two vertices left in the same place (a slide run onto its neighbour with
+   * auto merge off) draw one dot between them, and selecting the one
+   * underneath changed nothing anyone could see. The mark says both that there
+   * is a vertex under the pointer and which one the click has hold of, before
+   * the click rather than after it.
+   *
+   * Runs the same pick `clickSelect` runs, so what lights up is exactly what
+   * would be selected, unselectable geometry round the back included.
+   */
+  private updateHoverVert(): void {
+    const state = useEditorStore.getState();
+    const hovering =
+      this.pointerInside &&
+      !this.activeModal() &&
+      !this.gizmoDragging &&
+      state.mode === 'edit' &&
+      state.selectMode === 'vertex';
+
+    const object = hovering ? activeObject(state) : null;
+    const view = object ? this.views.get(object.id) : undefined;
+
+    let mark: Vec3 | null = null;
+    if (object && view) {
+      const result = pickElement(
+        view,
+        object.mesh,
+        'vertex',
+        this.pointerPixels,
+        this.camera,
+        { width: this.canvas.clientWidth, height: this.canvas.clientHeight },
+        this.raycaster,
+        this.pickable(object.mesh, view),
+      );
+      // Read back out of the view's own buffers rather than off the base mesh:
+      // the dots are drawn from the evaluated result, and the mark has to land
+      // on the one it is marking however the modifier stack moved it.
+      const index = result ? view.vertIds.indexOf(result.elementId) : -1;
+      if (index >= 0) {
+        mark = vec3(
+          view.vertPositions[index * 3],
+          view.vertPositions[index * 3 + 1],
+          view.vertPositions[index * 3 + 2],
+        );
+      }
+    }
+
+    for (const [id, candidate] of this.views) {
+      candidate.showHoverVert(id === object?.id ? mark : null);
+    }
+  }
+
+  private clearHoverVert(): void {
+    for (const view of this.views.values()) view.showHoverVert(null);
   }
 
   private ndcPosition(pointer: THREE.Vector2): THREE.Vector2 {
@@ -2167,7 +2559,7 @@ export class Viewport {
     this.updateProportionalRing();
     this.updatePointerCursor();
     this.updateSelectionOutlines();
-    if (this.modalLine.visible) this.standDownGizmo();
+    if (this.modalGuideUp()) this.standDownGizmo();
     this.expireRecentVerts();
     this.renderer.render(this.scene, this.camera);
   };
@@ -2187,7 +2579,7 @@ export class Viewport {
     // A crosshair reads as "measuring", which is what the scale line is doing:
     // the ordinary arrow gives no hint that dragging now changes size rather
     // than orbiting or picking something.
-    const cursor = rotating ? ROTATE_CURSOR : this.modalLine.visible ? 'crosshair' : '';
+    const cursor = rotating ? ROTATE_CURSOR : this.modalGuideUp() ? 'crosshair' : '';
     if (cursor === this.appliedCursor) return;
 
     this.appliedCursor = cursor;
@@ -2258,6 +2650,7 @@ export class Viewport {
     this.canvas.removeEventListener('pointerup', this.handlePointerUp);
     this.canvas.removeEventListener('wheel', this.handleWheel);
     this.canvas.removeEventListener('contextmenu', this.handleContextMenu);
+    this.canvas.removeEventListener('pointerleave', this.handlePointerLeave);
     this.canvas.removeEventListener('lostpointercapture', this.handleLostPointerCapture);
 
     for (const view of this.views.values()) view.dispose();

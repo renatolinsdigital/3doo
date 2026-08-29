@@ -5,6 +5,7 @@ export * from './inset';
 export * from './bevel';
 export * from './loopcut';
 export * from './relax';
+export * from './slide';
 export * from './subdivide';
 export * from './merge';
 export * from './delete';

@@ -291,6 +291,50 @@ describe('editor store', () => {
     expect(store().status).toMatch(/nothing selected/i);
   });
 
+  it('starts a slide on whichever element the select mode is showing', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    store().setSelectMode('edge');
+    store().exec('selectAll', {}, 'Select all');
+
+    store().beginSlide();
+
+    expect(store().modal).toMatchObject({ kind: 'slide', element: 'edge' });
+  });
+
+  it('turns a slide away in face mode, where there is no one rail to run along', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    store().setSelectMode('face');
+    store().exec('selectAll', {}, 'Select all');
+
+    store().beginSlide();
+
+    expect(store().modal).toBeNull();
+    expect(store().status).toMatch(/vertex or edge select/i);
+  });
+
+  it('turns a slide away with nothing selected, and says so', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    store().setSelectMode('vertex');
+    activeObject().mesh.deselectAll();
+
+    store().beginSlide();
+
+    expect(store().modal).toBeNull();
+    expect(store().status).toMatch(/select vertices to slide/i);
+  });
+
+  it('turns a slide away in object mode, where there is no mesh element to move', () => {
+    store().addPrimitive('box');
+
+    store().beginSlide();
+
+    expect(store().modal).toBeNull();
+    expect(store().status).toMatch(/edit mode/i);
+  });
+
   it('refuses to fold a face when dissolving a sharp cube edge', () => {
     store().addPrimitive('box');
     store().setMode('edit');

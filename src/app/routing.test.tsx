@@ -117,4 +117,37 @@ describe('docs module', () => {
     // bindings are what show up here.
     expect(screen.getByRole('row', { name: /Ctrl \+ R.*Loop cut/ })).toBeInTheDocument();
   });
+
+  it('searches every section and cuts tables down to the rows that matched', async () => {
+    render(<App />);
+
+    await userEvent.type(screen.getByRole('textbox', { name: /Search/ }), 'slide');
+
+    // The operation, its shortcut and the note that goes with it, gathered out
+    // of a section the reader would otherwise have to know to open.
+    expect(
+      screen.getByRole('row', { name: /Slide .*vertex select/ }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/in edit mode is the whole of it/)).toBeInTheDocument();
+    // Cut to the rows that matched: its neighbour in the same table is gone.
+    expect(screen.queryByRole('row', { name: /Chamfers the selected edges/ })).toBeNull();
+  });
+
+  it('opens a section from its search result and clears the query', async () => {
+    render(<App />);
+
+    await userEvent.type(screen.getByRole('textbox', { name: /Search/ }), 'remesh');
+    await userEvent.click(screen.getByRole('button', { name: /MODIFIERS.*OPEN/ }));
+
+    expect(screen.getByRole('heading', { name: 'MODIFIERS' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /Search/ })).toHaveValue('');
+  });
+
+  it('says so when nothing matches', async () => {
+    render(<App />);
+
+    await userEvent.type(screen.getByRole('textbox', { name: /Search/ }), 'zzzz');
+
+    expect(screen.getByRole('heading', { name: 'NO MATCHES' })).toBeInTheDocument();
+  });
 });

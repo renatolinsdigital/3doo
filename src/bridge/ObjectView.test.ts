@@ -248,3 +248,69 @@ describe('ObjectView selection outline', () => {
     expect(segmentCount(outlineOf(view, object.id))).toBe(6);
   });
 });
+
+describe('ObjectView hover mark', () => {
+  function hoverOf(view: ObjectView): THREE.Points {
+    const points = view.group.children.filter(
+      (child): child is THREE.Points => child instanceof THREE.Points,
+    );
+    // Between the plain dots and the recent-vertex flash, by render order.
+    return points[1];
+  }
+
+  function editState(settings: ViewportSettings, selectMode: 'vertex' | 'edge') {
+    return {
+      mode: 'edit' as const,
+      selectMode,
+      isActive: true,
+      isSelected: true,
+      eye: vec3(0, 0, 10),
+      selectionLine: SELECTION_LINE,
+      settings,
+    };
+  }
+
+  it('marks the vertex it is handed, at the point it names', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+    view.update(object, evaluatedMesh(object), editState(settings, 'vertex'));
+
+    const hover = hoverOf(view);
+    expect(hover.visible).toBe(false);
+
+    view.showHoverVert(vec3(0.5, -0.5, 0.5));
+
+    expect(hover.visible).toBe(true);
+    expect([...(hover.geometry.getAttribute('position').array as Float32Array)]).toEqual([
+      0.5, -0.5, 0.5,
+    ]);
+  });
+
+  it('draws it larger than the dot it grows out of', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+    view.update(object, evaluatedMesh(object), editState(settings, 'vertex'));
+
+    const points = view.group.children.filter(
+      (child): child is THREE.Points => child instanceof THREE.Points,
+    );
+    const dot = (points[0].material as THREE.PointsMaterial).size;
+    const mark = (points[1].material as THREE.PointsMaterial).size;
+
+    expect(mark).toBeCloseTo(dot * 1.8, 6);
+  });
+
+  it('goes away with the dots, in a mode that has no vertices to hover', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+    view.update(object, evaluatedMesh(object), editState(settings, 'vertex'));
+    view.showHoverVert(vec3(0.5, -0.5, 0.5));
+
+    view.update(object, evaluatedMesh(object), editState(settings, 'edge'));
+    expect(hoverOf(view).visible).toBe(false);
+
+    // And stays away while that mode is what the viewport is in, whoever asks.
+    view.showHoverVert(vec3(0.5, -0.5, 0.5));
+    expect(hoverOf(view).visible).toBe(false);
+  });
+});

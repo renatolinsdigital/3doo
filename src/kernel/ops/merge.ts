@@ -149,6 +149,82 @@ export function mergeByDistance(
   return { removed: weldVerts(mesh, mapping) };
 }
 
+/**
+ * Welds vertices a transform has just left sitting on top of others.
+ *
+ * Blender's auto merge, and the reason an edge slide run all the way onto the
+ * loop next door collapses into it rather than leaving two loops in the same
+ * place. Only the vertices that moved can be removed: a threshold wide enough
+ * to catch what the user just did would otherwise weld pairs elsewhere in the
+ * mesh that have sat that close since it was built.
+ *
+ * Where a moved vertex has landed on one that stayed put, the still one is
+ * kept, so the surface stays where the rest of the mesh expects it.
+ */
+export function autoMergeVerts(
+  mesh: BMesh,
+  moved: readonly Vert[],
+  threshold: number,
+): MergeByDistanceResult {
+  if (threshold <= 0 || moved.length === 0) return { removed: 0 };
+
+  const cell = Math.max(threshold, 1e-6);
+  const thresholdSq = threshold * threshold;
+  const keyFor = (co: Vec3, offsetX: number, offsetY: number, offsetZ: number) =>
+    `${Math.floor(co.x / cell) + offsetX}:${Math.floor(co.y / cell) + offsetY}:${
+      Math.floor(co.z / cell) + offsetZ
+    }`;
+
+  // Every vertex of the mesh is a candidate to land on, not only the moved
+  // ones: the whole point is welding a moved loop onto the still one it was
+  // slid into.
+  const buckets = new Map<string, Vert[]>();
+  for (const vert of mesh.verts.values()) {
+    const key = keyFor(vert.co, 0, 0, 0);
+    const bucket = buckets.get(key);
+    if (bucket) bucket.push(vert);
+    else buckets.set(key, [vert]);
+  }
+
+  const movedIds = new Set(moved.map((vert) => vert.id));
+  const mapping = new Map<number, Vert>();
+  // Targets are held back from being welded away themselves: `weldVerts`
+  // resolves each vertex once and does not chase a chain of replacements.
+  const kept = new Set<number>();
+
+  for (const vert of moved) {
+    if (!mesh.verts.has(vert.id) || kept.has(vert.id) || mapping.has(vert.id)) continue;
+
+    let target: Vert | null = null;
+    let best = Infinity;
+
+    for (let x = -1; x <= 1; x++) {
+      for (let y = -1; y <= 1; y++) {
+        for (let z = -1; z <= 1; z++) {
+          for (const candidate of buckets.get(keyFor(vert.co, x, y, z)) ?? []) {
+            if (candidate === vert || mapping.has(candidate.id)) continue;
+
+            const away = distanceSq(candidate.co, vert.co);
+            if (away > thresholdSq) continue;
+
+            // A vertex that held still wins over one that was moving too,
+            // however much closer the moving one happens to be.
+            const score = away + (movedIds.has(candidate.id) ? thresholdSq : 0);
+            if (score >= best) continue;
+            best = score;
+            target = candidate;
+          }
+        }
+      }
+    }
+
+    if (!target) continue;
+    mapping.set(vert.id, target);
+    kept.add(target.id);
+  }
+
+  return { removed: weldVerts(mesh, mapping) };
+}
 /** Counts what `mergeByDistance` would remove, for the preview readout. */
 export function countMergeByDistance(verts: readonly Vert[], threshold: number): number {
   return planMergeByDistance(verts, threshold).size;

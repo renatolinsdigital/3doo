@@ -5,6 +5,7 @@ import type { SelectMode } from '@kernel/index';
 import type { EditorStore } from '../useEditorStore';
 import { activeObject } from './scene';
 import type {
+  AutoMergeSettings,
   EditorMode,
   ModalTransform,
   PivotMode,
@@ -25,6 +26,7 @@ export interface ToolSlice {
   pivot: PivotMode;
   snap: SnapSettings;
   proportional: ProportionalSettings;
+  autoMerge: AutoMergeSettings;
   modal: ModalTransform | null;
 
   setMode: (mode: EditorMode) => void;
@@ -37,9 +39,11 @@ export interface ToolSlice {
   stowTransformTool: () => void;
   setSnap: (patch: Partial<SnapSettings>) => void;
   setProportional: (patch: Partial<ProportionalSettings>) => void;
-  beginModal: (kind: ModalTransform['kind']) => void;
+  setAutoMerge: (patch: Partial<AutoMergeSettings>) => void;
+  beginSlide: () => void;
+  beginModal: (kind: ModalTransform['kind'], element?: ModalTransform['element']) => void;
   updateModal: (patch: Partial<ModalTransform>) => void;
-  endModal: () => void;
+  endModal: (status?: string) => void;
 }
 
 export const createToolSlice: StateCreator<
@@ -55,6 +59,10 @@ export const createToolSlice: StateCreator<
   pivot: 'median',
   snap: { enabled: false, mode: 'increment', increment: 0.25 },
   proportional: { enabled: false, radius: 1.5, falloff: 'smooth' },
+  // Off by default, and a tenth of the default grid square when it is switched
+  // on: wide enough to catch a slide run all the way onto its neighbour,
+  // narrow enough to leave detail the user modelled on purpose alone.
+  autoMerge: { enabled: false, threshold: 0.01 },
   modal: null,
 
   setMode: (mode) => {
@@ -120,22 +128,64 @@ export const createToolSlice: StateCreator<
   setProportional: (patch) =>
     set((state) => ({ proportional: { ...state.proportional, ...patch } })),
 
-  beginModal: (kind) => {
+  setAutoMerge: (patch) => set((state) => ({ autoMerge: { ...state.autoMerge, ...patch } })),
+
+  /**
+   * Starts a slide, or says why it cannot.
+   *
+   * Which element slides is the select mode, since that is what the user is
+   * looking at: vertices run along the edges leaving them, edges run across the
+   * faces either side. Faces have no one rail to travel along, so face mode is
+   * turned away rather than guessing at one.
+   */
+  beginSlide: () => {
+    const state = get();
+    const object = activeObject(state);
+
+    if (state.mode !== 'edit' || !object) {
+      set({ status: 'Sliding works on mesh elements: enter edit mode first (Tab)' });
+      return;
+    }
+    if (state.selectMode === 'face') {
+      set({ status: 'Sliding runs along edges: switch to vertex or edge select (1 or 2)' });
+      return;
+    }
+
+    const element = state.selectMode;
+    const selected =
+      element === 'edge' ? object.mesh.selectedEdges() : object.mesh.selectedVerts();
+    if (selected.length === 0) {
+      set({ status: `Select ${element === 'edge' ? 'edges' : 'vertices'} to slide` });
+      return;
+    }
+
+    get().beginModal('slide', element);
+  },
+
+  beginModal: (kind, element) => {
     set({
       modal: {
         kind,
+        element,
         axis: null,
         excludeAxis: false,
         typed: '',
         // A scale of nothing is 1, and the status bar reads this out live.
         value: kind === 'scale' ? { x: 1, y: 1, z: 1 } : { x: 0, y: 0, z: 0 },
       },
-      status: `${kind.toUpperCase()}: move the mouse, X/Y/Z to constrain, click or Enter to confirm, Esc to cancel`,
+      // A slide has no axis to constrain: it already runs along one, the edge
+      // under it.
+      status:
+        kind === 'slide'
+          ? 'SLIDE: move the mouse, click or Enter to confirm, Esc to cancel'
+          : `${kind.toUpperCase()}: move the mouse, X/Y/Z to constrain, click or Enter to confirm, Esc to cancel`,
     });
   },
 
   updateModal: (patch) =>
     set((state) => (state.modal ? { modal: { ...state.modal, ...patch } } : {})),
 
-  endModal: () => set({ modal: null }),
+  // The status is how a modal transform reports what it did: the instruction
+  // text it put up while it was running has nothing left to say once it ends.
+  endModal: (status) => set(status ? { modal: null, status } : { modal: null }),
 });

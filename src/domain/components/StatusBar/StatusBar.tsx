@@ -12,6 +12,12 @@ function modalLabel(modal: ModalTransform): string {
   const axis = modal.axis ? ` ${modal.axis.toUpperCase()}` : '';
   if (modal.typed) return `${kind}${axis} ${modal.typed}`;
 
+  // A slide says what it is moving rather than which axis it is on: it runs
+  // along the mesh's own edges, and there is no axis to name.
+  if (modal.kind === 'slide') {
+    return `SLIDE ${(modal.element ?? 'vertex').toUpperCase()} ${modal.value.x.toFixed(3)}`;
+  }
+
   // A rotation carries its angle in x whatever axis it turns about, and there is
   // one angle, not three, and the axis is already spelled out beside it.
   if (modal.kind === 'rotate') return `${kind}${axis} ${modal.value.x.toFixed(1)}°`;
@@ -28,6 +34,7 @@ export function StatusBar() {
   const selectMode = useEditorStore((state) => state.selectMode);
   const snap = useEditorStore((state) => state.snap);
   const proportional = useEditorStore((state) => state.proportional);
+  const autoMerge = useEditorStore((state) => state.autoMerge);
   const pivot = useEditorStore((state) => state.pivot);
   const modal = useEditorStore((state) => state.modal);
   const showStatistics = useEditorStore((state) => state.overlays.statistics);
@@ -72,6 +79,9 @@ export function StatusBar() {
         <Flag on={snap.enabled}>SNAP {snap.enabled ? snap.mode.toUpperCase() : 'OFF'}</Flag>
         <Flag on={proportional.enabled}>
           PROP {proportional.enabled ? proportional.falloff.toUpperCase() : 'OFF'}
+        </Flag>
+        <Flag on={autoMerge.enabled}>
+          MERGE {autoMerge.enabled ? autoMerge.threshold.toFixed(3) : 'OFF'}
         </Flag>
       </div>
     </footer>

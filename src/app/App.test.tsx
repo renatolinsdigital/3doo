@@ -339,6 +339,42 @@ describe('App shell', () => {
     expect(screen.getByRole('button', { name: 'PROP' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('flips auto merge from the top bar, and only in edit mode', async () => {
+    render(<App />);
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+
+    const merge = screen.getByRole('button', { name: 'AUTO MERGE' });
+    expect(merge).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.click(merge);
+    expect(useEditorStore.getState().autoMerge.enabled).toBe(false);
+
+    await userEvent.click(screen.getByRole('button', { name: 'EDIT' }));
+    await userEvent.click(screen.getByRole('button', { name: 'AUTO MERGE' }));
+
+    expect(useEditorStore.getState().autoMerge.enabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'AUTO MERGE' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+  });
+
+  it('sets the auto merge distance from the topology panel', async () => {
+    render(<App />);
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(screen.getByRole('button', { name: 'EDIT' }));
+    // Switched on through the store rather than the button: `resetScene` leaves
+    // the flag as the previous test set it, so clicking would toggle it off.
+    act(() => useEditorStore.getState().setAutoMerge({ enabled: true, threshold: 0.01 }));
+
+    const distance = screen.getByLabelText('DISTANCE');
+    await userEvent.clear(distance);
+    await userEvent.type(distance, '0.05{Enter}');
+
+    expect(useEditorStore.getState().autoMerge.threshold).toBeCloseTo(0.05, 6);
+  });
+
   it('ticks overlays from the top bar menu, which stays open across them', async () => {
     render(<App />);
 

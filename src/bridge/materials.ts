@@ -253,11 +253,40 @@ export function createOutlineMaterial({ color, width }: OutlineMaterialOptions):
  * Nothing is hidden in x-ray or wireframe shading even so: neither writes any
  * depth for this to test against.
  */
+const POINT_SIZE = 3;
+
+/** How much the vertex under the pointer grows over an idle one. */
+const HOVER_POINT_SCALE = 1.8;
+
 export function createPointMaterial(): THREE.PointsMaterial {
   return new THREE.PointsMaterial({
-    size: 3,
+    size: POINT_SIZE,
     sizeAttenuation: false,
     vertexColors: true,
+    depthTest: true,
+  });
+}
+
+/**
+ * The vertex a click would take.
+ *
+ * Grown rather than only recoloured, because the case it is there for is two
+ * vertices sitting in exactly the same place: a slide run onto its neighbour
+ * with auto merge off leaves one dot on screen for two vertices, and selecting
+ * the one underneath changed nothing anyone could see. A square larger than the
+ * dot it sits on shows through whichever of them is drawn on top.
+ *
+ * Cyan, the palette's blue: it is nothing else on the geometry, and the red of
+ * a selected vertex stays the colour that means selected.
+ *
+ * Depth-tested like the dots themselves, and drawn after them, so it wins at
+ * equal depth without showing through the far side of a solid surface.
+ */
+export function createHoverPointMaterial(): THREE.PointsMaterial {
+  return new THREE.PointsMaterial({
+    size: POINT_SIZE * HOVER_POINT_SCALE,
+    sizeAttenuation: false,
+    color: VIEWPORT_COLORS.cyan,
     depthTest: true,
   });
 }

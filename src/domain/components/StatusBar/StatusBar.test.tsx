@@ -34,6 +34,27 @@ describe('StatusBar', () => {
     expect(screen.getByRole('status')).toHaveTextContent('ROTATE Z -90.0°');
   });
 
+  it('says what a slide is moving, and how far along it is', () => {
+    useEditorStore.getState().addPrimitive('box');
+    act(() => {
+      useEditorStore.getState().beginModal('slide', 'edge');
+      useEditorStore.getState().updateModal({ value: { x: -0.42, y: 0, z: 0 } });
+    });
+
+    render(<StatusBar />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('SLIDE EDGE -0.420');
+  });
+
+  it('flags auto merge while it is switched on', () => {
+    useEditorStore.getState().setAutoMerge({ enabled: true, threshold: 0.02 });
+
+    render(<StatusBar />);
+
+    // A setting that quietly removes vertices has to say it is in force.
+    expect(screen.getByText('MERGE 0.020')).toBeInTheDocument();
+  });
+
   it('reports an empty scene', () => {
     render(<StatusBar />);
     expect(screen.getByText('OBJ')).toBeInTheDocument();
