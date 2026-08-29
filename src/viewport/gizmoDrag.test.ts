@@ -100,6 +100,31 @@ describe('TransformControls drag contract', () => {
     ]);
   });
 
+  it('starts nothing when the pointer-down is refused, and drags cleanly when handed over later', () => {
+    const { api, proxy } = createDrag();
+
+    // What `Viewport.deferGizmoGrab` does with a press that has a vertex behind
+    // it: three's own pointer-down never runs, so nothing is latched and the
+    // press is still free to become a selection.
+    expect(api.dragging).toBe(false);
+    api.pointerMove({ x: 0.2, y: 0, button: -1 });
+    expect(proxy.position.x).toBeCloseTo(0, 6);
+
+    // Once the gesture turns out to be a drag, the grab is handed over at the
+    // pointer's current position, and the handle picks up from there rather
+    // than jumping back to where the press landed.
+    api.pointerDown({ x: 0.2, y: 0, button: 0 });
+    expect(api.dragging).toBe(true);
+    api.pointerMove({ x: 0.4, y: 0, button: -1 });
+
+    const moved = proxy.position.x;
+    expect(moved).toBeGreaterThan(0);
+
+    api.pointerUp({ x: 0.4, y: 0, button: 0 });
+    expect(api.dragging).toBe(false);
+    expect(proxy.position.x).toBeCloseTo(moved, 6);
+  });
+
   it('stays latched when the pointer capture is lost instead of released', () => {
     const { api, element } = createDrag();
 

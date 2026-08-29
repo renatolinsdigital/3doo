@@ -47,6 +47,14 @@ const VIEW_LOST_DISTANCE = MAX_ORBIT_DISTANCE * 0.45;
 /** Minimum gap between recorded lasso points, in pixels. */
 const LASSO_POINT_SPACING = 6;
 
+/**
+ * How far the pointer may travel and still count as a click.
+ *
+ * Under this a region drag encloses nothing anyone aimed at, and a gizmo grab
+ * held back for the geometry behind it has not yet become a drag.
+ */
+const CLICK_SLOP_PIXELS = 4;
+
 /** How long freshly created vertices stay flagged in the viewport. */
 const RECENT_VERTS_MS = 1600;
 
@@ -159,6 +167,16 @@ export function shortestAngle(delta: number): number {
   return wrapped - Math.PI;
 }
 
+/**
+ * What TransformControls' pointer methods actually take: a point in normalised
+ * device coordinates plus the button. Its types call this a PointerEvent.
+ */
+interface GizmoPointer {
+  x: number;
+  y: number;
+  button: number;
+}
+
 interface GizmoBaseline {
   position: THREE.Vector3;
   quaternion: THREE.Quaternion;
@@ -254,6 +272,10 @@ export class Viewport {
   private transformGroup: string[] = [];
   private readonly objectBaselines = new Map<string, Transform>();
   private gizmoDragging = false;
+  /** TransformControls' own pointer-down, kept aside by `deferGizmoGrab`. */
+  private grabGizmo: ((pointer: GizmoPointer) => void) | null = null;
+  /** Set while a handle grab is held back to see whether the gesture is a click. */
+  private deferredGrab = false;
   private viewLostReported = false;
   /** Last cursor written to the canvas; the render loop would otherwise set it every frame. */
   private appliedCursor = '';
@@ -498,6 +520,39 @@ export class Viewport {
 
     this.gizmo.addEventListener('dragging-changed', this.handleGizmoDragging);
     this.gizmo.addEventListener('objectChange', this.handleGizmoChange);
+    this.deferGizmoGrab();
+  }
+
+  /**
+   * Lets a click reach the geometry a gizmo handle is drawn over.
+   *
+   * In edit mode the handles sit on the very mesh being edited, and the arms
+   * reach out across the rest of it, so a vertex behind one used to be
+   * unselectable until the view was orbited to move the handle off it.
+   *
+   * TransformControls decides to drag in `pointerDown`, which is the one place
+   * the decision can be held back. A press with something selectable under it
+   * starts nothing: if the pointer then travels, `promoteDeferredGrab` hands the
+   * grab over and the drag runs as usual, and if it does not, the press falls
+   * through to `clickSelect` and picks what is behind the handle. Blender's
+   * gizmos yield the same way, and it costs nothing when the handle is over
+   * empty space, where there is nothing to yield to.
+   */
+  private deferGizmoGrab(): void {
+    const controls = this.gizmo as unknown as { pointerDown: (pointer: GizmoPointer) => void };
+    const grab = controls.pointerDown.bind(this.gizmo);
+    this.grabGizmo = grab;
+
+    controls.pointerDown = (pointer) => {
+      // A null axis is not a grab at all, so there is nothing to weigh against
+      // the geometry: three refuses the drag on its own. Written on every press
+      // rather than only when it defers, so a press can never inherit the last
+      // one's answer.
+      this.deferredGrab =
+        this.gizmo.axis !== null && this.elementUnderPointer(this.pixelPosition(pointer));
+      if (this.deferredGrab) return;
+      grab(pointer);
+    };
   }
 
   private subscribeToStore(): void {
@@ -1634,6 +1689,8 @@ export class Viewport {
     if (!this.dragStart) return;
 
     this.dragCurrent = this.pointerPosition(event);
+    if (this.promoteDeferredGrab()) return;
+
     // Thinned as it is drawn: a pointer event per pixel would leave a lasso
     // thousands of points long, and every one of them is a segment the
     // crossing test walks for every element in the mesh.
@@ -1657,13 +1714,16 @@ export class Viewport {
     this.dragStart = null;
     this.dragCurrent = null;
     this.dragPath = [];
+    // A grab that reached pointerup without travelling is the click this
+    // deferral exists for, and falls through to the selection below.
+    this.deferredGrab = false;
     this.hideSelectionShape();
 
     if (wasNavigating || !start || !end) return;
 
     // Under a few pixels the drag is a click with a shaky hand, whatever shape
     // it drew: a lasso that small encloses nothing anyone aimed at.
-    if (start.distanceTo(end) > 4) {
+    if (start.distanceTo(end) > CLICK_SLOP_PIXELS) {
       // The release point closes the lasso: thinning may have dropped it, and
       // it is the one point the user was certainly looking at.
       const shape = useEditorStore.getState().selectShape;
@@ -1680,6 +1740,61 @@ export class Viewport {
 
     this.clickSelect(end, event.shiftKey, event.altKey);
   };
+
+  /**
+   * Turns a grab held back by `deferGizmoGrab` into a real one, once the pointer
+   * has travelled far enough to be a drag rather than a click.
+   *
+   * The drag is picked up from where the pointer is now, so the handle does not
+   * jump by the few pixels the gesture spent making its mind up. If the axis
+   * slipped out from under the pointer in those pixels three refuses the grab,
+   * and the gesture stays the region drag it already looks like.
+   */
+  private promoteDeferredGrab(): boolean {
+    if (!this.deferredGrab || !this.gizmo.enabled) return false;
+    if (!this.dragStart || !this.dragCurrent) return false;
+    if (this.dragStart.distanceTo(this.dragCurrent) <= CLICK_SLOP_PIXELS) return false;
+
+    this.deferredGrab = false;
+    const ndc = this.ndcPosition(this.dragCurrent);
+    this.grabGizmo?.({ x: ndc.x, y: ndc.y, button: 0 });
+    if (!this.gizmo.dragging) return false;
+
+    this.dragStart = null;
+    this.dragCurrent = null;
+    this.dragPath = [];
+    this.hideSelectionShape();
+    return true;
+  }
+
+  /**
+   * Whether a click at `pointer` would land on a mesh element.
+   *
+   * Runs the pick `clickSelect` would run, so the two never disagree about what
+   * is behind a handle. Object mode is not asked: its gizmo is seated on the
+   * object as a whole, and there is no element picking to lose.
+   */
+  private elementUnderPointer(pointer: THREE.Vector2): boolean {
+    const state = useEditorStore.getState();
+    if (state.mode !== 'edit') return false;
+
+    const object = activeObject(state);
+    const view = object ? this.views.get(object.id) : undefined;
+    if (!object || !view) return false;
+
+    this.updateRaycaster(pointer);
+    const result = pickElement(
+      view,
+      object.mesh,
+      state.selectMode,
+      pointer,
+      this.camera,
+      { width: this.canvas.clientWidth, height: this.canvas.clientHeight },
+      this.raycaster,
+      this.pickable(object.mesh, view),
+    );
+    return result !== null;
+  }
 
   private handleWheel = (event: WheelEvent): void => {
     event.preventDefault();
@@ -1834,6 +1949,7 @@ export class Viewport {
    * On an ordinary pointerup this has already run and is a no-op.
    */
   private handleLostPointerCapture = (): void => {
+    this.deferredGrab = false;
     if (!this.gizmoDragging) return;
     this.gizmo.axis = null;
     this.gizmo.dragging = false;
@@ -1846,7 +1962,7 @@ export class Viewport {
 
   private drawSelectionShape(): void {
     if (!this.dragStart || !this.dragCurrent) return;
-    if (this.dragStart.distanceTo(this.dragCurrent) < 4) return;
+    if (this.dragStart.distanceTo(this.dragCurrent) < CLICK_SLOP_PIXELS) return;
 
     const shape = useEditorStore.getState().selectShape;
     this.shapeLayer ??= createMarqueeLayer(this.overlay);
@@ -1876,12 +1992,22 @@ export class Viewport {
     return facingElements(mesh, view.group.matrix, this.camera);
   }
 
-  private updateRaycaster(pointer: THREE.Vector2): void {
-    const ndc = new THREE.Vector2(
+  private ndcPosition(pointer: THREE.Vector2): THREE.Vector2 {
+    return new THREE.Vector2(
       (pointer.x / this.canvas.clientWidth) * 2 - 1,
       -(pointer.y / this.canvas.clientHeight) * 2 + 1,
     );
-    this.raycaster.setFromCamera(ndc, this.camera);
+  }
+
+  private pixelPosition(pointer: { x: number; y: number }): THREE.Vector2 {
+    return new THREE.Vector2(
+      ((pointer.x + 1) / 2) * this.canvas.clientWidth,
+      ((1 - pointer.y) / 2) * this.canvas.clientHeight,
+    );
+  }
+
+  private updateRaycaster(pointer: THREE.Vector2): void {
+    this.raycaster.setFromCamera(this.ndcPosition(pointer), this.camera);
   }
 
   private clickSelect(pointer: THREE.Vector2, additive: boolean, loopSelect: boolean): void {
