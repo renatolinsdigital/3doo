@@ -394,7 +394,9 @@ describe('editor store', () => {
 
     store().exec('subdivide', { cuts: 1, smooth: 0 }, 'Subdivide');
 
-    expect(activeObject().mesh.faces.size).toBe(9);
+    // Four out of the face itself, four out of the one across the cube, and
+    // two out of each face the two rings run through on the way.
+    expect(activeObject().mesh.faces.size).toBe(4 + 4 + 4 * 2);
     expect(store().status).toMatch(/Subdivided 1 face/);
   });
 

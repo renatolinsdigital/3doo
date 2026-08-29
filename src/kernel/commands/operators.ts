@@ -6,6 +6,7 @@ import {
   type MergeMode,
   DISSOLVE_ANGLE_LIMIT_DEGREES,
   bevelEdges,
+  budgetRefusal,
   bridgeEdgeLoops,
   connectVerts,
   deleteGeometry,
@@ -36,9 +37,11 @@ import {
   shrinkSelection,
   subdivideEdges,
   subdivideFaces,
+  subdivisionCost,
   translateVerts,
   triangulateFaces,
   trisToQuads,
+  vertsAfterEdgeSubdivide,
 } from '../ops';
 
 export interface OperatorContext {
@@ -53,6 +56,14 @@ export type OperatorParams = Record<string, unknown>;
 export interface OperatorResult {
   /** Short human-readable summary shown in the status bar. */
   status: string;
+  /**
+   * The operator declined rather than ran.
+   *
+   * Nothing was changed, so the caller says it out loud and keeps no undo step
+   * for it: an operation refused for being too big to survive is the one the
+   * user most needs told about, and the least worth a step back to.
+   */
+  refused?: boolean;
   /**
    * Vertices the operator just created, for the viewport to flash briefly.
    * A new vertex is easy to lose track of — the midpoint of a subdivided edge
@@ -204,14 +215,23 @@ export const OPERATORS: Record<string, OperatorHandler> = {
   },
 
   subdivide: ({ mesh, selectMode }, params) => {
+    const cuts = Math.max(1, Math.round(readNumber(params, 'cuts', 1)));
+
     // In edge mode the selection is edges, so subdivide them: one vertex at
     // each edge's midpoint. Cutting the faces instead would ignore what the
     // user actually picked, and previously this just refused outright.
     if (selectMode === 'edge') {
       const edges = mesh.selectedEdges();
-      if (edges.length === 0) return { status: 'Select edges to subdivide' };
+      if (edges.length === 0) return { status: 'Select edges to subdivide', refused: true };
 
-      const added = subdivideEdges(mesh, edges, Math.round(readNumber(params, 'cuts', 1)));
+      // Checked before anything is cut: a mesh past the budget cannot be
+      // walked back from, because the tab it would have taken down is gone.
+      const tooMany = budgetRefusal({
+        verts: vertsAfterEdgeSubdivide(mesh.verts.size, edges.length, cuts),
+      });
+      if (tooMany) return { status: tooMany, refused: true };
+
+      const added = subdivideEdges(mesh, edges, cuts);
       mesh.flushSelection('vertex');
       mesh.flushSelection(selectMode);
       return {
@@ -221,12 +241,14 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     }
 
     const faces = mesh.selectedFaces();
-    if (faces.length === 0) return { status: 'Select faces to subdivide' };
+    if (faces.length === 0) return { status: 'Select faces to subdivide', refused: true };
 
-    subdivideFaces(mesh, faces, {
-      cuts: Math.round(readNumber(params, 'cuts', 1)),
-      smooth: readNumber(params, 'smooth', 0),
-    });
+    // Costed off the plan rather than off the selection: the cuts travel, so
+    // what they reach is the only honest figure to hold against the budget.
+    const tooMany = budgetRefusal({ faces: subdivisionCost(mesh, faces, cuts) });
+    if (tooMany) return { status: tooMany, refused: true };
+
+    subdivideFaces(mesh, faces, { cuts, smooth: readNumber(params, 'smooth', 0) });
     // The result is expressed as selected faces, so flush from there first;
     // going straight to vertex mode would keep only the pre-existing corners.
     mesh.flushSelection('face');

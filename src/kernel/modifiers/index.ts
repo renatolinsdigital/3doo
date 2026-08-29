@@ -2,6 +2,7 @@ import { type Axis, type Vec3, add, lerp, mul, sub, vec3 } from '../math';
 import { BMesh, cloneMesh } from '../mesh';
 import type { Face, Vert } from '../mesh/types';
 import { mergeByDistance, weldVerts } from '../ops/merge';
+import { MESH_BUDGET } from '../ops/budget';
 import { subdivideFaces } from '../ops/subdivide';
 import { remeshMesh } from '../remesh';
 
@@ -338,6 +339,10 @@ function applySubdivide(mesh: BMesh, modifier: SubdivideModifier): BMesh {
   // which is what makes the surface converge; one pass cutting every edge
   // `levels` times would be a finer cage, not a smoother limit.
   for (let level = 0; level < levels; level++) {
+    // A level quadruples the face count and the stack is re-evaluated on every
+    // edit, so a level that would put the result past what a tab can hold is
+    // dropped rather than run: a modifier is not worth the window.
+    if (mesh.faces.size * 4 > MESH_BUDGET.faces) break;
     subdivideFaces(mesh, [...mesh.faces.values()], { cuts: 1, smooth: modifier.smooth });
   }
   return mesh;

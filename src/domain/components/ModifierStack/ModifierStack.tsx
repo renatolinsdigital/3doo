@@ -453,7 +453,7 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
         integer
         min={0}
         max={3}
-        hint="How many Catmull-Clark subdivision passes to apply"
+        hint="How many Catmull-Clark subdivision passes to apply. A level that would put the result past what a browser tab holds is skipped"
         onChange={(levels) => onChange({ levels })}
       />
       <NumberField

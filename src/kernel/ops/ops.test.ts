@@ -30,7 +30,14 @@ import { insetFaces } from './inset';
 import { canLoopCut, loopCut } from './loopcut';
 import { countMergeByDistance, mergeByDistance, mergeVerts } from './merge';
 import { flipNormals, recalculateNormals } from './normals';
-import { subdivideEdges, subdivideFaces, triangulateFaces, trisToQuads } from './subdivide';
+import { budgetRefusal, vertsAfterEdgeSubdivide, worthWarning } from './budget';
+import {
+  subdivideEdges,
+  subdivideFaces,
+  subdivisionCost,
+  triangulateFaces,
+  trisToQuads,
+} from './subdivide';
 import { rotateVerts, scaleVerts, translateVerts } from './transform';
 import { faceLoopAtClick, selectEdgeLoop, selectEdgeRing, selectLinked } from './select';
 
@@ -286,46 +293,110 @@ describe('subdivide', () => {
     expect(cube.validate()).toEqual([]);
   });
 
-  it('keeps neighbouring faces watertight on a partial selection', () => {
+  const quads = (mesh: BMesh) =>
+    [...mesh.faces.values()].every((face) => mesh.faceLoops(face).length === 4);
+
+  it('runs its cuts on round the mesh, so nothing is left half cut', () => {
+    // One face of a cube, one cut, and the two rings that cut crosses run all
+    // the way round: the face itself comes back as four, the face across from
+    // it as four, and the four each ring passes through as two. Every one of
+    // them is still a quad. A cut that stopped at the selection would leave its
+    // neighbours carrying a vertex in the middle of one side, which is the
+    // state nothing can be cut into afterwards.
     const cube = createBox(2);
     const top = faceAt(cube, vec3(0, 1, 0));
 
     subdivideFaces(cube, [top], { cuts: 1 });
 
+    expect(cube.faces.size).toBe(4 + 4 + 4 * 2);
+    expect(quads(cube)).toBe(true);
     expect(isClosed(cube)).toBe(true);
     expect(eulerCharacteristic(cube)).toBe(2);
-    expect(cube.faces.size).toBe(4 + 5);
     expect(cube.validate()).toEqual([]);
   });
 
   it('takes exactly the cuts it is given, and no more', () => {
     // Four cuts is a five by five grid, not four rounds of the one-cut scheme:
-    // that would cut every edge sixteen ways and hand back 256 faces.
+    // that would cut every edge sixteen ways and hand back 256 faces. The cuts
+    // travel, so the face across the cube is gridded with it and the four the
+    // rings pass through come back as five strips each.
     const cube = createBox(2);
     const top = faceAt(cube, vec3(0, 1, 0));
 
-    subdivideFaces(cube, [top], { cuts: 4 });
+    const cut = subdivideFaces(cube, [top], { cuts: 4 });
 
-    expect(cube.faces.size).toBe(25 + 5);
-    expect([...cube.faces.values()].every((face) => cube.faceLoops(face).length <= 8)).toBe(true);
+    expect(cut.length).toBe(25);
+    expect(cube.faces.size).toBe(25 + 25 + 4 * 5);
+    expect(quads(cube)).toBe(true);
     expect(isClosed(cube)).toBe(true);
     expect(eulerCharacteristic(cube)).toBe(2);
     expect(cube.validate()).toEqual([]);
   });
 
-  it('grids the neighbour a previous cut left carrying a row of vertices', () => {
-    // The face beside a subdivided one is a square with five vertices along one
-    // side. Counting its ring calls it an eight-gon and fans eight slivers off
-    // its middle; reading where it turns calls it the square it is and grids it.
+  /** The faces of a grid whose centres fall inside the box, in grid units. */
+  function block(mesh: BMesh, min: number, max: number): Face[] {
+    return [...mesh.faces.values()].filter((face) => {
+      const centre = mesh.faceCenter(face);
+      return centre.x > min && centre.x < max && centre.z > min && centre.z < max;
+    });
+  }
+
+  it('carries the cuts of a region out to the edge of the mesh', () => {
+    // Ten by ten of unit cells, four by four of them selected, one cut each.
+    // That is four cuts across the block and four down it, and every one of
+    // them runs to the edge of the mesh: fourteen by fourteen cells, all quads.
+    const grid = createGrid(10, 10);
+    const region = block(grid, -2, 2);
+    expect(region.length).toBe(16);
+
+    subdivideFaces(grid, region, { cuts: 1 });
+
+    expect(grid.faces.size).toBe(14 * 14);
+    expect(grid.verts.size).toBe(15 * 15);
+    expect(quads(grid)).toBe(true);
+    expect(grid.validate()).toEqual([]);
+  });
+
+  it('cuts the face beside one already cut, rather than nothing at all', () => {
+    // The complaint this answers: subdivide a face, try to subdivide the face
+    // next to it, and nothing happened at all — the first cut had left it
+    // carrying a row of vertices along the shared side, and no cut at the
+    // spacing asked for could land on them. Cuts that run leave no such face.
+    const grid = createGrid(10, 10);
+    const first = subdivideFaces(grid, block(grid, -1, 0), { cuts: 4 });
+    const cut = new Set(first.map((face) => face.id));
+
+    const beside = [...grid.faces.values()].find(
+      (face) =>
+        !cut.has(face.id) &&
+        grid
+          .faceEdges(face)
+          .some((edge) => grid.edgeFaces(edge).some((other) => cut.has(other.id))),
+    );
+    const before = grid.faces.size;
+
+    const second = subdivideFaces(grid, [beside as Face], { cuts: 4 });
+
+    expect(second.length).toBe(25);
+    expect(grid.faces.size).toBeGreaterThan(before);
+    expect(quads(grid)).toBe(true);
+    expect(grid.validate()).toEqual([]);
+  });
+
+  it('keeps the surface it started with, however far the cuts run', () => {
+    // Two subdivisions of two different faces at two different counts, the
+    // second reading a mesh the first cut through. Nothing may be lost or
+    // gained: a fan across a face, or a cell hung off a vertex that is not
+    // there, shows up here as surface that was not in the cage.
     const cube = createBox(2);
     const area = () => [...cube.faces.values()].reduce((sum, face) => sum + cube.faceArea(face), 0);
     const before = area();
 
     subdivideFaces(cube, [faceAt(cube, vec3(0, 1, 0))], { cuts: 4 });
-    subdivideFaces(cube, [faceAt(cube, vec3(1, 0, 0))], { cuts: 4 });
+    subdivideFaces(cube, [faceAt(cube, vec3(1, 0, 0))], { cuts: 3 });
 
-    expect(cube.faces.size).toBe(25 + 25 + 4);
     expect(area()).toBeCloseTo(before, 9);
+    expect(quads(cube)).toBe(true);
     expect(isClosed(cube)).toBe(true);
     expect(eulerCharacteristic(cube)).toBe(2);
     expect(cube.validate()).toEqual([]);
@@ -452,6 +523,35 @@ describe('subdivide', () => {
     trisToQuads(cube, [...cube.faces.values()]);
     expect(cube.faces.size).toBe(6);
     expect(cube.validate()).toEqual([]);
+  });
+});
+
+describe('mesh budget', () => {
+  it('refuses a result past what a tab holds, and lets a smaller one through', () => {
+    expect(budgetRefusal({ faces: 140_630 })).toBeNull();
+    expect(budgetRefusal({ faces: 3_515_750 })).toMatch(/3,515,750 faces/);
+    expect(budgetRefusal({ verts: vertsAfterEdgeSubdivide(282008, 282008, 16) })).toMatch(
+      /vertices/,
+    );
+  });
+
+  it('warns about a result worth warning about', () => {
+    expect(worthWarning({ faces: 3_750 })).toBe(false);
+    expect(worthWarning({ faces: 93_750 })).toBe(true);
+  });
+
+  it('costs a subdivision by the cuts it would run, not the faces selected', () => {
+    // Four cuts over one face of a cube is twenty-five faces where it was
+    // asked, but the cuts run: the face across the cube is gridded with it and
+    // the four the rings pass through come back as strips. Costing the
+    // selection alone would have promised thirty and delivered seventy.
+    const cube = createBox(2);
+    const top = faceAt(cube, vec3(0, 1, 0));
+
+    expect(subdivisionCost(cube, [top], 4)).toBe(25 + 25 + 4 * 5);
+
+    subdivideFaces(cube, [top], { cuts: 4 });
+    expect(cube.faces.size).toBe(25 + 25 + 4 * 5);
   });
 });
 

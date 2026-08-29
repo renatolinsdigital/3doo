@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { BMesh } from '../mesh';
+import { subdivideFaces } from '../ops/subdivide';
 import { createBox, createPlane, createUVSphere } from '../primitives';
 
 import { evaluateModifiers, createModifier } from './index';
@@ -9,6 +10,7 @@ import type {
   MirrorModifier,
   RemeshModifier,
   SolidifyModifier,
+  SubdivideModifier,
   WeldModifier,
 } from './types';
 
@@ -342,6 +344,33 @@ describe('modifier stack', () => {
     expect(result.verts.size).toBe(6);
     expect(result.faces.size).toBe(2);
     expect(result.validate()).toEqual([]);
+  });
+});
+
+describe('subdivide modifier', () => {
+  it('drops a level that would put the mesh past what a tab can hold', () => {
+    const dense = createBox(2);
+    subdivideFaces(dense, [...dense.faces.values()], { cuts: 4 });
+    subdivideFaces(dense, [...dense.faces.values()], { cuts: 4 });
+    subdivideFaces(dense, [...dense.faces.values()], { cuts: 4 });
+    expect(dense.faces.size).toBe(93750);
+
+    // The stack is re-evaluated on every edit, so a level it cannot survive is
+    // one it must not take: 93,750 faces quadrupled is past the budget.
+    const result = evaluateModifiers(dense, [
+      { ...(createModifier('subdivide') as SubdivideModifier), levels: 3 },
+    ]);
+
+    expect(result.faces.size).toBe(93750);
+  });
+
+  it('takes the levels it can', () => {
+    const cube = createBox(2);
+    const result = evaluateModifiers(cube, [
+      { ...(createModifier('subdivide') as SubdivideModifier), levels: 2 },
+    ]);
+
+    expect(result.faces.size).toBe(6 * 4 * 4);
   });
 });
 

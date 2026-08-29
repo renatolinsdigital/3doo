@@ -1,3 +1,4 @@
+export * from './budget';
 export * from './region';
 export * from './extrude';
 export * from './inset';

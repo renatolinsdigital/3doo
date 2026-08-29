@@ -1,7 +1,20 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
-import { Button, FieldRow, NumberField, Panel, Toggle } from '@shared/components';
-import { useActiveSelectionCounts, useEditorStore, useLoopCutAvailable } from '@store/index';
+import {
+  budgetRefusal,
+  subdivisionCost,
+  vertsAfterEdgeSubdivide,
+  worthWarning,
+} from '@kernel/index';
+import { Button, FieldRow, Modal, NumberField, Panel, Toggle } from '@shared/components';
+import {
+  useActiveObject,
+  useActiveSelectionCounts,
+  useEditorStore,
+  useLoopCutAvailable,
+} from '@store/index';
+
+const count = (value: number) => Math.round(value).toLocaleString('en-US');
 
 /**
  * The edit-mode operators that add geometry, with their parameters.
@@ -34,6 +47,32 @@ export function OperationsPanel() {
   const [loopCuts, setLoopCuts] = useState(1);
   const [subdivideCuts, setSubdivideCuts] = useState(1);
   const [subdivideSmooth, setSubdivideSmooth] = useState(0);
+  const [confirmingSubdivide, setConfirmingSubdivide] = useState(false);
+
+  // Subdivision is the one operator here that multiplies rather than adds, so
+  // it is the one that can take the tab down — the more so now its cuts travel
+  // on through the mesh. What it would leave is planned out before the click,
+  // by the same planner that will run it: past what a browser holds the button
+  // is unavailable and says why, and short of that a heavy run is announced
+  // before it is run.
+  const object = useActiveObject();
+  const version = useEditorStore((state) => state.meshVersion);
+  const growth = useMemo(() => {
+    // Meshes are edited in place, so the version is the only thing that reports
+    // the selection or the geometry has moved. See the store's own selectors.
+    void version;
+    if (!object) return {};
+    return edgeMode
+      ? { verts: vertsAfterEdgeSubdivide(object.mesh.verts.size, selection.edges, subdivideCuts) }
+      : { faces: subdivisionCost(object.mesh, object.mesh.selectedFaces(), subdivideCuts) };
+  }, [object, version, edgeMode, selection.edges, subdivideCuts]);
+  const tooMany = budgetRefusal(growth);
+  const heavy = tooMany === null && worthWarning(growth);
+
+  const runSubdivide = () => {
+    setConfirmingSubdivide(false);
+    exec('subdivide', { cuts: subdivideCuts, smooth: subdivideSmooth }, 'Subdivide');
+  };
 
   return (
     <Panel title="OPERATIONS">
@@ -160,7 +199,7 @@ export function OperationsPanel() {
           hint={
             edgeMode
               ? 'How many vertices to add along each selected edge'
-              : 'How many cuts to take out of each edge of the face: 1 leaves four faces, 3 leaves sixteen'
+              : 'How many cuts to take out of each edge of the face: 1 leaves four faces, 3 leaves sixteen. Each cut runs on through the mesh as a loop, so the faces around it stay quads'
           }
           onChange={setSubdivideCuts}
         />
@@ -180,21 +219,44 @@ export function OperationsPanel() {
         />
         <Button
           label={edgeMode ? 'SUBDIVIDE EDGE' : 'SUBDIVIDE'}
-          disabled={edgeMode ? selection.edges === 0 : selection.faces === 0}
+          disabled={tooMany !== null || (edgeMode ? selection.edges === 0 : selection.faces === 0)}
           hint={
-            edgeMode
-              ? selection.edges > 0
-                ? 'Add a vertex at the midpoint of each selected edge (Ctrl+D)'
-                : 'Select edges to add a midpoint vertex to (Ctrl+D)'
-              : selection.faces > 0
-                ? 'Cut each selected face into a grid of smaller faces (Ctrl+D)'
-                : 'Select faces to cut into smaller ones (Ctrl+D)'
+            tooMany ??
+            (heavy
+              ? `Leaves about ${count(growth.faces ?? growth.verts ?? 0)} ${edgeMode ? 'vertices' : 'faces'} — the editor will stop responding while it runs`
+              : edgeMode
+                ? selection.edges > 0
+                  ? 'Add a vertex at the midpoint of each selected edge (Ctrl+D)'
+                  : 'Select edges to add a midpoint vertex to (Ctrl+D)'
+                : selection.faces > 0
+                  ? 'Cut each selected face into a grid of smaller faces (Ctrl+D)'
+                  : 'Select faces to cut into smaller ones (Ctrl+D)')
           }
-          onClick={() =>
-            exec('subdivide', { cuts: subdivideCuts, smooth: subdivideSmooth }, 'Subdivide')
-          }
+          onClick={() => (heavy ? setConfirmingSubdivide(true) : runSubdivide())}
         />
       </FieldRow>
+
+      <Modal
+        title="THIS MIGHT TAKE A WHILE"
+        open={confirmingSubdivide}
+        onClose={() => setConfirmingSubdivide(false)}
+        footer={
+          <>
+            <Button label="CANCEL" onClick={() => setConfirmingSubdivide(false)} />
+            <Button label="SUBDIVIDE ANYWAY" variant="danger" onClick={runSubdivide} />
+          </>
+        }
+      >
+        <p>
+          {edgeMode
+            ? `Cutting ${count(selection.edges)} edge(s) ${subdivideCuts} time(s) leaves about ${count(growth.verts ?? 0)} vertices.`
+            : `Cutting ${count(selection.faces)} face(s) ${subdivideCuts} time(s) leaves about ${count(growth.faces ?? 0)} faces.`}
+        </p>
+        <p className="u-muted">
+          Warning: The browser window may freeze for a while. Everything afterward, every edit,
+          every redraw, carries the geometry it leaves behind, making subsequent edits heavier.
+        </p>
+      </Modal>
     </Panel>
   );
 }

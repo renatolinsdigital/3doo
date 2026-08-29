@@ -1068,6 +1068,15 @@ export const createSceneSlice: StateCreator<
         name,
         params,
       );
+      // An operator that declined changed nothing, so there is nothing to
+      // undo back to and nothing on screen to say what happened.
+      if (result.refused) {
+        get().discardHistory();
+        set({ status: result.status });
+        get().pushToast('warning', result.status);
+        return;
+      }
+
       // A structural edit invalidates the primitive's live parameters. The
       // object is replaced rather than mutated so the panels see the change.
       set((state) => ({

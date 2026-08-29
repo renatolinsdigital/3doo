@@ -221,7 +221,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Subdivide (Ctrl+D)',
-            'In face mode, cuts every edge of the face CUTS times and fills it with the grid that leaves — one cut gives four faces, three gives sixteen — with optional Catmull-Clark smoothing. In edge mode, adds that many vertices along each selected edge.',
+            'In face mode, cuts every edge of the face CUTS times and fills it with the grid that leaves — one cut gives four faces, three gives sixteen — with optional Catmull-Clark smoothing. Every cut then runs on as a loop: through the face across each quad it reaches, and the next, until the loop closes or meets a face that is not a quad. That is what keeps the mesh in quads, and what keeps the faces around the selection cut rather than left carrying a stray vertex nothing can be cut against. In edge mode, adds that many vertices along each selected edge.',
           ],
           [
             'Merge (M) and merge by distance',
@@ -248,6 +248,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       {
         kind: 'prose',
         text: 'Normals have their own operations: recalculate outward (Shift+N) and flip. Smooth shading is the ◐ flag in the top bar, next to the orthographic one: it blends the normals across faces rather than faceting them, and in edit mode it applies to the selected faces alone. It belongs to the object, so a REMESH carries it across rather than deciding it. The face-orientation overlay draws backfaces in red, so anywhere red shows you are looking at the inside of the surface — worth checking before an export.',
+      },
+      {
+        kind: 'note',
+        text: 'Subdivision multiplies rather than adds: four cuts turn one face into twenty-five, and running it again turns each of those into twenty-five more. A quarter of a million faces is about as much as a browser tab can hold, so SUBDIVIDE says what a heavy run would leave before it takes it, refuses outright past that ceiling, and the SUBDIVISION modifier drops a level rather than take the window down with it.',
       },
       {
         kind: 'note',
