@@ -1,0 +1,8 @@
+.loop-operations {
+  // ITERATIONS is the longest field label in the editor. At the shared column
+  // width it fills its cell edge to edge and, being wider than the 40% the
+  // column is capped at, pushes its own divider off the line the rest of the
+  // panel's fields share. A fixed column wide enough for the word puts every
+  // divider back on one line and leaves it room to breathe.
+  --field-label-min: 90px;
+}

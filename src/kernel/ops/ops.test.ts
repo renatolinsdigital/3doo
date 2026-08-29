@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { type Vec3, vec3 } from '../math';
+import { type Vec3, clamp, degToRad, distance, dot, lerp, sub, vec3 } from '../math';
 import { BMesh } from '../mesh';
-import type { Face } from '../mesh/types';
+import type { Face, Vert } from '../mesh/types';
 import {
   createBox,
   createCircle,
@@ -28,6 +28,7 @@ import { extrudeFaces } from './extrude';
 import { bridgeEdgeLoops, fillHole } from './fill';
 import { insetFaces } from './inset';
 import { canLoopCut, loopCut } from './loopcut';
+import { relaxVerts } from './relax';
 import { countMergeByDistance, mergeByDistance, mergeVerts } from './merge';
 import { flipNormals, recalculateNormals } from './normals';
 import { budgetRefusal, vertsAfterEdgeSubdivide, worthWarning } from './budget';
@@ -277,6 +278,157 @@ describe('loop cut', () => {
 
     expect(canLoopCut(cube, edge)).toBe(true);
     expect(loopCut(cube, edge, { cuts: 1 }).verts.length).toBeGreaterThan(0);
+  });
+});
+
+describe('relax', () => {
+  /** The top ring of an open cylinder, in the order it runs round the axis. */
+  function topRing(mesh: BMesh): Vert[] {
+    return [...mesh.verts.values()]
+      .filter((vert) => vert.co.y > 0)
+      .sort((a, b) => Math.atan2(a.co.z, a.co.x) - Math.atan2(b.co.z, b.co.x));
+  }
+
+  function gaps(ring: readonly Vert[]): number[] {
+    return ring.map((vert, i) => distance(vert.co, ring[(i + 1) % ring.length].co));
+  }
+
+  /** How far `point` sits off the closed polyline through `path`. */
+  function offPath(point: Vec3, path: readonly Vec3[]): number {
+    let closest = Infinity;
+    for (let i = 0; i < path.length; i++) {
+      const a = path[i];
+      const b = path[(i + 1) % path.length];
+      const along = sub(b, a);
+      const t = clamp(dot(sub(point, a), along) / Math.max(dot(along, along), 1e-12), 0, 1);
+      closest = Math.min(closest, distance(point, lerp(a, b, t)));
+    }
+    return closest;
+  }
+
+  it('evens out a loop bunched up against itself, keeping the surface', () => {
+    const tube = createCylinder(0.5, 1, 8, false);
+    const ring = topRing(tube);
+    // One vertex slid round from 45° to within 5° of its neighbour, where the
+    // rest of the ring sits 45° apart.
+    const angle = degToRad(5);
+    ring[4].co = vec3(Math.cos(angle) * 0.5, 0.5, Math.sin(angle) * 0.5);
+
+    const before = gaps(topRing(tube));
+    const path = topRing(tube).map((vert) => ({ ...vert.co }));
+    expect(Math.max(...before) / Math.min(...before)).toBeGreaterThan(8);
+
+    relaxVerts(tube, ring, { factor: 1, iterations: 4 });
+
+    const after = gaps(topRing(tube));
+    expect(Math.max(...after) / Math.min(...after)).toBeLessThan(1.2);
+    // Spread along the ring, not pulled off it: every vertex is still on the
+    // path it started on, which is made of edges of the mesh.
+    for (const vert of ring) {
+      expect(offPath(vert.co, path)).toBeLessThan(1e-9);
+      expect(vert.co.y).toBeCloseTo(0.5, 6);
+    }
+    expect(tube.validate()).toEqual([]);
+  });
+
+  it('pulls the kinks out of a loop running across the surface', () => {
+    const grid = createGrid(4, 4);
+    // The column of vertices at x = 0, running from one border to the other,
+    // thrown into a zigzag: the loop a user selects and relaxes.
+    const column = [...grid.verts.values()]
+      .filter((vert) => vert.co.x === 0)
+      .sort((a, b) => a.co.z - b.co.z);
+    expect(column).toHaveLength(5);
+
+    [0.4, -0.4, 0.4].forEach((x, i) => {
+      column[i + 1].co = vec3(x, 0, column[i + 1].co.z);
+    });
+
+    relaxVerts(grid, column, { factor: 1, iterations: 20 });
+
+    for (const vert of column) {
+      expect(vert.co.x).toBeCloseTo(0, 2);
+      expect(vert.co.y).toBeCloseTo(0, 9);
+    }
+    // The loop ran out at the border, so the vertices it ran out at held still
+    // and the rest were spaced against them.
+    expect(column[0].co.z).toBeCloseTo(-2, 9);
+    expect(column[4].co.z).toBeCloseTo(2, 9);
+    expect(grid.validate()).toEqual([]);
+  });
+
+  it('brings a kinked ring back into line without leaving the wall it runs round', () => {
+    const tube = createCylinder(0.5, 2, 8, true);
+    const vertical = [...tube.edges.values()].find(
+      (edge) => edge.v0.co.x === edge.v1.co.x && edge.v0.co.z === edge.v1.co.z,
+    );
+    if (!vertical) throw new Error('no vertical edge');
+
+    const ring = loopCut(tube, vertical, { cuts: 1 }).verts;
+    expect(ring).toHaveLength(8);
+    ring[0].co = vec3(ring[0].co.x, 0.6, ring[0].co.z);
+
+    relaxVerts(tube, ring, { factor: 1, iterations: 25 });
+
+    // Back into one flat ring. It settles at the average height of the loop it
+    // started as rather than back at zero, the way a relaxed curve settles
+    // wherever its own slack leaves it.
+    const heights = ring.map((vert) => vert.co.y);
+    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(0.02);
+
+    for (const vert of ring) {
+      // Still on the wall: a relaxed ring slides across the tube rather than
+      // sinking into it, which is what the plain average of the neighbours —
+      // every one of them inside the ring — would have done.
+      expect(Math.hypot(vert.co.x, vert.co.z)).toBeGreaterThan(0.5 * Math.cos(Math.PI / 8) - 1e-9);
+      expect(Math.hypot(vert.co.x, vert.co.z)).toBeLessThan(0.5 + 1e-9);
+    }
+    expect(tube.validate()).toEqual([]);
+  });
+
+  it('flattens a spike once it is allowed off the surface', () => {
+    const cube = createBox(2);
+    const [corner] = [...cube.verts.values()];
+    corner.co = vec3(6, 6, 6);
+
+    relaxVerts(cube, [...cube.verts.values()], { factor: 0.5, iterations: 10, keepShape: false });
+
+    expect(corner.co.x).toBeLessThan(2);
+    expect(cube.verts.size).toBe(8);
+    expect(cube.faces.size).toBe(6);
+    expect(cube.validate()).toEqual([]);
+  });
+
+  it('relaxes an open border along itself rather than dragging it inward', () => {
+    const grid = createGrid(2, 4);
+
+    relaxVerts(grid, [...grid.verts.values()], { factor: 0.5, iterations: 20, keepShape: false });
+
+    // Averaged against the interior instead, the border would close in on it a
+    // little more with every pass.
+    const box = grid.boundingBox();
+    expect(box.min.x).toBeCloseTo(-1, 6);
+    expect(box.max.x).toBeCloseTo(1, 6);
+    expect(box.min.z).toBeCloseTo(-1, 6);
+    expect(box.max.z).toBeCloseTo(1, 6);
+    expect(grid.validate()).toEqual([]);
+  });
+
+  it('leaves the vertices it was not given alone', () => {
+    const grid = createGrid(2, 4);
+    const moved = [...grid.verts.values()].find((vert) => vert.co.x === 0 && vert.co.z === 0);
+    if (!moved) throw new Error('no centre vertex');
+    moved.co = vec3(0, 1, 0);
+
+    const before = [...grid.verts.values()].map((vert) => ({ ...vert.co }));
+    relaxVerts(grid, [moved], { factor: 1, iterations: 5, keepShape: false });
+
+    const after = [...grid.verts.values()];
+    for (let i = 0; i < after.length; i++) {
+      if (after[i] === moved) continue;
+      expect(after[i].co).toEqual(before[i]);
+    }
+    expect(moved.co.y).toBeCloseTo(0, 6);
   });
 });
 

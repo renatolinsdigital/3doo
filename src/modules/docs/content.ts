@@ -54,7 +54,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           'Open the MODELING module from the plate in the top-left corner.',
           'In the ADD panel on the left, click a primitive — BOX is the usual place to start. It drops into the scene already selected.',
           'While it is still freshly added, the PROPERTIES panel lets you change its parameters — size, segments, rings — and the mesh is rebuilt each time.',
-          'Press Tab to enter edit mode. The left panels swap to SELECT, OPERATIONS and TOPOLOGY, and the tool rail switches to vertex, edge and face selection.',
+          'Press Tab to enter edit mode. The left panels swap to SELECT, OPERATIONS, LOOP OPERATIONS and TOPOLOGY, and the tool rail switches to vertex, edge and face selection.',
           'Select some geometry and run an operation: E extrudes, I insets, Ctrl+R cuts a loop.',
           'Press Ctrl+E to export as OBJ or FBX, or Ctrl+S to save the project as a file you can reopen later.',
         ],
@@ -88,7 +88,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Left panels',
-            'ADD, OBJECT and BOOLEAN in object mode. SELECT, OPERATIONS and TOPOLOGY replace them in edit mode.',
+            'ADD, OBJECT and BOOLEAN in object mode. SELECT, OPERATIONS, LOOP OPERATIONS and TOPOLOGY replace them in edit mode.',
           ],
           [
             'Panel titles',
@@ -197,7 +197,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'Every operator below lives in one of the two edit-mode panels: OPERATIONS holds the ones that take parameters — extrude, inset, bevel, loop cut, subdivide — and TOPOLOGY the ones that join, weld, clean up or widen the selection. Most have a shortcut. A button is disabled whenever the current selection cannot feed it, and its hint says what to select instead, so the panels double as a guide to what each one needs.',
+        text: 'Every operator below lives in one of the three edit-mode panels: OPERATIONS holds the ones that add geometry — extrude, inset, bevel — LOOP OPERATIONS the ones that run along an edge loop — loop cut, subdivide, relax — and TOPOLOGY the ones that join, weld, clean up or widen the selection. Most have a shortcut. A button is disabled whenever the current selection cannot feed it, and its hint says what to select instead, so the panels double as a guide to what each one needs.',
       },
       {
         kind: 'table',
@@ -222,6 +222,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           [
             'Subdivide (Ctrl+D)',
             'In face mode, cuts every edge of the face CUTS times and fills it with the grid that leaves — one cut gives four faces, three gives sixteen — with optional Catmull-Clark smoothing. Every cut then runs on as a loop: through the face across each quad it reaches, and the next, until the loop closes or meets a face that is not a quad. That is what keeps the mesh in quads, and what keeps the faces around the selection cut rather than left carrying a stray vertex nothing can be cut against. In edge mode, adds that many vertices along each selected edge.',
+          ],
+          [
+            'Relax',
+            'Pulls the kinks out of a selected loop and evens out its spacing without changing the shape it runs over, the way the relax of LoopTools does in Blender. Each vertex is drawn onto the midpoint of its neighbours, the loop is then spread evenly along the line that leaves, and every vertex is dropped back onto the surface it came from — which is what KEEP SHAPE does, and why a relaxed loop slides across the mesh rather than sinking into it. Where the selection runs out, the vertex it ran out at holds still and the rest are spaced against it. A selection that is not a loop smooths against its whole neighbourhood instead, and an open border keeps its outline: there is no surface past a border to come back to, so its vertices only even out along it. FACTOR is how far each pass travels, ITERATIONS how many passes to take.',
           ],
           [
             'Merge (M) and merge by distance',

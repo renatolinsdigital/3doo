@@ -29,6 +29,7 @@ import {
   mergeByDistance,
   mergeVerts,
   recalculateNormals,
+  relaxVerts,
   rotateVerts,
   scaleVerts,
   selectFaceLoop,
@@ -254,6 +255,18 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     mesh.flushSelection('face');
     mesh.flushSelection(selectMode);
     return { status: `Subdivided ${faces.length} face(s)` };
+  },
+
+  relax: ({ mesh }, params) => {
+    const verts = mesh.selectedVerts();
+    if (verts.length === 0) return { status: 'Select vertices to relax', refused: true };
+
+    const moved = relaxVerts(mesh, verts, {
+      factor: readNumber(params, 'factor', 0.5),
+      iterations: Math.round(readNumber(params, 'iterations', 1)),
+      keepShape: readBoolean(params, 'keepShape', true),
+    });
+    return { status: `Relaxed ${moved} vertices` };
   },
 
   mergeByDistance: ({ mesh, selectMode }, params) => {

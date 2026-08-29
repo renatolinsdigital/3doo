@@ -8,6 +8,7 @@ import {
   AddPanel,
   BooleanPanel,
   ExportDialog,
+  LoopOperationsPanel,
   MergeDialog,
   ModifierStack,
   ObjectPanel,
@@ -79,6 +80,7 @@ export function ModelingModule() {
           ) : (
             <>
               <OperationsPanel />
+              <LoopOperationsPanel />
               <TopologyPanel />
             </>
           )}

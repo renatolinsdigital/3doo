@@ -9,6 +9,7 @@ export { AddPanel } from './AddPanel/AddPanel';
 export { ObjectPanel } from './ObjectPanel/ObjectPanel';
 export { BooleanPanel } from './BooleanPanel/BooleanPanel';
 export { OperationsPanel } from './OperationsPanel/OperationsPanel';
+export { LoopOperationsPanel } from './LoopOperationsPanel/LoopOperationsPanel';
 export { TopologyPanel } from './TopologyPanel/TopologyPanel';
 export { MergeDialog } from './MergeDialog/MergeDialog';
 export { ExportDialog } from './ExportDialog/ExportDialog';

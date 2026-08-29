@@ -111,12 +111,12 @@ describe('App shell', () => {
     await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
     await userEvent.click(screen.getByRole('button', { name: 'EDIT' }));
 
-    // Select everything, then extrude from the operations panel.
+    // Select everything, then subdivide from the loop operations panel.
     const mesh = useEditorStore.getState().objects[0].mesh;
     for (const face of mesh.faces.values()) face.selected = true;
     mesh.flushSelection('face');
 
-    const operations = screen.getByRole('region', { name: 'OPERATIONS' });
+    const operations = screen.getByRole('region', { name: 'LOOP OPERATIONS' });
     await userEvent.click(within(operations).getByRole('button', { name: 'SUBDIVIDE' }));
 
     expect(useEditorStore.getState().objects[0].mesh.faces.size).toBe(24);
