@@ -195,6 +195,29 @@ export function createWireMaterial(selected: boolean): THREE.LineBasicMaterial {
   });
 }
 
+/**
+ * The fade along an edge with one end selected, the way vertex mode reads in
+ * Blender.
+ *
+ * Drawn over the plain wireframe rather than in place of it: the colour is the
+ * selection red at the selected end and its alpha runs out towards the other,
+ * so what shows at the far end is the ordinary wire underneath. A vertex dot is
+ * three pixels across and says nothing about which geometry it holds; the fade
+ * is what makes a selection readable at a glance while it is being built.
+ *
+ * Both the colour and the alpha come from the geometry, since they vary along
+ * every segment. Alpha per vertex needs a four-component colour attribute:
+ * three decides by the attribute's item size, so it has to be built that wide
+ * even though the colour itself never changes (see `ObjectView`).
+ */
+export function createVertexHighlightMaterial(): THREE.LineBasicMaterial {
+  return new THREE.LineBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    depthTest: true,
+  });
+}
+
 export interface OutlineMaterialOptions {
   color: THREE.ColorRepresentation;
   /** Screen pixels. Needs `resolution` set before it means anything on screen. */

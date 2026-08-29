@@ -17,6 +17,7 @@ import {
   createRecentPointMaterial,
   createSelectionOverlayMaterial,
   createSurfaceMaterial,
+  createVertexHighlightMaterial,
   createWireMaterial,
   disposeMaterial,
 } from './materials';
@@ -30,6 +31,27 @@ import { buildMeshBuffers, buildNormalLines, buildSilhouetteEdges } from './mesh
  * operations will run on.
  */
 const INACTIVE_OUTLINE_TINT = 0.68;
+
+/**
+ * The fade's colour buffer: selection red throughout, alpha from the weights.
+ *
+ * Four components rather than three because that is how three is told a line
+ * carries its own alpha, and the alpha is the whole of the effect: the red is
+ * the same red at both ends of every segment.
+ */
+function vertexHighlightColors(weights: Float32Array): Float32Array {
+  const red = new THREE.Color(VIEWPORT_COLORS.red);
+  const colors = new Float32Array(weights.length * 4);
+
+  for (let i = 0; i < weights.length; i++) {
+    colors[i * 4] = red.r;
+    colors[i * 4 + 1] = red.g;
+    colors[i * 4 + 2] = red.b;
+    colors[i * 4 + 3] = weights[i];
+  }
+
+  return colors;
+}
 
 export interface ObjectViewState {
   mode: 'object' | 'edit';
@@ -71,6 +93,7 @@ export class ObjectView {
   private readonly solid = new THREE.Mesh();
   private readonly backfaces = new THREE.Mesh();
   private readonly wire = new THREE.LineSegments();
+  private readonly vertexHighlight = new THREE.LineSegments();
   private readonly selectedFaces = new THREE.Mesh();
   private readonly selectedEdges = new THREE.LineSegments();
   private readonly points = new THREE.Points();
@@ -105,6 +128,7 @@ export class ObjectView {
 
     this.backfaces.material = createFaceOrientationMaterial();
     this.wire.material = createWireMaterial(false);
+    this.vertexHighlight.material = createVertexHighlightMaterial();
     this.selectedEdges.material = createWireMaterial(true);
     this.selectedFaces.material = createSelectionOverlayMaterial();
     this.points.material = createPointMaterial();
@@ -118,12 +142,15 @@ export class ObjectView {
 
     this.outline.renderOrder = 1;
     this.selectedFaces.renderOrder = 2;
-    this.selectedEdges.renderOrder = 3;
-    this.points.renderOrder = 4;
+    // Over the plain wire it lies on and under the fully selected edges, which
+    // are the same red without the fade and have to win where the two meet.
+    this.vertexHighlight.renderOrder = 3;
+    this.selectedEdges.renderOrder = 4;
+    this.points.renderOrder = 5;
     // Over the dots, so the mark wins at the depth it shares with the vertex
     // it marks, and over a second vertex sitting in exactly the same place.
-    this.hoverPoint.renderOrder = 5;
-    this.recentPoints.renderOrder = 6;
+    this.hoverPoint.renderOrder = 6;
+    this.recentPoints.renderOrder = 7;
 
     // One point, rewritten in place: a hover follows the pointer, and building
     // a geometry per move would churn a buffer a frame. Never culled, since a
@@ -138,6 +165,7 @@ export class ObjectView {
       this.solid,
       this.backfaces,
       this.wire,
+      this.vertexHighlight,
       this.selectedFaces,
       this.selectedEdges,
       this.points,
@@ -270,6 +298,21 @@ export class ObjectView {
     this.selectedEdges.visible =
       state.mode === 'edit' && state.isActive && edges.selectedPositions.length > 0;
 
+    const highlight = new THREE.BufferGeometry();
+    highlight.setAttribute('position', new THREE.BufferAttribute(edges.partialPositions, 3));
+    highlight.setAttribute(
+      'color',
+      new THREE.BufferAttribute(vertexHighlightColors(edges.partialWeights), 4),
+    );
+    this.replaceGeometry(this.vertexHighlight, highlight);
+    // Vertex mode alone. Edge and face mode take whole edges, so an edge with
+    // one end selected there is one the user never picked, and marking it says
+    // the selection reaches somewhere it does not.
+    this.vertexHighlight.visible =
+      state.mode === 'edit' &&
+      state.isActive &&
+      state.selectMode === 'vertex' &&
+      edges.partialPositions.length > 0;
   }
 
   /**

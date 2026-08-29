@@ -15,6 +15,13 @@ export interface EdgeBuffers {
   positions: Float32Array;
   edgeIds: Int32Array;
   selectedPositions: Float32Array;
+  /**
+   * Edges with one end selected and one not, for the fade that says which way
+   * a vertex selection reaches. Paired with `partialWeights`.
+   */
+  partialPositions: Float32Array;
+  /** 1 at the selected end of each `partialPositions` segment, 0 at the other. */
+  partialWeights: Float32Array;
 }
 
 export interface PointBuffers {
@@ -104,6 +111,8 @@ function buildEdges(mesh: BMesh): EdgeBuffers {
   const positions: number[] = [];
   const edgeIds: number[] = [];
   const selectedPositions: number[] = [];
+  const partialPositions: number[] = [];
+  const partialWeights: number[] = [];
 
   for (const edge of mesh.edges.values()) {
     positions.push(edge.v0.co.x, edge.v0.co.y, edge.v0.co.z);
@@ -113,6 +122,17 @@ function buildEdges(mesh: BMesh): EdgeBuffers {
     if (edge.selected) {
       selectedPositions.push(edge.v0.co.x, edge.v0.co.y, edge.v0.co.z);
       selectedPositions.push(edge.v1.co.x, edge.v1.co.y, edge.v1.co.z);
+      continue;
+    }
+
+    // One end selected and one not, rather than any end at all: an unselected
+    // edge running between two selected ones carries a selected vertex at each
+    // end once the selection is flushed, and a fade reading full at both would
+    // draw it as though it were selected itself.
+    if (edge.v0.selected !== edge.v1.selected) {
+      partialPositions.push(edge.v0.co.x, edge.v0.co.y, edge.v0.co.z);
+      partialPositions.push(edge.v1.co.x, edge.v1.co.y, edge.v1.co.z);
+      partialWeights.push(edge.v0.selected ? 1 : 0, edge.v1.selected ? 1 : 0);
     }
   }
 
@@ -120,6 +140,8 @@ function buildEdges(mesh: BMesh): EdgeBuffers {
     positions: new Float32Array(positions),
     edgeIds: new Int32Array(edgeIds),
     selectedPositions: new Float32Array(selectedPositions),
+    partialPositions: new Float32Array(partialPositions),
+    partialWeights: new Float32Array(partialWeights),
   };
 }
 

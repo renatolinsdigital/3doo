@@ -190,6 +190,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'What a click would take',
             'In vertex select the vertex under the pointer is marked with a larger cyan square before you click it, and only ever one a click could actually take. That is what tells two vertices left in the same place apart, and it doubles as a check on whether what you are aiming at is reachable from where the camera is standing.',
           ],
+          [
+            'Which way a selection reaches',
+            'A selected vertex runs the selection colour out along every edge it owns, full at the vertex and gone by the far end, the way Blender draws it. A dot is a few pixels of red and says nothing about the geometry it holds, so the fade is what makes a growing selection readable at a glance. An edge with both ends selected is selected outright and drawn in flat red instead.',
+          ],
           ['Everything / nothing', 'A selects all, Alt+A deselects all, Ctrl+I inverts.'],
           [
             'Out of a selection',

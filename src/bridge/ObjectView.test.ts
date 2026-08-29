@@ -314,3 +314,65 @@ describe('ObjectView hover mark', () => {
     expect(hoverOf(view).visible).toBe(false);
   });
 });
+
+describe('ObjectView vertex fade', () => {
+  function fadeOf(view: ObjectView): THREE.LineSegments {
+    const lines = view.group.children.filter(
+      (child): child is THREE.LineSegments => child instanceof THREE.LineSegments,
+    );
+    // Between the plain wire and the selected edges, by render order.
+    return lines[1];
+  }
+
+  function editState(settings: ViewportSettings, selectMode: 'vertex' | 'edge') {
+    return {
+      mode: 'edit' as const,
+      selectMode,
+      isActive: true,
+      isSelected: true,
+      eye: vec3(0, 0, 10),
+      selectionLine: SELECTION_LINE,
+      settings,
+    };
+  }
+
+  it('runs the selection colour out along the edges a selected vertex owns', () => {
+    const { object, settings } = scene();
+    const mesh = evaluatedMesh(object);
+    const [corner] = [...mesh.verts.values()];
+    mesh.selectVert(corner);
+    mesh.flushSelection('vertex');
+
+    const view = new ObjectView(object.id);
+    view.update(object, mesh, editState(settings, 'vertex'));
+
+    const fade = fadeOf(view);
+    expect(fade.visible).toBe(true);
+
+    // A box corner owns three edges, and the fade is carried by the alpha, so
+    // the colour attribute has to be four wide for three to read it at all.
+    const color = fade.geometry.getAttribute('color');
+    expect(color.itemSize).toBe(4);
+    expect(color.count).toBe(6);
+
+    const alphas = [...Array(color.count).keys()].map((i) => color.getW(i));
+    expect(alphas.filter((alpha) => alpha === 1)).toHaveLength(3);
+    expect(alphas.filter((alpha) => alpha === 0)).toHaveLength(3);
+  });
+
+  it('stays away with nothing selected, and in the modes that select whole edges', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), editState(settings, 'vertex'));
+    expect(fadeOf(view).visible).toBe(false);
+
+    const mesh = evaluatedMesh(object);
+    const [corner] = [...mesh.verts.values()];
+    mesh.selectVert(corner);
+    mesh.flushSelection('vertex');
+
+    view.update(object, mesh, editState(settings, 'edge'));
+    expect(fadeOf(view).visible).toBe(false);
+  });
+});

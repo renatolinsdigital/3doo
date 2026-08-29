@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { createBox, createPlane, vec3, BMesh } from '@kernel/index';
 
-import { buildSilhouetteEdges } from './meshBuffers';
+import { buildMeshBuffers, buildSilhouetteEdges } from './meshBuffers';
 
 /** Silhouette buffers are pairs of points, so two vertices per edge. */
 function edgeCount(positions: Float32Array): number {
@@ -46,5 +46,49 @@ describe('silhouette edges', () => {
     // wireframe, and a cube has 12 edges however it is turned.
     expect(all).toBe(12);
     expect(edgeCount(buildSilhouetteEdges(mesh, vec3(3, 7, 11)))).toBeLessThan(all);
+  });
+});
+
+describe('vertex selection fade', () => {
+  it('picks out the edges reaching away from a selected vertex', () => {
+    const mesh = createPlane(1);
+    const [corner] = [...mesh.verts.values()];
+    mesh.selectVert(corner);
+    mesh.flushSelection('vertex');
+
+    const { edges } = buildMeshBuffers(mesh);
+
+    // Two of the quad's four edges meet at the corner, and neither has both
+    // ends selected, so nothing counts as a selected edge yet.
+    expect(edges.selectedPositions.length).toBe(0);
+    expect(edges.partialPositions.length / 6).toBe(2);
+
+    // One end full and one end nothing, whichever way round the edge was
+    // stored: that difference is the gradient.
+    for (let i = 0; i < edges.partialWeights.length; i += 2) {
+      expect([edges.partialWeights[i], edges.partialWeights[i + 1]].sort()).toEqual([0, 1]);
+    }
+  });
+
+  it('leaves out an edge with both ends selected', () => {
+    const mesh = createPlane(1);
+    const [v0, v1] = [...mesh.verts.values()];
+    mesh.selectVert(v0);
+    mesh.selectVert(v1);
+    mesh.flushSelection('vertex');
+
+    const { edges } = buildMeshBuffers(mesh);
+
+    // The edge between the two is selected outright and drawn in flat red. The
+    // fade is for the edges running off the selection, not inside it.
+    expect(edges.selectedPositions.length / 6).toBe(1);
+    expect(edges.partialPositions.length / 6).toBe(2);
+  });
+
+  it('has nothing to fade when the whole mesh is selected', () => {
+    const mesh = createBox(1);
+    mesh.selectAll();
+
+    expect(buildMeshBuffers(mesh).edges.partialPositions.length).toBe(0);
   });
 });
