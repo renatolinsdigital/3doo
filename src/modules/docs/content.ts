@@ -168,7 +168,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'A region of elements',
             'Drag across empty space. The region is a rectangle until you say otherwise: V steps the select tool through SQUARE, CIRCLE — dragged out from its centre, not corner to corner — and LASSO, drawn freehand around what you want. Clicking the tool in the rail offers the same three, and its icon shows which one a drag would draw. In object mode the same drag takes every object it touches, whether it covers the whole thing or clips one corner.',
           ],
-          ['An edge loop', 'Alt+click an edge. The loop runs on until it meets a pole.'],
+          [
+            'An edge loop',
+            'Alt+click an edge. The loop runs on until it meets a pole. EDGE LOOP, in the TOPOLOGY panel, names one from edges already picked instead: select two that meet and it extends the selection along the whole loop they sit in, one loop per edge that named it.',
+          ],
           [
             'A face loop',
             'Alt+click a face, near the edge you want the loop to run across — that edge is what says which of the two loops through the face you meant, so point at the side you are heading for rather than the middle. Shift+Alt+click adds a loop instead of replacing the selection, so bands stack up one click at a time. Alt+L still names one from two faces already picked.',

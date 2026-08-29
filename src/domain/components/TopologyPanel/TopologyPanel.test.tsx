@@ -32,7 +32,16 @@ describe('TopologyPanel', () => {
   it('disables every operation the current selection cannot feed', () => {
     render(<TopologyPanel />);
 
-    for (const name of ['CONNECT', 'FILL', 'BRIDGE', 'MERGE', 'GROW', 'SHRINK', 'FACE LOOP']) {
+    for (const name of [
+      'CONNECT',
+      'FILL',
+      'BRIDGE',
+      'MERGE',
+      'GROW',
+      'SHRINK',
+      'EDGE LOOP',
+      'FACE LOOP',
+    ]) {
       expect(button(name)).toHaveAttribute('aria-disabled', 'true');
     }
 
@@ -106,6 +115,60 @@ describe('TopologyPanel', () => {
     });
 
     expect(button('FACE LOOP')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  /** Selects the edges the picker returns, in edge mode. */
+  function selectEdges(pick: (mesh: ReturnType<typeof activeMesh>) => unknown[]) {
+    act(() => {
+      const mesh = activeMesh();
+      mesh.deselectAll();
+      for (const edge of pick(mesh) as { selected: boolean }[]) edge.selected = true;
+      mesh.flushSelection('edge');
+      useEditorStore.getState().setSelectMode('edge');
+      useEditorStore.getState().touchMesh();
+    });
+  }
+
+  it('offers an edge loop once two edges that meet are selected', () => {
+    render(<TopologyPanel />);
+
+    selectEdges((mesh) => {
+      const [first] = [...mesh.edges.values()];
+      const touching = [...mesh.edges.values()].find(
+        (edge) => edge !== first && (edge.v0 === first.v0 || edge.v1 === first.v0),
+      );
+      return [first, touching];
+    });
+
+    expect(button('EDGE LOOP')).not.toHaveAttribute('aria-disabled');
+
+    // An edge loop is named by two edges that meet; face mode has none to read.
+    act(() => {
+      useEditorStore.getState().setSelectMode('face');
+    });
+
+    expect(button('EDGE LOOP')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('refuses two edges that never meet, however many are selected', () => {
+    render(<TopologyPanel />);
+
+    // Opposite sides of a box: two edges, no shared vertex, so neither says
+    // which loop the other belongs to. A count alone would have called this
+    // available.
+    selectEdges((mesh) => {
+      const [first] = [...mesh.edges.values()];
+      const apart = [...mesh.edges.values()].find(
+        (edge) =>
+          edge.v0 !== first.v0 &&
+          edge.v1 !== first.v0 &&
+          edge.v0 !== first.v1 &&
+          edge.v1 !== first.v1,
+      );
+      return [first, apart];
+    });
+
+    expect(button('EDGE LOOP')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('refuses two faces that do not touch, however many are selected', () => {

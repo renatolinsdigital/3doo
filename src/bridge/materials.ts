@@ -173,12 +173,25 @@ export function createFaceOrientationMaterial(): THREE.Material {
   });
 }
 
+/**
+ * The wireframe, and the red one drawn over it for the selected edges.
+ *
+ * Both depth-tested, selected or not, for the reason the vertex dots are: a
+ * solid or matcap surface is opaque, and a selected edge round the back showing
+ * through it reads as running across the face in front. The surface's own depth
+ * offset is what keeps the near-side lines visible, since an edge and the faces
+ * meeting along it share a depth to the last bit.
+ *
+ * Nothing is hidden in x-ray or wireframe shading even so: the first writes no
+ * depth and the second draws no fill, so there is nothing for this to test
+ * against — which is how a user asks to see through the model.
+ */
 export function createWireMaterial(selected: boolean): THREE.LineBasicMaterial {
   return new THREE.LineBasicMaterial({
     color: selected ? VIEWPORT_COLORS.red : VIEWPORT_COLORS.void,
     transparent: true,
     opacity: selected ? 1 : 0.55,
-    depthTest: !selected,
+    depthTest: true,
   });
 }
 
@@ -256,26 +269,45 @@ export function createPointMaterial(): THREE.PointsMaterial {
  * point: it has to read at a glance against geometry the user is already
  * looking at, and it shows in every select mode, including the ones that draw
  * no points at all.
+ *
+ * Depth-tested all the same, like every other mark on the geometry: a marker
+ * round the back of an opaque surface points at a vertex that is not where it
+ * appears to be, and what an operator left on the far side is not something the
+ * user can act on from here anyway.
  */
 export function createRecentPointMaterial(): THREE.PointsMaterial {
   return new THREE.PointsMaterial({
     size: 11,
     sizeAttenuation: false,
     color: VIEWPORT_COLORS.cyan,
-    depthTest: false,
+    depthTest: true,
     transparent: true,
   });
 }
 
+/**
+ * The red wash over the selected faces.
+ *
+ * Depth-tested like every other edit-mode overlay, so a face selected round the
+ * back of a solid or matcap model stays behind it rather than washing the face
+ * in front — which reads as having selected something the user never clicked.
+ * Lifted towards the camera against the fill's own offset, the way the outline
+ * is, so it sits on the faces it marks instead of fighting them.
+ *
+ * Writes no depth: it is a wash over the surface, not a surface, and the
+ * selected edges and vertex dots drawn after it have to come through.
+ */
 export function createSelectionOverlayMaterial(): THREE.Material {
   return new THREE.MeshBasicMaterial({
     color: VIEWPORT_COLORS.red,
     side: THREE.DoubleSide,
     transparent: true,
     opacity: 0.45,
-    depthTest: false,
+    depthTest: true,
+    depthWrite: false,
     polygonOffset: true,
     polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
   });
 }
 

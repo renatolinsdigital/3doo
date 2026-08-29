@@ -1,7 +1,12 @@
 import { useState } from 'react';
 
 import { Button, FieldRow, NumberField, Panel, Select } from '@shared/components';
-import { useActiveSelectionCounts, useEditorStore, useFaceLoopAvailable } from '@store/index';
+import {
+  useActiveSelectionCounts,
+  useEdgeLoopAvailable,
+  useEditorStore,
+  useFaceLoopAvailable,
+} from '@store/index';
 
 import './TopologyPanel.scss';
 
@@ -28,17 +33,20 @@ export function TopologyPanel() {
   // to act on in the other two select modes.
   const vertexMode = useEditorStore((state) => state.selectMode === 'vertex');
   // A face loop is named by two adjacent faces, so it has nothing to read in
-  // the modes that select vertices and edges.
+  // the modes that select vertices and edges. An edge loop is the same story
+  // one mode down.
   const faceMode = useEditorStore((state) => state.selectMode === 'face');
+  const edgeMode = useEditorStore((state) => state.selectMode === 'edge');
 
   // Every operator below refuses outright when the selection cannot feed it —
   // the button is disabled to match, and its hint says what to select instead.
   // Triangulate, tris-to-quads and merge-by-distance are absent on purpose:
   // each falls back to the whole mesh, so none of them is ever unavailable.
   const selection = useActiveSelectionCounts();
-  // Counts cannot answer this one: two faces that never touch are still two
-  // faces, and no loop runs through them.
+  // Counts cannot answer these two: geometry that never touches is still
+  // geometry, and no loop runs through it.
   const faceLoopAvailable = useFaceLoopAvailable();
+  const edgeLoopAvailable = useEdgeLoopAvailable();
 
   const [mergeMode, setMergeMode] = useState<(typeof MERGE_MODES)[number]['value']>('center');
 
@@ -140,6 +148,20 @@ export function TopologyPanel() {
               : 'Nothing is selected for the selection to shrink back from ([)'
           }
           onClick={() => exec('shrinkSelection', {}, 'Shrink selection')}
+        />
+        <Button
+          label="EDGE LOOP"
+          disabled={!edgeLoopAvailable}
+          hint={
+            !edgeMode
+              ? 'Edge loops run along edges — switch to edge select mode (2)'
+              : selection.edges < 2
+                ? 'Select two connected edges for the loop to run along (Alt+click)'
+                : !edgeLoopAvailable
+                  ? 'Those edges do not meet — a loop is named by two that share a vertex'
+                  : 'Extend the selection along the whole loop those edges sit in'
+          }
+          onClick={() => exec('selectEdgeLoop', {}, 'Select edge loop')}
         />
         <Button
           label="FACE LOOP"

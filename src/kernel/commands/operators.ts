@@ -18,6 +18,7 @@ import {
   fillHole,
   flipNormals,
   growSelection,
+  hasConnectedEdges,
   insetFaces,
   invertSelection,
   isDissolvableEdge,
@@ -32,6 +33,7 @@ import {
   relaxVerts,
   rotateVerts,
   scaleVerts,
+  selectEdgeLoops,
   selectFaceLoop,
   setShading,
   shrinkFatten,
@@ -503,6 +505,22 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     return { status: `Selected a face loop of ${loop.length}` };
   },
 
+  selectEdgeLoop: ({ mesh, selectMode }) => {
+    const edges = mesh.selectedEdges();
+    if (edges.length < 2 || !hasConnectedEdges(edges)) {
+      return { status: 'Select two connected edges to name a loop' };
+    }
+
+    // Added to the selection rather than replacing it, the same as the face
+    // loop: the loops already contain the edges that named them.
+    const loop = selectEdgeLoops(mesh, edges);
+    for (const edge of loop) edge.selected = true;
+    mesh.flushSelection('edge');
+    mesh.flushSelection(selectMode);
+
+    return { status: `Selected an edge loop of ${loop.length}` };
+  },
+
   growSelection: ({ mesh }) => {
     growSelection(mesh);
     return { status: 'Grew selection' };
@@ -526,6 +544,7 @@ export const SELECTION_OPERATORS: ReadonlySet<string> = new Set([
   'selectAll',
   'deselectAll',
   'invertSelection',
+  'selectEdgeLoop',
   'selectFaceLoop',
   'growSelection',
   'shrinkSelection',

@@ -56,6 +56,48 @@ export function selectEdgeRing(mesh: BMesh, start: Edge): Edge[] {
 }
 
 /**
+ * Whether any two of these edges meet at a vertex.
+ *
+ * What the edge-loop button asks before it offers itself, the way
+ * `hasAdjacentFaces` answers for the face-loop one. One click's worth of edge
+ * already names a loop — the walk runs both ways out of it — so this is not
+ * what the walk needs, but what says the user drew a stroke along a loop rather
+ * than tapping a single edge they may only have wanted the one of.
+ */
+export function hasConnectedEdges(edges: readonly Edge[]): boolean {
+  const ends = new Set<number>();
+
+  for (const edge of edges) {
+    if (ends.has(edge.v0.id) || ends.has(edge.v1.id)) return true;
+    ends.add(edge.v0.id);
+    ends.add(edge.v1.id);
+  }
+
+  return false;
+}
+
+/**
+ * The edge loops a selection of edges names.
+ *
+ * Every selected edge brings the loop running through it, so a stroke of edges
+ * picked along one loop all name that same loop and it comes back whole, while
+ * edges lying on different loops each bring their own. The result does not
+ * depend on the order they were picked in, which nothing about an edge records.
+ */
+export function selectEdgeLoops(mesh: BMesh, edges: readonly Edge[]): Edge[] {
+  const loop = new Map<number, Edge>();
+
+  for (const edge of edges) {
+    // Already walked: an edge on a loop already collected walks back the same
+    // one, since the walk reads only the mesh either side of where it starts.
+    if (loop.has(edge.id)) continue;
+    for (const member of selectEdgeLoop(mesh, edge)) loop.set(member.id, member);
+  }
+
+  return [...loop.values()];
+}
+
+/**
  * Whether any two of these faces share an edge.
  *
  * What `selectFaceLoop` needs before it can name a loop at all, and cheap

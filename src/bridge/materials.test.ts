@@ -6,6 +6,8 @@ import type { ShadingMode } from '@store/types';
 import {
   createOutlineMaterial,
   createPointMaterial,
+  createRecentPointMaterial,
+  createSelectionOverlayMaterial,
   createSurfaceMaterial,
   createWireMaterial,
 } from './materials';
@@ -61,6 +63,10 @@ describe('vertex point material', () => {
   it('depth-tests the dots, so vertices behind a solid surface stay hidden', () => {
     expect(createPointMaterial().depthTest).toBe(true);
   });
+
+  it('depth-tests the marks on freshly made vertices for the same reason', () => {
+    expect(createRecentPointMaterial().depthTest).toBe(true);
+  });
 });
 
 describe('selection outline material', () => {
@@ -107,7 +113,28 @@ describe('wireframe material', () => {
     expect(createWireMaterial(false).depthTest).toBe(true);
   });
 
-  it('draws selected edges over everything, since those are the answer to a click', () => {
-    expect(createWireMaterial(true).depthTest).toBe(false);
+  it('depth-tests the selected edges too, opaque shading having no way through', () => {
+    // Drawn over everything, a selection round the back of a solid model reads
+    // as running across the face in front of it. X-ray and wireframe still show
+    // it: neither leaves any depth for this to test against.
+    expect(createWireMaterial(true).depthTest).toBe(true);
+  });
+});
+
+describe('selected face overlay', () => {
+  it('stays behind an opaque surface, rather than washing the face in front', () => {
+    expect(createSelectionOverlayMaterial().depthTest).toBe(true);
+  });
+
+  it('writes no depth, so the selected edges and dots come through it', () => {
+    expect(createSelectionOverlayMaterial().depthWrite).toBe(false);
+  });
+
+  it('lifts off the faces it marks, against the offset sinking the fill', () => {
+    const overlay = createSelectionOverlayMaterial();
+
+    expect(overlay.polygonOffset).toBe(true);
+    expect(overlay.polygonOffsetFactor).toBeLessThanOrEqual(-1);
+    expect(surface('solid').polygonOffsetFactor).toBeGreaterThanOrEqual(4);
   });
 });

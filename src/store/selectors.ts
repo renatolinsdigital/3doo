@@ -1,6 +1,6 @@
 import { useShallow } from 'zustand/react/shallow';
 
-import { type BMesh, canLoopCut, hasAdjacentFaces } from '@kernel/index';
+import { type BMesh, canLoopCut, hasAdjacentFaces, hasConnectedEdges } from '@kernel/index';
 
 import { activeObject } from './slices/scene';
 import type { SceneObject, SceneStats } from './types';
@@ -63,6 +63,28 @@ export function useFaceLoopAvailable(): boolean {
 
     const faces = mesh.selectedFaces();
     return faces.length >= 2 && hasAdjacentFaces(mesh, faces);
+  });
+}
+
+/**
+ * Whether the selection names an edge loop.
+ *
+ * Counts alone cannot answer this one either: two edges on opposite sides of a
+ * cube are still two edges, and no single loop runs through them. That they
+ * meet is what says the user drew along a loop, so meeting is what the button
+ * asks about.
+ *
+ * Only that two of them touch, not that the walk gets anywhere — a loop stops
+ * at the first vertex that is not valence four, and walking the mesh on every
+ * selection change to find that out is not worth it. The operator still says so
+ * when it happens.
+ */
+export function useEdgeLoopAvailable(): boolean {
+  return useEditModeMesh((mesh, state) => {
+    if (state.selectMode !== 'edge') return false;
+
+    const edges = mesh.selectedEdges();
+    return edges.length >= 2 && hasConnectedEdges(edges);
   });
 }
 

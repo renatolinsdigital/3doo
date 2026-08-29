@@ -40,7 +40,14 @@ import {
   trisToQuads,
 } from './subdivide';
 import { rotateVerts, scaleVerts, translateVerts } from './transform';
-import { faceLoopAtClick, selectEdgeLoop, selectEdgeRing, selectLinked } from './select';
+import {
+  faceLoopAtClick,
+  hasConnectedEdges,
+  selectEdgeLoop,
+  selectEdgeLoops,
+  selectEdgeRing,
+  selectLinked,
+} from './select';
 
 /** Euler characteristic of a closed manifold surface is 2 per shell. */
 function eulerCharacteristic(mesh: BMesh): number {
@@ -1332,6 +1339,54 @@ describe('selection walks', () => {
 
     // An open tube's rim is valence 3, so the vertical loop cannot continue.
     expect(selectEdgeLoop(cylinder, vertical as never)).toHaveLength(1);
+  });
+
+  it('brings back one loop whole from a stroke of edges along it', () => {
+    const grid = createGrid(4, 4);
+    const row = [...grid.edges.values()].filter(
+      (edge) => edge.v0.co.z === 0 && edge.v1.co.z === 0 && edge.v0.co.x !== edge.v1.co.x,
+    );
+    expect(row.length).toBe(4);
+
+    // Two edges of the row, out of the four it takes to cross the grid.
+    const loop = selectEdgeLoops(grid, [row[0], row[1]]);
+
+    expect(new Set(loop)).toEqual(new Set(row));
+  });
+
+  it('brings back one loop each from edges lying on different ones', () => {
+    const grid = createGrid(4, 4);
+    const across = [...grid.edges.values()].find(
+      (edge) => edge.v0.co.z === 0 && edge.v1.co.z === 0 && edge.v0.co.x !== edge.v1.co.x,
+    );
+    const along = [...grid.edges.values()].find(
+      (edge) => edge.v0.co.x === 0 && edge.v1.co.x === 0 && edge.v0.co.z !== edge.v1.co.z,
+    );
+    if (!across || !along) throw new Error('no interior edges');
+
+    const loop = selectEdgeLoops(grid, [across, along]);
+
+    expect(loop).toHaveLength(8);
+  });
+
+  it('reads two edges that meet as a stroke, and two that never do as neither', () => {
+    const cube = createBox(2);
+    const [first] = [...cube.edges.values()];
+    const touching = [...cube.edges.values()].find(
+      (edge) => edge !== first && (edge.v0 === first.v0 || edge.v1 === first.v0),
+    );
+    const apart = [...cube.edges.values()].find(
+      (edge) =>
+        edge.v0 !== first.v0 &&
+        edge.v1 !== first.v0 &&
+        edge.v0 !== first.v1 &&
+        edge.v1 !== first.v1,
+    );
+    if (!touching || !apart) throw new Error('no such pair');
+
+    expect(hasConnectedEdges([first, touching])).toBe(true);
+    expect(hasConnectedEdges([first, apart])).toBe(false);
+    expect(hasConnectedEdges([first])).toBe(false);
   });
 
   it('names a face loop from the edge nearest the click', () => {
