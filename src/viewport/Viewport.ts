@@ -77,6 +77,17 @@ const CURSOR_RADIUS_PX = 9;
  */
 const SCALE_REFERENCE_PX = 60;
 
+/**
+ * How far out the pointer must be before a rotation reads a bearing from it.
+ *
+ * A turn is measured by the angle the pointer sweeps around the pivot, and
+ * right on top of the pivot that angle is noise: a couple of pixels of travel
+ * swing it half a circle. The free-rotate handle is grabbed exactly there, so
+ * the drag holds still until the pointer is clear of this radius and takes its
+ * first bearing from out here.
+ */
+const ROTATE_SEED_PX = 24;
+
 /** What a single scale drag is allowed to multiply by, in either direction. */
 const MIN_SCALE_RATIO = 0.01;
 const MAX_SCALE_RATIO = 100;
@@ -286,11 +297,14 @@ export class Viewport {
     pivotPixels: THREE.Vector2;
     /** Pointer bearing last seen, so a turn past half a circle still reads as one step. */
     bearing: number;
+    /** Whether that bearing has been read yet from a pointer far enough out to mean one. */
+    seeded: boolean;
     /** Total angle turned so far. Object mode re-applies it whole, never compounding. */
     applied: number;
     /** World axis the turn is pinned to, or null for the axis facing the camera. */
     axis: 'x' | 'y' | 'z' | null;
-    modal: { restore: () => void; seeded: boolean } | null;
+    /** Set for a keyboard-started turn, which can be cancelled; null for a handle drag. */
+    modal: { restore: () => void } | null;
   } | null = null;
 
   private readonly raycaster = new THREE.Raycaster();
@@ -1137,10 +1151,16 @@ export class Viewport {
         state.patchActiveObject({ primitive: null }, { touchGeometry: false });
       }
       if (state.activeTool === 'scale') this.beginScaleDrag();
+      // The centre handle turns about the axis facing the camera, which is what
+      // the R key turns about too. Running it through the same drag gives it the
+      // same dashed line out to the pointer, in place of three's trackball and
+      // the white line it draws across the model to report one.
+      else if (this.gizmo.axis === FREE_ROTATE_AXIS) this.startRotateDrag(null);
       return;
     }
 
     this.endScaleDrag();
+    this.endRotateDrag();
     this.autoMergeSelection();
 
     // `gizmoDragging` is already false, so this resync is the one that re-seats
@@ -1224,12 +1244,13 @@ export class Viewport {
     return vec3(forward.x, forward.y, forward.z);
   }
 
-  private startRotateDrag(modal: { restore: () => void; seeded: boolean }): void {
+  private startRotateDrag(modal: { restore: () => void } | null): void {
     const pivotPixels = this.projectToPixels(this.gizmoProxy.position);
     this.rotateDrag = {
       pivot: this.gizmoProxy.position.clone(),
       pivotPixels,
-      bearing: this.pointerBearing(pivotPixels),
+      bearing: 0,
+      seeded: false,
       applied: 0,
       axis: null,
       modal,
@@ -1292,7 +1313,7 @@ export class Viewport {
             );
         };
 
-    this.startRotateDrag({ restore, seeded: false });
+    this.startRotateDrag({ restore });
     window.addEventListener('keydown', this.handleModalKey, true);
     window.addEventListener('pointerdown', this.handleModalPointer, true);
     window.addEventListener('contextmenu', this.handleModalContextMenu, true);
@@ -1332,13 +1353,15 @@ export class Viewport {
     const drag = this.rotateDrag;
     if (!drag) return;
 
-    // A keypress carries no pointer position, so the bearing it started from is
-    // only known once the pointer first moves. Seeding it here is what keeps the
-    // object from jumping on the first move of a modal rotate.
-    if (drag.modal && !drag.modal.seeded) {
-      drag.bearing = this.pointerBearing(drag.pivotPixels);
-      drag.modal.seeded = true;
+    // Nothing turns until the pointer is out where a bearing means something: a
+    // keypress carries no pointer position at all, and the free-rotate handle is
+    // grabbed on the pivot itself. Both take their first reading from outside
+    // the dead radius, so neither can jump on its opening move.
+    if (!drag.seeded) {
       this.updateModalLine();
+      if (this.pointerPixels.distanceTo(drag.pivotPixels) < ROTATE_SEED_PX) return;
+      drag.bearing = this.pointerBearing(drag.pivotPixels);
+      drag.seeded = true;
       return;
     }
 
@@ -1353,7 +1376,9 @@ export class Viewport {
     drag.applied += step;
 
     const state = useEditorStore.getState();
-    state.updateModal({ value: vec3(THREE.MathUtils.radToDeg(drag.applied), 0, 0) });
+    if (drag.modal) {
+      state.updateModal({ value: vec3(THREE.MathUtils.radToDeg(drag.applied), 0, 0) });
+    }
 
     const baseline = this.gizmoBaseline;
     if (!baseline) return;
@@ -1817,9 +1842,9 @@ export class Viewport {
   private handleGizmoChange = (): void => {
     const state = useEditorStore.getState();
     if (!this.gizmoBaseline) return;
-    // Scale is driven by the pointer in `applyScaleDrag`, not by three's own
-    // world-space ratio.
-    if (this.scaleDrag) return;
+    // Scale is driven by the pointer in `applyScaleDrag`, and a free rotation
+    // in `applyRotateDrag`, rather than by three's own world-space answer.
+    if (this.scaleDrag || this.rotateDrag) return;
 
     if (state.mode === 'object') {
       this.applyObjectGroupTransform(state);
@@ -2885,10 +2910,10 @@ export const ROTATE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
  * - The delta line answers **how far from where it started**, which is worth
  *   having on a free move off the centre handle, where nothing else reports it.
  *   The plane handle is the one case that wants neither.
- * - The rotate line belongs to the free rotation off the centre handle, which
- *   has no ring to read an angle from. Dragging a ring already draws its own
- *   circle, so a line through it is redundant, and the control would otherwise
- *   show one for a merely hovered ring, before any rotation has begun.
+ * - The rotate line never earns its place. A ring drag draws its own circle,
+ *   and the centre handle is run by `startRotateDrag`, which puts up the same
+ *   dashed line to the pointer that the R key does. Left alone the control
+ *   would also show one for a merely hovered ring, before any turn has begun.
  *
  * Wrapped around `updateMatrixWorld` because that is where the control decides
  * this, and the renderer calls it on the way into every frame: visibility set
@@ -2918,7 +2943,7 @@ export function trimGizmoGuides(helper: THREE.Object3D, controls: TransformContr
 
     if (spanned > 1) for (const guide of axisGuides) guide.visible = false;
     if (spanned === 2) for (const guide of deltaGuides) guide.visible = false;
-    if (axis !== FREE_ROTATE_AXIS) for (const guide of rotateGuides) guide.visible = false;
+    for (const guide of rotateGuides) guide.visible = false;
   };
 }
 

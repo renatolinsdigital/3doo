@@ -80,15 +80,12 @@ describe('gizmo guide lines', () => {
     expect(guarded().drag('XYZX').axisLines).toBe(false);
   });
 
-  it('shows the rotate guide for the free rotation off the centre handle', () => {
-    // Clicking the middle lights every axis at once and there is no ring to
-    // read an angle from, which is the case the line is there to serve.
-    expect(guarded().drag('XYZE', 'rotate').rotateLine).toBe(true);
-  });
-
-  it('keeps the rotate guide off a ring drag, which draws its own circle', () => {
-    for (const ring of ['X', 'Y', 'Z', 'E']) {
-      expect(guarded().drag(ring, 'rotate').rotateLine).toBe(false);
+  it('never shows the rotate guide, on the centre handle least of all', () => {
+    // A ring drag draws its own circle, and the centre handle is run by the
+    // viewport's own rotate drag, which puts up the dashed line to the pointer
+    // that R does. Three's white line across the model reports neither.
+    for (const axis of ['X', 'Y', 'Z', 'E', 'XYZE']) {
+      expect(guarded().drag(axis, 'rotate').rotateLine).toBe(false);
     }
   });
 
