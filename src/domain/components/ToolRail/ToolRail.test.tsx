@@ -42,6 +42,18 @@ describe('ToolRail', () => {
     expect(screen.getByRole('menuitem', { name: 'SQUARE' })).not.toHaveAttribute('aria-current');
   });
 
+  it('leaves the operators that take a parameter to the panels', () => {
+    useEditorStore.getState().setMode('edit');
+    render(<ToolRail />);
+
+    // Bevel wants a width and merge by distance a threshold, and a rail button
+    // can only run one fixed value. Both are in the panels, where the number
+    // is the user's to set: BEVEL under OPERATIONS, MERGE BY DISTANCE under
+    // TOPOLOGY.
+    expect(screen.queryByRole('button', { name: /Bevel/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Merge/ })).not.toBeInTheDocument();
+  });
+
   it('picking a shape picks the select tool up with it', async () => {
     useEditorStore.getState().setActiveTool('move');
     render(<ToolRail />);
