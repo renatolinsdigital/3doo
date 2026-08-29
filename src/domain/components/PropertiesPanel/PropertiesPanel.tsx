@@ -137,7 +137,7 @@ export function PropertiesPanel() {
         disabled={object.locked}
         hint={(axis) =>
           locked ??
-          `Scale multiplier along the ${axis.toUpperCase()} axis — 1 keeps the modelled size`
+          `Scale multiplier along the ${axis.toUpperCase()} axis. 1 keeps the modelled size`
         }
         onChange={(scale) => setObjectTransform(object.id, { scale })}
       />

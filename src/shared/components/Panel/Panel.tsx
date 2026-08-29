@@ -14,7 +14,7 @@ export interface PanelProps {
    * Lets the panel body scroll instead of growing the layout.
    *
    * Off by default, and deliberately: a panel keeps its own height and the
-   * column it sits in scrolls as one, so the body has nothing to scroll — but
+   * column it sits in scrolls as one, so the body has nothing to scroll, but
    * the container it takes to do the scrolling clips whatever hangs out of it,
    * and the menu a `Select` drops is exactly that. Only a panel given a height
    * of its own has any use for this.

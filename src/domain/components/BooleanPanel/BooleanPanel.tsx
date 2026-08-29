@@ -37,14 +37,14 @@ export function BooleanPanel() {
   // of what is missing rather than each guessing at it.
   const ready = active !== null && tools > 0 && !busy;
   const missing = !active
-    ? 'Select two objects — the last one clicked keeps the result'
+    ? 'Select two objects: the last one clicked keeps the result'
     : `Select a cutter as well; ${active.name} keeps the result`;
 
   const hint = (available: string) =>
     busy
-      ? 'A boolean is already running — the status bar shows how far along it is'
+      ? 'A boolean is already running: the status bar shows how far along it is'
       : unapplied.length > 0
-        ? `Apply the modifiers on ${unapplied.join(', ')} first — a boolean cuts the mesh underneath the stack`
+        ? `Apply the modifiers on ${unapplied.join(', ')} first: a boolean cuts the mesh underneath the stack`
         : ready
           ? `${available} (${active.name} keeps it)`
           : missing;

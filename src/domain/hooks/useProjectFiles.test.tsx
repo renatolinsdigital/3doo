@@ -84,7 +84,7 @@ describe('project actions announce themselves', () => {
 
     expect(lastToast()).toMatchObject({
       variant: 'error',
-      message: 'taken.3doo already exists — save under a different name',
+      message: 'taken.3doo already exists, save under a different name',
     });
   });
 
@@ -168,7 +168,7 @@ describe('project actions announce themselves', () => {
 
     expect(lastToast()).toMatchObject({
       variant: 'error',
-      message: 'holiday.json is not a project file — expected .3doo',
+      message: 'holiday.json is not a project file, expected .3doo',
     });
     expect(useEditorStore.getState().objects).toHaveLength(0);
   });
@@ -181,7 +181,7 @@ describe('project actions announce themselves', () => {
 
     expect(lastToast()).toMatchObject({
       variant: 'error',
-      message: 'chair.fbx is not an OBJ mesh — expected .obj',
+      message: 'chair.fbx is not an OBJ mesh, expected .obj',
     });
     expect(useEditorStore.getState().objects).toHaveLength(0);
   });

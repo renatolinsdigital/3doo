@@ -18,7 +18,7 @@ export interface InsetOptions {
 }
 
 export interface InsetResult {
-  /** The shrunk inner faces — what stays selected, matching Blender. */
+  /** The shrunk inner faces: what stays selected, matching Blender. */
   faces: Face[];
   /** The border ring generated between the original outline and the inner faces. */
   borderFaces: Face[];
@@ -26,7 +26,7 @@ export interface InsetResult {
 
 /**
  * Inset is topologically identical to an extrude: detach the region, wall the
- * gap. Only the placement differs — verts slide inward within their own face
+ * gap. Only the placement differs: verts slide inward within their own face
  * plane instead of along the normal.
  */
 export function insetFaces(

@@ -27,7 +27,7 @@ describe('module routing', () => {
     render(<App />);
 
     expect(screen.getByRole('heading', { name: /REAL MODELING/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^3DOO — switch module/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^3DOO, switch module/ })).toBeInTheDocument();
   });
 
   it('credits the developer with a LinkedIn link that opens in a new tab', () => {

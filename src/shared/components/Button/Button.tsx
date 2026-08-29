@@ -46,7 +46,7 @@ export function Button({
       aria-pressed={active || undefined}
       // `aria-disabled` rather than the native attribute: a disabled button
       // fires no pointer events and takes no focus, which makes its hint
-      // unreachable — and the hint is the one thing that says why the button
+      // unreachable, and the hint is the one thing that says why the button
       // is unavailable, so that is exactly when it is needed most.
       aria-disabled={disabled || undefined}
       onClick={disabled ? undefined : onClick}

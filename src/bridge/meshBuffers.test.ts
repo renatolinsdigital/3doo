@@ -26,7 +26,7 @@ describe('silhouette edges', () => {
     const plane = createPlane(1);
 
     // A single quad has no second face to disagree with, so all four edges are
-    // boundary — an open shape gets an outline where a hull would give none.
+    // boundary: an open shape gets an outline where a hull would give none.
     expect(edgeCount(buildSilhouetteEdges(plane, vec3(0, 10, 0)))).toBe(4);
     expect(edgeCount(buildSilhouetteEdges(plane, vec3(0, -10, 0)))).toBe(4);
   });

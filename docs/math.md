@@ -55,7 +55,7 @@ And for a ring in the XZ plane at increasing θ = `(cosθ, ·, sinθ)`: the norm
 **−Y**. So a bottom cap is written in θ order and a top cap is reversed.
 
 Every closed primitive is covered by a test asserting that
-`dot(faceCentre, faceNormal) > 0` — true for every face of a convex solid
+`dot(faceCentre, faceNormal) > 0`, true for every face of a convex solid
 centred on the origin, and a cheap way to catch an inverted winding.
 
 ## Triangulation
@@ -73,7 +73,7 @@ triangles.
 
 The returned index triples are always wound to match the polygon's own vertex
 order. When the projected polygon comes out clockwise the algorithm runs over a
-reversed copy, and the output triples are flipped back — otherwise every triangle
+reversed copy, and the output triples are flipped back. Otherwise every triangle
 from such a face would face backwards.
 
 ## Mitering
@@ -137,7 +137,7 @@ correct transform is the inverse transpose of the upper 3×3. For `M = R · S`:
 ```
 
 since `R` is orthogonal and `S` is diagonal. So `normalMatrix` composes the same
-rotation with a *reciprocal* scale — no general 4×4 inversion needed.
+rotation with a *reciprocal* scale, so no general 4×4 inversion is needed.
 
 ## Proportional editing falloff
 
@@ -145,7 +145,7 @@ Given normalised proximity `t` in `[0, 1]` (1 at the selection, 0 at the radius)
 
 | Curve | Function |
 | --- | --- |
-| Smooth | `t²(3 − 2t)` — smoothstep |
+| Smooth | `t²(3 − 2t)`, smoothstep |
 | Sphere | `√(1 − (1 − t)²)` |
 | Root | `√t` |
 | Linear | `t` |
@@ -153,7 +153,7 @@ Given normalised proximity `t` in `[0, 1]` (1 at the selection, 0 at the radius)
 | Constant | `1` where `t > 0` |
 
 Distances are measured from where the selection *started*, captured before
-anything moves — otherwise the falloff would chase the geometry as it is dragged.
+anything moves. Otherwise the falloff would chase the geometry as it is dragged.
 
 ## Signed volume
 

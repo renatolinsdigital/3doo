@@ -108,8 +108,8 @@ describe('LoopOperationsPanel', () => {
 
     const mesh = activeMesh();
     // One corner dragged off the cube into a spike. Keeping the shape would
-    // leave it where it is — a spike is part of the surface, and relax slides
-    // along the surface — so the test turns that off and watches it come back.
+    // leave it where it is, since a spike is part of the surface, and relax slides
+    // along the surface, so the test turns that off and watches it come back.
     const [corner] = [...mesh.verts.values()];
     corner.co = { x: 6, y: 6, z: 6 };
     act(() => {

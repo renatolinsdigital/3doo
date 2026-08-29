@@ -19,7 +19,7 @@ export interface ViewportSlice extends ViewportSettings {
    * Where the camera was left, written once as the viewport is torn down.
    *
    * The camera itself lives inside the Three.js viewport, which is destroyed
-   * and rebuilt every time the module changes — without this, walking from
+   * and rebuilt every time the module changes: without this, walking from
    * MODELING to DOCS and back would drop you at the default view of a scene
    * you had just framed. Not written per frame: only the handover needs it.
    */

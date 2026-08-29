@@ -89,7 +89,7 @@ const PROPORTIONAL_MIN_PX = 32;
  *
  * Measuring on screen rather than in the scene is what makes a scale drag feel
  * the same at every zoom. Three's own ratio comes off the drag plane in world
- * units, so zoomed out — where a few pixels cover metres — the object jumps
+ * units, so zoomed out, where a few pixels cover metres, the object jumps
  * between far too small and far too big, and it negates itself the moment the
  * pointer crosses the pivot (`pointEnd.dot(pointStart) < 0`), mirroring the
  * model inside out. Pixels have neither problem: the distance never collapses
@@ -105,7 +105,7 @@ export function gizmoScaleRatio(pointerPx: number, referencePx: number): number 
  * The falloff radius one wheel notch lands on.
  *
  * Multiplicative, so a notch changes the ring by the same proportion whether it
- * is covering a millimetre or half the scene — and rounded to the three decimals
+ * is covering a millimetre or half the scene, and rounded to the three decimals
  * the radius field shows, so the panel and the ring never disagree about the
  * number the wheel just landed on.
  */
@@ -123,8 +123,8 @@ export function proportionalRadiusStep(radius: number, deltaY: number): number {
  * The falloff radius the ring appears at.
  *
  * The ring is the only thing saying how far the falloff reaches, so coming up
- * at a radius left over from another zoom — wider than the canvas, or a
- * sub-pixel dot — starts the edit blind. `radiusPerPixel` is how much radius
+ * at a radius left over from another zoom (wider than the canvas, or a
+ * sub-pixel dot) starts the edit blind. `radiusPerPixel` is how much radius
  * one screen pixel is worth at the ring's centre, `span` the shorter viewport
  * side.
  *
@@ -206,7 +206,7 @@ export class Viewport {
     reference: number;
     /** Which axes are being scaled: 'X', 'XY', 'XYZ', … */
     axis: string;
-    /** Per axis, the factor already applied — edit mode scales by the step. */
+    /** Per axis, the factor already applied: edit mode scales by the step. */
     applied: Vec3;
     /** Set for a keyboard-started scale, which can be cancelled; null for a handle drag. */
     modal: { restore: () => void; seeded: boolean } | null;
@@ -215,8 +215,8 @@ export class Viewport {
    * A rotation running off the bare pointer, the way Blender's R does.
    *
    * Kept beside `scaleDrag` rather than folded into it: the two read the
-   * pointer differently — a scale off its distance from the pivot, a rotation
-   * off its bearing around it — and merging them would put a branch in every
+   * pointer differently (a scale off its distance from the pivot, a rotation
+   * off its bearing around it), and merging them would put a branch in every
    * line of the most delicate code here.
    */
   private rotateDrag: {
@@ -394,7 +394,7 @@ export class Viewport {
    * Keeps the cursor facing the camera at a constant size on screen.
    *
    * A fixed world size is a speck when zoomed out and swallows the model when
-   * zoomed in — the cursor is a screen-space marker, not a piece of the scene,
+   * zoomed in: the cursor is a screen-space marker, not a piece of the scene,
    * so it is billboarded and rescaled per frame like Blender's.
    */
   private updateCursor(): void {
@@ -410,7 +410,7 @@ export class Viewport {
   /**
    * What one screen pixel covers in world units at a point.
    *
-   * Every billboarded overlay — the cursor, the falloff ring — is sized through
+   * Every billboarded overlay (the cursor, the falloff ring) is sized through
    * this, so they all answer to the same zoom. Zero when the canvas has no
    * height and there is nothing to measure against.
    */
@@ -561,7 +561,7 @@ export class Viewport {
         { fireImmediately: true },
       ),
       // The pivot decides where the gizmo sits, so moving the cursor has to
-      // re-seat it — but only while the cursor is what it is anchored to.
+      // re-seat it, but only while the cursor is what it is anchored to.
       store.subscribe(
         (state) => state.pivot,
         () => this.updateGizmo(),
@@ -597,7 +597,7 @@ export class Viewport {
         (modal) => {
           if (modal?.kind === 'scale') this.beginModalScale();
           else if (modal?.kind === 'rotate') this.beginModalRotate();
-          // Cleared from somewhere else — a mode change, a reset — while a
+          // Cleared from somewhere else (a mode change, a reset) while a
           // modal scale is still live: put everything back.
           else if (!modal && this.scaleDrag?.modal) this.finishModalScale(true);
           else if (!modal && this.rotateDrag?.modal) this.finishModalRotate(true);
@@ -620,7 +620,7 @@ export class Viewport {
         },
       ),
       // Locking is neither a geometry nor a selection change, so none of the
-      // subscriptions above would re-run — yet a locked object has to lose its
+      // subscriptions above would re-run, yet a locked object has to lose its
       // gizmo, since dragging it is refused anyway.
       store.subscribe(
         (state) => state.objects.map((object) => object.locked),
@@ -704,7 +704,7 @@ export class Viewport {
    *
    * The radius is an object-space distance, so the ring carries the object's
    * own scale. Under a non-uniform one the true reach is an ellipsoid and the
-   * circle can only average it — as Blender's does.
+   * circle can only average it, as Blender's does.
    */
   private updateProportionalAnchor(state: ReturnType<typeof useEditorStore.getState>): void {
     this.proportionalAnchor = null;
@@ -760,8 +760,8 @@ export class Viewport {
   /**
    * The falloff radius fitted to what the viewport can show.
    *
-   * The radius is a stored setting rather than a display one — the ring has to
-   * describe the reach the transform will really use — so the fit has to be
+   * The radius is a stored setting rather than a display one: the ring has to
+   * describe the reach the transform will really use, so the fit has to be
    * written back to it, not drawn as a circle narrower than the falloff.
    */
   private fitRadiusToView(radius: number): number {
@@ -816,8 +816,8 @@ export class Viewport {
    *
    * Never mid-drag: from pointer-down to pointer-up the proxy belongs to
    * TransformControls, which drives it as `transform-at-drag-start + total
-   * pointer offset`. `syncScene()` calls this on every store change — including
-   * the ones a drag itself emits — so re-seating the proxy here would reset the
+   * pointer offset`. `syncScene()` calls this on every store change, including
+   * the ones a drag itself emits, so re-seating the proxy here would reset the
    * baseline each tick and turn every absolute drag delta into a corrupted
    * incremental one, leaving the dragged objects stuttering between two
    * positions instead of following the pointer.
@@ -866,8 +866,8 @@ export class Viewport {
    * World-space anchor for one object's gizmo: the centre of the mesh actually
    * on screen, not the object origin.
    *
-   * A modifier that pushes geometry away from the origin — an array most
-   * obviously — takes the gizmo with it, so the handles sit on what the user
+   * A modifier that pushes geometry away from the origin (an array most
+   * obviously) takes the gizmo with it, so the handles sit on what the user
    * sees rather than off beside the first copy.
    */
   private objectGizmoAnchor(object: SceneObject): Vec3 {
@@ -880,7 +880,7 @@ export class Viewport {
    * With one object selected it sits at that object's displayed centre,
    * oriented to the object. With several selected it sits at the median of
    * those centres with a neutral (world-aligned) orientation, and the
-   * resulting drag is applied to every one of them — Blender's median-point,
+   * resulting drag is applied to every one of them: Blender's median-point,
    * global pivot default for multi-object transforms.
    *
    * The anchor doubles as the transform pivot, so a rotate or scale drag
@@ -992,7 +992,7 @@ export class Viewport {
       // Vertices are about to move, which takes the mesh away from what the
       // primitive's parameters describe: left live, a later tweak of one would
       // regenerate the shape straight over this edit. Cleared once here rather
-      // than on every drag tick — moving the object itself changes nothing
+      // than on every drag tick: moving the object itself changes nothing
       // about the mesh, so object mode keeps its parameters.
       if (state.mode === 'edit') {
         state.patchActiveObject({ primitive: null }, { touchGeometry: false });
@@ -1037,7 +1037,7 @@ export class Viewport {
       modal,
     };
 
-    // The line belongs to a scale that has no direction of its own — the
+    // The line belongs to a scale that has no direction of its own: the
     // keyboard's, or the centre handle's. Along a single axis or in a plane the
     // handle already shows where the drag is going, and a line out to the
     // pointer only crosses the model.
@@ -1060,7 +1060,7 @@ export class Viewport {
    * Starts a scale that runs off the bare pointer, the way Blender's S does.
    *
    * No button is held, so it ends on a click, Enter or Escape instead of on
-   * pointerup — and because it can be cancelled, it captures how to put
+   * pointerup, and because it can be cancelled, it captures how to put
    * everything back before it touches anything.
    */
   /** Pointer bearing around a screen point, counter-clockwise from the +X axis. */
@@ -1075,7 +1075,7 @@ export class Viewport {
    * The axis a free rotation turns about: the one pointing back at the camera.
    *
    * Blender's R with no constraint spins the object in the plane of the screen,
-   * which is a turn about the view normal — not about any world axis.
+   * which is a turn about the view normal, not about any world axis.
    */
   private viewAxis(): Vec3 {
     const forward = new THREE.Vector3();
@@ -1469,8 +1469,8 @@ export class Viewport {
   /**
    * Applies a gizmo drag to the selected vertices of the object being edited.
    *
-   * Rotate and scale turn about wherever the gizmo was seated — the selection's
-   * median, or the 3D cursor when that is the pivot — which is why the pivot
+   * Rotate and scale turn about wherever the gizmo was seated: the selection's
+   * median, or the 3D cursor when that is the pivot, which is why the pivot
    * comes back through the object's own frame rather than being read off the
    * mesh. Move ignores the pivot, because a translation is the same wherever
    * you measure it from.
@@ -1543,7 +1543,7 @@ export class Viewport {
    * error across many pointer-move ticks in a single drag.
    *
    * The pivot is wherever the gizmo was seated, which is the displayed centre
-   * rather than the object origin — so an arrayed object rotates about the
+   * rather than the object origin, so an arrayed object rotates about the
    * middle of the array, and each object's origin is carried around that point
    * rather than staying put.
    */
@@ -1620,7 +1620,7 @@ export class Viewport {
   private handlePointerMove = (event: PointerEvent): void => {
     this.pointerPixels = this.pointerPosition(event);
     // A scale drag is measured from the pointer itself, so it is driven here
-    // rather than from three's change event — that fires before this handler
+    // rather than from three's change event: that fires before this handler
     // for the same move, and would always be working off the previous position.
     if (this.scaleDrag) {
       this.applyScaleDrag();
@@ -1826,8 +1826,8 @@ export class Viewport {
    * Ends a gizmo drag whose pointer went away without a pointerup.
    *
    * TransformControls clears `dragging` only in its pointerup handler, so a
-   * capture dropped some other way — the pointer leaving the window, a release
-   * the page never sees, a cancelled touch — leaves the gizmo latched: the
+   * capture dropped some other way (the pointer leaving the window, a release
+   * the page never sees, a cancelled touch) leaves the gizmo latched: the
    * selection keeps following the bare cursor and viewport clicks are swallowed
    * because they look like part of the drag. Clearing the flags goes through
    * three's own `dragging-changed`, so the drag finishes on the normal path.
@@ -1864,8 +1864,8 @@ export class Viewport {
   /**
    * What the pointer is allowed to reach on a mesh, given the shading.
    *
-   * X-ray and wireframe are the two modes whose whole point is seeing — and
-   * therefore selecting — what the surface would otherwise hide, so they hand
+   * X-ray and wireframe are the two modes whose whole point is seeing (and
+   * therefore selecting) what the surface would otherwise hide, so they hand
    * back null and leave every element pickable. Everywhere else the pick is
    * held to the geometry actually on screen, which is what stops a click on a
    * dense model landing on its far side.
@@ -1939,7 +1939,7 @@ export class Viewport {
    *
    * Touching is the whole test: any part of an object inside the region takes
    * it, which is what `pickObjectsInRegion` reads off the geometry on screen.
-   * The ray covers the one case that geometry cannot — a region small enough to
+   * The ray covers the one case that geometry cannot: a region small enough to
    * sit inside a single face, touching an object without reaching an edge of it.
    */
   private objectRegionSelect(region: Region, marquee: Marquee, additive: boolean): void {
@@ -2058,7 +2058,7 @@ export class Viewport {
     const rotating =
       this.rotateDrag !== null || (this.gizmo.mode === 'rotate' && axis === FREE_ROTATE_AXIS);
 
-    // A crosshair reads as "measuring", which is what the scale line is doing —
+    // A crosshair reads as "measuring", which is what the scale line is doing:
     // the ordinary arrow gives no hint that dragging now changes size rather
     // than orbiting or picking something.
     const cursor = rotating ? ROTATE_CURSOR : this.modalLine.visible ? 'crosshair' : '';
@@ -2089,8 +2089,8 @@ export class Viewport {
    *
    * The far plane used to be a fixed 2000 units (from `clipEnd`'s default),
    * while the orbit can zoom out to `MAX_ORBIT_DISTANCE` (5000). Once the
-   * camera-to-target distance passed the fixed far plane, the target — and
-   * everything near it, grid included — fell outside the frustum and the
+   * camera-to-target distance passed the fixed far plane, the target (and
+   * everything near it, grid included) fell outside the frustum and the
    * whole viewport went blank well short of the actual zoom limit. Tracking
    * the far plane against distance (with room to spare) means the grid keeps
    * rendering for the entire zoom range instead of vanishing partway through.
@@ -2261,7 +2261,7 @@ function axisTint(axis: string | null): number | null {
  * - The handle under the pointer is painted **yellow**, a hue the viewport uses
  *   for nothing else and which says only "this one", not which axis it is.
  *   Lightening the axis's own colour says both, in a colour already being read.
- * - The guide lines — the track a drag is confined to, and the delta along it —
+ * - The guide lines (the track a drag is confined to, and the delta along it)
  *   are **white**. A line drawn along X is the same statement as the X handle,
  *   so it is tinted to match, as Blender's is. Only a drag spanning more than
  *   one axis keeps them neutral, having no single colour to claim.
@@ -2333,7 +2333,7 @@ const FREE_ROTATE_AXIS = 'XYZE';
 /**
  * A circular arrow for the pointer while a free rotation is under way.
  *
- * Drawn twice — a heavy `--void` stroke under a thin `--bone` one — because a
+ * Drawn twice (a heavy `--void` stroke under a thin `--bone` one) because a
  * cursor has to stay legible over the viewport's dark background and over a lit
  * surface both, and the palette has no single value that does. Encoded at
  * module load rather than written out by hand, so the data URI cannot be
@@ -2368,11 +2368,11 @@ export const ROTATE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
  *   The plane handle is the one case that wants neither.
  * - The rotate line belongs to the free rotation off the centre handle, which
  *   has no ring to read an angle from. Dragging a ring already draws its own
- *   circle, so a line through it is redundant — and the control would otherwise
+ *   circle, so a line through it is redundant, and the control would otherwise
  *   show one for a merely hovered ring, before any rotation has begun.
  *
  * Wrapped around `updateMatrixWorld` because that is where the control decides
- * this, and the renderer calls it on the way into every frame — visibility set
+ * this, and the renderer calls it on the way into every frame: visibility set
  * any earlier is recomputed before a pixel is drawn. Only ever hides, so
  * anything left alone keeps the control's own answer.
  */

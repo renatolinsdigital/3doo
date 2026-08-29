@@ -7,7 +7,7 @@ import { gizmoScaleRatio } from './Viewport';
 /**
  * Guards the TransformControls behaviour the viewport's drag handling rests on.
  *
- * The viewport cannot be instantiated here — it needs a WebGL context — but
+ * The viewport cannot be instantiated here (it needs a WebGL context), but
  * TransformControls can, and every assumption behind `updateGizmo`'s dragging
  * guard and `handleLostPointerCapture` lives in this class. If a three upgrade
  * changes one of them, these fail and the drag code needs revisiting.
@@ -73,7 +73,7 @@ describe('TransformControls drag contract', () => {
 
     // `syncScene` used to re-seat the proxy on every store change, including the
     // ones the drag itself emits. The write is discarded on the next tick, but a
-    // baseline captured from it is not — that mismatch turned each absolute drag
+    // baseline captured from it is not: that mismatch turned each absolute drag
     // delta into a corrupted incremental one.
     proxy.position.x = 999;
     api.pointerMove({ x: 0.4, y: 0, button: -1 });

@@ -36,8 +36,8 @@ const GRID_CELLS = 100;
 /**
  * How far into a decade the fine lines start giving way, as a fraction of it.
  *
- * They close up ten to one across each decade — seven of them across the view
- * at the near end, seventy at the far — so a flat alpha reads as a plane that
+ * They close up ten to one across each decade: seven of them across the view
+ * at the near end, seventy at the far, so a flat alpha reads as a plane that
  * keeps gaining weight and then snaps back at the step. Holding them at full
  * strength through the roomy half and easing them out over the crowded one
  * keeps the ink on screen roughly even.
@@ -67,8 +67,8 @@ export function gridLevel(distance: number): { step: number; fade: number } {
 /**
  * Adaptive ground grid.
  *
- * Two overlaid grids — a fine one that fades with distance and a coarse one for
- * the major divisions — read better than a single grid at every zoom level.
+ * Two overlaid grids (a fine one that fades with distance and a coarse one for
+ * the major divisions) read better than a single grid at every zoom level.
  */
 export class ViewportGrid {
   readonly group = new THREE.Group();
@@ -105,7 +105,7 @@ export class ViewportGrid {
     //
     // With nothing on the plane writing depth, the group cannot fight itself:
     // every line passes or fails the test against the scene identically, and
-    // the order below — fixed, not camera-dependent — is what decides. Negative
+    // the order below (fixed, not camera-dependent) is what decides. Negative
     // so the ground plane stays behind the selection overlays in `ObjectView`.
     this.fine.renderOrder = -3;
     this.coarse.renderOrder = -2;

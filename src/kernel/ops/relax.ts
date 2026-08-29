@@ -26,7 +26,7 @@ export interface RelaxOptions {
    * leaves the surface: the loop sinks into the mesh a little on every pass.
    * Dropping each relaxed position back onto the faces it came from lets the
    * loop slide across the shape instead of eating into it. Switched off, the
-   * same passes smooth the mesh itself — spikes flatten, and a sphere deflates.
+   * same passes smooth the mesh itself: spikes flatten, and a sphere deflates.
    */
   keepShape?: boolean;
 }
@@ -35,7 +35,7 @@ export interface RelaxOptions {
  * What the selection looks like around one vertex.
  *
  * A chain runs through it, a patch surrounds it, and a pin is the end of a
- * chain that ran out — the vertex the rest of that chain is spaced against, so
+ * chain that ran out: the vertex the rest of that chain is spaced against, so
  * it holds still. Which one a vertex is in is a question about the selection as
  * much as the mesh: two neighbours selected either side of it means the user
  * picked a loop, and only one means they picked where that loop stops.
@@ -342,13 +342,13 @@ function surfaceAnchor(
  * Relaxes the given vertices: kinks out, spacing even, shape kept.
  *
  * The relax of Blender's LoopTools rather than plain vertex smoothing. A
- * selection that runs through a vertex as a chain — an edge loop, a ring left
- * ragged by a cut or a bevel — is pulled straight and spread out along itself,
+ * selection that runs through a vertex as a chain (an edge loop, a ring left
+ * ragged by a cut or a bevel) is pulled straight and spread out along itself,
  * and then dropped back onto the surface it came from, so it slides across the
  * shape rather than sinking into it. Where the selection runs out, the vertex
  * it ran out at holds still and the rest is spaced against it.
  *
- * A selection that is not a chain — a patch of surface, or a whole mesh — has
+ * A selection that is not a chain (a patch of surface, or a whole mesh) has
  * no loop to straighten and smooths against its neighbourhood instead, kept on
  * the surface the same way.
  *

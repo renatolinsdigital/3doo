@@ -16,15 +16,15 @@ Each mesh produces three GPU buffer sets, rebuilt when `meshVersion` changes:
 returns typed arrays, importing no Three.js at all. Assembling `BufferGeometry`
 happens one layer up in `ObjectView`.
 
-Triangulation happens here and nowhere else in the display path — the kernel
+Triangulation happens here and nowhere else in the display path. The kernel
 keeps n-gons throughout.
 
 ### Picking maps
 
 Two side tables come out of the same pass and make selection possible:
 
-- `triangleFaceIds` — triangle index → kernel face id
-- `vertIds` / `edgeIds` — buffer index → kernel element id
+- `triangleFaceIds` maps triangle index to kernel face id
+- `vertIds` / `edgeIds` map buffer index to kernel element id
 
 Without these, a raycast hit would identify a triangle with no way back to the
 n-gon it came from.
@@ -50,9 +50,9 @@ fire after the viewport is disposed.
 
 ## `ObjectView`
 
-One per scene object. It holds every Three.js object for that mesh — solid,
+One per scene object. It holds every Three.js object for that mesh (solid,
 backfaces, wireframe, selected faces, selected edges, points, normals overlay,
-object outline — and rebuilds them from buffers on update.
+object outline) and rebuilds them from buffers on update.
 
 Visibility is decided per mode:
 
@@ -71,7 +71,7 @@ recomputed every frame.
 ### The selection outline is not a plain line
 
 WebGL ignores `LineBasicMaterial.linewidth`. Whatever a plain line asks for, it
-is drawn one pixel wide — which is why the outline is a `LineSegments2` with a
+is drawn one pixel wide, which is why the outline is a `LineSegments2` with a
 `LineMaterial` instead: that pair expands each segment into a quad in the vertex
 shader, so a width above 1 actually renders. The width and colour are user
 preferences (see [state-management.md](state-management.md#user-preferences)),
@@ -86,13 +86,13 @@ the screen.
 
 Only the active object wears the chosen colour; the rest of the selection gets a
 darkened mix of it, so a multi-object selection still says which one the
-operations will run on. That is derived rather than a second preference — the
+operations will run on. That is derived rather than a second preference, since the
 distinction only has to be visible, not configurable.
 
 Which edges are on a silhouette depends on where it is seen from, so the render
 loop re-traces the outline whenever the camera has actually moved. Views with
 nothing outlined return immediately, and a mesh with no faces has no silhouette
-at all — the outline hides itself rather than handing the frustum check an empty
+at all: the outline hides itself rather than handing the frustum check an empty
 instanced geometry with no bounding sphere.
 
 ## Shading modes
@@ -110,7 +110,7 @@ avoids shipping a binary asset while still giving the flat, high-contrast look
 the design direction asks for.
 
 **Face orientation** draws a second mesh with `side: THREE.BackSide` in red.
-Anywhere red is visible, you are seeing the inside of the surface — which is
+Anywhere red is visible, you are seeing the inside of the surface, which is
 exactly the problem you want to catch before exporting.
 
 ## Picking
@@ -147,7 +147,7 @@ The camera orbits a target point in spherical coordinates. Polar angle is clampe
 just short of the poles to avoid the gimbal flip at straight up or down.
 
 For an orthographic camera there is no perspective divide, so the orbit radius
-drives the frustum height instead of the eye distance — otherwise zooming would
+drives the frustum height instead of the eye distance. Otherwise zooming would
 do nothing.
 
 Focal length maps to field of view through a 35mm-equivalent sensor height,
@@ -175,7 +175,7 @@ shapes so the viewport works across the version range in `package.json`.
 
 ## The grid
 
-Two overlaid `GridHelper`s — a fine one and a coarse one for major divisions —
+Two overlaid `GridHelper`s, a fine one and a coarse one for major divisions,
 rescaled each frame by the camera distance to the nearest power of ten. A single
 grid is either too dense when zoomed out or too sparse when zoomed in.
 
@@ -185,5 +185,5 @@ grid is either too dense when zoomed out or too sparse when zoomed in.
 `Viewport` once in an effect, observes its container for resizes, and disposes
 everything on unmount. React never touches the scene graph.
 
-Every geometry, material and the renderer itself are disposed explicitly —
+Every geometry, material and the renderer itself are disposed explicitly, since
 WebGL resources are not garbage collected.

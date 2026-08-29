@@ -53,7 +53,7 @@ export interface VoxelFieldOptions {
  * `BAND` voxels of it, keeping the nearest hit and signing it against the
  * blended normal there. The second floods the untouched points inward from the
  * grid border: anything the flood cannot reach is enclosed, so it is inside.
- * That is what lets an open mesh remesh at all — holes narrower than a voxel
+ * That is what lets an open mesh remesh at all: holes narrower than a voxel
  * are simply closed over rather than leaking.
  */
 export function buildVoxelField(
@@ -129,8 +129,8 @@ export function buildVoxelField(
           const normal = blendNormal(triangle, hit.u, hit.v, hit.w);
           // A grid point sitting *on* the surface has no direction to read a
           // side off: the vector to its own closest point is rounding error, so
-          // the dot product below is a coin toss. It is not a rare case either
-          // — the grid is laid from the model's own bounding box, so an
+          // the dot product below is a coin toss. It is not a rare case either:
+          // the grid is laid from the model's own bounding box, so an
           // axis-aligned face on the minimum side lands exactly on a grid
           // plane, and a plain box puts several hundred points there. Signed at
           // random, that plane comes out of the contour shredded into rosettes
@@ -155,7 +155,7 @@ export function buildVoxelField(
  * Signs every point the band never reached.
  *
  * Any grid edge that crosses the surface has an endpoint within half a voxel of
- * it, so that endpoint is already in the band — which makes the band an
+ * it, so that endpoint is already in the band, which makes the band an
  * unbroken wall between the untouched points outside and those inside, and a
  * flood from the border able to tell them apart.
  */
@@ -232,7 +232,7 @@ export interface SurfaceNet {
  * nets.
  *
  * One vertex per cell the surface passes through, one quad per grid edge it
- * crosses — which is why the output is all quads and watertight, and why it is
+ * crosses, which is why the output is all quads and watertight, and why it is
  * the right starting point for a retopology pass rather than the marching-cubes
  * triangle soup the same field would give.
  */
@@ -414,7 +414,7 @@ export interface RelaxOptions {
    *
    * A crease is a line the contour crosses head-on, so the vertex it puts there
    * is about half a voxel off it. A corner is a single point, and the nearest
-   * vertex the grid has to offer can be most of a cell diagonal away — held to
+   * vertex the grid has to offer can be most of a cell diagonal away, held to
    * the crease radius, every corner of a cube goes unclaimed.
    */
   cornerRadius: number;
@@ -438,8 +438,8 @@ const SPRING_WEIGHT = 0.5;
  * The retopology loop: relax the net, hold it to the model's creases, then pull
  * it back onto the surface.
  *
- * The relaxation is tangential — the component of the move along the surface
- * normal is thrown away — which is what separates it from the Laplacian pass
+ * The relaxation is tangential (the component of the move along the surface
+ * normal is thrown away), which is what separates it from the Laplacian pass
  * this used to run. A Laplacian evens out the staircase the grid leaves behind
  * by shrinking the model into itself, and needs the re-projection to undo its
  * own damage; sliding along the surface instead means the projection only has
@@ -492,7 +492,7 @@ export function relaxSurfaceNet(
     // And one vertex per point of a crease, on the same rule and for the same
     // reason. Along an edge where both faces meet the grid squarely the contour
     // has two or three cells to offer per step, and every one of them projects
-    // onto the very same point of the line — landing them on top of each other,
+    // onto the very same point of the line, landing them on top of each other,
     // which is a zero-length edge and a collapsed quad behind it. Nearest first,
     // and the ones that lose stay where the contour put them.
     const claimed = new PointClaims(options.featureRadius);

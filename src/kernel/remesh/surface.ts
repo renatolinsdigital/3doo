@@ -7,7 +7,7 @@ import { type BMesh, triangulatePolygon } from '../mesh';
  *
  * The normals are what let a query answer "inside or outside" near a crease:
  * the face normal of the nearest triangle flips sign across one, while the
- * area-weighted vertex normals blend across it — the same trick a pseudonormal
+ * area-weighted vertex normals blend across it: the same trick a pseudonormal
  * signed-distance field uses.
  */
 export interface SurfaceTriangle {
@@ -194,7 +194,7 @@ export function surfaceArea(triangles: readonly SurfaceTriangle[]): number {
  * Area weighted by how many grid axes the surface faces at once.
  *
  * Surface nets emit one quad per grid edge the surface crosses, and a patch
- * tilted to the grid crosses edges on all three axes rather than one — which is
+ * tilted to the grid crosses edges on all three axes rather than one, which is
  * why a sphere comes out half again as dense as a box of the same area at the
  * same voxel size. This is the quantity that actually predicts the face count.
  */
@@ -343,7 +343,7 @@ export class SurfaceIndex {
     return best;
   }
 
-  /** Negative inside the solid, positive outside — the sign an SDF wants. */
+  /** Negative inside the solid, positive outside: the sign an SDF wants. */
   signedDistance(point: Vec3): number {
     const hit = this.closest(point);
     if (!hit) return Infinity;

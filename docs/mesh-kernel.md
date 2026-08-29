@@ -21,7 +21,7 @@ Face   { id, loop, normal, materialIndex, selected, smooth }
 
 A **loop** is one corner of one face: the pairing of a vertex with the edge
 leaving it. A face's loops form a cycle (`loop.next` walks the winding order),
-and an edge's `loops` array is its *radial set* — the loops of every face using
+and an edge's `loops` array is its *radial set*: the loops of every face using
 that edge.
 
 ```text
@@ -69,11 +69,11 @@ Every topology test in the suite ends with `expect(mesh.validate()).toEqual([])`
 All of these live in `src/kernel/ops/`. Each returns the geometry it created so
 the caller can set selection.
 
-### Extrude — `extrude.ts`
+### Extrude (`extrude.ts`)
 
 Region extrude is *detach and wall*:
 
-1. Find the region's boundary edges — edges with exactly one adjacent face inside
+1. Find the region's boundary edges: edges with exactly one adjacent face inside
    the region.
 2. Duplicate the vertices that must detach (boundary-ring vertices, plus any
    vertex touching a face outside the region). Interior vertices are moved, not
@@ -85,15 +85,15 @@ Region extrude is *detach and wall*:
 
 `individual: true` runs the same routine per face along that face's own normal.
 
-### Inset — `inset.ts`
+### Inset (`inset.ts`)
 
-Topologically identical to extrude — the same `detachRegion` machinery — only the
+Topologically identical to extrude, on the same `detachRegion` machinery. Only the
 placement rule differs. Instead of moving along the normal, each duplicated
 vertex slides inward within the face plane along the **miter** of its two
 boundary directions, so the border keeps a constant width. See
 [math.md](math.md#mitering).
 
-### Bevel — `bevel.ts`
+### Bevel (`bevel.ts`)
 
 The hardest operation, and the one with the most explicit scope.
 
@@ -120,14 +120,14 @@ carries a zero-volume flap. Tracked in `TODO.txt`.
 Verified on a cube with all 12 edges beveled: 24 vertices, 26 faces, 48 edges,
 Euler characteristic 2.
 
-### Loop cut — `loopcut.ts`
+### Loop cut (`loopcut.ts`)
 
 Walks the ring of quads the starting edge passes through, stopping at n-gons,
-triangles and boundaries — exactly where a loop cut has to stop. Every ring edge
+triangles and boundaries, exactly where a loop cut has to stop. Every ring edge
 is split at the same parameters, measured from a consistent side so the cuts line
 up, and each quad becomes a strip of quads.
 
-### Subdivide — `subdivide.ts`
+### Subdivide (`subdivide.ts`)
 
 One Catmull-Clark topology step: every selected face becomes one quad per corner,
 using shared edge points and a new face point. Faces bordering the selection keep
@@ -135,24 +135,24 @@ their shape but gain the new edge points, so the mesh stays watertight.
 
 With `smooth > 0`, edge points move toward the average of their endpoints and
 adjacent face centres, and original corners are relaxed by
-`(F + 2R + (n-3)V) / n` — but only corners whose entire face fan is selected, so a
+`(F + 2R + (n-3)V) / n`, but only corners whose entire face fan is selected, so a
 partial subdivision cannot distort the surrounding surface.
 
 Note that face points sit *on* the face centres, so subdividing a cube does not
 shrink its bounding box; what shrinks is the corners.
 
-### Subdivide edges — `subdivide.ts`
+### Subdivide edges (`subdivide.ts`)
 
 `subdivideEdges` puts `cuts` evenly spaced vertices along each edge. The points
 cannot simply be dropped onto the edge: a face's ring is its own list of corners,
 so every face touching a split edge is rebuilt with the new points spliced into
-its ring — otherwise the face would still span the old corners and the vertex
+its ring. Otherwise the face would still span the old corners and the vertex
 would sit on a seam nothing references. A loop traverses its edge from
 `loop.vert` onwards, which is `v1 -> v0` for one of the two faces sharing it, so
 that side takes the points reversed. Wire edges have no face to rebuild and are
 replaced by their own chain of segments instead.
 
-### Merge by distance — `merge.ts`
+### Merge by distance (`merge.ts`)
 
 The primary automatic topology cleanup. A spatial hash buckets vertices by
 `threshold`-sized cells, first occupant wins, and `weldVerts` rewrites every
@@ -162,7 +162,7 @@ affected face, dropping any that collapse below three distinct corners.
 lets the merge dialog show a live "N vertices will be removed" count that matches
 exactly what committing does.
 
-### Connect — `connect.ts`
+### Connect (`connect.ts`)
 
 Runs an edge between two vertices (<kbd>J</kbd>). When both sit on the same face
 it *splits* that face rather than laying an edge across it: a bare edge through a
@@ -171,12 +171,12 @@ extruding as one surface. Walking the face ring both ways from one vertex to the
 other gives the two halves, and because each keeps the parent's vertex order the
 split faces inherit its winding for free.
 
-Vertices with no face in common — two loose verts, or corners of separate islands
-— get a plain edge instead, which is the only thing that can be meant there.
+Vertices with no face in common (two loose verts, or corners of separate islands)
+get a plain edge instead, which is the only thing that can be meant there.
 Vertices an edge already joins are refused, and that covers ring neighbours too,
 since consecutive corners of a face always already have the edge between them.
 
-### Delete and dissolve — `delete.ts`, `dissolve.ts`
+### Delete and dissolve (`delete.ts`, `dissolve.ts`)
 
 Kept as separate paths because they answer different questions.
 
@@ -189,7 +189,7 @@ Kept as separate paths because they answer different questions.
   a status line never claims work the mesh did not actually do.
 
 The UI exposes them only as keys, not as panel sections: <kbd>X</kbd> deletes and
-<kbd>Delete</kbd> dissolves. Neither asks which element type to act on — the
+<kbd>Delete</kbd> dissolves. Neither asks which element type to act on: the
 handler in `useKeymap` maps the active select mode onto the operator's `mode`
 param (vertex → `verts`, edge → `edges`, face → `faces`), so the keys always
 act on the elements the user can currently see highlighted. The operators still
@@ -198,21 +198,21 @@ way, and `exec('delete', { mode: 'onlyFaces' })` remains available to scripts.
 
 Dissolve is a *topology* edit, not a geometry one: the merged n-gon keeps every
 vertex exactly where it was. Merging two faces that meet at a sharp angle
-therefore produces a **folded** face, and nothing downstream can represent one —
-it gets a single averaged normal matching neither half, ear-clipping projects it
+therefore produces a **folded** face, and nothing downstream can represent one.
+It gets a single averaged normal matching neither half, ear-clipping projects it
 onto a plane it does not lie near, and OBJ/FBX record it as one flat polygon.
 Dissolving a cube edge that way used to yield exactly that: a valid but folded
 six-vertex face whose shading looked broken.
 
 The same fold happens when dissolving a *vertex*, and more easily, since a
-corner gathers three or more faces at once — a cube corner's three mutually
+corner gathers three or more faces at once: a cube corner's three mutually
 perpendicular faces collapse into one badly folded n-gon. `isDissolvableVert`
 applies the same limit across every pair in the fan.
 
 It exempts vertices with two edges or fewer, though, and that distinction is the
 whole point: a vertex only forces a merge when it sits at a *corner*, where
-dropping it would leave a hole. One lying along a path — the midpoint left by
-subdividing an edge — merges nothing. Every face using it simply drops it and
+dropping it would leave a hole. One lying along a path (the midpoint left by
+subdividing an edge) merges nothing. Every face using it simply drops it and
 keeps its own shape, so however sharply those faces meet is irrelevant. Guarding
 it by angle refused the most ordinary case there is: undoing an edge subdivision
 on a cube. `dissolveVerts` takes the matching path, trimming the vertex out of
@@ -223,9 +223,9 @@ selected vertices through `isDissolvableVert` first,
 skipping any whose faces fold past `DISSOLVE_ANGLE_LIMIT_DEGREES` (40°, or the
 `angle` param) and saying how many it skipped. The limit sits at the operator
 boundary rather than in the kernel deliberately: the kernel primitives have to
-merge whatever they are handed — removing a vertex *means* merging its whole fan
-— and a script calling them directly still gets the unconditional merge.
-Gentle curvature stays mergeable — a 24-segment cylinder's 15° side seams
+merge whatever they are handed, since removing a vertex *means* merging its whole
+fan, and a script calling them directly still gets the unconditional merge.
+Gentle curvature stays mergeable: a 24-segment cylinder's 15° side seams
 dissolve fine, which is what the operation is actually for.
 
 `dissolveEdge` merges the two faces sharing an edge by rotating both rings and
@@ -239,37 +239,37 @@ merging drops it from the ring for free; a vertex on an open boundary survives
 the merge and is trimmed out of the one face left instead.
 
 When pruning the region's now-unused edges, only the ones *interior* to it may
-go — its boundary edges are the merged face's own ring. Removing every edge left
+go, since its boundary edges are the merged face's own ring. Removing every edge left
 without a loop also took those whenever no face outside the region shared them,
 which on an open mesh (a grid, a plane) deleted the ring's vertices out from
 under the face about to be built from them, leaving edges pointing at dead
 vertices. The rebuilt face is added before loose vertices are swept, so the ring
 is never briefly orphaned.
 
-### Normals — `normals.ts`
+### Normals (`normals.ts`)
 
 `recalculateNormals` is two stages, and both matter:
 
 1. Breadth-first across each connected shell, flipping any neighbour that
-   traverses a shared edge in the *same* direction as its neighbour — two
+   traverses a shared edge in the *same* direction as its neighbour, and two
    consistently wound faces always traverse it oppositely.
 2. Compute the shell's signed volume and flip the whole shell if it is inside
    out. Consistency alone still permits a uniformly inverted shell, which is
    exactly the case that ruins an export.
 
-### Fill and bridge — `fill.ts`
+### Fill and bridge (`fill.ts`)
 
 `edgeLoopsFrom` chains selected edges into ordered rings; both fill and bridge
 build on it. Fills are wound against the surrounding surface so their normals
 agree with it. Bridge aligns the second loop by testing every rotation and both
-directions, picking the one with the least total distance — without that, bridging
+directions, picking the one with the least total distance. Without that, bridging
 two rings built in opposite directions folds the band over itself.
 
-### Selection walks — `select.ts`
+### Selection walks (`select.ts`)
 
 `selectEdgeLoop` continues through a valence-4 vertex along the one edge sharing
 no face with the current edge. Any other valence ends the loop, which is why
-Alt+click stops at poles — and why the loop on an open tube's rim is a single
+Alt+click stops at poles, and why the loop on an open tube's rim is a single
 edge.
 
 ## Modifiers
@@ -281,7 +281,7 @@ non-destructive. `applyModifier` bakes a single one into the mesh.
 Mirror reflects and reverses winding (reflection inverts handedness), and copies
 wire edges by hand since they carry no loop for the face pass to follow. Its
 plane passes through the object's own origin unless `origin` is `'cursor'`, in
-which case it passes through the 3D cursor — handed in through `ModifierContext`
+which case it passes through the 3D cursor, handed in through `ModifierContext`
 already converted to the object's local frame, because that is the only
 coordinate system the kernel knows. Clipping, bisect and the seam weld all
 measure from that same plane rather than from zero. Its
@@ -299,7 +299,7 @@ was added. Subdivision runs `subdivideFaces` across every face.
 ### Weld
 
 Weld is `mergeByDistance` run over every vertex in the mesh. There is no
-selection involved, because a modifier has none — that is the whole difference
+selection involved, because a modifier has none. That is the whole difference
 between it and the Merge by Distance operator in the Operations panel.
 
 It exists for the seams the rest of the pipeline leaves behind: an array whose
@@ -317,6 +317,6 @@ Two things about the distance are worth knowing, because both look like bugs:
   first occupant of each cell win, and a vertex that has been absorbed is no
   longer a candidate to absorb the next.
 
-A distance approaching the size of the mesh removes it altogether — every face
+A distance approaching the size of the mesh removes it altogether: every face
 falls below three distinct corners, and `weldVerts` drops those, leaving nothing
 for the surviving vertices to belong to.

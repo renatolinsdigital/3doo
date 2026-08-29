@@ -28,7 +28,7 @@ surfaced as a toast, and leaves the mesh untouched.
 
 ## Parameters are coerced, not trusted
 
-The registry is a genuine external boundary — it can be called with anything —
+The registry is a genuine external boundary and can be called with anything,
 so every value is read through a coercing accessor with a documented default:
 
 ```ts
@@ -60,7 +60,7 @@ Unknown operator "extrud". Available: bevel, bridge, delete, deselectAll, ...
 
 | Name | Parameters |
 | --- | --- |
-| `connect` | — (acts on exactly two selected vertices) |
+| `connect` | none (acts on exactly two selected vertices) |
 | `mergeByDistance` | `threshold` |
 | `merge` | `mode`: `center` \| `cursor` \| `first` \| `last` \| `collapse` |
 | `delete` | `mode`: `verts` \| `edges` \| `faces` \| `onlyFaces` \| `edgesAndFaces` |
@@ -72,9 +72,9 @@ Unknown operator "extrud". Available: bevel, bridge, delete, deselectAll, ...
 | Name | Parameters |
 | --- | --- |
 | `fill` | `bridge` |
-| `bridge` | — |
+| `bridge` | none |
 | `recalculateNormals` | `outside` |
-| `flipNormals` | — |
+| `flipNormals` | none |
 | `shade` | `smooth` |
 
 ### Transform and selection
@@ -84,8 +84,8 @@ Unknown operator "extrud". Available: bevel, bridge, delete, deselectAll, ...
 | `translate` | `offset: {x, y, z}` |
 | `rotate` | `axis`, `angle` (degrees) |
 | `scale` | `scale: {x, y, z}` |
-| `selectAll`, `deselectAll`, `invertSelection`, `growSelection`, `shrinkSelection` | — |
-| `selectFaceLoop` | — (needs two adjacent selected faces to name the loop) |
+| `selectAll`, `deselectAll`, `invertSelection`, `growSelection`, `shrinkSelection` | none |
+| `selectFaceLoop` | none (needs two adjacent selected faces to name the loop) |
 
 ## Driving the kernel from a test
 
@@ -110,8 +110,8 @@ expect(mesh.validate()).toEqual([]);
 ## Adding an operator
 
 1. Implement the geometry in `src/kernel/ops/`, taking a `BMesh` and returning
-   what it created. Add tests asserting exact counts, `validate()` and — for
-   closed results — the Euler characteristic.
+   what it created. Add tests asserting exact counts, `validate()` and, for
+   closed results, the Euler characteristic.
 2. Register it in `OPERATORS` in `src/kernel/commands/operators.ts`, reading
    parameters through the coercing accessors and returning a status string.
 3. Add a button or key binding. Both go through `store.exec`, so undo and status

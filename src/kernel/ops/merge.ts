@@ -163,7 +163,7 @@ export function mergeVerts(
   if (verts.length < 2) return { removed: 0 };
 
   // 'first'/'last' follow selection order (selectSeq), but only when every
-  // vertex here actually has one — verts picked up some other way (select-all,
+  // vertex here actually has one: verts picked up some other way (select-all,
   // grow, freshly created geometry) keep selectSeq 0, which isn't ordered
   // relative to the rest, so those cases fall back to array order.
   let target = verts[mode === 'last' ? verts.length - 1 : 0];

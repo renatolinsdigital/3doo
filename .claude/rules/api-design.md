@@ -6,7 +6,7 @@ paths:
 
 # API Conventions
 
-Only loads when Claude reads a file matching the globs above — delete this
+Only loads when Claude reads a file matching the globs above. Delete this
 file (or edit the paths) once you know your real project's layout.
 
 - All endpoints return a consistent JSON error shape: `{ "error": { "code", "message" } }`.

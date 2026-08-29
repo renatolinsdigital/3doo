@@ -27,7 +27,7 @@ const BOUNDARY_WEIGHT = 12;
 const FLIP_LIMIT = 0.02;
 
 /**
- * Quadric error decimation — Garland and Heckbert's edge collapse.
+ * Quadric error decimation: Garland and Heckbert's edge collapse.
  *
  * The other half of retopology: where a voxel remesh throws the topology away
  * and rebuilds it uniform, this keeps every vertex it does not remove, so a

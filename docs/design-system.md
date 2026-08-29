@@ -5,8 +5,8 @@ and honest, never a puzzle.
 
 ## Rules
 
-- `border-radius: 0` everywhere. No exceptions — the reset enforces it globally.
-- 2–3px solid black borders.
+- `border-radius: 0` everywhere. No exceptions: the reset enforces it globally.
+- 2px to 3px solid black borders.
 - Offset drop shadows, never blurred.
 - No gradients, no glassmorphism, no soft states.
 - Uppercase monospace labels, visible dividers.
@@ -116,5 +116,5 @@ collapses too, leaving the rail and viewport.
    `Thing.test.tsx`. No `index.ts` inside the folder.
 2. Style with the mixins above; do not hardcode colours or spacing.
 3. Export it from `src/shared/components/index.ts`.
-4. Shared components are presentation-only — no store access, no business logic.
+4. Shared components are presentation-only: no store access, no business logic.
    Anything domain-aware belongs in `src/domain/components/`.

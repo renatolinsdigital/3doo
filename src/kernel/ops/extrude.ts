@@ -94,7 +94,7 @@ export function extrudeEdges(
   return { faces, newVerts };
 }
 
-/** Moves selected geometry along each vertex normal — Blender's shrink/fatten. */
+/** Moves selected geometry along each vertex normal, Blender's shrink/fatten. */
 export function shrinkFatten(mesh: BMesh, verts: readonly Vert[], distance: number): void {
   mesh.computeNormals();
   for (const vert of verts) {

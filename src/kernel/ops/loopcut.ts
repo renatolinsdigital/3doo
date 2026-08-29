@@ -60,7 +60,7 @@ export function collectEdgeRing(mesh: BMesh, start: Edge): RingStep[] {
  * Whether a loop cut across this edge has anywhere to run.
  *
  * The ring walk steps through quads only, so an edge with a triangle or an
- * n-gon on both sides cuts nothing at all — which is every edge of a cone,
+ * n-gon on both sides cuts nothing at all, which is every edge of a cone,
  * whose sides are a fan of triangles and whose base is one n-gon. Reads the
  * same two radial loops `collectEdgeRing` starts from, so it answers exactly
  * what that walk would, without walking it.

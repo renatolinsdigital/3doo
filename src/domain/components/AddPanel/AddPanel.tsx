@@ -36,7 +36,7 @@ const MEASURE_WORDS: Record<string, string> = {
  *
  * Read off the same defaults the add action uses so the figures quoted in the
  * hints cannot drift away from the shapes the buttons actually make. Every
- * length in the editor is metres — one unit is one metre.
+ * length in the editor is metres: one unit is one metre.
  */
 function measures(kind: PrimitiveKind): string {
   const params = { ...DEFAULT_PRIMITIVE_PARAMS, ...PRIMITIVE_DEFAULT_OVERRIDES[kind] };

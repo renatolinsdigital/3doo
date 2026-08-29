@@ -26,7 +26,7 @@ export const MAX_SELECTION_LINE_WIDTH = 8;
 /** Three decades either side of the step the zoom picks, which is past useful both ways. */
 export const MIN_GRID_SCALE = 0.001;
 export const MAX_GRID_SCALE = 1000;
-/** One is no subdivision at all — every line heavy — and the cap keeps the mesh sane. */
+/** One is no subdivision at all (every line heavy) and the cap keeps the mesh sane. */
 export const MIN_GRID_SUBDIVISIONS = 1;
 export const MAX_GRID_SUBDIVISIONS = 100;
 
@@ -45,7 +45,7 @@ function coerceColor(raw: unknown, fallback: string): string {
 }
 
 /**
- * Rebuilds a complete preference set from anything shaped roughly like one — a
+ * Rebuilds a complete preference set from anything shaped roughly like one: a
  * storage blob, an imported file, a build that stored fewer keys.
  *
  * Every field falls back to its default on its own, so one bad value cannot

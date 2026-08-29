@@ -49,7 +49,7 @@ function guarded() {
 describe('gizmo guide lines', () => {
   it('keeps both on a drag locked to one axis', () => {
     // The axis line is the track the object is confined to and the delta reads
-    // along it — the one case where every part of the narration earns its keep.
+    // along it, the one case where every part of the narration earns its keep.
     for (const axis of AXIS_GUIDES) {
       const guides = guarded().drag(axis);
       expect(guides.shown[axis]).toBe(true);

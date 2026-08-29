@@ -27,8 +27,8 @@ function diagonal(points: readonly Vec3[]): string {
 
 /** A quad folded inwards at one corner, in the XY plane. */
 function concaveQuad(reflexAt: number): Vec3[] {
-  // Folded at index 2 as written — the third corner sits inside the triangle
-  // the other three make — then rotated so the fold lands where it is wanted.
+  // Folded at index 2 as written (the third corner sits inside the triangle
+  // the other three make), then rotated so the fold lands where it is wanted.
   // Deliberately a dart: the diagonal through the fold is the *longer* of the
   // two, which is the case a shorter-diagonal rule gets wrong.
   const ring = [vec3(-5, 0, 0), vec3(0, -1, 0), vec3(-0.2, 0, 0), vec3(0, 1, 0)];

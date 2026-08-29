@@ -37,7 +37,7 @@ function dissolveEdge(mesh: BMesh, edge: Edge): Face | null {
  *
  * Dissolving is a topology edit, not a geometry one: the merged n-gon keeps
  * every vertex where it was, so merging two faces that meet at a sharp angle
- * produces a *folded* face. Nothing downstream can represent that — it gets one
+ * produces a *folded* face. Nothing downstream can represent that: it gets one
  * averaged normal that matches neither half, ear-clipping projects it onto a
  * plane it does not lie near, and OBJ/FBX record it as a single flat polygon.
  * Gentle curvature (a cylinder's 15° side seams) is fine and useful to merge;
@@ -60,7 +60,7 @@ export function isDissolvableEdge(
  * Whether the fan around `vert` is flat enough to become a single face.
  *
  * Dissolving a vertex merges every face touching it, so the same fold that
- * makes a sharp edge unmergeable applies here — and more easily, since a corner
+ * makes a sharp edge unmergeable applies here, and more easily, since a corner
  * gathers three or more faces at once. A cube corner's three mutually
  * perpendicular faces would collapse into one badly folded n-gon; the interior
  * vertex of a flat grid, the case this operation is actually for, stays fine.
@@ -73,7 +73,7 @@ export function isDissolvableVert(
   // A vertex with two edges or fewer sits along a path rather than at a corner:
   // removing it merges nothing, it just drops out of the rings of the faces
   // using it, which keep their own shape. That is true however sharply those
-  // faces meet — the midpoint of a cube's edge is the everyday case — so there
+  // faces meet (the midpoint of a cube's edge is the everyday case), so there
   // is no fold to guard against.
   if (vert.edges.length <= 2) return true;
 
@@ -143,7 +143,7 @@ export function dissolveFaces(mesh: BMesh, faces: readonly Face[]): Face[] {
 
     // Only the edges *inside* the region go: its boundary edges are the new
     // face's ring. Pruning every now-loop-less edge would take those too
-    // whenever no face outside the region shares them — on an open mesh that
+    // whenever no face outside the region shares them: on an open mesh that
     // deleted the ring's own vertices and left the rebuilt face dangling.
     for (const edge of interiorEdges) {
       if (mesh.edges.has(edge.id) && edge.loops.length === 0) mesh.removeEdge(edge);
@@ -207,7 +207,7 @@ export function dissolveVerts(mesh: BMesh, verts: readonly Vert[]): void {
     }
 
     // Two edges or fewer: the vertex lies along a path, so each face simply
-    // drops it and keeps its own shape. Merging here would be wrong — for the
+    // drops it and keeps its own shape. Merging here would be wrong: for the
     // midpoint of a cube's edge it would fuse the two perpendicular faces.
     if (vert.edges.length <= 2) {
       for (const face of faces) {
@@ -220,7 +220,7 @@ export function dissolveVerts(mesh: BMesh, verts: readonly Vert[]): void {
     // At a corner, dropping the vertex would leave a hole, so the fan has to
     // become one face. Rebuilding its outline succeeds where dissolving the
     // vertex's edges one at a time stalls: the fan's last interior edge ends up
-    // with both loops on the same face — the same reason dissolveFaces rebuilds
+    // with both loops on the same face, the same reason dissolveFaces rebuilds
     // regions directly. An interior vertex is not on the outline, so this also
     // drops it from the ring for free.
     if (faces.length > 1) dissolveFaces(mesh, faces);

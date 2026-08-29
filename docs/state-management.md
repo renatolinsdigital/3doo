@@ -32,7 +32,7 @@ export const useEditorStore = create<EditorStore>()(
 | `tool` | Editor mode, select mode, active tool, pivot, snapping, proportional editing, modal transform |
 | `viewport` | Shading, overlays, camera settings, navigation preset, framing requests |
 | `ui` | Toasts, open dialog, export options, merge preview |
-| `preferences` | Tooltips, selection line width and colour — the fields persisted to localStorage |
+| `preferences` | Tooltips, selection line width and colour, the fields persisted to localStorage |
 
 Splitting into files is organisation. What actually prevents wasted renders is
 **selecting narrowly at the call site**:
@@ -49,7 +49,7 @@ const { shading } = useEditorStore();
 
 Preferences are the settings that belong to the **person**, not the project:
 tooltips on or off, how thick and what colour the selection outline is. They are
-deliberately not part of a `.3doo` file — opening one someone sent you must
+deliberately not part of a `.3doo` file: opening one someone sent you must
 not repaint your viewport.
 
 They live in `slices/preferences.ts` and persist to a single localStorage key:
@@ -70,7 +70,7 @@ const width = useEditorStore((state) => state.selectionLineWidth);
 ```
 
 `currentPreferences()` gathers just those fields back up when the whole set is
-needed — writing to storage, and the export button.
+needed, which is writing to storage and the export button.
 
 ### Every write goes through `coercePreferences`
 
@@ -94,8 +94,8 @@ The preferences dialog writes `currentPreferences()` out with the same
 `downloadText` / `pickTextFile` pair the project files use, so a settings file is
 just JSON the user can carry to another browser.
 
-Each of those takes a `FileKind` — `.pref` here, `.3doo` for projects,
-`.obj` for meshes — which is both what the picker filters on and what the
+Each of those takes a `FileKind` (`.pref` here, `.3doo` for projects,
+`.obj` for meshes), which is both what the picker filters on and what the
 selection is checked against afterwards. `accept` only filters the dialog; every
 browser offers a route around it, and one that does not recognise a compound
 suffix may not filter on it at all. Checking the name again on the way back is
@@ -112,9 +112,9 @@ in from quietly wiping your settings.
 Meshes are mutated **in place**. `extrudeFaces(mesh, faces)` rewrites the same
 `BMesh` instance rather than returning a new one.
 
-That is the right call for the kernel — rebuilding a half-edge graph immutably on
+That is the right call for the kernel, since rebuilding a half-edge graph immutably on
 every drag frame would be slow and would invalidate every element reference an
-operation is holding — but it means Zustand has no new reference to compare, so
+operation is holding, but it means Zustand has no new reference to compare, so
 nothing would re-render.
 
 `meshVersion` is a counter bumped by every mutation. Anything that depends on
@@ -157,7 +157,7 @@ selection.
 History stores **whole-document snapshots**, not `do`/`undo` command pairs.
 
 Structural operations rewrite topology in ways that are painful to invert step by
-step — an inverse for bevel-with-caps is a project of its own. Serializing the
+step: an inverse for bevel-with-caps is a project of its own. Serializing the
 document is one well-tested code path that already exists for save/load, and it
 is fast enough well past the scale this editor targets.
 
@@ -174,7 +174,7 @@ exec: (name, params, label) => {
 Undo pops the past stack, pushes the *current* document onto the redo stack, and
 restores. The stack is capped at 64 entries, so memory stays bounded.
 
-The `History` instance lives at module scope, not in the store — it is not render
+The `History` instance lives at module scope, not in the store. It is not render
 state. Only `canUndo` and `canRedo` are mirrored into the store, because those
 drive button disabled states.
 

@@ -16,14 +16,14 @@ export interface PivotDelta {
  * Moves a point that started at `basePosition`, as part of a group pivoted at
  * `pivot`, by the group's accumulated delta since the drag started.
  *
- * Rotate and scale act on the point's offset from the pivot — so it orbits or
- * spreads from the pivot rather than staying put — then add the pivot back.
+ * Rotate and scale act on the point's offset from the pivot, so it orbits or
+ * spreads from the pivot rather than staying put, then add the pivot back.
  * This is what lets a multi-object selection rotate or scale together around
  * their shared centre instead of each object spinning in place.
  *
  * For a single selected object the pivot is defined as that object's own base
  * position, so the offset is zero: rotate/scale leave the position unchanged
- * and only the object's own rotation/scale (handled by the caller) changes —
+ * and only the object's own rotation/scale (handled by the caller) changes,
  * exactly how a lone object already behaved before a group pivot existed.
  */
 export function pivotPosition(

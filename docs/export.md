@@ -7,14 +7,14 @@ the browser.
 
 OBJ is simple enough to read by eye. Building it first gave the kernel a
 known-good interchange target to validate vertex order, winding, normals and
-material assignment against — before adding FBX's complexity on top. If a mesh
+material assignment against, before adding FBX's complexity on top. If a mesh
 is wrong in OBJ, the bug is in the kernel, not the writer.
 
 ## Axis and unit presets
 
 The editor models in metres: one unit is one metre, which is what a fresh
 primitive measures across. The user should not have to understand coordinate
-conventions to produce a valid export — picking a target engine sets everything:
+conventions to produce a valid export, so picking a target engine sets everything:
 
 | Preset | Up axis | Units | Scale |
 | --- | --- | --- | --- |
@@ -39,20 +39,20 @@ Normals go through the same rotation, but not the scale.
 | Option | Effect |
 | --- | --- |
 | Apply transforms | Bakes object position/rotation/scale into vertices; the node is left at the origin |
-| Apply modifiers | Always on — the evaluated mesh is what gets exported |
+| Apply modifiers | Always on. The evaluated mesh is what gets exported |
 | Triangulate | Splits n-gons before writing |
 | Per-vertex normals | Emits smoothed normals on faces marked smooth, flat face normals otherwise |
 | Include UVs | Emits a UV layer (see below) |
 | Selection only | Restricts to selected objects |
 
 Exports operate on a **clone**. The document's own mesh is never modified by an
-export — triangulating for a game engine must not alter what the user is editing.
+export: triangulating for a game engine must not alter what the user is editing.
 
 ## UVs
 
 There is no texture pipeline, but exports still emit a UV layer: importers in
 Unity and Unreal warn or fail on meshes without one. Every face gets a **box
-projection** from its dominant axis — enough to keep downstream tools happy and
+projection** from its dominant axis, enough to keep downstream tools happy and
 to give a sane starting point for unwrapping elsewhere.
 
 ## OBJ
@@ -96,7 +96,7 @@ polygonVertexIndex.push(position === loops.length - 1 ? -(vertex + 1) : vertex);
 ```
 
 That negative value is how an importer knows where one polygon ends and the next
-begins. Forget it and the entire mesh imports as garbage — not as a subtle
+begins. Forget it and the entire mesh imports as garbage, not as a subtle
 artefact, but as unrecognisable geometry. There is a dedicated test asserting
 that every fourth index of a cube is negative and the rest are not.
 
@@ -124,7 +124,7 @@ and importers that assume a convention both land in the same place.
 
 ### Object ids
 
-Ids must be unique and non-zero — `0` is reserved for the scene root, which is
+Ids must be unique and non-zero. `0` is reserved for the scene root, which is
 what `C: "OO",<modelId>,0` connects each model to.
 
 ## Validating exports
@@ -137,5 +137,5 @@ blender --background --python validate.py
 ```
 
 importing exported fixtures and asserting vertex counts, face counts, material
-slots, bounding box and object count — turning "does the FBX work?" into an
+slots, bounding box and object count, turning "does the FBX work?" into an
 automated test rather than a manual inspection.

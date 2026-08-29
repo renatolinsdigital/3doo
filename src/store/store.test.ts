@@ -56,7 +56,7 @@ describe('editor store', () => {
 
     store().exec('selectAll', {}, 'Select all');
 
-    // Picking geometry is not asking to move it — the gizmo would land on the
+    // Picking geometry is not asking to move it: the gizmo would land on the
     // very thing being aimed at. G, R and S bring it straight back.
     expect(store().activeTool).toBe('select');
     expect(store().status).toBe('Selected all');

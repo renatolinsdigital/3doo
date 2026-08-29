@@ -27,7 +27,7 @@ export interface MeshData {
      * Click-selected vertices in selection order, so `merge at first/last`
      * still knows what the user picked first after an undo or a file reload.
      * Absent on projects written before this was recorded, and it lists only
-     * the vertices that carry an order — a box or select-all leaves none.
+     * the vertices that carry an order: a box or select-all leaves none.
      */
     vertOrder?: number[];
   };
@@ -163,7 +163,7 @@ export function cloneMesh(mesh: BMesh): BMesh {
  * Splits a mesh into one mesh per loose part.
  *
  * A loose part is a set of vertices reachable from one another through faces or
- * wire edges — the shells a mesh falls into when nothing joins them. Always
+ * wire edges: the shells a mesh falls into when nothing joins them. Always
  * returns at least one mesh, so a caller reads "nothing to separate" as a
  * length of one.
  *

@@ -23,7 +23,7 @@ export interface FeatureSet {
  * remesher that only suits organic shapes and one that can be pointed at
  * anything.
  *
- * Open borders and non-manifold seams count as creases too — they are edges of
+ * Open borders and non-manifold seams count as creases too: they are edges of
  * the surface, whatever angle they sit at.
  */
 export function detectFeatures(mesh: BMesh, angleDegrees: number): FeatureSet {
@@ -62,7 +62,7 @@ export function detectFeatures(mesh: BMesh, angleDegrees: number): FeatureSet {
 
     // Three creases meeting is a corner however they are angled; one is the end
     // of a crease, which is a corner too. Two carry on through, and only turn
-    // it into a corner if the line itself bends by more than the threshold —
+    // it into a corner if the line itself bends by more than the threshold,
     // that is what lets the rim of a cylinder stay a smooth ring its vertices
     // can slide around, rather than a ring of pins.
     if (directions.length !== 2) {
@@ -88,18 +88,18 @@ export function detectFeatures(mesh: BMesh, angleDegrees: number): FeatureSet {
  *
  * The tip of a cone is the plain case: every edge running down from it turns by
  * a couple of degrees, so nothing there is a crease and the crease rule above
- * never looks at the vertex — and yet it is the sharpest thing on the model and
+ * never looks at the vertex, and yet it is the sharpest thing on the model and
  * the first thing anyone notices missing when a remesh flattens it off.
  *
  * What gives it away is the angle deficit: how far the faces around a vertex
  * fall short of covering the full turn, which is the discrete form of Gaussian
  * curvature. It is nothing on a flat wall, a fraction of a radian on the coarse
- * vertex of a low-poly sphere, and most of a full turn at a spike — a gap wide
+ * vertex of a low-poly sphere, and most of a full turn at a spike: a gap wide
  * enough that the line between them is not a delicate one.
  */
 function* spikes(mesh: BMesh, angleDegrees: number): Generator<{ id: number; co: Vec3 }> {
   // Scaled off the same control as the creases, and set so a cone tip is caught
-  // while the twelve original corners of a subdivided icosphere are not — those
+  // while the twelve original corners of a subdivided icosphere are not: those
   // are how a sphere is tessellated, not how it is shaped.
   const threshold = (Math.PI * 2 * Math.min(angleDegrees, 90)) / 90;
 

@@ -14,7 +14,7 @@ describe('ground plane depth behaviour', () => {
     // The fine grid, the coarse grid and the axes all sit at y = 0. Any one of
     // them writing depth leaves the others testing against a value equal to
     // their own to within float error, which is what flickered as the camera
-    // orbited — the X axis alternating between red and the Z axis's cyan.
+    // orbited: the X axis alternating between red and the Z axis's cyan.
     for (const line of groundPlane(new ViewportGrid())) {
       expect(line.material.depthWrite).toBe(false);
       // All three have to be in the same pass for render order to sequence
@@ -130,7 +130,7 @@ describe('grid divisions', () => {
     expect(fine.material.opacity).toBeCloseTo(0.1);
     expect(coarse.material.opacity).toBeCloseTo(0.9);
     // GridHelper bakes the colour into the geometry, so that is where it has to
-    // be read back from — in the working space THREE.Color converts it to.
+    // be read back from, in the working space THREE.Color converts it to.
     const expected = new THREE.Color('#123456');
     const colors = (fine as THREE.LineSegments).geometry.getAttribute('color');
     expect(colors.getX(0)).toBeCloseTo(expected.r);
@@ -167,7 +167,7 @@ describe('fine lines through a zoom', () => {
     // Ten to one across a decade, from seven lines on screen to seventy. A flat
     // alpha over that is what made the plane look like it kept gaining weight
     // and then losing it again at the step. Nothing happens while there is
-    // still room — a grid that started dimming immediately would spend most of
+    // still room: a grid that started dimming immediately would spend most of
     // its life half faded.
     expect(gridLevel(30).fade).toBe(1);
     expect(gridLevel(60).fade).toBeLessThan(1);

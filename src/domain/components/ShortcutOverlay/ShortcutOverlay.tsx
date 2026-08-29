@@ -65,7 +65,7 @@ export function ShortcutOverlay() {
             </div>
             <div className="shortcuts__row">
               <dt className="shortcuts__keys">Drag</dt>
-              <dd className="shortcuts__action">Region select — square, circle or lasso (V)</dd>
+              <dd className="shortcuts__action">Region select: square, circle or lasso (V)</dd>
             </div>
           </dl>
         </section>

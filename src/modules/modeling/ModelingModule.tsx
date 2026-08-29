@@ -60,7 +60,7 @@ export function ModelingModule() {
       // answer it with a menu of their own, and anywhere else it does nothing
       // rather than opening one about the page. Typing fields keep theirs,
       // which is where cut, copy and paste live. Portalled menus and dialogs
-      // are covered too — a portal still bubbles through the React tree.
+      // are covered too: a portal still bubbles through the React tree.
       onContextMenu={(event) => {
         if (!isTextEntry(event.target)) event.preventDefault();
       }}

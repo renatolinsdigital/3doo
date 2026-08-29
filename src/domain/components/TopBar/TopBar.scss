@@ -3,8 +3,8 @@
 .top-bar {
   display: flex;
   // One row, one height. Every group stretches to the bar and every control
-  // stretches to its group, so the tallest of them — a `Button` at its hit
-  // target — sets the line and nothing sits proud of its neighbours. Centring
+  // stretches to its group, so the tallest of them (a `Button` at its hit
+  // target) sets the line and nothing sits proud of its neighbours. Centring
   // them instead left the segmented pickers and the project field short.
   align-items: stretch;
   justify-content: space-between;

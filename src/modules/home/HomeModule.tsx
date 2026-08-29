@@ -11,7 +11,7 @@ const CAPABILITIES = [
   },
   {
     title: 'MODELLING OPERATIONS',
-    body: 'Extrude, inset, bevel with segments, loop cut, Catmull-Clark subdivide, dissolve, fill, bridge, triangulate and tris-to-quads — on selections you make per vertex, edge or face.',
+    body: 'Extrude, inset, bevel with segments, loop cut, Catmull-Clark subdivide, dissolve, fill, bridge, triangulate and tris-to-quads, on selections you make per vertex, edge or face.',
   },
   {
     title: 'NON-DESTRUCTIVE MODIFIERS',
@@ -40,7 +40,7 @@ export function HomeModule() {
           </h1>
           <p className="home__lede">
             3DOO brings desktop modelling workflows to a browser tab. No install, no plugin, no
-            account — open it and start building.
+            account: open it and start building.
           </p>
           <div className="home__actions">
             <Button label="OPEN MODELING" variant="primary" onClick={() => navigate('/modeling')} />

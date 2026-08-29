@@ -13,7 +13,7 @@ export interface AccordionProps {
  * A titled group of controls that folds away.
  *
  * `Panel` folds the same way for the layout, but keeps its state in the store
- * and carries it in the project file — right for a workspace someone arranged
+ * and carries it in the project file, right for a workspace someone arranged
  * around their work, wrong for the sections of a dialog, which nobody expects
  * to travel with a scene.
  */

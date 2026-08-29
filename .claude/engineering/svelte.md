@@ -34,15 +34,15 @@ Component-level conventions. Broader frontend architecture (styling system, rout
 ## State
 
 - Local UI state: `$state`.
-- Derived state: `$derived`, never an `$effect` that manually assigns another `$state` value — that's a sign the value should be derived instead.
+- Derived state: `$derived`, never an `$effect` that manually assigns another `$state` value, that's a sign the value should be derived instead.
 - Cross-cutting state shared by unrelated components: a `.svelte.ts` module exporting runed state (or Svelte stores if the app already uses them). Don't reach for a shared module before local state + prop drilling is proven insufficient.
 
 ## Reactivity and performance
 
 - Default to no manual optimization. `$derived` already recomputes only when its dependencies change; don't hand-roll caching around it.
-- `$effect` is for side effects (fetching, syncing external state, DOM measurement), not for deriving a value another part of the template needs — that's what `$derived` is for.
+- `$effect` is for side effects (fetching, syncing external state, DOM measurement), not for deriving a value another part of the template needs, that's what `$derived` is for.
 - Keep `$derived` expressions pure; an `$effect` that writes back into a `$state` value it also reads is a common source of infinite-loop bugs.
-- Svelte's compiler already does fine-grained, per-node DOM updates — there is no `React.memo` equivalent to reach for. Get the rune dependencies right rather than looking for a memoization primitive.
+- Svelte's compiler already does fine-grained, per-node DOM updates, so there is no `React.memo` equivalent to reach for. Get the rune dependencies right rather than looking for a memoization primitive.
 
 ## Naming
 

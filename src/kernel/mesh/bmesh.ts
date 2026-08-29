@@ -16,7 +16,7 @@ import type { Edge, Face, Loop, MeshStats, SelectMode, Vert } from './types';
  * BMesh-style half-edge mesh: verts, edges, and per-face loop cycles.
  *
  * Every element is stored in an insertion-ordered Map keyed by a monotonic id,
- * so iteration is deterministic across runs — kernel tests depend on that.
+ * so iteration is deterministic across runs: kernel tests depend on that.
  */
 export class BMesh {
   readonly verts = new Map<number, Vert>();

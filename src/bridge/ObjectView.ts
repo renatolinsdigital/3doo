@@ -175,7 +175,7 @@ export class ObjectView {
     // Surfaces are re-materialised only when something they are built from
     // changes. A gizmo drag runs this on every pointer move, and disposing a
     // material drops three's cached shader program along with the last
-    // reference to it — so rebuilding them each tick made the renderer compile
+    // reference to it, so rebuilding them each tick made the renderer compile
     // the shader again mid-drag, one stutter per frame.
     const materialKey = solidMaterialKey(object, state);
     if (materialKey !== this.solidMaterialKey) {

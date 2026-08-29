@@ -20,7 +20,7 @@ describe('TransformControls disposal', () => {
     expect((controls as unknown as { traverse?: unknown }).traverse).toBeUndefined();
   });
 
-  it('throws from its own dispose() — the bug the viewport works around', () => {
+  it('throws from its own dispose(), the bug the viewport works around', () => {
     const controls = createControls();
     expect(() => controls.dispose()).toThrow(/traverse is not a function/);
   });

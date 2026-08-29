@@ -60,7 +60,7 @@ export function selectEdgeRing(mesh: BMesh, start: Edge): Edge[] {
  *
  * What the edge-loop button asks before it offers itself, the way
  * `hasAdjacentFaces` answers for the face-loop one. One click's worth of edge
- * already names a loop — the walk runs both ways out of it — so this is not
+ * already names a loop (the walk runs both ways out of it), so this is not
  * what the walk needs, but what says the user drew a stroke along a loop rather
  * than tapping a single edge they may only have wanted the one of.
  */
@@ -101,7 +101,7 @@ export function selectEdgeLoops(mesh: BMesh, edges: readonly Edge[]): Edge[] {
  * Whether any two of these faces share an edge.
  *
  * What `selectFaceLoop` needs before it can name a loop at all, and cheap
- * enough for the UI to ask on every selection change — no ring is walked, only
+ * enough for the UI to ask on every selection change: no ring is walked, only
  * the four edges of each selected face.
  */
 export function hasAdjacentFaces(mesh: BMesh, faces: readonly Face[]): boolean {
@@ -122,8 +122,8 @@ export function hasAdjacentFaces(mesh: BMesh, faces: readonly Face[]): boolean {
  * The face loop running through a pair of adjacent selected faces.
  *
  * Two adjacent faces are what name a loop. The edge they share is the one a
- * loop cut would run across, so the ring of quads through it — the same walk
- * `loopCut` uses — is the loop the user pointed at. One face alone names
+ * loop cut would run across, so the ring of quads through it (the same walk
+ * `loopCut` uses) is the loop the user pointed at. One face alone names
  * nothing: four loops run through it and there is no way to tell which.
  *
  * Every adjacent pair in the selection contributes its loop, so three faces in
@@ -154,7 +154,7 @@ export function selectFaceLoop(mesh: BMesh, faces: readonly Face[]): Face[] {
 /**
  * The face loop a single click names.
  *
- * A face on its own names nothing — two loops run through it — so the edge
+ * A face on its own names nothing (two loops run through it), so the edge
  * nearest where the click landed picks one: the ring across that edge is the
  * strip the cursor was pointing along, which is how Alt+click reads in Blender.
  *
@@ -162,7 +162,7 @@ export function selectFaceLoop(mesh: BMesh, faces: readonly Face[]): Face[] {
  * the loop instead reads well on the first click and then rots: every loop laid
  * down leaves the next face with a selected neighbour of its own, so the rule
  * fires where it was not wanted, and once a face is hemmed in on two sides it
- * keeps re-naming a loop that is already selected — the click stops doing
+ * keeps re-naming a loop that is already selected: the click stops doing
  * anything at all. Reading only the cursor cannot drift that way.
  *
  * Empty at a triangle or an n-gon: no ring runs through those.

@@ -8,7 +8,7 @@ import { useActiveSelectionCounts, useEditorStore } from '@store/index';
  *
  * Parameters live in local state and are passed to `exec`, so each run is one
  * undo step with the values the user actually chose. What each operator does to
- * the surrounding topology — welding, filling, cleaning up — sits next door in
+ * the surrounding topology (welding, filling, cleaning up) sits next door in
  * `TopologyPanel`, and the ones that follow an edge loop in
  * `LoopOperationsPanel`, so a parameterised operator is never buried among
  * buttons that take none.
@@ -16,7 +16,7 @@ import { useActiveSelectionCounts, useEditorStore } from '@store/index';
 export function OperationsPanel() {
   const exec = useEditorStore((state) => state.exec);
 
-  // Every operator below refuses outright when the selection cannot feed it —
+  // Every operator below refuses outright when the selection cannot feed it:
   // the button is disabled to match, and its hint says what to select instead.
   const selection = useActiveSelectionCounts();
 
@@ -80,7 +80,7 @@ export function OperationsPanel() {
           hint={
             selection.faces > 0
               ? 'Shrink the selected faces inward, keeping the border (I)'
-              : 'Insetting shrinks faces inward — select some first (I)'
+              : 'Insetting shrinks faces inward, so select some first (I)'
           }
           onClick={() => exec('inset', { thickness: insetThickness, depth: insetDepth }, 'Inset')}
         />
@@ -110,7 +110,7 @@ export function OperationsPanel() {
           hint={
             selection.edges > 0
               ? 'Chamfer the selected edges (Ctrl+B)'
-              : 'Bevelling chamfers edges — select some first (Ctrl+B)'
+              : 'Bevelling chamfers edges, so select some first (Ctrl+B)'
           }
           onClick={() => exec('bevel', { width: bevelWidth, segments: bevelSegments }, 'Bevel')}
         />

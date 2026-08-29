@@ -18,7 +18,7 @@ const MODIFIER_INFO: Record<ModifierType, { label: string; description: string }
   mirror: {
     label: 'MIRROR',
     description:
-      'Reflects the mesh across a plane on each enabled axis — through the object\u2019s own origin, or through the 3D cursor if you point ORIGIN at it. Merge welds the two halves into one surface where they meet that plane.',
+      'Reflects the mesh across a plane on each enabled axis, through the object\u2019s own origin, or through the 3D cursor if you point ORIGIN at it. Merge welds the two halves into one surface where they meet that plane.',
   },
   array: {
     label: 'ARRAY',
@@ -343,7 +343,7 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
           Both dropdowns sit at the top of the stack, above the numeric fields.
           A native menu opens downward from the control, and one at the foot of
           a long panel opens against the bottom of the window with nowhere to
-          go — which is the whole of what makes it look clipped.
+          go, which is the whole of what makes it look clipped.
         */}
         <Select
           label="TOPOLOGY"

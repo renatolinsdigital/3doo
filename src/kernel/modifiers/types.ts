@@ -65,7 +65,7 @@ export interface SubdivideModifier extends ModifierBase {
  * geometry it was given rather than adding to it.
  *
  * Carries the remesher's settings record rather than a chosen subset, so every
- * control the kernel reads is one the stack can set — there is no second place
+ * control the kernel reads is one the stack can set: there is no second place
  * for a default to live and disagree with. Shading is the exception: it is a
  * property of the object, not of the rebuild, so a remesh carries across
  * whatever the object was already shaded as instead of offering its own answer.

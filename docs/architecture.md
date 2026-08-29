@@ -33,7 +33,7 @@ DOM, or any browser API.** This is what makes every topology operation testable
 in Node with a tight feedback loop, instead of "it looked right in the browser".
 
 If you find yourself wanting `window` or `THREE` inside `/src/kernel`, the
-design has gone wrong — the data needed belongs in the caller.
+design has gone wrong: the data needed belongs in the caller.
 
 ## Where each concern lives
 
@@ -41,13 +41,13 @@ design has gone wrong — the data needed belongs in the caller.
 
 Pure TypeScript. See [mesh-kernel.md](mesh-kernel.md).
 
-- `math/` — vectors, matrices, transforms.
-- `mesh/` — the BMesh structure, triangulation, serialization.
-- `primitives/` — parametric shape constructors.
-- `ops/` — extrude, inset, bevel, loop cut, subdivide, merge, dissolve, …
-- `modifiers/` — the non-destructive stack and its evaluator.
-- `io/` — OBJ, ASCII FBX, project files, UV projection.
-- `commands/` — undo history and the operator registry.
+- `math/` holds vectors, matrices, transforms.
+- `mesh/` holds the BMesh structure, triangulation, serialization.
+- `primitives/` holds the parametric shape constructors.
+- `ops/` holds extrude, inset, bevel, loop cut, subdivide, merge, dissolve, …
+- `modifiers/` holds the non-destructive stack and its evaluator.
+- `io/` holds OBJ, ASCII FBX, project files, UV projection.
+- `commands/` holds undo history and the operator registry.
 
 ### `/src/bridge`
 
@@ -65,7 +65,7 @@ Zustand, split into five slices. See [state-management.md](state-management.md).
 
 ### `/src/shared`
 
-Presentation-only components. No business logic, no store access — except
+Presentation-only components. No business logic, no store access, except
 `ToastHost`, which is a thin adapter over the toast slice. Each component lives
 in its own folder with its `.tsx`, `.scss` and test; the parent `index.ts` is the
 only barrel.
@@ -82,7 +82,7 @@ A **module** is one whole area of the application, reachable at its own path:
 | Module | Path | Is |
 | --- | --- | --- |
 | `home` | `/` | The landing page |
-| `modeling` | `/modeling` | The mesh editor — the shell that was once `App` |
+| `modeling` | `/modeling` | The mesh editor, the shell that was once `App` |
 | `docs` | `/docs` | The user manual, with its own left-hand contents menu |
 
 `/src/app` holds only what all of them share: the registry in `modules.ts`, the
@@ -97,15 +97,15 @@ modeling module mounts, so no WebGL context is created to show a hero heading.
 
 Adding sculpting later is one entry in `APP_MODULES` and one branch in `App`.
 
-The arrow from `app` runs one way only. `TopBar` does not import the switcher —
-it takes the brand plate as a `brand` prop, and `ModelingModule` passes it in.
+The arrow from `app` runs one way only. `TopBar` does not import the switcher.
+It takes the brand plate as a `brand` prop, and `ModelingModule` passes it in.
 A domain component reaching back up into `/src/app` would invert the rule this
 whole diagram rests on.
 
 #### Routing
 
 There is no router dependency. `app/router.ts` is a `useSyncExternalStore` over
-`history.pushState` and `popstate` — about thirty lines. Nested routes, params
+`history.pushState` and `popstate`, about thirty lines. Nested routes, params
 and loaders would all go unused, because the registry already says which path
 maps to which area; the docs module's sections are a URL fragment, not a route.
 
@@ -127,7 +127,7 @@ Pressing <kbd>E</kbd> to extrude:
 6. Panels subscribed to counts re-render; panels subscribed to unrelated state do
    not.
 
-Note that step 3 mutates rather than replaces the mesh. That is deliberate — see
+Note that step 3 mutates rather than replaces the mesh. That is deliberate: see
 [state-management.md](state-management.md) on why `meshVersion` exists.
 
 ## Things deliberately not abstracted

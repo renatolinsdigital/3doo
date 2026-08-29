@@ -8,7 +8,7 @@
   background: var(--ash);
 
   // The viewport is the whole page between the two bars, and every tool
-  // surface floats over it. A single grid cell holds the canvas — the rail and
+  // surface floats over it. A single grid cell holds the canvas: the rail and
   // the two panel columns are taken out of flow, so nothing they do resizes
   // what the user is modelling.
   &__main {
@@ -47,7 +47,7 @@
 
     // Panels keep their own height and the column scrolls as one. Letting them
     // shrink instead handed every panel a scrollbar of its own and squeezed the
-    // tallest one — the modifier stack — down to a couple of visible rows.
+    // tallest one (the modifier stack) down to a couple of visible rows.
     > * {
       @include brutal-shadow;
 

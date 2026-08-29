@@ -321,7 +321,7 @@ function applySolidify(mesh: BMesh, modifier: SolidifyModifier): BMesh {
 }
 
 /**
- * Merge by distance over the whole mesh — a modifier has no selection to work
+ * Merge by distance over the whole mesh: a modifier has no selection to work
  * from, so every vertex is a candidate.
  *
  * This is the cleanup pass for seams the rest of the stack leaves behind: an
@@ -351,8 +351,8 @@ function applySubdivide(mesh: BMesh, modifier: SubdivideModifier): BMesh {
 /**
  * Rebuilds the topology, or leaves the mesh exactly as it was.
  *
- * The remesher refuses some inputs outright — a mesh with no faces, a reduce
- * target that collapses everything — and the rest of the stack has no way to
+ * The remesher refuses some inputs outright (a mesh with no faces, a reduce
+ * target that collapses everything), and the rest of the stack has no way to
  * answer a thrown error. This runs while the viewport is drawing, so a throw
  * here is a blank screen rather than a message; a settings combination that
  * cannot be built is one the modifier simply does not apply, and the mesh comes

@@ -11,7 +11,7 @@ import type { BooleanReply, BooleanRequest } from './boolean.worker';
  * Drives the worker's own handler, with `self` standing in for the thread.
  *
  * The crossing is where a boolean run elsewhere can quietly differ from one run
- * here — the transforms have to be rebuilt on the far side, the material slots
+ * here: the transforms have to be rebuilt on the far side, the material slots
  * carried across, the mesh flattened and put back together. This is that, with
  * the thread itself the only part left out.
  */

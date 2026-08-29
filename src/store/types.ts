@@ -75,7 +75,7 @@ export interface OverlaySettings {
 /**
  * Where the 3D cursor could go, resolved under the pointer at right-click.
  *
- * Each is world space, or null when the click found nothing of that kind — the
+ * Each is world space, or null when the click found nothing of that kind: the
  * menu disables those entries rather than hiding them, so the options stay in
  * the same place every time.
  */
@@ -97,7 +97,7 @@ export interface CursorMenuState {
  * Where the orbit camera is standing.
  *
  * The focus point plus the spherical offset from it, which is exactly the state
- * `CameraController` navigates in — a matrix would have to be decomposed back
+ * `CameraController` navigates in: a matrix would have to be decomposed back
  * into these to be usable. Held in the store so it survives the viewport being
  * torn down and rebuilt, which is what switching module does.
  */

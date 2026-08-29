@@ -99,7 +99,7 @@ describe('ObjectView selection outline', () => {
   }
 
   // The outline is instanced quads, one per segment, so the segment count is on
-  // `instanceStart` — `position` holds the quad the shader expands, not the line.
+  // `instanceStart`: `position` holds the quad the shader expands, not the line.
   function segmentCount(line: LineSegments2): number {
     return line.geometry.getAttribute('instanceStart')?.count ?? 0;
   }
@@ -168,7 +168,7 @@ describe('ObjectView selection outline', () => {
 
   it('has the fill stamp the mask only while there is an outline to keep off', () => {
     // The line is kept off the object's own pixels by the stencil its fill
-    // writes, so the two have to switch together — a fill still stamping after
+    // writes, so the two have to switch together: a fill still stamping after
     // the selection moved on would cut a hole in the next object's outline.
     const { object, settings } = scene();
     const view = new ObjectView(object.id);

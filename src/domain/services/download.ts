@@ -17,7 +17,7 @@ export function downloadText(filename: string, contents: string, mimeType = 'tex
 /**
  * How a finished download is announced.
  *
- * The browser decides where the file lands and never tells the page — it may be
+ * The browser decides where the file lands and never tells the page: it may be
  * a download folder, it may be wherever a Save As dialog was pointed. So the
  * message names the files, which is the part that is actually known, and points
  * at the downloads rather than inventing a path.
@@ -36,7 +36,7 @@ export interface FileKind {
    * Every suffix opening will take.
    *
    * The contents are JSON whatever the name says, so the `.json` spelling is
-   * accepted too — that covers a file saved before the extension shortened, and
+   * accepted too: that covers a file saved before the extension shortened, and
    * one renamed on the way through a tool that only speaks `.json`.
    */
   accepts: readonly string[];
@@ -71,7 +71,7 @@ export const MESH_FILE: FileKind = {
 export function wrongKindMessage(filename: string, kind: FileKind): string | null {
   const name = filename.toLowerCase();
   if (kind.accepts.some((suffix) => name.endsWith(suffix))) return null;
-  return `${filename} is not ${kind.label} — expected ${kind.extension}`;
+  return `${filename} is not ${kind.label}, expected ${kind.extension}`;
 }
 
 interface SaveFilePickerOptions {
@@ -95,10 +95,10 @@ function saveFilePicker(): SaveFilePicker | null {
 
 export interface SaveResult {
   /**
-   * `saved` — written where the user put it.
-   * `downloaded` — no picker available, so the browser placed it.
-   * `exists` — refused rather than overwrite.
-   * `cancelled` — the user dismissed the dialog.
+   * `saved`: written where the user put it.
+   * `downloaded`: no picker available, so the browser placed it.
+   * `exists`: refused rather than overwrite.
+   * `cancelled`: the user dismissed the dialog.
    */
   status: 'saved' | 'downloaded' | 'exists' | 'cancelled';
   filename: string;
@@ -113,7 +113,7 @@ export interface SaveResult {
  * where the file went.
  *
  * An existing file is refused rather than replaced. Note the picker creates a
- * zero-byte file the moment a *new* name is chosen, so size — not existence —
+ * zero-byte file the moment a *new* name is chosen, so size (not existence)
  * is what separates "already there" from "just made for us".
  */
 export async function saveTextFile(
@@ -138,8 +138,8 @@ export async function saveTextFile(
     if ((error as DOMException)?.name === 'AbortError') {
       return { status: 'cancelled', filename: suggestedName };
     }
-    // Any other refusal from the picker — a suffix it dislikes, a blocked
-    // permission — must not cost the user the save, so take the plain route.
+    // Any other refusal from the picker (a suffix it dislikes, a blocked
+    // permission) must not cost the user the save, so take the plain route.
     downloadText(suggestedName, contents, mimeType);
     return { status: 'downloaded', filename: suggestedName };
   }
@@ -165,7 +165,7 @@ export function saveResultToast(
     case 'exists':
       return {
         variant: 'error',
-        message: `${result.filename} already exists — save under a different name`,
+        message: `${result.filename} already exists, save under a different name`,
       };
     // Dismissing a dialog is a decision, not an event worth a toast.
     case 'cancelled':

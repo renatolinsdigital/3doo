@@ -35,7 +35,7 @@ export interface FacingElements {
  * What the camera can actually see of a mesh.
  *
  * Vertices and edges are picked in screen space, which has no idea whether one
- * is round the back — so on a dense mesh the element nearest the pointer in
+ * is round the back, so on a dense mesh the element nearest the pointer in
  * pixels is regularly one hidden behind the model, and a click lands on the far
  * side of the shape being aimed at. Filtering the candidates through this is
  * what makes the pick agree with what is on screen.
@@ -44,8 +44,8 @@ export interface FacingElements {
  * pickable. Wire edges and loose vertices have no face to turn away and stay
  * pickable too.
  *
- * Self-occlusion — a front-facing surface hidden behind another part of the
- * same model — is not caught here; answering that needs a depth buffer. The far
+ * Self-occlusion (a front-facing surface hidden behind another part of the
+ * same model) is not caught here; answering that needs a depth buffer. The far
  * side of the object is the half that makes a dense mesh unusable.
  */
 export function facingElements(
@@ -244,7 +244,7 @@ export type RegionTest = (screen: THREE.Vector2) => boolean;
  * `contains` is what edit mode picks with: its elements are points on screen,
  * and a point is either in or out. `crosses` is what object mode needs, where
  * an object counts as touched by a region that cuts across one of its edges
- * without holding either end of it — answered exactly rather than by sampling
+ * without holding either end of it, answered exactly rather than by sampling
  * along the edge, which slips through any region thinner than its step.
  */
 export interface Region {
@@ -417,7 +417,7 @@ export interface ObjectEntry {
  * inside the region, so clipping one corner picks the whole thing up. Its
  * vertices answer that for most drags, and its edges answer for a region that
  * cuts across one without holding either end. A region small enough to sit
- * inside a single face touches neither — the caller's ray covers that.
+ * inside a single face touches neither: the caller's ray covers that.
  */
 export function pickObjectsInRegion(
   entries: readonly ObjectEntry[],

@@ -34,7 +34,7 @@ export interface MeshBuffers {
  * Converts a BMesh into the three GPU buffer sets the viewport draws:
  * a triangulated solid, an edge line set, and a vertex point cloud.
  *
- * Triangulation happens only here, at the display boundary — the kernel keeps
+ * Triangulation happens only here, at the display boundary: the kernel keeps
  * n-gons throughout.
  */
 export function buildMeshBuffers(mesh: BMesh): MeshBuffers {
@@ -127,8 +127,8 @@ function buildEdges(mesh: BMesh): EdgeBuffers {
  * The edges that trace a mesh's outline from where the camera stands.
  *
  * An edge is on the silhouette when the two faces sharing it disagree about
- * facing the camera; an edge with anything other than two faces — a boundary,
- * a bare wire — always is, which is what gives flat and open shapes an outline
+ * facing the camera; an edge with anything other than two faces (a boundary,
+ * a bare wire) always is, which is what gives flat and open shapes an outline
  * as well as closed ones.
  *
  * `eye` is the camera in the mesh's own space. Testing there rather than in

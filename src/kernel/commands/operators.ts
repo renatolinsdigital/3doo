@@ -69,9 +69,9 @@ export interface OperatorResult {
   refused?: boolean;
   /**
    * Vertices the operator just created, for the viewport to flash briefly.
-   * A new vertex is easy to lose track of — the midpoint of a subdivided edge
+   * A new vertex is easy to lose track of: the midpoint of a subdivided edge
    * lands exactly on the line it split, and in edge mode vertices are not drawn
-   * at all — so the viewport marks them until the user's next action.
+   * at all, so the viewport marks them until the user's next action.
    */
   createdVerts?: number[];
 }
@@ -81,8 +81,8 @@ type OperatorHandler = (context: OperatorContext, params: OperatorParams) => Ope
 /**
  * Reads a parameter with a fallback.
  *
- * The operator table is the scripting boundary — `app.exec("extrude", {...})`
- * can be called with anything — so every value is coerced and range-checked
+ * The operator table is the scripting boundary (`app.exec("extrude", {...})`
+ * can be called with anything), so every value is coerced and range-checked
  * here rather than trusted.
  */
 function readNumber(params: OperatorParams, key: string, fallback: number): number {
@@ -197,7 +197,7 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     // happened.
     if (!canLoopCut(mesh, start)) {
       return {
-        status: 'No quad ring runs across that edge — the faces beside it are triangles or n-gons',
+        status: 'No quad ring runs across that edge: the faces beside it are triangles or n-gons',
       };
     }
 
@@ -492,7 +492,7 @@ export const OPERATORS: Record<string, OperatorHandler> = {
 
     const loop = selectFaceLoop(mesh, faces);
     if (loop.length === 0) {
-      return { status: 'No loop runs through those faces — they must be adjacent quads' };
+      return { status: 'No loop runs through those faces: they must be adjacent quads' };
     }
 
     // Added to the selection rather than replacing it: the loop already

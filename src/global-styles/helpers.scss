@@ -105,7 +105,7 @@
   user-select: none;
 }
 
-/// A small square button riding a coloured header strip — the modal's close,
+/// A small square button riding a coloured header strip: the modal's close,
 /// the modifier rows' reorder and apply controls. Outlined in bone on the
 /// strip and inverted on hover, so it takes the strip's own colour.
 @mixin header-button($host) {

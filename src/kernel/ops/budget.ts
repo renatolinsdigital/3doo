@@ -1,7 +1,7 @@
 /**
  * What one mesh may grow to inside a browser tab.
  *
- * A BMesh is a graph of objects — a vertex, an edge, a loop per corner — and
+ * A BMesh is a graph of objects (a vertex, an edge, a loop per corner) and
  * measures about 2.5 kB a face, so a quarter of a million faces is some 600 MB
  * of heap before the viewport has drawn any of it, on top of a second or so to
  * rebuild the buffers it draws from. Past that a tab does not get slower, it
@@ -16,7 +16,7 @@ export const MESH_BUDGET = { faces: 250_000, verts: 250_000 } as const;
 /**
  * Where an operation stops being instant.
  *
- * Nothing is refused at this size — it is the point at which the user is told
+ * Nothing is refused at this size: it is the point at which the user is told
  * an operation will take a moment before it takes it.
  */
 export const MESH_WARNING = { faces: 60_000, verts: 60_000 } as const;
@@ -34,10 +34,10 @@ function readable(value: number): string {
 /** Why a result this size is refused, or null when it fits. */
 export function budgetRefusal(growth: Growth): string | null {
   if (growth.faces !== undefined && growth.faces > MESH_BUDGET.faces) {
-    return `That would leave ${readable(growth.faces)} faces — past the ${readable(MESH_BUDGET.faces)} a browser tab can hold. Use fewer cuts, or select fewer faces.`;
+    return `That would leave ${readable(growth.faces)} faces, past the ${readable(MESH_BUDGET.faces)} a browser tab can hold. Use fewer cuts, or select fewer faces.`;
   }
   if (growth.verts !== undefined && growth.verts > MESH_BUDGET.verts) {
-    return `That would leave ${readable(growth.verts)} vertices — past the ${readable(MESH_BUDGET.verts)} a browser tab can hold. Use fewer cuts, or select fewer edges.`;
+    return `That would leave ${readable(growth.verts)} vertices, past the ${readable(MESH_BUDGET.verts)} a browser tab can hold. Use fewer cuts, or select fewer edges.`;
   }
   return null;
 }

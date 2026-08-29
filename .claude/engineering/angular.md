@@ -26,7 +26,7 @@ export class ButtonComponent {
 
 ## Inputs and outputs
 
-- Prefer signal-based `input()` / `input.required()` / `output()` over decorator-based `@Input`/`@Output` in new code (Angular 17+) — same intent, better type inference, no `!` assertions needed.
+- Prefer signal-based `input()` / `input.required()` / `output()` over decorator-based `@Input`/`@Output` in new code (Angular 17+): same intent, better type inference, no `!` assertions needed.
 - Every input is explicitly typed. No `any`, no untyped object inputs for anything non-trivial.
 - A component should be fully controllable through its inputs/outputs. Avoid reaching into a child via `@ViewChild` to set state an input could carry instead.
 
@@ -34,7 +34,7 @@ export class ButtonComponent {
 
 - Business logic lives in injectable services, not inline in components. A component class should read as a thin adapter between the template and a service.
 - Services are `providedIn: 'root'` unless intentionally scoped to a feature route or component subtree.
-- Prefer the `async` pipe or `toSignal()` over manual `.subscribe()` in components — both handle unsubscription and change detection for you.
+- Prefer the `async` pipe or `toSignal()` over manual `.subscribe()` in components: both handle unsubscription and change detection for you.
 
 ## State
 
@@ -44,7 +44,7 @@ export class ButtonComponent {
 ## Change detection and reactivity
 
 - `OnPush` plus signals is the default rendering model; components should rarely need `markForCheck()`.
-- Don't call methods from templates for anything non-trivial (`{{ getTotal() }}`) — it re-runs on every check. Use `computed()` or a pipe instead.
+- Don't call methods from templates for anything non-trivial (`{{ getTotal() }}`), since it re-runs on every check. Use `computed()` or a pipe instead.
 - Any manual RxJS subscription must be torn down (`takeUntilDestroyed()`), or replaced entirely with `async pipe` / `toSignal()`.
 
 ## Naming

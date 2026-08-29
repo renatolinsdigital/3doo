@@ -89,7 +89,7 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
     key: 'd',
     ctrl: true,
     mode: 'edit',
-    label: 'Subdivide — splits selected edges at their midpoint, or cuts up faces',
+    label: 'Subdivide: splits selected edges at their midpoint, or cuts up faces',
     group: 'Modelling',
   },
 
@@ -121,7 +121,7 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
     key: 'd',
     alt: true,
     mode: 'object',
-    label: 'Linked duplicate — the copy shares the original mesh data',
+    label: 'Linked duplicate: the copy shares the original mesh data',
     group: 'Edit',
   },
   {
@@ -145,7 +145,7 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
   {
     id: 'selectTool',
     key: 'v',
-    label: 'Select tool — press again for the next region shape',
+    label: 'Select tool: press again for the next region shape',
     group: 'Selection',
   },
   {

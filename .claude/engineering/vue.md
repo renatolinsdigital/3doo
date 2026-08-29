@@ -34,13 +34,13 @@ defineEmits<{ click: [] }>();
 ## State
 
 - Local UI state: `ref` / `reactive`.
-- Derived state: `computed`, never a `watch` that manually assigns another ref — that's a sign the value should be computed instead.
+- Derived state: `computed`, never a `watch` that manually assigns another ref, that's a sign the value should be computed instead.
 - Cross-cutting state shared by unrelated components: `provide`/`inject`, or Pinia if the app already has a store. Don't reach for Pinia before local state + `provide`/`inject` is proven insufficient.
 
 ## Reactivity and performance
 
 - Default to no manual optimization. `computed` already caches its result; don't wrap cheap expressions in it "for perf."
-- `watch`/`watchEffect` are for side effects (fetching, syncing external state, logging), not for deriving a value another part of the template needs — that's what `computed` is for.
+- `watch`/`watchEffect` are for side effects (fetching, syncing external state, logging), not for deriving a value another part of the template needs, that's what `computed` is for.
 - `v-memo` and `shallowRef`/`shallowReactive` are for measured problems (profiler shows a slow re-render on a large list), not a default. Get the reactive dependency right before reaching for either.
 - Never add `v-memo` or a shallow ref to "future-proof" a component; add it when a real perf problem is measured, and prefer fixing the actual cause (splitting the component, moving state down) first.
 

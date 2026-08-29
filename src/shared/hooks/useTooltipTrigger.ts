@@ -34,8 +34,8 @@ export function useTooltipTrigger(text?: string): TooltipTriggerHandlers {
   useEffect(
     () => () => {
       window.clearTimeout(timerRef.current);
-      // A control can be unmounted by its own click — a menu entry, a dialog
-      // button — and then never receives the mouseleave that would clear its
+      // A control can be unmounted by its own click (a menu entry, a dialog
+      // button) and then never receives the mouseleave that would clear its
       // hint, leaving the tooltip stranded over the viewport. Only the trigger
       // whose hint is actually up clears it, so a control unmounting elsewhere
       // cannot wipe the hint of whatever the pointer has moved on to.
@@ -77,7 +77,7 @@ export function useTooltipTrigger(text?: string): TooltipTriggerHandlers {
     },
     onFocus: (event) => {
       // A press focuses the control too, and that focus would put the hint
-      // straight back on screen — only keyboard focus should raise it.
+      // straight back on screen: only keyboard focus should raise it.
       if (pressedRef.current) {
         pressedRef.current = false;
         return;

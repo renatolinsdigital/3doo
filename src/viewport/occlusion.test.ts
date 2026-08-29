@@ -28,7 +28,7 @@ function perspective(): THREE.Camera {
 
 /**
  * As much of an ObjectView as the picker reads, with the vertices in the order
- * given — which is what decides a tie, and so what the tests turn on.
+ * given, which is what decides a tie, and so what the tests turn on.
  */
 function viewOf(mesh: BMesh, order: readonly Vert[]): ObjectView {
   const edges = [...mesh.edges.values()];
@@ -85,7 +85,7 @@ describe('facingElements', () => {
   it('follows the object transform', () => {
     const mesh = createBox(2);
     // Turned half a revolution, the face that was towards the camera is the one
-    // now hidden — the test runs in object space, so the matrix has to be read.
+    // now hidden: the test runs in object space, so the matrix has to be read.
     const matrix = new THREE.Matrix4().makeRotationY(Math.PI);
     const facing = facingElements(mesh, matrix, orthographic());
 
@@ -123,7 +123,7 @@ describe('picking through a dense mesh', () => {
   const mesh = createBox(2);
   const front = corner(mesh, 1, 1, 1);
   const back = corner(mesh, 1, 1, -1);
-  // The far corner sits first, so a tie on screen distance goes to it — which
+  // The far corner sits first, so a tie on screen distance goes to it, which
   // is exactly what a dense mesh does by accident.
   const view = viewOf(mesh, [back, front, ...[...mesh.verts.values()]]);
   const pointer = new THREE.Vector2(110, 90);

@@ -55,7 +55,7 @@ export function NumberField({
   const resolvedPrecision = integer ? 0 : (precision ?? 3);
 
   // Every path that produces a value goes through here, so an integer field
-  // can never emit a fraction — not by typing, scrubbing, or arrow-stepping.
+  // can never emit a fraction, not by typing, scrubbing, or arrow-stepping.
   const quantize = (raw: number) =>
     clamp(integer ? Math.round(raw) : Number(raw.toFixed(resolvedPrecision)), min, max);
 

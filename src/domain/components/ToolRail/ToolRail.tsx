@@ -43,7 +43,7 @@ const TOOLS: ToolEntry[] = [
     icon: '⬚',
     label: 'Select',
     shortcut: 'V',
-    hint: 'Click, drag a region or Alt+click to select geometry — V or another click changes the region shape',
+    hint: 'Click, drag a region or Alt+click to select geometry. V or another click changes the region shape',
   },
   {
     id: 'move',

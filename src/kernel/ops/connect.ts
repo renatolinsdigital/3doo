@@ -14,8 +14,8 @@ export interface ConnectVertsResult {
  * When both sit on the same face the face is split along the new edge rather
  * than the edge simply being laid across it: a bare edge through a face divides
  * nothing, leaving geometry that looks cut but still shades and extrudes as one
- * surface. Vertices with no face in common — two loose verts, or corners of
- * different islands — get the plain edge, which is the only thing that can be
+ * surface. Vertices with no face in common (two loose verts, or corners of
+ * different islands) get the plain edge, which is the only thing that can be
  * meant there.
  */
 export function connectVerts(mesh: BMesh, a: Vert, b: Vert): ConnectVertsResult {

@@ -33,7 +33,7 @@ export interface SubdivideOptions {
  *
  * One pass, however many cuts: a quad comes back as a grid of (cuts + 1) by
  * (cuts + 1), which is what a count of cuts reads as everywhere else. Running
- * the one-cut scheme `cuts` times instead — which is what this used to do —
+ * the one-cut scheme `cuts` times instead (which is what this used to do)
  * cuts every edge two to the power of it, so four asked for came back as
  * sixteen.
  *
@@ -146,7 +146,7 @@ const FAN_SLACK = 1e-6;
  *
  * Subdivision turns each corner into a quad reaching back to a point in the
  * middle of the face, and those quads cover the face exactly when the point can
- * see every edge of it — when every triangle from the point out to an edge
+ * see every edge of it: when every triangle from the point out to an edge
  * turns the same way.
  *
  * Summed with their signs those triangles come to the face's own area wherever
@@ -180,7 +180,7 @@ function fansCleanly(points: readonly Vec3[], centre: Vec3): boolean {
  * Catmull-Clark says the average of the corners, and that is what is used
  * wherever it works, which is every face that is anywhere near convex. A face
  * left around a hole is not: its corners crowd the rim, so their average is
- * dragged into the hole — off the surface altogether. Weighting by area follows
+ * dragged into the hole, off the surface altogether. Weighting by area follows
  * the material instead of the crowd, and is the best point available even for
  * the faces that cannot be fanned from anywhere.
  */
@@ -234,7 +234,7 @@ function insideTriangle(p: Flat, a: Flat, b: Flat, c: Flat): boolean {
  * Triangulates a ring by clipping the squarest ear available, not the first one.
  *
  * The order ears come off in decides the shape of what is left behind. Taking
- * the first one that fits — which is all a triangulation for drawing needs —
+ * the first one that fits (which is all a triangulation for drawing needs)
  * walks around the ring peeling slivers off the same corner, and leaves every
  * diagonal meeting there: a fan, whose hub carries one vertex of enormous
  * valence. Subdivision reads that hub as an extraordinary point and pinches the
@@ -336,7 +336,7 @@ function weldRings(left: number[], right: number[], from: number, to: number): n
  * Cuts a ring into convex pieces, as index rings into `points`.
  *
  * Ear clipping first, then the diagonals it drew are taken back out wherever
- * the two pieces either side of one make a convex piece together — Hertel and
+ * the two pieces either side of one make a convex piece together, Hertel and
  * Mehlhorn's decomposition. What comes out is a handful of convex pieces rather
  * than a fan of slivers, which is what the subdivision downstream wants: a
  * convex piece is seen whole from its own middle, so the quads fanned off its
@@ -408,7 +408,7 @@ function plumpness(points: readonly Vec3[]): number {
  * subdivision can work with. A wall with a small bore out of it comes apart
  * into pieces about a third as square as the wall was, and subdividing those
  * holds the shape. A wall with a large ragged hole comes apart into splinters a
- * fortieth as square, and subdividing those folds the wall into fins — worse
+ * fortieth as square, and subdividing those folds the wall into fins, worse
  * than never having cut it. The two are an order of magnitude apart, and this
  * sits between them.
  */
@@ -525,7 +525,7 @@ function sideCut(side: readonly Loop[], splits: ReadonlyMap<Edge, number>): bool
  * That travelling is what keeps the mesh in quads. A cut that stopped at the
  * edge of the selection would leave the face beside it carrying a vertex in the
  * middle of one side, and the next subdivision of that face has nowhere to put
- * a matching cut — the dead end where subdividing the face next to a subdivided
+ * a matching cut: the dead end where subdividing the face next to a subdivided
  * one did nothing at all.
  */
 function planCuts(
@@ -651,7 +651,7 @@ function coonsPoint(
  * Fills a four-sided patch with cells, as rings ready to be added.
  *
  * The boundaries run bottom `C0 -> C1`, right `C1 -> C2`, top `C3 -> C2` and
- * left `C0 -> C3`, and each is shared out among the cells along it — a boundary
+ * left `C0 -> C3`, and each is shared out among the cells along it: a boundary
  * carrying more vertices than there are cells gives several to each, so those
  * cells come back as squares with vertices along one edge rather than as
  * anything the grid has to bend to accommodate.
@@ -736,7 +736,7 @@ function gridRings(
  * The cells a face comes apart into, or null when it is left whole.
  *
  * Four corners give a grid. Anything else is cut the way Catmull-Clark cuts it:
- * one quad per corner, reaching back to a point in the middle of the face —
+ * one quad per corner, reaching back to a point in the middle of the face,
  * gridded in turn when the sides carry more than the one cut that scheme needs.
  */
 function patchRings(

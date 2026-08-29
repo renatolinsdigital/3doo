@@ -37,18 +37,18 @@ Sculpting is the next module planned. See
 
 | Area | Included |
 | --- | --- |
-| Primitives | Box, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule, torus — with live parameters |
+| Primitives | Box, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule, torus, with live parameters |
 | Object mode | Transform gizmo, duplicate, linked duplicate, merge, apply transform, delete, outliner with rename / visibility / lock |
 | Selection | Vertex, edge and face modes; click, box select, Alt+click edge loops, grow / shrink / invert |
 | Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, subdivide (Catmull-Clark), merge by distance, delete, dissolve, fill, bridge, triangulate, tris-to-quads |
 | Normals | Recalculate outside, flip, shade smooth / flat, face-orientation overlay |
-| Modifiers | Mirror, array, solidify, weld, subdivision, remesh — non-destructive, reorderable, with Apply |
+| Modifiers | Mirror, array, solidify, weld, subdivision, remesh. All non-destructive, reorderable, with Apply |
 | Remesh | A modifier with three methods: voxel quad shell (signed distance field, surface nets, crease and corner constraints), blocks straight off the lattice, and quadric error decimation |
 | 3D cursor | Right-click to place it on a point, vertex, edge or face; snap it to the selection or the selection to it; use it as the transform pivot or as a mirror plane |
-| Proportional editing | Six falloff curves, with a viewport ring showing how far the falloff reaches — scroll to resize it mid-transform, or Ctrl+scroll any time |
+| Proportional editing | Six falloff curves, with a viewport ring showing how far the falloff reaches. Scroll to resize it mid-transform, or Ctrl+scroll any time |
 | Viewport | Orbit / pan / zoom (Blender and Maya presets), solid / wireframe / x-ray / matcap, adaptive grid, normals overlay |
 | Files | Save and load JSON projects, autosave to IndexedDB with crash recovery, OBJ import |
-| Preferences | Tooltips, selection outline thickness and colour — kept in localStorage per device, with import / export |
+| Preferences | Tooltips, selection outline thickness and colour, kept in localStorage per device, with import / export |
 | Export | OBJ + MTL, **ASCII FBX 7.4**, with Unity / Unreal / Blender / Maya axis and unit presets |
 | Undo | Snapshot history capped at 64 steps |
 
@@ -84,7 +84,7 @@ Four responsibilities, kept strictly apart:
 - **Three.js is imperative and mounted once.** React does not reconcile scene-graph
   objects or vertices; the viewport reads the store directly through
   `subscribeWithSelector`.
-- **React owns the chrome only** — panels, forms, toolbars, dialogs, status.
+- **React owns the chrome only**: panels, forms, toolbars, dialogs, status.
 
 ### Layout
 
@@ -128,14 +128,14 @@ Blender defaults, because that is the muscle memory users arrive with. Press
 | `G` / `R` / `S` | Move / rotate / scale |
 | `E` / `I` | Extrude / inset |
 | `Ctrl+B` / `Ctrl+R` | Bevel / loop cut |
-| `Ctrl+D` | Subdivide — splits selected edges at their midpoint, or cuts up faces |
+| `Ctrl+D` | Subdivide: splits selected edges at their midpoint, or cuts up faces |
 | `M` | Object mode: merge the selected objects; edit mode: merge by distance |
 | `Shift+D` / `Alt+D` | Duplicate / linked duplicate, the copy sharing the mesh data |
 | `P` | Separate the loose parts into an object each |
 | `Ctrl+A` | Apply rotation and scale into the mesh |
 | `Shift+N` | Recalculate normals, pointing them outward |
 | `J` | Connect two selected vertices with an edge |
-| `X` | Delete — object mode: the object; edit mode: the selection, leaving a hole |
+| `X` | Delete. Object mode: the object; edit mode: the selection, leaving a hole |
 | `Delete` | Object mode: the object; edit mode: dissolve the selection, keeping the surface |
 | `A` / `Alt+A` | Select all / deselect |
 | `.` | Frame selected |
@@ -147,31 +147,31 @@ Blender defaults, because that is the muscle memory users arrive with. Press
 
 <kbd>Ctrl</kbd>+<kbd>D</kbd> follows the select mode too: in edge mode it splits
 each selected edge, dropping a vertex at its midpoint and splicing it into the
-rings of both faces that share it, and the Operations panel's button relabels
+rings of both faces that share it, and the Loop Operations panel's button relabels
 itself to Subdivide Edge. In vertex and face mode it keeps cutting whole faces
 up Catmull-Clark style, where the Smooth parameter applies.
 
 In edit mode both <kbd>X</kbd> and <kbd>Delete</kbd> act on whichever element
-type the current select mode targets — vertices in <kbd>1</kbd>, edges in
+type the current select mode targets: vertices in <kbd>1</kbd>, edges in
 <kbd>2</kbd>, faces in <kbd>3</kbd>. The difference is what they leave behind:
 delete removes the geometry outright and leaves a hole, dissolve removes the
 topology but keeps the surrounding surface intact. Dissolving faces merges
-adjacent ones into a single n-gon, so it needs two or more touching faces — a
+adjacent ones into a single n-gon, so it needs two or more touching faces. A
 lone face has nothing to merge with and the status bar says so rather than
 reporting a no-op as a success. Dissolving an edge likewise skips edges whose
 two faces meet at more than 40°, and the same for a vertex at a *corner* whose
 surrounding faces do: the merge keeps every vertex in place and so produces a
 folded face, which is what made dissolving a cube edge or corner look broken. A
-vertex lying along a path rather than at a corner — the midpoint left by
-subdividing an edge — merges nothing and always dissolves, whatever angle its
+vertex lying along a path rather than at a corner (the midpoint left by
+subdividing an edge) merges nothing and always dissolves, whatever angle its
 faces meet at.
 
 ### The 3D cursor
 
 The amber crosshair is where new primitives are born and, when you want it to
 be, what transforms turn around. Right-click anywhere in the viewport for its
-menu: **Place here** drops it on the surface under the pointer — or, over empty
-space, on the view plane it is already on — while **To vertex**, **To edge
+menu: **Place here** drops it on the surface under the pointer (over empty
+space, on the view plane it is already on), while **To vertex**, **To edge
 centre** and **To face centre** snap it onto the geometry the click landed near.
 Entries the click found nothing for are disabled rather than hidden, and say so
 on hover, so the menu keeps the same shape every time.
@@ -183,7 +183,7 @@ sends it back **to the world origin**. Hide the crosshair from
 
 Two things read the cursor once it is somewhere useful. **Transform → Pivot**
 switches move, rotate and scale between the median of the selection and the
-cursor, in both object and edit mode — the status bar carries the current
+cursor, in both object and edit mode. The status bar carries the current
 choice. And the Mirror modifier's **Origin** chooses whether its plane passes
 through the object's own origin or through the cursor, which is how you mirror
 a limb about a point that is not the object's centre.
@@ -191,13 +191,13 @@ a limb about a point that is not the object's centre.
 Because the keys cover both, the Operations panel has no Delete or Dissolve
 section; it offers Merge instead, which welds the selected vertices together at
 their center, or onto the first or last one selected. Every operation in that
-panel disables itself when the current selection cannot feed it — Merge and
+panel disables itself when the current selection cannot feed it. Merge and
 Connect are vertex-only and want two or more and exactly two vertices
-respectively, Bevel and Loop Cut want edges, Inset wants faces — and each keeps
+respectively, Bevel and Loop Cut want edges, Inset wants faces. Each keeps
 its hint while disabled, saying what to select instead. Only Merge by Distance,
 Triangulate and Tris to Quads are always available, because each falls back to
 the whole mesh. Object mode's panel likewise drops its Delete
-button — the same two keys cover it — and carries Recalculate Normals instead,
+button (the same two keys cover it) and carries Recalculate Normals instead,
 which is otherwise unreachable outside edit mode and is most often wanted right
 after a Join.
 
@@ -208,7 +208,7 @@ by default; a Maya preset (<kbd>Alt</kbd>-based) is also available.
 
 Vite · React 18 · TypeScript (strict) · imperative Three.js · Zustand · Sass.
 
-No Tailwind, no CSS-in-JS, no component library — the brutalist system is a small
+No Tailwind, no CSS-in-JS, no component library. The brutalist system is a small
 set of Sass mixins over CSS custom properties.
 
 ## Licence

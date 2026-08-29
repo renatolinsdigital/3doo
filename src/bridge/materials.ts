@@ -77,7 +77,7 @@ function getMatcap(): THREE.Texture {
  *
  * The wireframe runs along the very edges of the triangles under it and is
  * built from the same vertices, so the two come out of the rasteriser at the
- * same depth and which one survives comes down to float rounding — an edge
+ * same depth and which one survives comes down to float rounding: an edge
  * shows solid on one face, stipple on the next, and changes again as the mesh
  * deforms under it. Offsetting the fill (the only thing WebGL can offset: there
  * is no POLYGON_OFFSET_LINE) settles that, and a line still disappears properly
@@ -88,7 +88,7 @@ function getMatcap(): THREE.Texture {
  *
  * Four of each rather than one. A line and a triangle interpolate depth along
  * different paths across the same pixel, so they can disagree by several units
- * of depth rather than the one a single unit buys — and the disagreement grows
+ * of depth rather than the one a single unit buys, and the disagreement grows
  * with how far the quad under the line has been bent out of plane, which is why
  * this showed up as edges fading in and out while a mesh was being deformed.
  * The unit is the depth buffer's own resolution at that fragment, so four of
@@ -184,7 +184,7 @@ export function createFaceOrientationMaterial(): THREE.Material {
  *
  * Nothing is hidden in x-ray or wireframe shading even so: the first writes no
  * depth and the second draws no fill, so there is nothing for this to test
- * against — which is how a user asks to see through the model.
+ * against, which is how a user asks to see through the model.
  */
 export function createWireMaterial(selected: boolean): THREE.LineBasicMaterial {
   return new THREE.LineBasicMaterial({
@@ -205,7 +205,7 @@ export interface OutlineMaterialOptions {
  * The line tracing a selected object's silhouette.
  *
  * `LineMaterial` rather than `LineBasicMaterial` because WebGL ignores
- * `linewidth` — every plain line is one pixel whatever it asks for — and this
+ * `linewidth` (every plain line is one pixel whatever it asks for) and this
  * one is user-adjustable, so it has to be drawn as instanced quads instead.
  * The cost is `resolution`: the shader turns a pixel width into clip space
  * itself, so it must be told the viewport size (see `ObjectView.setResolution`).
@@ -213,13 +213,13 @@ export interface OutlineMaterialOptions {
  * Kept off the object it belongs to, by the stencil its own fill stamps: what
  * survives is the half of the line lying over the background, which is the
  * contour and nothing else. Blender's outline is the same shape for the same
- * reason — an outline is about which object you are holding, and a line through
+ * reason: an outline is about which object you are holding, and a line through
  * the middle of one says nothing about that.
  *
  * Depth-tested as well, so a contour behind another object goes away with it
  * rather than being drawn across it.
  *
- * That costs a fight with the surface the line lies on — and a silhouette is
+ * That costs a fight with the surface the line lies on, and and a silhouette is
  * the worst place to have it, being where the surface is most edge-on and its
  * depth swings fastest across a pixel. Hence the bias towards the camera here,
  * against the `SURFACE_DEPTH_OFFSET` pushing the fills the other way: between
@@ -246,7 +246,7 @@ export function createOutlineMaterial({ color, width }: OutlineMaterialOptions):
  *
  * Depth-tested, like the plain wireframe: a solid or matcap surface is opaque,
  * and vertices round the back showing through it read as sitting on the face in
- * front — a click near one lands somewhere the user cannot see. The surface's
+ * front: a click near one lands somewhere the user cannot see. The surface's
  * own depth offset is what keeps the dots on the near side visible, since a
  * vertex and the faces meeting at it share a depth to the last bit.
  *
@@ -290,7 +290,7 @@ export function createRecentPointMaterial(): THREE.PointsMaterial {
  *
  * Depth-tested like every other edit-mode overlay, so a face selected round the
  * back of a solid or matcap model stays behind it rather than washing the face
- * in front — which reads as having selected something the user never clicked.
+ * in front, which reads as having selected something the user never clicked.
  * Lifted towards the camera against the fill's own offset, the way the outline
  * is, so it sits on the faces it marks instead of fighting them.
  *

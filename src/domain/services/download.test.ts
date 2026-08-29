@@ -92,7 +92,7 @@ describe('saveTextFile', () => {
   });
 
   it('still saves when the picker itself refuses for any other reason', async () => {
-    // A suffix the browser dislikes, a blocked permission — whatever it is, the
+    // A suffix the browser dislikes, a blocked permission: whatever it is, the
     // save must not be lost, so the plain download takes over.
     stubPicker({ existingSize: 0, rejectWith: new TypeError('bad extension') });
     const click = stubDownload();
@@ -109,7 +109,7 @@ describe('saveTextFile', () => {
     const result = await saveTextFile('suggested.3doo', '{}', PROJECT_FILE);
 
     // Firefox and Safari land here, where the browser alone decides where the
-    // file goes — which is why the status is reported separately.
+    // file goes, which is why the status is reported separately.
     expect(result).toEqual({ status: 'downloaded', filename: 'suggested.3doo' });
     expect(click).toHaveBeenCalled();
   });
@@ -119,13 +119,13 @@ describe('wrongKindMessage', () => {
   it('passes a matching suffix in any case, and names what it wanted otherwise', () => {
     expect(wrongKindMessage('scene.3DOO', PROJECT_FILE)).toBeNull();
     expect(wrongKindMessage('scene.json', PROJECT_FILE)).toBe(
-      'scene.json is not a project file — expected .3doo',
+      'scene.json is not a project file, expected .3doo',
     );
   });
 
   it('still opens the .json spelling of each kind', () => {
     // The contents are JSON whatever the name says, so a file saved before the
-    // extension shortened — or renamed through a tool that only speaks JSON —
+    // extension shortened (or renamed through a tool that only speaks JSON)
     // still opens. Saves are named with the bare extension either way.
     expect(wrongKindMessage('scene.3doo.json', PROJECT_FILE)).toBeNull();
     expect(wrongKindMessage('3doo.pref.json', PREFERENCES_FILE)).toBeNull();

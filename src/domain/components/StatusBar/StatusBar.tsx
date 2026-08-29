@@ -6,13 +6,13 @@ import type { ModalTransform, OperationProgress } from '@store/types';
 
 import './StatusBar.scss';
 
-/** "SCALE X ×1.420" — what the transform has reached so far. */
+/** "SCALE X ×1.420": what the transform has reached so far. */
 function modalLabel(modal: ModalTransform): string {
   const kind = modal.kind.toUpperCase();
   const axis = modal.axis ? ` ${modal.axis.toUpperCase()}` : '';
   if (modal.typed) return `${kind}${axis} ${modal.typed}`;
 
-  // A rotation carries its angle in x whatever axis it turns about — there is
+  // A rotation carries its angle in x whatever axis it turns about, and there is
   // one angle, not three, and the axis is already spelled out beside it.
   if (modal.kind === 'rotate') return `${kind}${axis} ${modal.value.x.toFixed(1)}°`;
   if (modal.kind !== 'scale') return `${kind}${axis}`;
@@ -41,7 +41,7 @@ export function StatusBar() {
           <Progress progress={progress} />
         ) : (
           <span className="status-bar__value" role="status" aria-live="polite">
-            {modal ? `${modalLabel(modal)} — LMB confirm, Esc cancel` : status}
+            {modal ? `${modalLabel(modal)}: LMB confirm, Esc cancel` : status}
           </span>
         )}
       </div>

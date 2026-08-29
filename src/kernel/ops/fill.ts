@@ -68,7 +68,7 @@ export function fillHole(mesh: BMesh, edges: readonly Edge[]): Face[] {
  * Bridges two edge loops with a band of quads.
  *
  * The second loop is rotated so its start is nearest the first loop's start,
- * and reversed if that produces less twisting — without it, bridging two rings
+ * and reversed if that produces less twisting: without it, bridging two rings
  * built in opposite directions folds the band over itself.
  */
 export function bridgeEdgeLoops(mesh: BMesh, edges: readonly Edge[]): Face[] {

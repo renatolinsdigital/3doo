@@ -56,7 +56,7 @@ export interface SegmentedToggleProps {
 /**
  * One flag wearing the segmented control's clothes.
  *
- * Same button, same filled-and-underlined pressed state — but on its own, so a
+ * Same button, same filled-and-underlined pressed state, but on its own, so a
  * row of them reads as a row of independent switches rather than as a set to
  * pick one of. It sits next to the mode picker in the top bar, where a flag has
  * to be as reachable as the mode it applies to.
@@ -86,7 +86,7 @@ export function SegmentedToggle({
         aria-label={iconOnly ? label : undefined}
         // `aria-disabled` rather than the native attribute, as in `Button`: a
         // disabled button takes no focus and fires no pointer events, which is
-        // exactly when its hint — the one thing saying why — is needed most.
+        // exactly when its hint (the one thing saying why) is needed most.
         aria-disabled={disabled || undefined}
         onClick={disabled ? undefined : () => onChange(!pressed)}
         {...tooltip}

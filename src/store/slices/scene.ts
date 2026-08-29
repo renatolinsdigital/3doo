@@ -122,7 +122,7 @@ export interface SceneSlice {
    */
   booleanWithSelected: (op: BooleanOp) => Promise<void>;
   separateLooseParts: () => void;
-  /** Deletes the selection, or the objects named — the outliner's row menu names one. */
+  /** Deletes the selection, or the objects named. the outliner's row menu names one. */
   deleteSelected: (ids?: readonly string[]) => void;
   /** Bakes the selection's transforms, or those of the objects named. */
   applyTransformToSelected: (ids?: readonly string[]) => void;
@@ -163,7 +163,7 @@ export interface SceneSlice {
   redo: () => void;
   touchMesh: () => void;
 
-  /** `restoreLayout` puts the folded panels back too — for a file load, not for undo. */
+  /** `restoreLayout` puts the folded panels back too, for a file load, not for undo. */
   loadProjectDocument: (
     document: ReturnType<typeof serializeProject>,
     restoreLayout?: boolean,
@@ -241,7 +241,7 @@ export const createSceneSlice: StateCreator<
       selectedObjectIds: [object.id],
       meshVersion: state.meshVersion + 1,
       // Placing is what you do next with something you just added, and the
-      // gizmo only draws for a transform tool — under the default 'select' a
+      // gizmo only draws for a transform tool: under the default 'select' a
       // new primitive arrives with nothing to grab. Set here rather than
       // through `setActiveTool`, whose status would bury "Added BOX".
       activeTool: 'move',
@@ -255,7 +255,7 @@ export const createSceneSlice: StateCreator<
    * Every field other than `mesh` has to be swapped by reference rather than
    * mutated: panels select the object itself, so an in-place edit leaves the
    * selector returning an identical reference and nothing re-renders. Geometry
-   * is the exception — it is mutated in place and tracked by `meshVersion`.
+   * is the exception: it is mutated in place and tracked by `meshVersion`.
    */
   patchActiveObject: (patch, options = {}) => {
     const object = activeObject(get());
@@ -289,7 +289,7 @@ export const createSceneSlice: StateCreator<
           return { ...candidate, mesh, primitive: { kind, params: resolved } };
         }
         // Rebuilding a primitive replaces the instance rather than editing it,
-        // so anything linked to the old one is moved across too — otherwise a
+        // so anything linked to the old one is moved across too, otherwise a
         // linked duplicate silently stops following the object it was cut from.
         return candidate.mesh === previous ? { ...candidate, mesh } : candidate;
       }),
@@ -312,7 +312,7 @@ export const createSceneSlice: StateCreator<
       return { activeObjectId: id, selectedObjectIds: selected };
     });
 
-    // Selecting a locked object is allowed, but nothing can be done with it —
+    // Selecting a locked object is allowed, but nothing can be done with it,
     // say so on the click rather than letting the user find out on a failed edit.
     const object = get().objects.find((candidate) => candidate.id === id);
     if (object?.locked) get().noteLockedAttempt(id);
@@ -324,7 +324,7 @@ export const createSceneSlice: StateCreator<
    * The last one named becomes active, the way the last one clicked would.
    * Additive keeps what was already selected and adds to it, and a drag that
    * caught nothing clears the selection rather than leaving the last one
-   * standing — the same as clicking empty space.
+   * standing, the same as clicking empty space.
    */
   selectObjects: (ids, additive = false) => {
     set((state) => {
@@ -574,7 +574,7 @@ export const createSceneSlice: StateCreator<
         object.id !== target.id && selectedObjectIds.includes(object.id) && !object.locked,
     );
     if (tools.length === 0) {
-      set({ status: `Select a cutter as well — ${target.name} is the one that keeps the result` });
+      set({ status: `Select a cutter as well: ${target.name} is the one that keeps the result` });
       return;
     }
 
@@ -590,7 +590,7 @@ export const createSceneSlice: StateCreator<
       const names = unapplied.map((object) => object.name).join(', ');
       get().pushToast(
         'error',
-        `Apply the modifiers on ${names} first — a boolean cuts the mesh underneath the stack, not the shape you see.`,
+        `Apply the modifiers on ${names} first: a boolean cuts the mesh underneath the stack, not the shape you see.`,
       );
       set({ status: `Apply the modifiers on ${names} before a boolean` });
       return;
@@ -765,8 +765,8 @@ export const createSceneSlice: StateCreator<
    *
    * Position is deliberately left alone: the object stays exactly where it
    * sits, and only the numbers behind it change. Everything that reads the raw
-   * mesh rather than the world matrix — modifier thickness, bevel width, export
-   * — then works on the shape you actually see.
+   * mesh rather than the world matrix (modifier thickness, bevel width, export
+   *) then works on the shape you actually see.
    */
   applyTransformToSelected: (ids) => {
     const { objects, selectedObjectIds } = get();
@@ -842,7 +842,7 @@ export const createSceneSlice: StateCreator<
    * pointer-move tick; batching keeps that one store update (and one
    * `syncScene`) instead of N.
    *
-   * Locked objects are skipped here too — the gizmo already excludes them
+   * Locked objects are skipped here too: the gizmo already excludes them
    * from the drag group, but this keeps the guarantee at the one place state
    * actually changes rather than trusting every future caller to filter first.
    */
@@ -943,7 +943,7 @@ export const createSceneSlice: StateCreator<
    * Slots are addressed by position, so removing one renumbers every slot after
    * it. Faces are rewritten to match: the ones past the gap follow the material
    * they were already wearing down a place, and the ones wearing the deleted
-   * slot fall back to the first — a face always points at a slot that exists.
+   * slot fall back to the first: a face always points at a slot that exists.
    */
   removeMaterial: (index) => {
     const object = activeObject(get());
@@ -1191,7 +1191,7 @@ export function activeObject(state: {
 }
 
 /**
- * The world-space point the current selection hangs off — the same point the
+ * The world-space point the current selection hangs off, the same point the
  * gizmo sits on, so cursor snapping and the handles agree.
  *
  * Null when nothing is selected, which is what the callers report to the user
@@ -1235,8 +1235,8 @@ const evaluatedStacks = new Map<string, EvaluatedStack>();
  * knows about.
  *
  * `version` is the store's `meshVersion`, and passing it turns on the memo.
- * The viewport re-syncs on far more than geometry — selecting an object,
- * entering edit mode, changing the shading — and every one of those was
+ * The viewport re-syncs on far more than geometry (selecting an object,
+ * entering edit mode, changing the shading) and every one of those was
  * re-running the whole stack for every object in the scene. That was tolerable
  * while the dearest modifier was a subdivision; a REMESH is the better part of
  * a second on its own, and without this a click anywhere would pay for it. The
@@ -1280,7 +1280,7 @@ export function evaluatedMesh(object: SceneObject, cursor: Vec3 = vec3(), versio
 }
 
 /**
- * World-space centre of what an object actually draws — where its object-mode
+ * World-space centre of what an object actually draws: where its object-mode
  * gizmo sits, so an array modifier carries the handles out to the middle of
  * the array instead of leaving them beside the first copy.
  *

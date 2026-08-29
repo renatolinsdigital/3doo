@@ -113,8 +113,8 @@ function shaken(radius: number, amount: number): BMesh {
 /**
  * Whether a face's outline runs over itself once flattened onto its own plane.
  *
- * Such a ring has no honest inside. Nothing errors on one — it is closed, it
- * has an area, it triangulates — but the triangles miss part of the surface
+ * Such a ring has no honest inside. Nothing errors on one: it is closed, it
+ * has an area, it triangulates, but the triangles miss part of the surface
  * and cover ground the face never had, which the viewport draws as a hole
  * straight through solid material.
  */
@@ -283,7 +283,7 @@ describe('mesh booleans', () => {
 
     // Three faces stand clear of the tool and stay whole; the three it reaches
     // lose a corner each, which is an L. The union splits those into two quads
-    // apiece because its surface is there to be modelled on — a cut keeps them
+    // apiece because its surface is there to be modelled on: a cut keeps them
     // as the six-sided rings they are, and never leaves a triangle behind.
     expect(faceSizes(result).get(3) ?? 0).toBe(0);
     expect(faceSizes(result).get(4)).toBe(6);
@@ -341,7 +341,7 @@ describe('mesh booleans', () => {
   });
 
   it('fuses where the solids touch without carving the faces around it', () => {
-    // A sphere sitting in the middle of the top face — the case that used to
+    // A sphere sitting in the middle of the top face: the case that used to
     // come back with that face shredded into thirty splintered strips, one per
     // segment of the seam, because a ring of surface around a hole cannot be
     // closed by merging neighbours pairwise.
@@ -369,7 +369,7 @@ describe('mesh booleans', () => {
       );
       // The five walls the sphere never reaches stay one face each. The top,
       // which it lands in the middle of, becomes a ring of surface around a
-      // hole — two faces, because one ring cannot state a hole.
+      // hole: two faces, because one ring cannot state a hole.
       const expected = wall === 'top' ? 2 : 1;
       expect({ wall, faces: faces.length }).toEqual({ wall, faces: expected });
     }
@@ -418,7 +418,7 @@ describe('mesh booleans', () => {
     // wherever it breaks it, a vertex is pinned there for good: it keeps a
     // third edge, so the pass that dissolves what the cut left behind walks
     // past it. That outline is the box's own top edge, shared with the wall
-    // below it — which is how a cylinder sunk into the top used to leave the
+    // below it, which is how a cylinder sunk into the top used to leave the
     // side of the box a six-sided face the cutter had never gone near.
     const result = booleanMesh(
       'difference',
@@ -480,7 +480,7 @@ describe('mesh booleans', () => {
   it('never hands back a face whose outline crosses itself', () => {
     // A sphere landing off-centre leaves a ring of surface around its
     // footprint, and a ring is the one thing a single face cannot state.
-    // Threading a seam out to the hole and back does state it — as an outline
+    // Threading a seam out to the hole and back does state it, as an outline
     // that runs over itself the moment the seam is drawn anywhere but straight
     // across the ring, which is what these placements are chosen to be.
     const placements: [number, Vec3][] = [
@@ -510,7 +510,7 @@ describe('mesh booleans', () => {
   it('leaves no face reaching out over the cut', () => {
     // A sphere sunk into the top of a box. Every vertex of the seam folds the
     // face it lands on, and a folded face split across the fold paints a
-    // triangle over the hole that was just cut — which is what a boolean's
+    // triangle over the hole that was just cut, which is what a boolean's
     // curved seam is full of, and what the eye reads as material that should
     // not be there.
     const centre = vec3(0, 1, 0);
@@ -518,7 +518,7 @@ describe('mesh booleans', () => {
     const result = booleanMesh('difference', createBox(2), tool, offsetBy(centre));
 
     // The tool is convex, so its own face planes answer "how far inside is
-    // this?" exactly — no ray to graze a seam vertex and no tessellation
+    // this?" exactly: no ray to graze a seam vertex and no tessellation
     // sagitta to mistake for a real overlap.
     const planes = [...tool.faces.values()].map((face) => {
       const points = tool.facePoints(face).map(offsetBy(centre));
@@ -582,7 +582,7 @@ describe('what a boolean must not touch', () => {
    * the case that matters: its pole cap folds by about half a degree from one
    * facet to the next, which a coplanarity limit cannot tell apart from the
    * splits a BSP makes, and the cap used to be dissolved away by it. Provenance
-   * is what separates the two — a fragment knows which face it is part of.
+   * is what separates the two: a fragment knows which face it is part of.
    */
   it.each([16, 32, 64])('hands back every sphere face clear of the box, at %i segments', (seg) => {
     const shift = vec3(0, 1.8, 0);
@@ -613,7 +613,7 @@ describe('what a boolean must not touch', () => {
       offsetBy(vec3(0, 1, 0)),
     );
 
-    // Only the top of the box is cut — the sphere is a 0.5 radius sitting on
+    // Only the top of the box is cut: the sphere is a 0.5 radius sitting on
     // the middle of it. Each of the other five faces has to come back as the
     // one face it went in as, covering the same ground: re-tiling used to hand
     // back twenty-two faces between them.
@@ -663,7 +663,7 @@ describe('what a boolean costs', () => {
   it('grows with the cut, not with the square of it', () => {
     // Two passes over the same shape at two densities. What is asserted is the
     // ratio between them, not either time, because a ratio is the same on a
-    // fast machine and a slow one — and it is the ratio that gives away a step
+    // fast machine and a slow one, and it is the ratio that gives away a step
     // that walks the whole mesh once per region of it, which is what a dense
     // boolean used to do and what froze the window for ten seconds.
     const cut = (cuts: number) => {
@@ -756,7 +756,7 @@ describe('operands that arrive inside out', () => {
   it('reads a mirrored tool the same as a turned one', () => {
     // Two crossed cylinders. A scene is free to hold an object mirrored by a
     // negative scale, and the map that carries it into the target's space then
-    // reverses every ring — which used to reach the BSP as a solid whose inside
+    // reverses every ring, which used to reach the BSP as a solid whose inside
     // and outside had swapped places. Nothing errored: the union came back as
     // two disjoint shells with one of the arms missing altogether.
     const arm = () => createCylinder(0.5, 2.4, 24, true);

@@ -52,8 +52,8 @@ export type {
 /**
  * How the topology is rebuilt.
  *
- * `voxel` and `blocks` share one pipeline — sample the model into a signed
- * distance grid, then contour it — and differ only in whether the contour may
+ * `voxel` and `blocks` share one pipeline (sample the model into a signed
+ * distance grid, then contour it), and differ only in whether the contour may
  * leave the middle of its cell. `decimate` never rebuilds anything: it
  * collapses the edges that cost the least to lose.
  */
@@ -69,7 +69,7 @@ export interface RemeshSettings {
    * Aim for `targetFaces` instead of setting the density by hand.
    *
    * The voxel methods solve the face count back into a voxel size, the
-   * decimator into a collapse budget — one control, whichever way the topology
+   * decimator into a collapse budget: one control, whichever way the topology
    * is being rebuilt.
    */
   adaptive: boolean;
@@ -113,7 +113,7 @@ export const FEATURE_SNAP_RADIUS = 0.75;
  * The same for a corner, in voxels.
  *
  * A corner is one point rather than a line, and the nearest vertex the contour
- * has to offer it can be most of a cell diagonal away — half of a cube would go
+ * has to offer it can be most of a cell diagonal away: half of a cube would go
  * unpinned at the crease radius.
  */
 export const CORNER_SNAP_RADIUS = 1.5;
@@ -172,7 +172,7 @@ function normalizeRemeshSettings(settings: RemeshSettings): RemeshSettings {
  * The voxel size that lands near a face count.
  *
  * Surface nets put one quad on every grid edge that pierces the surface, so the
- * count is the crossing-weighted area divided by the area of one voxel face —
+ * count is the crossing-weighted area divided by the area of one voxel face,
  * which inverts to a closed form rather than a search.
  */
 export function voxelSizeForFaces(crossing: number, faces: number): number {
@@ -186,7 +186,7 @@ export interface FaceKinds {
   ngons: number;
 }
 
-/** How the faces break down by corner count — what "quad-dominant" is measured on. */
+/** How the faces break down by corner count: what "quad-dominant" is measured on. */
 export function faceKinds(mesh: BMesh): FaceKinds {
   const kinds: FaceKinds = { tris: 0, quads: 0, ngons: 0 };
   for (const face of mesh.faces.values()) {
@@ -236,7 +236,7 @@ export function remeshMesh(mesh: BMesh, raw: RemeshSettings): RemeshResult {
 
   const net = surfaceNets(grid, { blocky: settings.method === 'blocks' });
   if (net.positions.length === 0) {
-    throw new Error('nothing was enclosed at this voxel size — try a finer one');
+    throw new Error('nothing was enclosed at this voxel size, try a finer one');
   }
 
   const index = new SurfaceIndex(triangles);
@@ -259,7 +259,7 @@ export function remeshMesh(mesh: BMesh, raw: RemeshSettings): RemeshResult {
 
     if (detected.corners.length > kept.corners) {
       warnings.push(
-        `${detected.corners.length - kept.corners} of ${detected.corners.length} sharp corner(s) were finer than one voxel and rounded off — raise the density to hold them`,
+        `${detected.corners.length - kept.corners} of ${detected.corners.length} sharp corner(s) were finer than one voxel and rounded off; raise the density to hold them`,
       );
     }
   }
@@ -280,7 +280,7 @@ export function remeshMesh(mesh: BMesh, raw: RemeshSettings): RemeshResult {
   const open = countBoundaryEdges(mesh);
   if (open > 0) {
     warnings.push(
-      `${open} open edge(s) were closed over — a voxel remesh only ever produces a solid`,
+      `${open} open edge(s) were closed over: a voxel remesh only ever produces a solid`,
     );
   }
 
@@ -308,8 +308,8 @@ function decimate(mesh: BMesh, settings: RemeshSettings, warnings: string[]): Re
     // other unit reads as a different measurement having gone wrong.
     warnings.push(
       settings.adaptive
-        ? `Nothing to collapse — this mesh is already down to ${mesh.faces.size.toLocaleString()} faces, below the target of ${settings.targetFaces.toLocaleString()}. Lower the target, or turn TARGET FACE COUNT off and keep a fraction instead.`
-        : 'Nothing to collapse — a KEEP of 1 keeps every face. Lower it below 1 to reduce anything.',
+        ? `Nothing to collapse: this mesh is already down to ${mesh.faces.size.toLocaleString()} faces, below the target of ${settings.targetFaces.toLocaleString()}. Lower the target, or turn TARGET FACE COUNT off and keep a fraction instead.`
+        : 'Nothing to collapse: a KEEP of 1 keeps every face. Lower it below 1 to reduce anything.',
     );
     return {
       mesh: cloneMesh(mesh),
@@ -325,7 +325,7 @@ function decimate(mesh: BMesh, settings: RemeshSettings, warnings: string[]): Re
     preserveBoundary: settings.preserveBoundary,
   });
 
-  if (decimated.faces.size === 0) throw new Error('every face collapsed — raise the target');
+  if (decimated.faces.size === 0) throw new Error('every face collapsed; raise the target');
   if (collapsed === 0 && targetTriangles < sourceTris) {
     warnings.push('No collapse was legal: the mesh may be non-manifold or already minimal');
   }

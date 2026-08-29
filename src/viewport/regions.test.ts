@@ -22,7 +22,7 @@ describe('selection regions', () => {
     // A real circle, described as one: a box would be drawn by CSS, and the
     // reset drops border-radius: 0 !important on every element in the app.
     expect(marquee).toEqual({ kind: 'circle', cx: 100, cy: 100, radius: 30 });
-    // What is drawn is what is picked — the ring yes, its corners no.
+    // What is drawn is what is picked: the ring yes, its corners no.
     expect(region.contains(at(100, 129))).toBe(true);
     expect(region.contains(at(122, 122))).toBe(false);
     expect(region.contains(at(131, 100))).toBe(false);

@@ -22,7 +22,7 @@ const count = (value: number) => Math.round(value).toLocaleString('en-US');
  * The operators that work along edge loops: cutting new ones in, cutting the
  * existing ones finer, and evening out the spacing of the ones already there.
  *
- * They belong together because they read the same topology — a loop cut walks
+ * They belong together because they read the same topology: a loop cut walks
  * the ring of quads across an edge, a subdivide carries each of its cuts on as
  * a loop through the mesh, and relax straightens and spreads one out. The operators
  * that add geometry without following a loop live in `OperationsPanel`.
@@ -33,7 +33,7 @@ export function LoopOperationsPanel() {
   // smoothing only means anything when whole faces are being cut up.
   const edgeMode = useEditorStore((state) => state.selectMode === 'edge');
 
-  // Every operator below refuses outright when the selection cannot feed it —
+  // Every operator below refuses outright when the selection cannot feed it:
   // the button is disabled to match, and its hint says what to select instead.
   const selection = useActiveSelectionCounts();
   // Counts cannot answer this one: an edge with triangles on both sides has no
@@ -49,7 +49,7 @@ export function LoopOperationsPanel() {
   const [relaxKeepShape, setRelaxKeepShape] = useState(true);
 
   // Subdivision is the one operator here that multiplies rather than adds, so
-  // it is the one that can take the tab down — the more so now its cuts travel
+  // it is the one that can take the tab down, the more so now its cuts travel
   // on through the mesh. What it would leave is planned out before the click,
   // by the same planner that will run it: past what a browser holds the button
   // is unavailable and says why, and short of that a heavy run is announced
@@ -92,7 +92,7 @@ export function LoopOperationsPanel() {
             selection.edges === 0
               ? 'Select an edge for the new loop to cut across (Ctrl+R)'
               : !loopCutAvailable
-                ? 'No quad ring runs across that edge — a cone or a fan has only triangles there (Ctrl+R)'
+                ? 'No quad ring runs across that edge: a cone or a fan has only triangles there (Ctrl+R)'
                 : "Insert a new edge loop across the selected edge's quad ring (Ctrl+R)"
           }
           onClick={() => exec('loopCut', { cuts: loopCuts }, 'Loop cut')}
@@ -135,7 +135,7 @@ export function LoopOperationsPanel() {
           hint={
             tooMany ??
             (heavy
-              ? `Leaves about ${count(growth.faces ?? growth.verts ?? 0)} ${edgeMode ? 'vertices' : 'faces'} — the editor will stop responding while it runs`
+              ? `Leaves about ${count(growth.faces ?? growth.verts ?? 0)} ${edgeMode ? 'vertices' : 'faces'}: the editor will stop responding while it runs`
               : edgeMode
                 ? selection.edges > 0
                   ? 'Add a vertex at the midpoint of each selected edge (Ctrl+D)'
@@ -179,7 +179,7 @@ export function LoopOperationsPanel() {
           hint={
             selection.verts > 0
               ? 'Pull the kinks out of the selected loop and even out its spacing, keeping it on the surface. Anything that is not a loop smooths against its neighbourhood instead'
-              : 'Select vertices — an edge loop is the usual one — to straighten and space out'
+              : 'Select vertices (an edge loop is the usual one) to straighten and space out'
           }
           onClick={() =>
             exec(

@@ -231,7 +231,7 @@ describe('voxel remesh', () => {
     // The grid is laid out from the model's own bounding box, so the three
     // faces on the minimum side land *exactly* on grid planes. Every grid point
     // there measures a distance of about 1e-16 to the surface, and the vector
-    // it would read a side off is pure rounding error — so those planes used to
+    // it would read a side off is pure rounding error, so those planes used to
     // come back signed at random, and the contour shredded them into rosettes
     // of pentagons while the other three sides stayed clean. On a cube every
     // interior vertex owes four edges and only the eight corners may owe three.
@@ -322,7 +322,7 @@ describe('sharp features', () => {
 
     // Measured as how far the result stops short of the model's own corners,
     // which is what "holds the edges" actually means. Comparing the drift of
-    // the vertices onto the surface — what this asked for before — no longer
+    // the vertices onto the surface (what this asked for before) no longer
     // separates the two at all: both land on the surface to within six
     // thousandths, and the only reason it ever passed was that the contour was
     // tearing itself apart on the faces that lay flat on the grid. That was the
@@ -389,7 +389,7 @@ describe('sharp features', () => {
 
   it('says when corners were finer than the grid could hold', () => {
     // Every edge of an icosphere is a crease at five degrees, so every vertex
-    // is a corner — far more of them than a coarse grid has vertices to pin,
+    // is a corner: far more of them than a coarse grid has vertices to pin,
     // and the ones that go are worth saying out loud.
     const source = createIcoSphere(1, 2);
     const detected = detectFeatures(source, 5);
@@ -410,7 +410,7 @@ describe('blocks remesh', () => {
     expect(openEdges(result.mesh)).toBe(0);
 
     // Cell centres, so every coordinate differs from every other by a whole
-    // number of voxels — the blocky look is the whole point of the mode.
+    // number of voxels: the blocky look is the whole point of the mode.
     const first = [...result.mesh.verts.values()][0].co;
     for (const vert of result.mesh.verts.values()) {
       const steps = (vert.co.x - first.x) / result.voxelSize;
@@ -491,7 +491,7 @@ describe('decimate', () => {
       settings({ method: 'decimate', adaptive: false, ratio: 1, topology: 'quads' }),
     );
 
-    expect(result.warnings.join(' ')).toMatch(/Nothing to collapse — a KEEP of 1/);
+    expect(result.warnings.join(' ')).toMatch(/Nothing to collapse: a KEEP of 1/);
     // Not triangulated and re-paired into quads on the way through: a run that
     // collapses nothing has no business changing the face count.
     expect(result.mesh.faces.size).toBe(source.faces.size);
@@ -504,7 +504,7 @@ describe('decimate', () => {
       settings({ method: 'decimate', adaptive: true, targetFaces: 5000, topology: 'quads' }),
     );
 
-    // The control that set it is labelled in faces, so the answer is too —
+    // The control that set it is labelled in faces, so the answer is too:
     // quoting the triangles the collapse counts in reads as a different
     // measurement having gone wrong.
     // The thousands separator is the reader's own, so only the units are

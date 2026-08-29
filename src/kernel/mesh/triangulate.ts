@@ -55,7 +55,7 @@ export function triangulatePolygon(points: readonly Vec3[], normal?: Vec3): numb
     const [a, b, c, d] = projected;
 
     // A concave quad has one corner folded inwards, and only the diagonal
-    // through that corner stays inside the outline — the other one bridges the
+    // through that corner stays inside the outline; the other one bridges the
     // dent, so the pair of triangles covers ground the quad does not. A boolean
     // leaves plenty of these along a curved seam, where the cut's own vertices
     // are what fold the face; splitting one the wrong way draws a face reaching

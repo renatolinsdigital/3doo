@@ -4,7 +4,7 @@ export type ModuleId = 'home' | 'modeling' | 'docs';
  * One area of the application, reachable from the brand switcher.
  *
  * Kept as data rather than a component map so the switcher, the router and the
- * document title all read the same list — and so adding the sculpting module
+ * document title all read the same list, and so adding the sculpting module
  * later is one entry plus one case in `App`.
  */
 export interface AppModule {

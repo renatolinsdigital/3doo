@@ -99,7 +99,7 @@
     background: var(--bone);
 
     // Blocks keep their natural height and the section scrolls as one. Letting
-    // them shrink instead — the flex default — squeezed the taller shortcut
+    // them shrink instead (the flex default) squeezed the taller shortcut
     // tables and handed each one a scrollbar of its own. Same trap the modeling
     // shell hit with its panel columns.
     > * {

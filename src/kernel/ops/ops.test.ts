@@ -269,7 +269,7 @@ describe('loop cut', () => {
 
   it('has no ring to cut across a cone', () => {
     // Every side face is a triangle and the base is one n-gon, so the ring walk
-    // has nowhere to step — the same reason Blender will not cut one either.
+    // has nowhere to step, the same reason Blender will not cut one either.
     const cone = createCone(0.5, 1, 12, true);
 
     for (const edge of cone.edges.values()) {
@@ -385,8 +385,8 @@ describe('relax', () => {
 
     for (const vert of ring) {
       // Still on the wall: a relaxed ring slides across the tube rather than
-      // sinking into it, which is what the plain average of the neighbours —
-      // every one of them inside the ring — would have done.
+      // sinking into it, which is what the plain average of the neighbours (
+      // every one of them inside the ring) would have done.
       expect(Math.hypot(vert.co.x, vert.co.z)).toBeGreaterThan(0.5 * Math.cos(Math.PI / 8) - 1e-9);
       expect(Math.hypot(vert.co.x, vert.co.z)).toBeLessThan(0.5 + 1e-9);
     }
@@ -518,7 +518,7 @@ describe('subdivide', () => {
 
   it('cuts the face beside one already cut, rather than nothing at all', () => {
     // The complaint this answers: subdivide a face, try to subdivide the face
-    // next to it, and nothing happened at all — the first cut had left it
+    // next to it, and nothing happened at all: the first cut had left it
     // carrying a row of vertices along the shared side, and no cut at the
     // spacing asked for could land on them. Cuts that run leave no such face.
     const grid = createGrid(10, 10);
@@ -968,7 +968,7 @@ describe('dissolvable edges', () => {
     const cube = createBox(2);
     const [midpoint] = subdivideEdges(cube, [[...cube.edges.values()][0]]);
 
-    // Two edges, so removing it merges nothing — the cube's 90° fold is irrelevant.
+    // Two edges, so removing it merges nothing: the cube's 90° fold is irrelevant.
     expect(midpoint.edges).toHaveLength(2);
     expect(isDissolvableVert(cube, midpoint)).toBe(true);
   });
@@ -983,7 +983,7 @@ describe('dissolvable edges', () => {
     expect(cube.verts.size).toBe(8);
     expect(cube.edges.size).toBe(12);
     expect(cube.faces.size).toBe(6);
-    // Every face is a quad again — the two 5-gons were trimmed, not merged.
+    // Every face is a quad again: the two 5-gons were trimmed, not merged.
     for (const face of cube.faces.values()) expect(cube.faceVerts(face)).toHaveLength(4);
     expect(cube.validate()).toEqual([]);
   });

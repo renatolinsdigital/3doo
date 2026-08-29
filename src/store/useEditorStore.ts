@@ -12,8 +12,8 @@ export type EditorStore = SceneSlice & ToolSlice & ViewportSlice & UiSlice & Pre
 /**
  * One store, five slices.
  *
- * `subscribeWithSelector` is what lets the Three.js viewport — which is not a
- * React component — watch narrow pieces of state imperatively, and lets panels
+ * `subscribeWithSelector` is what lets the Three.js viewport (which is not a
+ * React component) watch narrow pieces of state imperatively, and lets panels
  * subscribe to just the field they render so a camera move never re-renders the
  * properties panel.
  */

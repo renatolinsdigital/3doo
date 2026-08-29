@@ -50,13 +50,13 @@ const OVERLAY_OPTIONS: readonly { key: keyof OverlaySettings; label: string; hin
   {
     key: 'grid',
     label: 'GRID',
-    hint: 'The ground grid — 1 m squares at normal zoom, rescaled by ten as you pull back',
+    hint: 'The ground grid: 1 m squares at normal zoom, rescaled by ten as you pull back',
   },
   { key: 'axes', label: 'AXES', hint: 'The coloured X/Z axis lines' },
   {
     key: 'cursor',
     label: '3D CURSOR',
-    hint: 'The 3D cursor ring in the viewport — hiding it does not move it',
+    hint: 'The 3D cursor ring in the viewport: hiding it does not move it',
   },
   { key: 'normals', label: 'NORMALS', hint: 'A short line out of every face along its normal' },
   {
@@ -75,7 +75,7 @@ export interface TopBarProps {
   /**
    * The brand plate, passed in rather than imported.
    *
-   * The switcher belongs to the app shell, which sits above this layer — and
+   * The switcher belongs to the app shell, which sits above this layer, and
    * dependencies here point inward, never back up at it.
    */
   brand: ReactNode;
@@ -191,7 +191,7 @@ export function TopBar({ brand }: TopBarProps) {
         />
         <SegmentedToggle
           label="PROP"
-          // A point with its falloff ring around it — the same ring the
+          // A point with its falloff ring around it, the same ring the
           // viewport draws once this is on.
           icon="◉"
           iconOnly
@@ -246,7 +246,7 @@ export function TopBar({ brand }: TopBarProps) {
         <TopBarMenu
           label="OVERLAYS"
           menuLabel="OVERLAYS"
-          hint="What the viewport draws over the scene — tick as many as you need"
+          hint="What the viewport draws over the scene: tick as many as you need"
           entries={overlayEntries}
         />
       </div>
@@ -267,7 +267,7 @@ export function TopBar({ brand }: TopBarProps) {
           className={cx('top-bar__icon', viewLost && 'top-bar__icon--tremble')}
           hint={
             viewLost
-              ? "You've zoomed out past your scene — click to come back"
+              ? "You've zoomed out past your scene: click to come back"
               : 'Frame the camera on the whole scene (Home)'
           }
           onClick={frameAll}
@@ -284,7 +284,7 @@ export function TopBar({ brand }: TopBarProps) {
 }
 
 interface TopBarMenuProps {
-  /** Written on the trigger — the value in force, for a menu that picks one of a set. */
+  /** Written on the trigger: the value in force, for a menu that picks one of a set. */
   label: string;
   /** Header strip on the open menu, and its accessible name. */
   menuLabel: string;

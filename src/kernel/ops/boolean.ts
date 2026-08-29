@@ -27,7 +27,7 @@ export type BooleanOp = 'union' | 'difference' | 'intersect';
  *
  * Relative rather than absolute, because an absolute figure is a different
  * instruction at every scale: 1e-5 m is a reasonable "on the plane" for a
- * table and a structural gap for a rivet. Everything downstream hangs off it —
+ * table and a structural gap for a rivet. Everything downstream hangs off it:
  * too tight and coincident faces split each other into slivers, too loose and
  * thin geometry is swallowed whole.
  */
@@ -39,7 +39,7 @@ const PLANE_EPSILON = 5e-6;
  * An order tighter than the plane tolerance, and deliberately so: points that
  * ought to coincide are the same intersection computed twice and agree to
  * within floating-point noise, so the weld needs no slack. Given slack it takes
- * it — welding a T-junction vertex onto the corner beside it, which tears the
+ * it: welding a T-junction vertex onto the corner beside it, which tears the
  * ring it was holding together.
  */
 const WELD_EPSILON = 5e-7;
@@ -51,7 +51,7 @@ const RESOLVE_PASSES = 8;
  * How far two coplanar triangles may fold and still be paired into a quad.
  *
  * Only the tidying pass at the end of `resolve` reads this. Which faces may be
- * merged at all is decided by provenance, not by angle — see
+ * merged at all is decided by provenance, not by angle; see
  * `mergeSourceFragments`.
  */
 const QUAD_PAIR_LIMIT_DEGREES = 1;
@@ -111,7 +111,7 @@ interface Poly {
    * A BSP splits a face by every plane in the tree, not only by the ones that
    * end up bounding the solid, so the surface arrives carved along lines the
    * finished shape has no reason to show. Knowing which pieces were one face is
-   * what lets those cuts be undone without touching anything else — see
+   * what lets those cuts be undone without touching anything else; see
    * `mergeSourceFragments`.
    */
   source: number;
@@ -126,8 +126,8 @@ const SPANNING = 3;
  * The plane a polygon lies in.
  *
  * Newell's normal rather than one cross product: it averages over the whole
- * ring, so a polygon whose first three points happen to be collinear — which a
- * ring carrying a T-junction vertex often is — still gets a usable plane.
+ * ring, so a polygon whose first three points happen to be collinear (which a
+ * ring carrying a T-junction vertex often is) still gets a usable plane.
  */
 function planeFrom(points: readonly Vec3[]): Plane {
   const normal = normalize(polygonNormal(points));
@@ -376,7 +376,7 @@ function treeFrom(polys: readonly Poly[], epsilon: number): Node {
  *
  * The classic BSP formulation: each solid is clipped against the other, the
  * inversions decide which side survives, and what comes back is the boundary
- * of the combined solid. It assumes both inputs are closed — an open shell has
+ * of the combined solid. It assumes both inputs are closed: an open shell has
  * no inside for the tests to answer about, and the result will show it.
  */
 /**
@@ -396,7 +396,7 @@ function drain<T>(steps: Generator<number, T>): T {
  *
  * The fractions are measured, not guessed: building the two BSP trees is about
  * sixty per cent of the work and the final rebuild most of the rest, while the
- * clips together are barely one. They are also the only seams available — each
+ * clips together are barely one. They are also the only seams available: each
  * of those calls recurses over a whole tree in one go, so a bar cannot move
  * inside them without the tree build itself being taken apart.
  */
@@ -482,8 +482,8 @@ function isClosed(mesh: BMesh): boolean {
  * solids actually sit relative to each other.
  *
  * A closed solid comes out facing outward whatever it arrived as. That matters
- * because `toTarget` is free to reverse handedness — an object mirrored by a
- * negative scale on one axis, which is an ordinary thing to have in a scene —
+ * because `toTarget` is free to reverse handedness (an object mirrored by a
+ * negative scale on one axis, which is an ordinary thing to have in a scene)
  * and a reversed map turns every ring the other way round, so the solid reaches
  * the BSP inside out. Nothing then errors: "inside" and "outside" are simply
  * exchanged for that operand, and the answer comes back confidently wrong. A
@@ -605,7 +605,7 @@ function grid(verts: readonly Vert[], resolution: number) {
  *
  * Two passes, and both are needed. The BSP hands back loose triangles that
  * share their cut points only by value, so the first pass welds those into one
- * vertex each — without it the result is a pile of disconnected faces with no
+ * vertex each: without it the result is a pile of disconnected faces with no
  * edges to bevel and no loops to select.
  *
  * The second pass closes the T-junctions the split leaves behind: where one
@@ -727,8 +727,8 @@ interface Disc {
  * each candidate is turned away as it comes rather than the whole region being
  * thrown back once the damage is done.
  *
- * The bookkeeping is over the region's own boundary — the edges carrying
- * exactly one of its faces — rather than over which faces are in it. That is
+ * The bookkeeping is over the region's own boundary (the edges carrying
+ * exactly one of its faces) rather than over which faces are in it. That is
  * what makes it hold on real boolean output instead of only on the clean
  * manifold the argument above assumes: a crack where a sliver was dropped
  * leaves an edge with one face in the entire mesh, and it belongs to the
@@ -818,7 +818,7 @@ function growDisc(mesh: BMesh, seed: Face, pool: Map<number, Face>): Disc {
     for (let i = 0; i < shared.length; i++) {
       if (shared[i] && !shared[(i - 1 + shared.length) % shared.length]) runs += 1;
     }
-    // Zero covers both a face sharing nothing and a face sharing everything —
+    // Zero covers both a face sharing nothing and a face sharing everything:
     // the second closes the region into a shell rather than widening it.
     if (runs !== 1) return false;
 
@@ -887,7 +887,7 @@ function traceBorder(border: ReadonlyMap<number, Loop>): Vert[] | null {
   } while (current !== start && ring.length <= onward.size);
 
   // Short of every boundary edge means the walk closed early, and what it left
-  // out is a second outline — a hole — sitting somewhere it never reached.
+  // out is a second outline (a hole) sitting somewhere it never reached.
   return current === start && ring.length === onward.size ? ring : null;
 }
 
@@ -913,7 +913,7 @@ interface Flat {
  * The boundary of a set of faces, as one cycle per closed loop.
  *
  * A region with nothing inside it gives one cycle; one with a hole gives two.
- * Null when the boundary is not a set of clean loops at all — pinched at a
+ * Null when the boundary is not a set of clean loops at all: pinched at a
  * vertex, or torn in a way that leaves the walk a choice to make.
  */
 function boundaryCycles(mesh: BMesh, region: readonly Face[]): Vert[][] | null {
@@ -1006,9 +1006,9 @@ function nearSegment(point: Flat, a: Flat, b: Flat, reach: number): boolean {
 /**
  * Whether a seam from `outer[i]` to `hole[j]` stays on the surface.
  *
- * It has to cross neither outline, pass through no other vertex — a seam that
+ * It has to cross neither outline, pass through no other vertex (a seam that
  * grazed one would join the two halves there as well as along itself, which is
- * a pinch — and run over material rather than through the hole or off the face.
+ * a pinch) and run over material rather than through the hole or off the face.
  */
 function seamFits(
   outer: readonly Flat[],
@@ -1044,8 +1044,8 @@ function seamFits(
  * Outline positions a seam is allowed to land on.
  *
  * Corners if the outline has any: a seam pins whatever vertex it meets, and a
- * corner was never going to dissolve anyway. Where the outline is a curve —
- * a bore through a cylinder's cap — nothing turns far enough to be a corner,
+ * corner was never going to dissolve anyway. Where the outline is a curve (
+ * a bore through a cylinder's cap) nothing turns far enough to be a corner,
  * and then anything that turns at all will do, since the dissolve pass would
  * have kept it regardless. Either way the list is thinned, because the search
  * that follows is quadratic in it and a fine curve has hundreds.
@@ -1083,7 +1083,7 @@ function seamAnchors(ring: readonly Flat[]): number[] {
  * Where the seams land is the whole question, and the answer is corners. Every
  * vertex a seam touches is pinned to the outline: it keeps a third edge, so
  * the pass that dissolves what the cut left behind walks past it. Pinning a
- * corner costs nothing — a corner was never going to dissolve. Pinning a point
+ * corner costs nothing: a corner was never going to dissolve. Pinning a point
  * part-way along a straight edge keeps a vertex the shape has no use for, and
  * that edge is shared with the wall behind it, so a box bored through the top
  * comes back with a six-sided side face the cutter never went near.
@@ -1228,8 +1228,8 @@ function alreadyIs(mesh: BMesh, region: readonly Face[], rings: readonly Vert[][
 /**
  * Rebuilds one region of same-source fragments as few faces as it can be.
  *
- * A region with a hole in it — the surface a tool left around its own
- * footprint — is opened along two seams run out to corners of its outline, so
+ * A region with a hole in it (the surface a tool left around its own
+ * footprint) is opened along two seams run out to corners of its outline, so
  * that the split costs the shape no vertex it would not have had anyway. That
  * is `splitAcrossHole`, and it is the case a bore through a flat face lands in.
  *
@@ -1272,7 +1272,7 @@ function mergeRegionGreedy(mesh: BMesh, region: readonly Face[]): Face[] {
  *
  * Grouping by source rather than by angle is the whole point. Every fragment of
  * one face carries that face's own plane, so siblings are exactly coplanar and
- * no tolerance is needed to recognise them — while two neighbouring faces of a
+ * no tolerance is needed to recognise them, while two neighbouring faces of a
  * finely tessellated mesh sit well inside any usable coplanarity limit and are
  * not siblings at all. Merging those is not undoing a split; it is dissolving
  * the surface the user brought in, and a dense sphere lost its poles to it.
@@ -1344,7 +1344,7 @@ function connectedRegions(mesh: BMesh, faces: readonly Face[]): Face[][] {
  * Drops the stranded vertices, keeping every face's provenance across the pass.
  *
  * `dissolveVerts` rebuilds a face rather than editing it, so the face comes back
- * under a new id and its source would be lost with it — and a face with no
+ * under a new id and its source would be lost with it, and a face with no
  * source reads as one the cut reshaped, which is how a reassembled face ends up
  * being tiled into hundreds of pieces. A rebuilt face is its old self minus the
  * vertex that went, so the old ring containing all of the new one's vertices is
@@ -1449,7 +1449,7 @@ function untouchedSources(
  * and go too.
  *
  * Every operation is treated alike. What a boolean owes the user is the shape,
- * plus as much of the two surfaces they modelled as the shape allows — and that
+ * plus as much of the two surfaces they modelled as the shape allows, and that
  * is the same debt whether the tool added material or took it away.
  */
 function resolve(
@@ -1482,7 +1482,7 @@ function resolve(
   });
   // Only the seam is left to tidy, and only ever by merging: pairing two
   // coplanar triangles into a quad removes a face, it never adds one. Nothing
-  // splits a ring any more — a face this boolean put back together is the face
+  // splits a ring any more: a face this boolean put back together is the face
   // the user modelled, and cutting it up again to chase quads is what turned
   // one face of a cube into three hundred.
   trisToQuads(mesh, reshaped, QUAD_PAIR_LIMIT_DEGREES);
@@ -1494,7 +1494,7 @@ function resolve(
  * The quad pass at the end is what makes a union or an intersect workable
  * rather than merely correct: those keep both solids' surfaces, and pairing the
  * coplanar triangles back up gives edge loops that run where the shape actually
- * turns. The angle limit is tight on purpose — merging across a real crease
+ * turns. The angle limit is tight on purpose: merging across a real crease
  * would flatten the very edges the boolean just created. A difference skips
  * that pass and keeps its cut faces whole; see `resolve`.
  */

@@ -46,14 +46,14 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: '3DOO is a mesh editor that runs entirely in the browser tab. Nothing is uploaded and nothing is installed — the modelling kernel, the renderer and your project all live on this machine. If you have used Blender, most of what follows is already in your fingers.',
+        text: '3DOO is a mesh editor that runs entirely in the browser tab. Nothing is uploaded and nothing is installed: the modelling kernel, the renderer and your project all live on this machine. If you have used Blender, most of what follows is already in your fingers.',
       },
       {
         kind: 'steps',
         items: [
           'Open the MODELING module from the plate in the top-left corner.',
-          'In the ADD panel on the left, click a primitive — BOX is the usual place to start. It drops into the scene already selected.',
-          'While it is still freshly added, the PROPERTIES panel lets you change its parameters — size, segments, rings — and the mesh is rebuilt each time.',
+          'In the ADD panel on the left, click a primitive. BOX is the usual place to start. It drops into the scene already selected.',
+          'While it is still freshly added, the PROPERTIES panel lets you change its parameters (size, segments, rings) and the mesh is rebuilt each time.',
           'Press Tab to enter edit mode. The left panels swap to SELECT, OPERATIONS, LOOP OPERATIONS and TOPOLOGY, and the tool rail switches to vertex, edge and face selection.',
           'Select some geometry and run an operation: E extrudes, I insets, Ctrl+R cuts a loop.',
           'Press Ctrl+E to export as OBJ or FBX, or Ctrl+S to save the project as a file you can reopen later.',
@@ -118,7 +118,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'Object mode treats each mesh as a single thing you place in the scene. Ten primitives are available — box, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule and torus — and each stays parametric until you touch its geometry, so segments and radius can still be adjusted after adding it.',
+        text: 'Object mode treats each mesh as a single thing you place in the scene. Ten primitives are available (box, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule and torus), and each stays parametric until you touch its geometry, so segments and radius can still be adjusted after adding it.',
       },
       {
         kind: 'table',
@@ -144,7 +144,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'The row menu',
-            'Right-click a row in the OUTLINER for SELECT, RENAME, APPLY TRANSFORMS and DELETE. The first entry reads DESELECT on a row that is already selected, and drops just that row from the selection. Every entry acts on the row it was opened on — the name in the header — and not on whatever else happens to be selected.',
+            'Right-click a row in the OUTLINER for SELECT, RENAME, APPLY TRANSFORMS and DELETE. The first entry reads DESELECT on a row that is already selected, and drops just that row from the selection. Every entry acts on the row it was opened on (the name in the header) and not on whatever else happens to be selected.',
           ],
         ],
       },
@@ -166,7 +166,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ['One element', 'Click it. Shift+click to add to the selection.'],
           [
             'A region of elements',
-            'Drag across empty space. The region is a rectangle until you say otherwise: V steps the select tool through SQUARE, CIRCLE — dragged out from its centre, not corner to corner — and LASSO, drawn freehand around what you want. Clicking the tool in the rail offers the same three, and its icon shows which one a drag would draw. In object mode the same drag takes every object it touches, whether it covers the whole thing or clips one corner.',
+            'Drag across empty space. The region is a rectangle until you say otherwise: V steps the select tool through SQUARE, CIRCLE (dragged out from its centre, not corner to corner) and LASSO, drawn freehand around what you want. Clicking the tool in the rail offers the same three, and its icon shows which one a drag would draw. In object mode the same drag takes every object it touches, whether it covers the whole thing or clips one corner.',
           ],
           [
             'An edge loop',
@@ -174,12 +174,12 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'A face loop',
-            'Alt+click a face, near the edge you want the loop to run across — that edge is what says which of the two loops through the face you meant, so point at the side you are heading for rather than the middle. Shift+Alt+click adds a loop instead of replacing the selection, so bands stack up one click at a time. Alt+L still names one from two faces already picked.',
+            'Alt+click a face, near the edge you want the loop to run across: that edge is what says which of the two loops through the face you meant, so point at the side you are heading for rather than the middle. Shift+Alt+click adds a loop instead of replacing the selection, so bands stack up one click at a time. Alt+L still names one from two faces already picked.',
           ],
           ['Everything / nothing', 'A selects all, Alt+A deselects all, Ctrl+I inverts.'],
           [
             'Out of a selection',
-            'Esc clears it — objects in object mode, vertices, edges or faces in edit mode — and puts the transform gizmo away with it. It leaves no undo entry of its own.',
+            'Esc clears it (objects in object mode, vertices, edges or faces in edit mode) and puts the transform gizmo away with it. It leaves no undo entry of its own.',
           ],
           [
             'Wider or narrower',
@@ -200,7 +200,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'Every operator below lives in one of the three edit-mode panels: OPERATIONS holds the ones that add geometry — extrude, inset, bevel — LOOP OPERATIONS the ones that run along an edge loop — loop cut, subdivide, relax — and TOPOLOGY the ones that join, weld, clean up or widen the selection. Most have a shortcut. A button is disabled whenever the current selection cannot feed it, and its hint says what to select instead, so the panels double as a guide to what each one needs.',
+        text: 'Every operator below lives in one of the three edit-mode panels: OPERATIONS holds the ones that add geometry (extrude, inset, bevel), LOOP OPERATIONS the ones that run along an edge loop (loop cut, subdivide, relax), and TOPOLOGY the ones that join, weld, clean up or widen the selection. Most have a shortcut. A button is disabled whenever the current selection cannot feed it, and its hint says what to select instead, so the panels double as a guide to what each one needs.',
       },
       {
         kind: 'table',
@@ -220,19 +220,19 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Loop cut (Ctrl+R)',
-            'Inserts edge loops across the quad ring the selected edge passes through. The new loop is left selected, ready to scale or move. Quads are what the ring is made of, so an edge with triangles or an n-gon on both sides — every edge of a cone — has nothing to cut across, and the button stays unavailable until one does.',
+            'Inserts edge loops across the quad ring the selected edge passes through. The new loop is left selected, ready to scale or move. Quads are what the ring is made of, so an edge with triangles or an n-gon on both sides (every edge of a cone) has nothing to cut across, and the button stays unavailable until one does.',
           ],
           [
             'Subdivide (Ctrl+D)',
-            'In face mode, cuts every edge of the face CUTS times and fills it with the grid that leaves — one cut gives four faces, three gives sixteen — with optional Catmull-Clark smoothing. Every cut then runs on as a loop: through the face across each quad it reaches, and the next, until the loop closes or meets a face that is not a quad. That is what keeps the mesh in quads, and what keeps the faces around the selection cut rather than left carrying a stray vertex nothing can be cut against. In edge mode, adds that many vertices along each selected edge.',
+            'In face mode, cuts every edge of the face CUTS times and fills it with the grid that leaves (one cut gives four faces, three gives sixteen) with optional Catmull-Clark smoothing. Every cut then runs on as a loop: through the face across each quad it reaches, and the next, until the loop closes or meets a face that is not a quad. That is what keeps the mesh in quads, and what keeps the faces around the selection cut rather than left carrying a stray vertex nothing can be cut against. In edge mode, adds that many vertices along each selected edge.',
           ],
           [
             'Relax',
-            'Pulls the kinks out of a selected loop and evens out its spacing without changing the shape it runs over, the way the relax of LoopTools does in Blender. Each vertex is drawn onto the midpoint of its neighbours, the loop is then spread evenly along the line that leaves, and every vertex is dropped back onto the surface it came from — which is what KEEP SHAPE does, and why a relaxed loop slides across the mesh rather than sinking into it. Where the selection runs out, the vertex it ran out at holds still and the rest are spaced against it. A selection that is not a loop smooths against its whole neighbourhood instead, and an open border keeps its outline: there is no surface past a border to come back to, so its vertices only even out along it. FACTOR is how far each pass travels, ITERATIONS how many passes to take.',
+            'Pulls the kinks out of a selected loop and evens out its spacing without changing the shape it runs over, the way the relax of LoopTools does in Blender. Each vertex is drawn onto the midpoint of its neighbours, the loop is then spread evenly along the line that leaves, and every vertex is dropped back onto the surface it came from, which is what KEEP SHAPE does, and why a relaxed loop slides across the mesh rather than sinking into it. Where the selection runs out, the vertex it ran out at holds still and the rest are spaced against it. A selection that is not a loop smooths against its whole neighbourhood instead, and an open border keeps its outline: there is no surface past a border to come back to, so its vertices only even out along it. FACTOR is how far each pass travels, ITERATIONS how many passes to take.',
           ],
           [
             'Merge (M) and merge by distance',
-            'Welds vertices together — either the selection onto one point, or every pair closer than a threshold, with a live preview count.',
+            'Welds vertices together: either the selection onto one point, or every pair closer than a threshold, with a live preview count.',
           ],
           [
             'Delete (X) vs dissolve (Del)',
@@ -254,7 +254,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'prose',
-        text: 'Normals have their own operations: recalculate outward (Shift+N) and flip. Smooth shading is the ◐ flag in the top bar, next to the orthographic one: it blends the normals across faces rather than faceting them, and in edit mode it applies to the selected faces alone. It belongs to the object, so a REMESH carries it across rather than deciding it. The face-orientation overlay draws backfaces in red, so anywhere red shows you are looking at the inside of the surface — worth checking before an export.',
+        text: 'Normals have their own operations: recalculate outward (Shift+N) and flip. Smooth shading is the ◐ flag in the top bar, next to the orthographic one: it blends the normals across faces rather than faceting them, and in edit mode it applies to the selected faces alone. It belongs to the object, so a REMESH carries it across rather than deciding it. The face-orientation overlay draws backfaces in red, so anywhere red shows you are looking at the inside of the surface, worth checking before an export.',
       },
       {
         kind: 'note',
@@ -295,17 +295,17 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ['Subdivision', 'Catmull-Clark smoothing at a display level you choose.'],
           [
             'Remesh',
-            'Rebuilds the topology outright, by one of three methods. VOXEL samples the shape into a signed distance grid and contours an even quad shell back out of it. BLOCKS reads that same grid straight off the lattice with every face axis-aligned — a voxel study of the shape rather than a surface to carry on working. REDUCE rebuilds nothing: it collapses the edges that cost the least to lose, leaving every other vertex exactly where it was, and it is the only one that keeps material slots.',
+            'Rebuilds the topology outright, by one of three methods. VOXEL samples the shape into a signed distance grid and contours an even quad shell back out of it. BLOCKS reads that same grid straight off the lattice with every face axis-aligned, a voxel study of the shape rather than a surface to carry on working. REDUCE rebuilds nothing: it collapses the edges that cost the least to lose, leaving every other vertex exactly where it was, and it is the only one that keeps material slots.',
           ],
         ],
       },
       {
         kind: 'note',
-        text: 'Reorder the stack to change the outcome — mirroring after an array is not the same shape as arraying after a mirror. APPLY bakes a modifier into the real mesh when you are ready to commit to it.',
+        text: 'Reorder the stack to change the outcome: mirroring after an array is not the same shape as arraying after a mirror. APPLY bakes a modifier into the real mesh when you are ready to commit to it.',
       },
       {
         kind: 'prose',
-        text: 'REMESH answers one question: the shape is right but the topology is not — a boolean left a mess of slivers, an import arrived as one dense triangle soup, or a sculpt needs an even cage to work on. Because it throws away the geometry it was handed, it belongs at the end of a stack rather than the middle. Density is the control to reach for first: TARGET FACES names the count you want and solves the voxel size out of it, or turn it off and set VOXEL SIZE — or KEEP, the fraction of triangles REDUCE holds on to — by hand.',
+        text: 'REMESH answers one question: the shape is right but the topology is not: a boolean left a mess of slivers, an import arrived as one dense triangle soup, or a sculpt needs an even cage to work on. Because it throws away the geometry it was handed, it belongs at the end of a stack rather than the middle. Density is the control to reach for first: TARGET FACES names the count you want and solves the voxel size out of it, or turn it off and set VOXEL SIZE (or KEEP, the fraction of triangles REDUCE holds on to) by hand.',
       },
       {
         kind: 'prose',
@@ -313,11 +313,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'The voxel methods always produce a closed solid — an open surface is closed over, and holes finer than the grid disappear. REDUCE is the one that leaves an open mesh open. Apply the object transform first if the object is scaled, so the voxel size means what it says.',
+        text: 'The voxel methods always produce a closed solid: an open surface is closed over, and holes finer than the grid disappear. REDUCE is the one that leaves an open mesh open. Apply the object transform first if the object is scaled, so the voxel size means what it says.',
       },
       {
         kind: 'note',
-        text: 'REMESH is far and away the dearest thing the stack can run, so its result is held and only rebuilt when the mesh or the settings actually change — selecting, orbiting and switching modes cost nothing. Reach for a coarse density while you are still deciding.',
+        text: 'REMESH is far and away the dearest thing the stack can run, so its result is held and only rebuilt when the mesh or the settings actually change: selecting, orbiting and switching modes cost nothing. Reach for a coarse density while you are still deciding.',
       },
     ],
   },
@@ -328,7 +328,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'The 3D cursor is a movable point in space. Right-click in the viewport and a menu offers to place it on the exact point under the pointer, or to snap it to the nearest vertex, edge midpoint or face centre — whichever the click found.',
+        text: 'The 3D cursor is a movable point in space. Right-click in the viewport and a menu offers to place it on the exact point under the pointer, or to snap it to the nearest vertex, edge midpoint or face centre, whichever the click found.',
       },
       {
         kind: 'table',
@@ -402,19 +402,19 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'Save (Ctrl+S)',
-            'Downloads the whole project — objects, transforms, modifiers, materials — as a .3doo file (JSON inside, whatever the suffix says).',
+            'Downloads the whole project (objects, transforms, modifiers, materials) as a .3doo file (JSON inside, whatever the suffix says).',
           ],
           ['Open (Ctrl+O)', 'Loads one of those files back, replacing the current scene.'],
           ['Import', 'Reads an OBJ file in as new objects alongside what is already there.'],
           [
             'Export (Ctrl+E)',
-            'Writes OBJ with a matching MTL, or ASCII FBX 7.4 — which Unity, Unreal, Blender, Maya and 3ds Max all import.',
+            'Writes OBJ with a matching MTL, or ASCII FBX 7.4, which Unity, Unreal, Blender, Maya and 3ds Max all import.',
           ],
         ],
       },
       {
         kind: 'prose',
-        text: 'The export dialog carries axis and unit presets for Unity, Unreal, Blender and Maya, so the model arrives the right way up and the right size without a round of trial and error. The editor models in metres — one unit is one metre. Choose CUSTOM to set the up axis, units and scale yourself.',
+        text: 'The export dialog carries axis and unit presets for Unity, Unreal, Blender and Maya, so the model arrives the right way up and the right size without a round of trial and error. The editor models in metres: one unit is one metre. Choose CUSTOM to set the up axis, units and scale yourself.',
       },
       {
         kind: 'note',

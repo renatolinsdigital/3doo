@@ -38,7 +38,7 @@ export function TopologyPanel() {
   const faceMode = useEditorStore((state) => state.selectMode === 'face');
   const edgeMode = useEditorStore((state) => state.selectMode === 'edge');
 
-  // Every operator below refuses outright when the selection cannot feed it —
+  // Every operator below refuses outright when the selection cannot feed it:
   // the button is disabled to match, and its hint says what to select instead.
   // Triangulate, tris-to-quads and merge-by-distance are absent on purpose:
   // each falls back to the whole mesh, so none of them is ever unavailable.
@@ -58,7 +58,7 @@ export function TopologyPanel() {
           disabled={!vertexMode || selection.verts !== 2}
           hint={
             !vertexMode
-              ? 'Connecting joins vertices — switch to vertex select mode (1)'
+              ? 'Connecting joins vertices, so switch to vertex select mode (1)'
               : selection.verts !== 2
                 ? 'Select exactly two vertices to run an edge between (J)'
                 : 'Create an edge between the two selected vertices, splitting their faces (J)'
@@ -71,7 +71,7 @@ export function TopologyPanel() {
           hint={
             selection.edges >= 3
               ? 'Fill a selected open boundary loop with a new face (F)'
-              : 'Select an open boundary loop — three edges or more — to fill (F)'
+              : 'Select an open boundary loop (three edges or more) to fill (F)'
           }
           onClick={() => exec('fill', {}, 'Fill')}
         />
@@ -101,7 +101,7 @@ export function TopologyPanel() {
           disabled={!vertexMode || selection.verts < 2}
           hint={
             !vertexMode
-              ? 'Merging joins vertices — switch to vertex select mode (1)'
+              ? 'Merging joins vertices, so switch to vertex select mode (1)'
               : selection.verts < 2
                 ? 'Select at least two vertices to weld into one'
                 : 'Weld the selected vertices into one'
@@ -154,11 +154,11 @@ export function TopologyPanel() {
           disabled={!edgeLoopAvailable}
           hint={
             !edgeMode
-              ? 'Edge loops run along edges — switch to edge select mode (2)'
+              ? 'Edge loops run along edges, so switch to edge select mode (2)'
               : selection.edges < 2
                 ? 'Select two connected edges for the loop to run along (Alt+click)'
                 : !edgeLoopAvailable
-                  ? 'Those edges do not meet — a loop is named by two that share a vertex'
+                  ? 'Those edges do not meet: a loop is named by two that share a vertex'
                   : 'Extend the selection along the whole loop those edges sit in'
           }
           onClick={() => exec('selectEdgeLoop', {}, 'Select edge loop')}
@@ -168,11 +168,11 @@ export function TopologyPanel() {
           disabled={!faceLoopAvailable}
           hint={
             !faceMode
-              ? 'Face loops run through faces — switch to face select mode (3)'
+              ? 'Face loops run through faces, so switch to face select mode (3)'
               : selection.faces < 2
                 ? 'Select two adjacent faces for the loop to run through (Alt+L)'
                 : !faceLoopAvailable
-                  ? 'Those faces do not touch — a loop is named by two that share an edge (Alt+L)'
+                  ? 'Those faces do not touch: a loop is named by two that share an edge (Alt+L)'
                   : 'Extend the selection along the whole loop those faces sit in (Alt+L)'
           }
           onClick={() => exec('selectFaceLoop', {}, 'Select face loop')}

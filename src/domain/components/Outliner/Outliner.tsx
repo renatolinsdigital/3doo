@@ -61,7 +61,7 @@ export function Outliner() {
       label: 'APPLY TRANSFORMS',
       disabled: object.locked,
       hint: object.locked
-        ? 'Locked objects cannot be edited — unlock it first'
+        ? 'Locked objects cannot be edited, so unlock it first'
         : 'Bake rotation and scale into the mesh so modifiers and exports see the real shape (Ctrl+A)',
       onSelect: () => applyTransform([object.id]),
     },
@@ -170,7 +170,7 @@ function OutlinerRow({
   );
   const linkTooltip = useTooltipTrigger(
     meshUsers > 1
-      ? `Mesh data shared with ${meshUsers - 1} other object(s) — editing one edits them all`
+      ? `Mesh data shared with ${meshUsers - 1} other object(s): editing one edits them all`
       : undefined,
   );
 

@@ -84,7 +84,7 @@ export const createToolSlice: StateCreator<
    * whatever was clicked, covering the very vertex being aimed at and taking
    * the next click for a drag. G, R and S bring it straight back.
    *
-   * No status of its own — the selection that triggered it has something more
+   * No status of its own: the selection that triggered it has something more
    * useful to say.
    */
   stowTransformTool: () =>

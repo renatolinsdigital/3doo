@@ -434,7 +434,7 @@ describe('remesh modifier', () => {
 
   it('carries the shading the object already had across the rebuild', () => {
     // Shading is a property of the object, set from the top bar, and the
-    // rebuild has no opinion of its own to offer about it — so it is read off
+    // rebuild has no opinion of its own to offer about it, so it is read off
     // the mesh going in rather than being a setting on the modifier.
     const flat = createBox(2);
     const smooth = createBox(2);
@@ -472,7 +472,7 @@ describe('remesh modifier', () => {
     // The solidified slab is closed, so the shell around it has no holes.
     // Not every edge is manifold: naive surface nets puts one vertex in a cell
     // however many sheets of the surface pass through it, and the slab's rim is
-    // thin against the voxel size — the same handful of junctions the voxel
+    // thin against the voxel size: the same handful of junctions the voxel
     // remesh has always left there.
     expect(holes(result)).toBe(0);
     expect(result.faces.size).toBeGreaterThan(50);

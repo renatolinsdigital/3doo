@@ -9,7 +9,7 @@ import './ModuleSwitcher.scss';
  * The brand plate, doubling as the switch between modules.
  *
  * The plate is the one element every module shares, so it is also the one place
- * a user can always reach the others from — which is why the module name lives
+ * a user can always reach the others from, which is why the module name lives
  * in it rather than in a separate nav bar each module would have to repeat.
  */
 export function ModuleSwitcher() {
@@ -45,7 +45,7 @@ export function ModuleSwitcher() {
         className="module-switcher__brand"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`${current.brand} — switch module`}
+        aria-label={`${current.brand}, switch module`}
         onClick={() => setOpen((wasOpen) => !wasOpen)}
       >
         <span className="module-switcher__name">{current.brand}</span>

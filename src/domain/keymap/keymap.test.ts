@@ -119,7 +119,7 @@ describe('keymap', () => {
 
   it('stays off the browser shortcuts preventDefault cannot hold back', () => {
     // Ctrl+T opens a tab and Ctrl with +/- is zoom, neither of which the page
-    // can suppress — which is why grow and shrink are on brackets and the
+    // can suppress, which is why grow and shrink are on brackets and the
     // clean-up operators are on Alt.
     const reserved = DEFAULT_KEYMAP.filter(
       (binding) => binding.ctrl && ['t', 'n', 'w', '+', '-', '='].includes(binding.key),

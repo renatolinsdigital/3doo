@@ -9,7 +9,7 @@ import { type EditorStore, useEditorStore } from './useEditorStore';
 /**
  * Asks `test` about the active object's mesh in edit mode; false anywhere else.
  *
- * Reads `meshVersion` for the reason `useSceneStats` does — selection lives on
+ * Reads `meshVersion` for the reason `useSceneStats` does: selection lives on
  * the mesh, which is mutated in place, so nothing changes identity when it
  * moves. Shared so a probe cannot be written without it and quietly go stale.
  */
@@ -52,7 +52,7 @@ export function useActiveShadingSmooth(): boolean {
  * still two faces, and the operator would refuse them. Adjacency is the part
  * that decides, so the button has to ask about adjacency.
  *
- * Only that a pair touches, not that the walk succeeds — a ring stops at
+ * Only that a pair touches, not that the walk succeeds: a ring stops at
  * triangles and n-gons, and running it on every selection change to catch that
  * rarer case is not worth the walk. The operator still explains it when it
  * happens.
@@ -74,7 +74,7 @@ export function useFaceLoopAvailable(): boolean {
  * meet is what says the user drew along a loop, so meeting is what the button
  * asks about.
  *
- * Only that two of them touch, not that the walk gets anywhere — a loop stops
+ * Only that two of them touch, not that the walk gets anywhere: a loop stops
  * at the first vertex that is not valence four, and walking the mesh on every
  * selection change to find that out is not worth it. The operator still says so
  * when it happens.
@@ -109,7 +109,7 @@ export interface SelectionCounts {
 }
 
 /**
- * What is selected on the active object — the thing that decides whether an
+ * What is selected on the active object, the thing that decides whether an
  * edit-mode operator has anything to act on.
  *
  * Reads `meshVersion` for the same reason `useSceneStats` does: selection lives

@@ -70,6 +70,6 @@ describe('OperationsPanel', () => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(screen.getByRole('tooltip')).toHaveTextContent(/chamfers edges — select some first/i);
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/chamfers edges, so select some first/i);
   });
 });

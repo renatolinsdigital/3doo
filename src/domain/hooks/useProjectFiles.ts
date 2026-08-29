@@ -128,7 +128,7 @@ export function useProjectFiles() {
           'warning',
           selectionOnly
             ? 'Nothing selected to export'
-            : 'Nothing to export — the scene is empty or every object is hidden',
+            : 'Nothing to export: the scene is empty or every object is hidden',
         );
         return;
       }

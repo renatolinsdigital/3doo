@@ -13,7 +13,7 @@ const SHADING_CYCLE: ShadingMode[] = ['solid', 'solidWire', 'wireframe', 'xray',
  * Which element type X (delete) and Delete (dissolve) act on.
  *
  * Both operators take an explicit mode, and the active select mode is the only
- * honest answer to "whatever is selected" — picking anything else would delete
+ * honest answer to "whatever is selected": picking anything else would delete
  * elements the user cannot currently see highlighted.
  */
 const ELEMENT_FOR_SELECT_MODE: Record<SelectMode, 'verts' | 'edges' | 'faces'> = {
@@ -29,7 +29,7 @@ const TEXT_INPUT_TYPES = new Set(['text', 'number', 'search', 'email', 'url', 't
  * Whether a keystroke is going into a field rather than to the editor.
  *
  * Type-aware rather than tag-aware: a toggle's checkbox keeps focus after it is
- * clicked, and treating that as typing left every shortcut dead — click
+ * clicked, and treating that as typing left every shortcut dead: click
  * proportional editing on, and G, R and S did nothing until the next click
  * landed somewhere else.
  */

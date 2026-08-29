@@ -9,8 +9,8 @@ import type { BooleanReply, BooleanRequest } from './boolean.worker';
  * The worker never started, or died without saying why.
  *
  * Distinct from a boolean that threw inside one: this means the crossing is not
- * available — a browser that could not fetch the module, a policy that forbids
- * it — and the caller can simply run the cut in place instead. A boolean that
+ * available (a browser that could not fetch the module, a policy that forbids
+ * it) and the caller can simply run the cut in place instead. A boolean that
  * threw would only throw again.
  */
 export class WorkerUnavailable extends Error {}
@@ -20,7 +20,7 @@ export class WorkerUnavailable extends Error {}
  *
  * jsdom has none, and neither does a browser that failed to fetch the module.
  * Both fall back to running it here, which is what the editor did before and
- * still works — slower, and the window stops drawing while it does.
+ * still works, slower, and the window stops drawing while it does.
  */
 export function canRunOffThread(): boolean {
   return typeof Worker === 'function';
@@ -34,7 +34,7 @@ export function canRunOffThread(): boolean {
  * work happens. The main thread is idle between stages rather than doing the
  * cut, so the window keeps drawing however long the cut takes.
  *
- * The crossing is not free — a mesh is flattened on the way out and rebuilt on
+ * The crossing is not free: a mesh is flattened on the way out and rebuilt on
  * the way back, since a BMesh is a cycle of loops pointing at each other and
  * nothing structured-cloneable. It is a fixed cost of about a tenth of a second
  * on a mesh of a hundred thousand faces, against a cut that would otherwise

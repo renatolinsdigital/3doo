@@ -31,8 +31,8 @@ export const INTEGER_PARAMS = new Set<keyof PrimitiveParams>(['segments', 'rings
 /**
  * Params that are a length rather than a count or a flag.
  *
- * One editor unit is one metre — the same metre the export presets mean by
- * "meters" and the ground grid counts in — so these are the fields the UI
+ * One editor unit is one metre, the same metre the export presets mean by
+ * "meters" and the ground grid counts in, so these are the fields the UI
  * marks with a unit.
  */
 export const METRE_PARAMS = new Set<keyof PrimitiveParams>(['size', 'radius', 'radius2', 'height']);
@@ -52,7 +52,7 @@ export const DEFAULT_PRIMITIVE_PARAMS: PrimitiveParams = {
  * Kinds whose sensible starting shape differs from the shared defaults.
  *
  * A capsule at the default height of 1 would be exactly a sphere, since its
- * height spans the rounded caps too — so it gets twice the height instead,
+ * height spans the rounded caps too, so it gets twice the height instead,
  * which is the one primitive that cannot come in at 1 m all round.
  */
 export const PRIMITIVE_DEFAULT_OVERRIDES: Partial<Record<PrimitiveKind, Partial<PrimitiveParams>>> =

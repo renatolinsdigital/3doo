@@ -62,8 +62,8 @@ export function analyseRegion(mesh: BMesh, faces: readonly Face[]): RegionShell 
  * Detaches a face region from the surrounding mesh and stitches walls along the
  * boundary. `offsetFor` positions each duplicated vertex.
  *
- * Extrude and region inset are the same topological edit — only the placement
- * rule differs — so both go through here.
+ * Extrude and region inset are the same topological edit (only the placement
+ * rule differs), so both go through here.
  */
 export function detachRegion(
   mesh: BMesh,

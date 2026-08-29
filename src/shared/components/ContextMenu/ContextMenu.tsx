@@ -40,7 +40,7 @@ export interface ContextMenuProps {
   /**
    * The element the menu was opened from, if any.
    *
-   * A press on it does not close the menu here — that button toggles the menu
+   * A press on it does not close the menu here: that button toggles the menu
    * itself, and closing on the way down would leave it reopening on the click.
    */
   anchor?: RefObject<HTMLElement>;

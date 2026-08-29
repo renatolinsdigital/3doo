@@ -19,8 +19,8 @@ export interface SceneObjectData {
    * Id of the object this one shares its mesh instance with.
    *
    * A linked duplicate is one mesh behind several objects, and a document is a
-   * flat list: without this the link is lost on every save — and on every undo,
-   * which snapshots through the same format — leaving the copies quietly
+   * flat list: without this the link is lost on every save, and on every undo,
+   * which snapshots through the same format, leaving the copies quietly
    * independent. Each sharer still writes its own `mesh`, so a document whose
    * owner has been dropped, or a reader that predates the field, still loads
    * something valid.
@@ -38,7 +38,7 @@ export interface ProjectDocument {
   /**
    * Which panels were folded away, keyed by title.
    *
-   * Layout rather than scene, so it is filled in and read back by the store —
+   * Layout rather than scene, so it is filled in and read back by the store,
    * `serializeProject` has no business knowing about the shell. Absent in files
    * written before panels could fold, which load with everything open.
    */

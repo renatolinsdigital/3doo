@@ -36,7 +36,7 @@ describe('evaluated display mesh', () => {
 
     // The very same mesh, not an equal one. A REMESH is the better part of a
     // second, and the viewport re-syncs on selection and shading changes that
-    // touch no geometry at all — every one of those used to pay for it again.
+    // touch no geometry at all, and every one of those used to pay for it again.
     expect(second === first).toBe(true);
     expect(first === object.mesh).toBe(false);
   });
@@ -65,7 +65,7 @@ describe('evaluated display mesh', () => {
     const before = active();
     const first = evaluatedMesh(before.object, vec3(), before.version);
 
-    // The mesh is edited in place, so its identity says nothing — the version
+    // The mesh is edited in place, so its identity says nothing: the version
     // is the only thing that reports a vertex has moved.
     for (const vert of before.object.mesh.verts.values())
       vert.co = { ...vert.co, x: vert.co.x * 2 };
