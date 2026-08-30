@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-import type { BMesh, SelectMode, Vec3 } from '@kernel/index';
+import type { BMesh, SelectMode, Vec3, Vert } from '@kernel/index';
 import type { SelectShape } from '@store/types';
 import type { ObjectView } from '@bridge/index';
 
@@ -514,7 +514,13 @@ function anyEdgeCrosses(
 }
 
 /**
- * Collects every element whose screen position falls inside the swept region.
+ * Collects every element the swept region touches.
+ *
+ * Touching, not enclosing, the rule object mode already picks by: a vertex is a
+ * point and is either in or out, but an edge counts the moment the region
+ * reaches any part of it, and so does a face. Clipping one corner of a face
+ * takes the whole face. Testing the centre alone left a drag across half a
+ * large n-gon selecting nothing.
  *
  * `facing` means the same here as it does for a click: null sweeps through the
  * model the way x-ray shading draws it, and anything else takes only what the
@@ -531,7 +537,8 @@ export function pickInRegion(
   facing: FacingElements | null,
 ): number[] {
   const matrix = view.group.matrix;
-  const inside = (screen: THREE.Vector2 | null) => screen !== null && region.contains(screen);
+  const toScreen = (point: Vec3) =>
+    project(new THREE.Vector3(point.x, point.y, point.z), matrix, camera, size.width, size.height);
 
   if (mode === 'vertex') {
     const hits: number[] = [];
@@ -549,7 +556,7 @@ export function pickInRegion(
         size.width,
         size.height,
       );
-      if (inside(screen)) hits.push(view.vertIds[i]);
+      if (screen && region.contains(screen)) hits.push(view.vertIds[i]);
     }
     return hits;
   }
@@ -559,32 +566,50 @@ export function pickInRegion(
     for (const edge of mesh.edges.values()) {
       if (facing && !facing.edges.has(edge.id)) continue;
 
-      const center = mesh.edgeCenter(edge);
-      const screen = project(
-        new THREE.Vector3(center.x, center.y, center.z),
-        matrix,
-        camera,
-        size.width,
-        size.height,
-      );
-      if (inside(screen)) hits.push(edge.id);
+      const a = toScreen(edge.v0.co);
+      const b = toScreen(edge.v1.co);
+      if (!a || !b) continue;
+
+      // `crosses` asks both halves of the question at once: an end held inside
+      // the region, or a region cutting across the middle holding neither end.
+      if (region.crosses(a, b)) hits.push(edge.id);
     }
     return hits;
   }
+
+  // Every vertex of a quad mesh belongs to four faces, and projecting is what
+  // a sweep over a dense mesh spends its time on.
+  const projected = new Map<number, THREE.Vector2 | null>();
+  const vertScreen = (vert: Vert) => {
+    let screen = projected.get(vert.id);
+    if (screen === undefined) {
+      screen = toScreen(vert.co);
+      projected.set(vert.id, screen);
+    }
+    return screen;
+  };
 
   const hits: number[] = [];
   for (const face of mesh.faces.values()) {
     if (facing && !facing.faces.has(face.id)) continue;
 
-    const center = mesh.faceCenter(face);
-    const screen = project(
-      new THREE.Vector3(center.x, center.y, center.z),
-      matrix,
-      camera,
-      size.width,
-      size.height,
-    );
-    if (inside(screen)) hits.push(face.id);
+    const corners = mesh.faceVerts(face).map(vertScreen);
+    let touched = false;
+    for (let i = 0, j = corners.length - 1; i < corners.length && !touched; j = i++) {
+      const a = corners[j];
+      const b = corners[i];
+      if (a && b && region.crosses(a, b)) touched = true;
+    }
+
+    // A region sitting wholly inside the face reaches no side of it. The centre
+    // answers for one drawn across the middle, and the caller's ray answers for
+    // the rest.
+    if (!touched) {
+      const centre = toScreen(mesh.faceCenter(face));
+      touched = centre !== null && region.contains(centre);
+    }
+
+    if (touched) hits.push(face.id);
   }
   return hits;
 }

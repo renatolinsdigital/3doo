@@ -2425,10 +2425,12 @@ export class Viewport {
       const points = [...path, end];
       const region = regionForShape(shape, start, end, points);
 
+      const marquee = marqueeShape(shape, start, end, points);
+
       if (useEditorStore.getState().mode === 'object') {
-        this.objectRegionSelect(region, marqueeShape(shape, start, end, points), event.shiftKey);
+        this.objectRegionSelect(region, marquee, event.shiftKey);
       } else {
-        this.regionSelect(region, event.shiftKey);
+        this.regionSelect(region, marquee, event.shiftKey);
       }
       return;
     }
@@ -2562,7 +2564,7 @@ export class Viewport {
       const view = this.views.get(object.id);
       if (!view) continue;
 
-      const mesh = evaluatedMesh(object, state.cursor, state.meshVersion);
+      const mesh = this.pickMesh(object, state);
       const matrix = view.group.matrix;
       const toWorld = (point: Vec3): Vec3 => {
         const world = new THREE.Vector3(point.x, point.y, point.z).applyMatrix4(matrix);
@@ -2678,6 +2680,18 @@ export class Viewport {
   }
 
   /**
+   * The mesh a view's pick buffers and pick target describe.
+   *
+   * Edit mode picks the object's own mesh, the one the operators run on, and
+   * everywhere else the pick lands on what is drawn. The two differ only while
+   * a modifier is previewing on top of the object being edited.
+   */
+  private pickMesh(object: SceneObject, state: ReturnType<typeof useEditorStore.getState>): BMesh {
+    if (state.mode === 'edit' && object.id === state.activeObjectId) return object.mesh;
+    return evaluatedMesh(object, state.cursor, state.meshVersion);
+  }
+
+  /**
    * What the pointer is allowed to reach on a mesh, given the shading.
    *
    * X-ray and wireframe are the two modes whose whole point is seeing (and
@@ -2728,9 +2742,9 @@ export class Viewport {
         this.raycaster,
         this.pickable(object.mesh, view),
       );
-      // Read back out of the view's own buffers rather than off the base mesh:
-      // the dots are drawn from the evaluated result, and the mark has to land
-      // on the one it is marking however the modifier stack moved it.
+      // Read back out of the view's own buffers rather than off the mesh: the
+      // mark has to land on the dot it is marking, whichever buffer that dot
+      // was drawn from.
       const index = result ? view.vertIds.indexOf(result.elementId) : -1;
       if (index >= 0) {
         mark = vec3(
@@ -2803,7 +2817,7 @@ export class Viewport {
       if (!additive) {
         object.mesh.deselectAll();
         state.stowTransformTool();
-        state.touchMesh();
+        state.touchMesh(this.previewOnlyNote(view));
       }
       return;
     }
@@ -2816,6 +2830,22 @@ export class Viewport {
     object.mesh.flushSelection(state.selectMode);
     state.stowTransformTool();
     state.touchMesh();
+  }
+
+  /**
+   * Why a click found nothing, when a modifier is the reason it did.
+   *
+   * The stack rebuilds its result from the mesh every time the viewport draws
+   * and holds none of its elements, so the vertex a subdivision leaves in the
+   * middle of a cap is part of the picture rather than part of the model, and
+   * nothing can take hold of it until the modifier is applied. Only said when
+   * the pointer was over that picture: a click on the background is a deselect
+   * and means nothing more than that.
+   */
+  private previewOnlyNote(view: ObjectView): string | undefined {
+    if (view.pickTarget === view.surfaceTarget) return undefined;
+    if (this.raycaster.intersectObject(view.surfaceTarget, false).length === 0) return undefined;
+    return 'Apply the modifier to edit what it adds: a click takes hold of the mesh under it';
   }
 
   /**
@@ -2851,21 +2881,53 @@ export class Viewport {
     state.selectObjects(hits, additive);
   }
 
-  private regionSelect(region: Region, additive: boolean): void {
+  /**
+   * Elements a region drag touched, in edit mode.
+   *
+   * Touching is the whole test, as it is in object mode: a region that clips one
+   * corner of a face takes the face. The ray covers the one case the geometry
+   * cannot, a region small enough to sit inside a single face without reaching
+   * any side of it.
+   */
+  private regionSelect(region: Region, marquee: Marquee, additive: boolean): void {
     const state = useEditorStore.getState();
     const object = activeObject(state);
     const view = object ? this.views.get(object.id) : undefined;
     if (state.mode !== 'edit' || !object || !view) return;
 
+    const size = { width: this.canvas.clientWidth, height: this.canvas.clientHeight };
+    const facing = this.pickable(object.mesh, view);
     const hits = pickInRegion(
       view,
       state.selectMode,
       region,
       this.camera,
-      { width: this.canvas.clientWidth, height: this.canvas.clientHeight },
+      size,
       object.mesh,
-      this.pickable(object.mesh, view),
+      facing,
     );
+
+    if (state.selectMode === 'face') {
+      const bounds = marqueeBounds(marquee);
+      const centre = new THREE.Vector2(
+        (bounds.minX + bounds.maxX) / 2,
+        (bounds.minY + bounds.maxY) / 2,
+      );
+      if (region.contains(centre)) {
+        this.updateRaycaster(centre);
+        const pick = pickElement(
+          view,
+          object.mesh,
+          'face',
+          centre,
+          this.camera,
+          size,
+          this.raycaster,
+          facing,
+        );
+        if (pick && !hits.includes(pick.elementId)) hits.push(pick.elementId);
+      }
+    }
 
     if (!additive) object.mesh.deselectAll();
     applySelection(object, state.selectMode, hits, { additive: true, loopSelect: false });

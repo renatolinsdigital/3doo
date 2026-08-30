@@ -1051,6 +1051,45 @@ describe('editor store', () => {
     expect(activeObject().mesh.selectedFaces()).toHaveLength(1);
   });
 
+  it('takes nothing new along on a select-mode change', () => {
+    store().addPrimitive('cylinder');
+    store().setMode('edit');
+    store().setSelectMode('face');
+
+    // Every side face, caps left out: the selection a drag across the whole
+    // cylinder takes now that touching one is enough.
+    const mesh = activeObject().mesh;
+    mesh.deselectAll();
+    const sides = [...mesh.faces.values()].filter((face) => Math.abs(face.normal.y) < 0.5);
+    for (const face of sides) face.selected = true;
+    mesh.flushSelection('face');
+    expect(mesh.selectedFaces()).toHaveLength(sides.length);
+
+    // Both caps are ringed by vertices the side faces already own, so deriving
+    // the faces afresh from them used to hand back the whole cylinder.
+    store().setSelectMode('vertex');
+    store().setSelectMode('face');
+
+    expect(mesh.selectedFaces()).toHaveLength(sides.length);
+  });
+
+  it('keeps vertices that never closed a face when face mode comes and goes', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    store().setSelectMode('vertex');
+
+    const mesh = activeObject().mesh;
+    mesh.deselectAll();
+    const pair = [...mesh.verts.values()].slice(0, 2);
+    for (const vert of pair) vert.selected = true;
+    mesh.flushSelection('vertex');
+
+    store().setSelectMode('face');
+    store().setSelectMode('vertex');
+
+    expect(mesh.selectedVerts()).toHaveLength(2);
+  });
+
   it('bumps the mesh version so the viewport resyncs', () => {
     const before = store().meshVersion;
     store().addPrimitive('box');

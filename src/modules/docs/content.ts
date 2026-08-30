@@ -176,7 +176,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ['One element', 'Click it. Shift+click to add to the selection.'],
           [
             'A region of elements',
-            'Drag across empty space. The region is a rectangle until you say otherwise: V steps the select tool through SQUARE, CIRCLE (dragged out from its centre, not corner to corner) and LASSO, drawn freehand around what you want. Clicking the tool in the rail offers the same three, and its icon shows which one a drag would draw. In object mode the same drag takes every object it touches, whether it covers the whole thing or clips one corner.',
+            'Drag across empty space. The region is a rectangle until you say otherwise: V steps the select tool through SQUARE, CIRCLE (dragged out from its centre, not corner to corner) and LASSO, drawn freehand around what you want. Clicking the tool in the rail offers the same three, and its icon shows which one a drag would draw. A drag takes whatever it touches, whether it covers the whole thing or clips one corner: an edge the region reaches the tip of, a face it reaches any part of, and in object mode the object itself.',
           ],
           [
             'An edge loop',
@@ -315,7 +315,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'A modifier changes what an object looks like without changing the mesh you are editing. The stack is evaluated top to bottom every time the viewport draws, so you keep editing the cage underneath while seeing the result.',
+        text: 'A modifier changes what an object looks like without changing the mesh you are editing. The stack is evaluated top to bottom every time the viewport draws, so you keep editing the cage underneath while seeing the result. Edit mode shows both: the result is shaded as it always is and its edges are drawn faintly behind the cage, while the cage keeps the full wireframe, its vertices and its selection, since the cage is what a click picks and what the operators run on.',
       },
       {
         kind: 'table',

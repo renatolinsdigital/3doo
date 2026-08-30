@@ -315,6 +315,119 @@ describe('ObjectView hover mark', () => {
   });
 });
 
+describe('ObjectView under a modifier', () => {
+  function subdividedBox(): { object: SceneObject; settings: ViewportSettings } {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    store.addPrimitive('box');
+    store.addModifier('subdivide');
+
+    const state = useEditorStore.getState();
+    return {
+      object: state.objects[0],
+      settings: {
+        shading: state.shading,
+        backfaceCulling: state.backfaceCulling,
+        orthographic: state.orthographic,
+        focalLength: state.focalLength,
+        clipStart: state.clipStart,
+        clipEnd: state.clipEnd,
+        navigation: state.navigation,
+        overlays: state.overlays,
+      },
+    };
+  }
+
+  function viewState(settings: ViewportSettings, mode: 'object' | 'edit') {
+    return {
+      mode,
+      selectMode: 'vertex' as const,
+      isActive: true,
+      isSelected: true,
+      eye: vec3(0, 0, 10),
+      selectionLine: SELECTION_LINE,
+      settings,
+    };
+  }
+
+  const segmentsOf = (line: THREE.LineSegments) => line.geometry.getAttribute('position').count / 2;
+
+  it('draws the shape the stack makes, and the cage that makes it, in edit mode', () => {
+    const { object, settings } = subdividedBox();
+    const display = evaluatedMesh(object);
+    const view = new ObjectView(object.id);
+
+    view.update(object, display, viewState(settings, 'edit'));
+
+    const preview = view.group.getObjectByName(`${object.id}:preview`) as THREE.LineSegments;
+    const surface = view.group.getObjectByName(`${object.id}:solid`) as THREE.Mesh;
+    const wire = view.group.children.find(
+      (child): child is THREE.LineSegments =>
+        child instanceof THREE.LineSegments && child !== preview,
+    );
+
+    // A level of subdivision cuts every edge and adds one per new face, so the
+    // two counts part company even though the box has not moved a vertex.
+    expect(display.edges.size).toBeGreaterThan(object.mesh.edges.size);
+    expect(preview.visible).toBe(true);
+    expect(segmentsOf(preview)).toBe(display.edges.size);
+    expect(wire && segmentsOf(wire)).toBe(object.mesh.edges.size);
+
+    // And the surface is still the result, not the cage.
+    const triangles = surface.geometry.getAttribute('position').count / 3;
+    expect(triangles).toBe(display.faces.size * 2);
+  });
+
+  it('keeps the shape on screen reachable while the cage is what picks', () => {
+    const { object, settings } = subdividedBox();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), viewState(settings, 'edit'));
+
+    // Two different meshes, which is how the viewport knows a modifier stands
+    // between what a click picks and what the pointer is over.
+    expect(view.surfaceTarget.name).toBe(`${object.id}:solid`);
+    expect(view.pickTarget).not.toBe(view.surfaceTarget);
+
+    view.update(object, evaluatedMesh(object), viewState(settings, 'object'));
+    expect(view.pickTarget).toBe(view.surfaceTarget);
+  });
+
+  it('leaves the preview to the wireframe itself in object mode', () => {
+    const { object, settings } = subdividedBox();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), viewState(settings, 'object'));
+
+    const preview = view.group.getObjectByName(`${object.id}:preview`) as THREE.LineSegments;
+    expect(preview.visible).toBe(false);
+  });
+
+  it('draws one wireframe with nothing on the stack', () => {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    store.addPrimitive('box');
+    const state = useEditorStore.getState();
+    const object = state.objects[0];
+    const settings: ViewportSettings = {
+      shading: state.shading,
+      backfaceCulling: state.backfaceCulling,
+      orthographic: state.orthographic,
+      focalLength: state.focalLength,
+      clipStart: state.clipStart,
+      clipEnd: state.clipEnd,
+      navigation: state.navigation,
+      overlays: state.overlays,
+    };
+
+    const view = new ObjectView(object.id);
+    view.update(object, evaluatedMesh(object), viewState(settings, 'edit'));
+
+    const preview = view.group.getObjectByName(`${object.id}:preview`) as THREE.LineSegments;
+    expect(preview.visible).toBe(false);
+  });
+});
+
 describe('ObjectView vertex fade', () => {
   function fadeOf(view: ObjectView): THREE.LineSegments {
     const lines = view.group.children.filter(

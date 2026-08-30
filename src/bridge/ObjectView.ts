@@ -14,6 +14,7 @@ import {
   createNormalsMaterial,
   createOutlineMaterial,
   createPointMaterial,
+  createPreviewWireMaterial,
   createRecentPointMaterial,
   createSelectionOverlayMaterial,
   createSurfaceMaterial,
@@ -91,8 +92,10 @@ export class ObjectView {
   readonly group = new THREE.Group();
 
   private readonly solid = new THREE.Mesh();
+  private readonly cage = new THREE.Mesh();
   private readonly backfaces = new THREE.Mesh();
   private readonly wire = new THREE.LineSegments();
+  private readonly previewWire = new THREE.LineSegments();
   private readonly vertexHighlight = new THREE.LineSegments();
   private readonly selectedFaces = new THREE.Mesh();
   private readonly selectedEdges = new THREE.LineSegments();
@@ -104,6 +107,9 @@ export class ObjectView {
 
   /** What the surface materials were last built from; see `updateSolid`. */
   private solidMaterialKey = '';
+
+  /** Whether the pick buffers describe the cage rather than the modifier result. */
+  private picksCage = false;
 
   /** The one point the hover mark draws, written in place rather than rebuilt. */
   private readonly hoverPosition = new Float32Array(3);
@@ -124,10 +130,21 @@ export class ObjectView {
     this.group.name = objectId;
     this.solid.name = `${objectId}:solid`;
     this.solid.userData.objectId = objectId;
+    this.previewWire.name = `${objectId}:preview`;
+    this.cage.name = `${objectId}:cage`;
+    this.cage.userData.objectId = objectId;
     this.outline.name = `${objectId}:outline`;
+
+    // Never drawn: the modifier result is what the user looks at, and this is
+    // only here for the ray to hit. Three raycasts a mesh it is handed whether
+    // or not it is visible. It hangs off the group so the scene graph keeps its
+    // world matrix up to date with the object's transform.
+    this.cage.material = new THREE.MeshBasicMaterial();
+    this.cage.visible = false;
 
     this.backfaces.material = createFaceOrientationMaterial();
     this.wire.material = createWireMaterial(false);
+    this.previewWire.material = createPreviewWireMaterial();
     this.vertexHighlight.material = createVertexHighlightMaterial();
     this.selectedEdges.material = createWireMaterial(true);
     this.selectedFaces.material = createSelectionOverlayMaterial();
@@ -140,6 +157,9 @@ export class ObjectView {
       width: DEFAULT_PREFERENCES.selectionLineWidth,
     });
 
+    // Under everything, the plain wireframe included: it is the faintest thing
+    // the viewport draws and the cage has to read over it.
+    this.previewWire.renderOrder = -1;
     this.outline.renderOrder = 1;
     this.selectedFaces.renderOrder = 2;
     // Over the plain wire it lies on and under the fully selected edges, which
@@ -163,6 +183,7 @@ export class ObjectView {
 
     this.group.add(
       this.solid,
+      this.cage,
       this.backfaces,
       this.wire,
       this.vertexHighlight,
@@ -173,6 +194,7 @@ export class ObjectView {
       this.recentPoints,
       this.normals,
       this.outline,
+      this.previewWire,
     );
   }
 
@@ -210,23 +232,37 @@ export class ObjectView {
     }
 
     const buffers = buildMeshBuffers(displayMesh);
-    this.triangleFaceIds = buffers.solid.triangleFaceIds;
-    this.vertIds = buffers.points.vertIds;
-    this.edgeIds = buffers.edges.edgeIds;
-    this.vertPositions = buffers.points.positions;
-    this.edgePositions = buffers.edges.positions;
 
-    this.updateSolid(object, buffers.solid, state);
-    this.updateWireframe(buffers.edges, state);
+    // Edit mode works on the object's own mesh, so that is what it draws the
+    // elements of and what a pick lands on. The modifier stack rebuilds its
+    // result from scratch and keeps none of the ids, so a click on the shape on
+    // screen named an element the mesh being edited does not have, and selected
+    // nothing. The result still shades underneath: the cage is what you hold,
+    // the preview is what it makes.
+    const cageMesh = state.mode === 'edit' && state.isActive ? object.mesh : displayMesh;
+    const cage = cageMesh === displayMesh ? buffers : buildMeshBuffers(cageMesh);
+    this.picksCage = cage !== buffers;
+
+    this.triangleFaceIds = cage.solid.triangleFaceIds;
+    this.vertIds = cage.points.vertIds;
+    this.edgeIds = cage.edges.edgeIds;
+    this.vertPositions = cage.points.positions;
+    this.edgePositions = cage.edges.positions;
+
+    this.updateSolid(object, buffers.solid, cage.solid, state);
+    this.updateCage(cage.solid, state);
+    this.updateWireframe(cage.edges, state);
+    this.updatePreviewWire(buffers.edges);
     this.updateOutline(object, displayMesh, state);
-    this.updatePoints(buffers.points, state);
-    this.updateRecentPoints(buffers.points, state);
+    this.updatePoints(cage.points, state);
+    this.updateRecentPoints(cage.points, state);
     this.updateNormals(displayMesh, state);
   }
 
   private updateSolid(
     object: SceneObject,
     solid: ReturnType<typeof buildMeshBuffers>['solid'],
+    cage: ReturnType<typeof buildMeshBuffers>['solid'],
     state: ObjectViewState,
   ): void {
     const geometry = new THREE.BufferGeometry();
@@ -271,10 +307,38 @@ export class ObjectView {
     }
 
     const selection = new THREE.BufferGeometry();
-    selection.setAttribute('position', new THREE.BufferAttribute(solid.selectedTriangles, 3));
+    selection.setAttribute('position', new THREE.BufferAttribute(cage.selectedTriangles, 3));
     this.replaceGeometry(this.selectedFaces, selection);
     this.selectedFaces.visible =
-      state.mode === 'edit' && state.isActive && solid.selectedTriangles.length > 0;
+      state.mode === 'edit' && state.isActive && cage.selectedTriangles.length > 0;
+  }
+
+  /**
+   * The triangles an edit-mode ray tests against, which are never drawn.
+   *
+   * Positions alone: a ray wants triangles and nothing else. With no modifier
+   * on the stack the cage is the mesh already on screen, and the solid answers
+   * for it rather than this carrying a second copy of the same geometry.
+   */
+  private updateCage(
+    cage: ReturnType<typeof buildMeshBuffers>['solid'],
+    state: ObjectViewState,
+  ): void {
+    const geometry = new THREE.BufferGeometry();
+    if (this.picksCage) {
+      geometry.setAttribute('position', new THREE.BufferAttribute(cage.positions, 3));
+      geometry.computeBoundingSphere();
+    }
+    this.replaceGeometry(this.cage, geometry);
+
+    // A face pick has to reach the same faces it would through the surface, so
+    // the cage is culled the way the surface is: x-ray draws both sides, and
+    // everywhere else the preference decides.
+    const material = this.cage.material as THREE.MeshBasicMaterial;
+    material.side =
+      state.settings.backfaceCulling && state.settings.shading !== 'xray'
+        ? THREE.FrontSide
+        : THREE.DoubleSide;
   }
 
   private updateWireframe(
@@ -313,6 +377,27 @@ export class ObjectView {
       state.isActive &&
       state.selectMode === 'vertex' &&
       edges.partialPositions.length > 0;
+  }
+
+  /**
+   * The edges of the shape the stack is making, drawn under the cage.
+   *
+   * Only while the two differ, which is edit mode with a modifier on the stack:
+   * everywhere else the wireframe is already the shape on screen, and drawing
+   * it twice would only darken it. A subdivision that cuts faces without
+   * moving them changes nothing else about the picture, so without this edit
+   * mode gives no sign the modifier is there at all.
+   */
+  private updatePreviewWire(edges: ReturnType<typeof buildMeshBuffers>['edges']): void {
+    this.previewWire.visible = this.picksCage;
+    if (!this.previewWire.visible) {
+      this.replaceGeometry(this.previewWire, new THREE.BufferGeometry());
+      return;
+    }
+
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(edges.positions, 3));
+    this.replaceGeometry(this.previewWire, geometry);
   }
 
   /**
@@ -451,8 +536,25 @@ export class ObjectView {
     holder.geometry = geometry;
   }
 
-  /** The solid mesh is what raycasting tests against. */
+  /**
+   * What raycasting tests against: the shape on screen, or the cage under it.
+   *
+   * They are the same mesh until a modifier is on the stack, and in edit mode
+   * they part company: a face pick has to name a face of the mesh being edited,
+   * not one of the result the stack built out of it.
+   */
   get pickTarget(): THREE.Mesh {
+    return this.picksCage ? this.cage : this.solid;
+  }
+
+  /**
+   * The shape on screen, whatever is being picked.
+   *
+   * Compared against `pickTarget` it answers whether a modifier is standing
+   * between the two, and on its own it answers whether the pointer is over the
+   * object at all, which a pick against the cage cannot say.
+   */
+  get surfaceTarget(): THREE.Mesh {
     return this.solid;
   }
 

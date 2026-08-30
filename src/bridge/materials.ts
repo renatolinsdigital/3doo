@@ -196,6 +196,23 @@ export function createWireMaterial(selected: boolean): THREE.LineBasicMaterial {
 }
 
 /**
+ * The modifier preview's own edges, under the cage in edit mode.
+ *
+ * Fainter than the cage, which is the mesh you are actually holding: the
+ * preview is there to say what the stack is making of it. Without it a
+ * subdivision that only cuts faces, moving nothing, leaves edit mode looking
+ * exactly as it did before the modifier was added.
+ */
+export function createPreviewWireMaterial(): THREE.LineBasicMaterial {
+  return new THREE.LineBasicMaterial({
+    color: VIEWPORT_COLORS.void,
+    transparent: true,
+    opacity: 0.3,
+    depthTest: true,
+  });
+}
+
+/**
  * The fade along an edge with one end selected, the way vertex mode reads in
  * Blender.
  *

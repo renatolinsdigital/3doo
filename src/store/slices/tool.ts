@@ -114,10 +114,20 @@ export const createToolSlice: StateCreator<
 
   toggleMode: () => get().setMode(get().mode === 'object' ? 'edit' : 'object'),
 
+  /**
+   * Switching what you are picking, not what is picked.
+   *
+   * Nothing is flushed here. Every selection already propagates to all three
+   * element types as it is made, so the mesh arrives consistent and the switch
+   * only changes which of them is on show. Flushing again on the way in
+   * re-derived the new mode's own type from one it had just derived, which
+   * invented selections nobody made: take the side faces of a cylinder and
+   * every rim vertex is selected, so asking for the faces the vertices cover
+   * hands back the caps as well, and one more switch spreads that to the whole
+   * mesh. It lost work in the other direction too, since vertices that never
+   * closed a face were dropped on the way to face mode and could not come back.
+   */
   setSelectMode: (selectMode) => {
-    const object = activeObject(get());
-    // Carry the current selection across so switching modes never loses it.
-    if (object) object.mesh.flushSelection(selectMode);
     set((state) => ({ selectMode, meshVersion: state.meshVersion + 1 }));
   },
 
@@ -190,8 +200,7 @@ export const createToolSlice: StateCreator<
     }
 
     const element = state.selectMode;
-    const selected =
-      element === 'edge' ? object.mesh.selectedEdges() : object.mesh.selectedVerts();
+    const selected = element === 'edge' ? object.mesh.selectedEdges() : object.mesh.selectedVerts();
     if (selected.length === 0) {
       set({ status: `Select ${element === 'edge' ? 'edges' : 'vertices'} to slide` });
       return;
