@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { type Vec3, clamp, degToRad, distance, dot, lerp, sub, vec3 } from '../math';
 import { BMesh } from '../mesh';
-import type { Face, Vert } from '../mesh/types';
+import type { Edge, Face, Vert } from '../mesh/types';
 import {
   createBox,
   createCircle,
@@ -10,6 +10,7 @@ import {
   createCylinder,
   createGrid,
   createPlane,
+  createUVSphere,
 } from '../primitives';
 
 import { bevelEdges } from './bevel';
@@ -226,6 +227,65 @@ describe('bevel', () => {
     for (const vert of cube.verts.values()) {
       expect(Math.abs(vert.co.x)).toBeLessThanOrEqual(1.001);
     }
+  });
+
+  it('caps the round end of a chamfer that stops mid-surface', () => {
+    for (const segments of [1, 2, 3, 4]) {
+      const cube = createBox(2);
+
+      bevelEdges(cube, [[...cube.edges.values()][0]], { width: 0.2, segments });
+
+      expect(isClosed(cube)).toBe(true);
+      expect(eulerCharacteristic(cube)).toBe(2);
+      expect(cube.validate()).toEqual([]);
+    }
+  });
+
+  it('leaves no hole for any selection of cube edges, at any segment count', () => {
+    for (const segments of [1, 2, 3]) {
+      for (let selection = 1; selection < 1 << 12; selection++) {
+        const cube = createBox(2);
+        const edges = [...cube.edges.values()].filter((_, index) => selection & (1 << index));
+
+        bevelEdges(cube, edges, { width: 0.2, segments });
+
+        expect({ selection, segments, closed: isClosed(cube), errors: cube.validate() }).toEqual({
+          selection,
+          segments,
+          closed: true,
+          errors: [],
+        });
+      }
+    }
+  });
+
+  it('bevels again over the edges an earlier bevel produced', () => {
+    const cube = createBox(2);
+    const first = bevelEdges(cube, [...cube.edges.values()], { width: 0.3 });
+
+    const chamferEdges = new Map<number, Edge>();
+    for (const face of first.faces) {
+      for (const edge of cube.faceEdges(face)) chamferEdges.set(edge.id, edge);
+    }
+    bevelEdges(cube, [...chamferEdges.values()], { width: 0.05, segments: 3 });
+
+    expect(isClosed(cube)).toBe(true);
+    expect(eulerCharacteristic(cube)).toBe(2);
+    expect(cube.validate()).toEqual([]);
+  });
+
+  it('caps each gap on its own where chamfers reach a vertex from opposite sides', () => {
+    const sphere = createUVSphere(0.5, 8, 5);
+    const pole = [...sphere.verts.values()].find((vert) => vert.co.y > 0.49);
+    if (!pole) throw new Error('No north pole');
+    // Two meridians facing each other across the pole: their chamfers meet it
+    // at two gaps that no single polygon can cover.
+    const meridians = pole.edges.filter((_, index) => index % 4 === 0);
+
+    bevelEdges(sphere, meridians, { width: 0.03, segments: 4 });
+
+    expect(isClosed(sphere)).toBe(true);
+    expect(sphere.validate()).toEqual([]);
   });
 });
 

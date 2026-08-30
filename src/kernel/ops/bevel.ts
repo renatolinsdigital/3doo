@@ -31,8 +31,13 @@ function cornerKey(faceId: number, vertId: number): string {
  * profile strip, and vertices where several chamfers meet are capped.
  *
  * Where a bevel terminates, the neighbouring unbeveled edge is split so the
- * chamfer lands on a real edge instead of leaving a crack. Fans that terminate
- * against three or more unbeveled edges can still close with a coplanar cap.
+ * chamfer lands on a real edge instead of leaving a crack.
+ *
+ * Every vertex a chamfer reaches is capped from its whole fan, so the cap
+ * follows the rounded profile rather than cutting a chord across it, and a
+ * vertex whose chamfers arrive along edges that are not fan neighbours is
+ * capped once per gap. That is what keeps a partial selection, or a bevel run
+ * over an earlier bevel, from leaving a hole.
  */
 export function bevelEdges(
   mesh: BMesh,
@@ -89,9 +94,9 @@ export function bevelEdges(
     if (strip) created.push(...buildStrip(mesh, strip, segments, profiles, newVerts));
   }
   for (const cap of caps) {
-    const ring = expandCapRing(cap, segments, profiles);
-    if (ring.length < 3) continue;
-    created.push(mesh.addFace(ring));
+    for (const ring of capRings(expandCapRing(cap, segments, profiles))) {
+      created.push(mesh.addFace(ring));
+    }
   }
 
   for (const edge of staleEdges) {
@@ -405,7 +410,11 @@ function planCaps(
       if (!corner) continue;
       entries.push({ corner, bridged: beveledIds.has(step.exitEdge.id) });
     }
-    if (entries.length < 3) continue;
+
+    // Two entries is enough: a chamfer that ends on a corner cut away by its
+    // own offsets leaves a two-sided gap, closed by the profile on one side and
+    // the rebuilt face on the other.
+    if (entries.length < 2) continue;
     caps.push({ vert, entries });
   }
   return caps;
@@ -457,4 +466,37 @@ function expandCapRing(cap: CapPlan, segments: number, profiles: ProfileCache): 
   }
 
   return dedupeRing(ring);
+}
+
+/**
+ * Splits a cap ring into the simple loops it is actually made of.
+ *
+ * A vertex the walk reaches twice is a pinch: the gap around the vertex is not
+ * one polygon but several joined at a point, which is what a vertex keeps when
+ * chamfers arrive along edges that are not neighbours in its fan. Each closed
+ * stretch is peeled off as its own face. A stretch of only two vertices closes
+ * on a profile the strips already share, so it needs no face at all.
+ */
+function capRings(ring: readonly Vert[]): Vert[][] {
+  const rings: Vert[][] = [];
+  const stack: Vert[] = [];
+  const seenAt = new Map<Vert, number>();
+
+  const emit = (loop: Vert[]) => {
+    if (loop.length >= 3) rings.push(loop);
+  };
+
+  for (const vert of ring) {
+    const first = seenAt.get(vert);
+    if (first === undefined) {
+      seenAt.set(vert, stack.length);
+      stack.push(vert);
+      continue;
+    }
+    emit(stack.slice(first));
+    for (const dropped of stack.splice(first + 1)) seenAt.delete(dropped);
+  }
+
+  emit(stack);
+  return rings;
 }
