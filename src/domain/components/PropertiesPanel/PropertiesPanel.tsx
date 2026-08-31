@@ -27,6 +27,16 @@ import { useActiveObject, useEditorStore } from '@store/index';
 
 import './PropertiesPanel.scss';
 
+/**
+ * Decimal places the transform rows show and round a typed entry to.
+ *
+ * A gizmo drag lands on values with the full float behind them, and reading
+ * back sixteen digits of it says nothing anyone can act on. Six is a micrometre
+ * at these scales: fine enough to type an exact figure into, short enough to
+ * read. The store keeps whatever the drag produced.
+ */
+const TRANSFORM_PRECISION = 6;
+
 const PARAM_LABELS: Record<keyof PrimitiveParams, string> = {
   size: 'SIZE',
   radius: 'RADIUS',
@@ -76,10 +86,13 @@ export function PropertiesPanel() {
 
   const { transform } = object;
   const locked = object.locked ? 'Unlock this object in the outliner to edit its transform' : null;
+  // Converted but not rounded: the field rounds what it shows, and editing one
+  // axis writes the other two back untouched. Rounding here instead would let
+  // a nudge to X quietly quantize Y and Z along with it.
   const degrees = vec3(
-    Number(radToDeg(transform.rotation.x).toFixed(2)),
-    Number(radToDeg(transform.rotation.y).toFixed(2)),
-    Number(radToDeg(transform.rotation.z).toFixed(2)),
+    radToDeg(transform.rotation.x),
+    radToDeg(transform.rotation.y),
+    radToDeg(transform.rotation.z),
   );
 
   const menuMaterial = slotMenu ? (object.materials[slotMenu.slot] ?? null) : null;
@@ -108,6 +121,7 @@ export function PropertiesPanel() {
         legend="LOCATION"
         value={transform.position}
         step={0.1}
+        precision={TRANSFORM_PRECISION}
         suffix="m"
         disabled={object.locked}
         hint={(axis) =>
@@ -120,6 +134,7 @@ export function PropertiesPanel() {
         legend="ROTATION"
         value={degrees}
         step={1}
+        precision={TRANSFORM_PRECISION}
         suffix="°"
         disabled={object.locked}
         hint={(axis) => locked ?? `Rotation around the ${axis.toUpperCase()} axis, in degrees`}
@@ -134,6 +149,7 @@ export function PropertiesPanel() {
         legend="SCALE"
         value={transform.scale}
         step={0.05}
+        precision={TRANSFORM_PRECISION}
         disabled={object.locked}
         hint={(axis) =>
           locked ??

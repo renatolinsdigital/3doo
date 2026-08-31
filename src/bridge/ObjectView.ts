@@ -12,6 +12,7 @@ import {
   createFaceOrientationMaterial,
   createHoverPointMaterial,
   createNormalsMaterial,
+  createOriginMaterial,
   createOutlineMaterial,
   createPointMaterial,
   createPreviewWireMaterial,
@@ -104,6 +105,7 @@ export class ObjectView {
   private readonly recentPoints = new THREE.Points();
   private readonly normals = new THREE.LineSegments();
   private readonly outline = new LineSegments2();
+  private readonly origin = new THREE.Points();
 
   /** What the surface materials were last built from; see `updateSolid`. */
   private solidMaterialKey = '';
@@ -134,6 +136,7 @@ export class ObjectView {
     this.cage.name = `${objectId}:cage`;
     this.cage.userData.objectId = objectId;
     this.outline.name = `${objectId}:outline`;
+    this.origin.name = `${objectId}:origin`;
 
     // Never drawn: the modifier result is what the user looks at, and this is
     // only here for the ray to hit. Three raycasts a mesh it is handed whether
@@ -152,6 +155,7 @@ export class ObjectView {
     this.hoverPoint.material = createHoverPointMaterial();
     this.recentPoints.material = createRecentPointMaterial();
     this.normals.material = createNormalsMaterial();
+    this.origin.material = createOriginMaterial();
     this.outline.material = createOutlineMaterial({
       color: DEFAULT_PREFERENCES.selectionLineColor,
       width: DEFAULT_PREFERENCES.selectionLineWidth,
@@ -171,6 +175,8 @@ export class ObjectView {
     // it marks, and over a second vertex sitting in exactly the same place.
     this.hoverPoint.renderOrder = 6;
     this.recentPoints.renderOrder = 7;
+    // Last of all, over every mark on the geometry as well as the geometry.
+    this.origin.renderOrder = 8;
 
     // One point, rewritten in place: a hover follows the pointer, and building
     // a geometry per move would churn a buffer a frame. Never culled, since a
@@ -180,6 +186,14 @@ export class ObjectView {
     this.hoverPoint.geometry = hover;
     this.hoverPoint.frustumCulled = false;
     this.hoverPoint.visible = false;
+
+    // The origin is the group's own zero, so the marker never moves in here:
+    // the transform on the group is what carries it around the scene.
+    const marker = new THREE.BufferGeometry();
+    marker.setAttribute('position', new THREE.BufferAttribute(new Float32Array(3), 3));
+    this.origin.geometry = marker;
+    this.origin.frustumCulled = false;
+    this.origin.visible = false;
 
     this.group.add(
       this.solid,
@@ -195,6 +209,7 @@ export class ObjectView {
       this.normals,
       this.outline,
       this.previewWire,
+      this.origin,
     );
   }
 
@@ -257,6 +272,12 @@ export class ObjectView {
     this.updatePoints(cage.points, state);
     this.updateRecentPoints(cage.points, state);
     this.updateNormals(displayMesh, state);
+    // The point the object gizmo sits on, so the square says where the handles
+    // will be before any tool that has them is picked up, and says where a
+    // rotation will turn about once one is. Selected objects only, as Blender's
+    // origins overlay does: a square per object in the scene would clutter a
+    // view that is mostly not about them.
+    this.origin.visible = state.settings.overlays.origins && (state.isSelected || state.isActive);
   }
 
   private updateSolid(

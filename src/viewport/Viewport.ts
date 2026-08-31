@@ -32,7 +32,7 @@ import {
   translateVerts,
   vec3,
 } from '@kernel/index';
-import { activeObject, displayCenter, evaluatedMesh, useEditorStore } from '@store/index';
+import { activeObject, evaluatedMesh, useEditorStore } from '@store/index';
 import type { CursorSnapTargets, SceneObject } from '@store/types';
 
 import { CameraController, MAX_ORBIT_DISTANCE } from './CameraController';
@@ -426,11 +426,6 @@ export class Viewport {
   private readonly raycaster = new THREE.Raycaster();
 
   private readonly views = new Map<string, ObjectView>();
-  /**
-   * Where each object's displayed mesh is centred in the world, cached from the
-   * last scene sync so seating the gizmo does not re-run the modifier stack.
-   */
-  private readonly displayCenters = new Map<string, Vec3>();
   private readonly unsubscribers: (() => void)[] = [];
   private frameHandle = 0;
   private disposed = false;
@@ -439,6 +434,10 @@ export class Viewport {
   private dragCurrent: THREE.Vector2 | null = null;
   /** Every point a lasso drag has passed through, in canvas pixels. */
   private dragPath: THREE.Vector2[] = [];
+  /** Whether Shift was down when the gesture began: what it takes is added, not swapped in. */
+  private dragAdditive = false;
+  /** Whether Shift is down now, which is what holds a region drag's oval round. */
+  private dragUniform = false;
   /** The overlay's SVG shapes, built on first use. */
   private shapeLayer: MarqueeLayer | null = null;
   private slideDrag: SlideDrag | null = null;
@@ -780,6 +779,7 @@ export class Viewport {
             state.backfaceCulling,
             state.overlays.normals,
             state.overlays.faceOrientation,
+            state.overlays.origins,
           ] as const,
         () => this.syncScene(),
         { equalityFn: shallowArrayEqual },
@@ -950,15 +950,12 @@ export class Viewport {
         selectionLine: { color: state.selectionLineColor, width: state.selectionLineWidth },
         settings,
       });
-
-      this.displayCenters.set(object.id, displayCenter(object, display));
     }
 
     for (const [id, view] of this.views) {
       if (alive.has(id)) continue;
       view.dispose();
       this.views.delete(id);
-      this.displayCenters.delete(id);
     }
 
     this.updateProportionalAnchor(state);
@@ -1141,29 +1138,18 @@ export class Viewport {
   }
 
   /**
-   * World-space anchor for one object's gizmo: the centre of the mesh actually
-   * on screen, not the object origin.
-   *
-   * A modifier that pushes geometry away from the origin (an array most
-   * obviously) takes the gizmo with it, so the handles sit on what the user
-   * sees rather than off beside the first copy.
-   */
-  private objectGizmoAnchor(object: SceneObject): Vec3 {
-    return this.displayCenters.get(object.id) ?? object.transform.position;
-  }
-
-  /**
    * Positions the gizmo for object mode.
    *
-   * With one object selected it sits at that object's displayed centre,
-   * oriented to the object. With several selected it sits at the median of
-   * those centres with a neutral (world-aligned) orientation, and the
-   * resulting drag is applied to every one of them: Blender's median-point,
-   * global pivot default for multi-object transforms.
+   * With one object selected it sits on that object's origin, oriented to the
+   * object. With several it sits at the median of their origins with a neutral
+   * (world-aligned) orientation, and the drag is applied to every one of them:
+   * Blender's median-point, global pivot default for multi-object transforms.
    *
-   * The anchor doubles as the transform pivot, so a rotate or scale drag
-   * orbits the displayed centre. That point is fixed in the object's own
-   * frame, which is what keeps the gizmo from creeping across a drag.
+   * The origin, not the middle of the mesh: it is the point the object's
+   * position names, the point the ORIGINS overlay marks, and the point a
+   * rotation or scale turns about, so the handles stand where all three agree.
+   * An edit-mode move leaves the origin behind the geometry, and ORIGIN TO
+   * GEOMETRY in the tool rail is what brings it back.
    */
   private updateObjectGizmo(
     state: ReturnType<typeof useEditorStore.getState>,
@@ -1190,13 +1176,12 @@ export class Viewport {
       this.gizmoProxy.rotation.set(0, 0, 0);
       this.gizmoProxy.scale.set(1, 1, 1);
     } else if (transformable.length === 1) {
-      const { rotation, scale } = transformable[0].transform;
-      const anchor = this.objectGizmoAnchor(transformable[0]);
-      this.gizmoProxy.position.set(anchor.x, anchor.y, anchor.z);
+      const { position, rotation, scale } = transformable[0].transform;
+      this.gizmoProxy.position.set(position.x, position.y, position.z);
       this.gizmoProxy.rotation.set(rotation.x, rotation.y, rotation.z);
       this.gizmoProxy.scale.set(scale.x, scale.y, scale.z);
     } else {
-      const pivot = centroid(transformable.map((object) => this.objectGizmoAnchor(object)));
+      const pivot = centroid(transformable.map((object) => object.transform.position));
       this.gizmoProxy.position.set(pivot.x, pivot.y, pivot.z);
       this.gizmoProxy.rotation.set(0, 0, 0);
       this.gizmoProxy.scale.set(1, 1, 1);
@@ -2344,6 +2329,14 @@ export class Viewport {
     this.dragStart = this.pointerPosition(event);
     this.dragCurrent = this.dragStart.clone();
     this.dragPath = [this.dragStart.clone()];
+    // Shift means two things at once, so they are read at two different
+    // moments: whether it was down when the gesture began decides whether what
+    // the gesture takes is added to the selection, and whether it is down as
+    // the pointer moves decides whether an oval is held round. Holding it
+    // throughout asks for both, and letting go mid-drag frees the shape without
+    // turning the addition back into a replacement.
+    this.dragAdditive = event.shiftKey;
+    this.dragUniform = event.shiftKey;
   };
 
   private handlePointerMove = (event: PointerEvent): void => {
@@ -2384,6 +2377,7 @@ export class Viewport {
     }
 
     this.dragCurrent = this.pointerPosition(event);
+    this.dragUniform = event.shiftKey;
     if (this.promoteDeferredGrab()) return;
 
     // Thinned as it is drawn: a pointer event per pixel would leave a lasso
@@ -2403,6 +2397,8 @@ export class Viewport {
     const start = this.dragStart;
     const end = this.dragCurrent;
     const path = this.dragPath;
+    const additive = this.dragAdditive;
+    const uniform = event.shiftKey;
     // Cleared before either way out below: a drag the camera took over halfway
     // through never reaches the selection, and used to leave its marquee on
     // screen until something else drew over it.
@@ -2423,19 +2419,18 @@ export class Viewport {
       // it is the one point the user was certainly looking at.
       const shape = useEditorStore.getState().selectShape;
       const points = [...path, end];
-      const region = regionForShape(shape, start, end, points);
-
-      const marquee = marqueeShape(shape, start, end, points);
+      const region = regionForShape(shape, start, end, points, uniform);
+      const marquee = marqueeShape(shape, start, end, points, uniform);
 
       if (useEditorStore.getState().mode === 'object') {
-        this.objectRegionSelect(region, marquee, event.shiftKey);
+        this.objectRegionSelect(region, marquee, additive);
       } else {
-        this.regionSelect(region, marquee, event.shiftKey);
+        this.regionSelect(region, marquee, additive);
       }
       return;
     }
 
-    this.clickSelect(end, event.shiftKey, event.altKey);
+    this.clickSelect(end, additive, event.altKey);
   };
 
   /**
@@ -2671,7 +2666,7 @@ export class Viewport {
     drawMarquee(
       this.overlay,
       this.shapeLayer,
-      marqueeShape(shape, this.dragStart, this.dragCurrent, this.dragPath),
+      marqueeShape(shape, this.dragStart, this.dragCurrent, this.dragPath, this.dragUniform),
     );
   }
 

@@ -4,7 +4,7 @@ const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
 /** The SVG shapes the selection overlay draws with. */
 export interface MarqueeLayer {
-  circle: SVGCircleElement;
+  ellipse: SVGEllipseElement;
   polygon: SVGPolygonElement;
 }
 
@@ -17,18 +17,18 @@ export function createMarqueeLayer(overlay: HTMLElement): MarqueeLayer {
   const svg = document.createElementNS(SVG_NAMESPACE, 'svg');
   svg.setAttribute('class', 'viewport-canvas__shape');
 
-  const circle = document.createElementNS(SVG_NAMESPACE, 'circle');
+  const ellipse = document.createElementNS(SVG_NAMESPACE, 'ellipse');
   const polygon = document.createElementNS(SVG_NAMESPACE, 'polygon');
-  svg.append(circle, polygon);
+  svg.append(ellipse, polygon);
   overlay.append(svg);
 
-  return { circle, polygon };
+  return { ellipse, polygon };
 }
 
 /**
  * Draws the region a drag is sweeping out.
  *
- * A rectangle is the overlay itself, sized and placed. A circle and a lasso are
+ * A rectangle is the overlay itself, sized and placed. An oval and a lasso are
  * drawn in SVG over the whole canvas instead: a lasso has no box to size a div
  * with, and the reset lands `border-radius: 0 !important` on every element in
  * the app, so a round div is not something CSS here can be asked for.
@@ -46,17 +46,18 @@ export function drawMarquee(overlay: HTMLElement, layer: MarqueeLayer, marquee: 
     return;
   }
 
-  if (marquee.kind === 'circle') {
-    layer.circle.setAttribute('cx', `${marquee.cx}`);
-    layer.circle.setAttribute('cy', `${marquee.cy}`);
-    layer.circle.setAttribute('r', `${marquee.radius}`);
+  if (marquee.kind === 'ellipse') {
+    layer.ellipse.setAttribute('cx', `${marquee.cx}`);
+    layer.ellipse.setAttribute('cy', `${marquee.cy}`);
+    layer.ellipse.setAttribute('rx', `${marquee.rx}`);
+    layer.ellipse.setAttribute('ry', `${marquee.ry}`);
     layer.polygon.setAttribute('points', '');
   } else {
     layer.polygon.setAttribute(
       'points',
       marquee.points.map((point) => `${point.x},${point.y}`).join(' '),
     );
-    layer.circle.setAttribute('r', '0');
+    clearEllipse(layer);
   }
 
   // The overlay stops being the shape and becomes the surface it is drawn on,
@@ -75,6 +76,11 @@ export function hideMarquee(overlay: HTMLElement, layer: MarqueeLayer | null): v
 }
 
 function clearMarqueeShapes(layer: MarqueeLayer): void {
-  layer.circle.setAttribute('r', '0');
+  clearEllipse(layer);
   layer.polygon.setAttribute('points', '');
+}
+
+function clearEllipse(layer: MarqueeLayer): void {
+  layer.ellipse.setAttribute('rx', '0');
+  layer.ellipse.setAttribute('ry', '0');
 }

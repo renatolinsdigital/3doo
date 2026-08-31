@@ -28,7 +28,7 @@ const SHAPE_FACES: Record<SelectShape, { icon: string; label: string; hint: stri
   circle: {
     icon: '◯',
     label: 'CIRCLE',
-    hint: 'Drag out from the centre of a circle over what you want selected (V)',
+    hint: 'Drag an oval out from its centre over what you want selected, Shift to keep it round (V)',
   },
   lasso: {
     icon: '✎',
@@ -102,6 +102,7 @@ export function ToolRail() {
   const selectShape = useEditorStore((state) => state.selectShape);
   const setSelectShape = useEditorStore((state) => state.setSelectShape);
   const exec = useEditorStore((state) => state.exec);
+  const originToGeometry = useEditorStore((state) => state.originToGeometry);
 
   const [shapeMenu, setShapeMenu] = useState<{ x: number; y: number } | null>(null);
 
@@ -139,6 +140,15 @@ export function ToolRail() {
           />
         );
       })}
+      {/* Below the rule because it is a command, not a tool: it runs once and
+          leaves whatever tool you were holding in your hand. */}
+      <hr className="tool-rail__rule" />
+      <IconButton
+        icon="⊙"
+        label="Origin to geometry"
+        hint="Move each selected object's origin onto the middle of its mesh, bringing the gizmo and the origin marker back onto the shape after an edit-mode move left them behind"
+        onClick={() => originToGeometry()}
+      />
       {shapeMenu
         ? // Portalled clear of the rail, which is a narrow column the menu
           // would otherwise be cut off by.

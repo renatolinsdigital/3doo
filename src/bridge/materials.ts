@@ -298,6 +298,9 @@ const POINT_SIZE = 3;
 /** How much the vertex under the pointer grows over an idle one. */
 const HOVER_POINT_SCALE = 1.8;
 
+/** Bigger than a vertex dot: one object has one, and it has to read at a glance. */
+const ORIGIN_POINT_SIZE = 8;
+
 export function createPointMaterial(): THREE.PointsMaterial {
   return new THREE.PointsMaterial({
     size: POINT_SIZE,
@@ -350,6 +353,30 @@ export function createRecentPointMaterial(): THREE.PointsMaterial {
     sizeAttenuation: false,
     color: VIEWPORT_COLORS.cyan,
     depthTest: true,
+    transparent: true,
+  });
+}
+
+/**
+ * The square sitting on an object's origin.
+ *
+ * The one mark on an object that is never depth-tested. Every other overlay
+ * hides behind the surface on purpose, but an origin usually sits inside the
+ * mesh, so a depth-tested one would only ever show on an object you can already
+ * see through. Blender draws its origin dot over everything for the same reason.
+ * Transparent so it sorts after the opaque passes and wins on screen rather
+ * than relying on the order objects happen to be added in.
+ *
+ * Amber rather than the selection red: it marks a point the object carries,
+ * not a piece of geometry that is picked.
+ */
+export function createOriginMaterial(): THREE.PointsMaterial {
+  return new THREE.PointsMaterial({
+    size: ORIGIN_POINT_SIZE,
+    sizeAttenuation: false,
+    color: VIEWPORT_COLORS.amber,
+    depthTest: false,
+    depthWrite: false,
     transparent: true,
   });
 }

@@ -126,6 +126,7 @@ export interface SceneSlice {
   deleteSelected: (ids?: readonly string[]) => void;
   /** Bakes the selection's transforms, or those of the objects named. */
   applyTransformToSelected: (ids?: readonly string[]) => void;
+  originToGeometry: (ids?: readonly string[]) => void;
   setObjectTransform: (id: string, transform: Partial<SceneObject['transform']>) => void;
   setObjectTransforms: (
     patches: { id: string; transform: Partial<SceneObject['transform']> }[],
@@ -823,6 +824,80 @@ export const createSceneSlice: StateCreator<
     }));
   },
 
+  /**
+   * Moves each object's origin onto the middle of its own mesh, the way
+   * Blender's Set Origin > Origin to Geometry does.
+   *
+   * Vertices move in edit mode and the origin does not, so geometry dragged
+   * across the scene leaves the origin, the gizmo and the ORIGINS marker behind
+   * it. This is what brings all three back onto the shape.
+   *
+   * The middle is the bounding box's centre rather than the average of the
+   * vertices: a densely tessellated end would drag an average towards itself,
+   * and the point of one click is that it lands where the shape looks centred.
+   * Vertices give up exactly what the origin gains, so nothing moves on screen.
+   */
+  originToGeometry: (ids) => {
+    const { objects, selectedObjectIds } = get();
+    const targetIds = ids ?? selectedObjectIds;
+    const targets = objects.filter((object) => targetIds.includes(object.id) && !object.locked);
+    if (targets.length === 0) {
+      set({ status: 'Nothing selected' });
+      return;
+    }
+
+    // A linked duplicate shares its mesh instance, so shifting one object's
+    // vertices would carry every other user of that mesh off its own origin.
+    const single = targets.filter(
+      (object) => objects.filter((other) => other.mesh === object.mesh).length === 1,
+    );
+    if (single.length === 0) {
+      set({ status: 'Linked meshes have to be made single-user first' });
+      return;
+    }
+
+    const moves = new Map<string, { offset: Vec3; position: Vec3 }>();
+    for (const object of single) {
+      const box = object.mesh.boundingBox();
+      const offset = centroid([box.min, box.max]);
+      if (equals(offset, vec3())) continue;
+      moves.set(object.id, {
+        offset,
+        position: transformPoint(composeMatrix(object.transform), offset),
+      });
+    }
+
+    if (moves.size === 0) {
+      set({ status: 'Origins are already on the geometry' });
+      return;
+    }
+
+    get().recordHistory('Origin to geometry');
+
+    for (const object of single) {
+      const move = moves.get(object.id);
+      if (!move) continue;
+      for (const vert of object.mesh.verts.values()) vert.co = sub(vert.co, move.offset);
+    }
+
+    set((state) => ({
+      objects: state.objects.map((object) => {
+        const move = moves.get(object.id);
+        return move
+          ? {
+              ...object,
+              transform: { ...object.transform, position: move.position },
+              // The primitive parameters describe a mesh built around the old
+              // origin; editing one now would regenerate it back over the move.
+              primitive: null,
+            }
+          : object;
+      }),
+      meshVersion: state.meshVersion + 1,
+      status: `Origin to geometry on ${moves.size} object(s)`,
+    }));
+  },
+
   setObjectTransform: (id, transform) => {
     const object = get().objects.find((candidate) => candidate.id === id);
     if (object?.locked) {
@@ -1284,9 +1359,12 @@ export function evaluatedMesh(object: SceneObject, cursor: Vec3 = vec3(), versio
 }
 
 /**
- * World-space centre of what an object actually draws: where its object-mode
- * gizmo sits, so an array modifier carries the handles out to the middle of
- * the array instead of leaving them beside the first copy.
+ * World-space centre of what an object actually draws.
+ *
+ * What the 3D cursor snaps to, and what the camera frames: both are about the
+ * shape on screen rather than the origin, which may be nowhere near it and
+ * which an array modifier carries the geometry away from entirely. The gizmo
+ * does sit on the origin, deliberately, so it does not read this.
  *
  * Takes the evaluated mesh rather than deriving it, so callers that have
  * already run the modifier stack do not run it twice.

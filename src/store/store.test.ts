@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { dot, exportFBXAscii, exportOBJ, parseProject, stringifyProject } from '@kernel/index';
+import {
+  type Vec3,
+  add,
+  dot,
+  exportFBXAscii,
+  exportOBJ,
+  parseProject,
+  stringifyProject,
+  vec3,
+} from '@kernel/index';
 
 import { activeObject as selectActiveObject, displayCenter, evaluatedMesh } from './slices/scene';
 import { useEditorStore } from './useEditorStore';
@@ -23,6 +32,12 @@ function selectTopFace() {
     if (face.normal.y > 0.99) face.selected = true;
   }
   mesh.flushSelection('face');
+}
+
+/** Moves the whole mesh in object space, the way an edit-mode drag of it does. */
+function driftMesh(delta: Vec3) {
+  for (const vert of activeObject().mesh.verts.values()) vert.co = add(vert.co, delta);
+  store().touchMesh();
 }
 
 describe('editor store', () => {
@@ -925,21 +940,23 @@ describe('editor store', () => {
     expect(evaluatedMesh(object).faces.size).toBe(18);
   });
 
-  it('centres the gizmo on the whole array, not the first copy', () => {
+  it('centres on the whole array, not the first copy', () => {
     store().addPrimitive('box');
     const before = displayCenter(activeObject(), evaluatedMesh(activeObject()));
     expect(before.x).toBeCloseTo(0);
 
     store().addModifier('array');
 
-    // Default array is 3 copies of a 1 m box along +X, spanning -0.5..2.5.
+    // Default array is 3 copies of a 1 m box along +X, spanning -0.5..2.5. The
+    // gizmo sits on the origin and stays where it was; this is what the cursor
+    // snaps to and what the camera frames, which follow the shape instead.
     const after = displayCenter(activeObject(), evaluatedMesh(activeObject()));
     expect(after.x).toBeCloseTo(1);
     expect(after.y).toBeCloseTo(0);
     expect(after.z).toBeCloseTo(0);
   });
 
-  it('carries the gizmo centre through the object transform', () => {
+  it('carries the centre through the object transform', () => {
     store().addPrimitive('box');
     store().addModifier('array');
     const object = activeObject();
@@ -949,6 +966,69 @@ describe('editor store', () => {
 
     const center = displayCenter(activeObject(), evaluatedMesh(activeObject()));
     expect(center.x).toBeCloseTo(11);
+  });
+
+  it('puts the origin back on the geometry an edit walked away from', () => {
+    store().addPrimitive('box');
+    const id = activeObject().id;
+    store().setObjectTransforms([{ id, transform: { position: { x: 4, y: 0, z: 0 } } }]);
+    driftMesh(vec3(0, 3, 0));
+
+    store().originToGeometry();
+
+    // The origin is where the gizmo and the marker sit, so both land back on
+    // the box, and the box itself has not moved a millimetre.
+    const object = activeObject();
+    expect(object.transform.position.x).toBeCloseTo(4);
+    expect(object.transform.position.y).toBeCloseTo(3);
+    expect(object.mesh.boundingBox().max.y).toBeCloseTo(0.5);
+  });
+
+  it('carries the origin through the object rotation and scale', () => {
+    store().addPrimitive('box');
+    const id = activeObject().id;
+    store().setObjectTransforms([{ id, transform: { scale: { x: 2, y: 2, z: 2 } } }]);
+    driftMesh(vec3(1, 0, 0));
+
+    store().originToGeometry();
+
+    // The mesh moved 1 in object space under a 2x scale, so the origin owes 2.
+    expect(activeObject().transform.position.x).toBeCloseTo(2);
+  });
+
+  it('leaves a centred origin alone and says so', () => {
+    store().addPrimitive('box');
+    store().originToGeometry();
+
+    expect(activeObject().transform.position.x).toBeCloseTo(0);
+    expect(store().status).toContain('already');
+    // Nothing changed, so nothing was recorded: one step back is the add.
+    store().undo();
+    expect(store().objects).toHaveLength(0);
+  });
+
+  it('refuses to move the origin of a linked mesh', () => {
+    store().addPrimitive('box');
+    driftMesh(vec3(0, 3, 0));
+    store().duplicateSelected(true);
+    store().selectAllObjects();
+
+    store().originToGeometry();
+
+    expect(store().objects.every((object) => object.transform.position.y === 0)).toBe(true);
+    expect(store().status).toContain('single-user');
+  });
+
+  it('steps back from an origin move', () => {
+    store().addPrimitive('box');
+    driftMesh(vec3(0, 3, 0));
+
+    store().originToGeometry();
+    expect(activeObject().transform.position.y).toBeCloseTo(3);
+
+    store().undo();
+    expect(activeObject().transform.position.y).toBeCloseTo(0);
+    expect(activeObject().mesh.boundingBox().max.y).toBeCloseTo(3.5);
   });
 
   it('moves the cursor onto the selection and the selection back onto it', () => {

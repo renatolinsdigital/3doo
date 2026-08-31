@@ -14,3 +14,13 @@
   background: var(--bone);
   overflow-y: auto;
 }
+
+// Separates the tools above from the one-shot commands below.
+.tool-rail__rule {
+  flex: none;
+  width: 100%;
+  height: 0;
+  margin: 0;
+  border: 0;
+  border-top: var(--border-thin) solid var(--void);
+}

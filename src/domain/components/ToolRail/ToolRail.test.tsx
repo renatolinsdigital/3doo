@@ -54,6 +54,21 @@ describe('ToolRail', () => {
     expect(screen.queryByRole('button', { name: /Merge/ })).not.toBeInTheDocument();
   });
 
+  it('recentres the origin without taking the active tool', async () => {
+    const store = useEditorStore.getState();
+    store.addPrimitive('box');
+    const object = useEditorStore.getState().objects[0];
+    for (const vert of object.mesh.verts.values()) vert.co = { ...vert.co, y: vert.co.y + 3 };
+    store.touchMesh();
+    store.setActiveTool('move');
+
+    render(<ToolRail />);
+    await userEvent.click(screen.getByRole('button', { name: /Origin to geometry/ }));
+
+    expect(useEditorStore.getState().objects[0].transform.position.y).toBeCloseTo(3);
+    expect(useEditorStore.getState().activeTool).toBe('move');
+  });
+
   it('picking a shape picks the select tool up with it', async () => {
     useEditorStore.getState().setActiveTool('move');
     render(<ToolRail />);

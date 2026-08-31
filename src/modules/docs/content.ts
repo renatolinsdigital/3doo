@@ -149,6 +149,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Ctrl+A bakes rotation and scale into the vertices, leaving the transform clean.',
           ],
           [
+            'Origin to geometry',
+            'The ⊙ button at the foot of the tool rail moves the origin onto the middle of the mesh, taking the gizmo with it. Run it whenever an edit has left the origin behind.',
+          ],
+          [
             'Rename, hide, lock',
             'All in the OUTLINER, per row, alongside the visibility and lock toggles.',
           ],
@@ -157,6 +161,14 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Right-click a row in the OUTLINER for SELECT, RENAME, APPLY TRANSFORMS and DELETE. The first entry reads DESELECT on a row that is already selected, and drops just that row from the selection. Every entry acts on the row it was opened on (the name in the header) and not on whatever else happens to be selected.',
           ],
         ],
+      },
+      {
+        kind: 'prose',
+        text: 'Every object carries an origin: the zero every one of its vertex coordinates is measured from. It is the point LOCATION names, the point the gizmo seats its handles on, the point a rotation or a scale turns about, and the plane a mirror modifier reflects across. The amber square on a selected object is where it is, drawn over the geometry rather than behind it since an origin usually sits inside the mesh. ORIGINS under OVERLAYS hides it.',
+      },
+      {
+        kind: 'note',
+        text: 'An object-mode move carries the origin along with the mesh. An edit-mode move does not: vertex coordinates change and the zero they are measured from stays put, so geometry dragged across the scene leaves its origin, its handles and its square behind. ORIGIN TO GEOMETRY brings all three back onto the shape. Nothing moves on screen, since the vertices give up exactly what the origin gains.',
       },
     ],
   },
@@ -175,8 +187,16 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           ['One element', 'Click it. Shift+click to add to the selection.'],
           [
+            'More, without losing what you have',
+            'Hold Shift as you press. Whether it was down when the gesture began is what decides between adding and replacing, so a region drag can let go of Shift halfway to free its oval without turning the addition back into a replacement.',
+          ],
+          [
             'A region of elements',
-            'Drag across empty space. The region is a rectangle until you say otherwise: V steps the select tool through SQUARE, CIRCLE (dragged out from its centre, not corner to corner) and LASSO, drawn freehand around what you want. Clicking the tool in the rail offers the same three, and its icon shows which one a drag would draw. A drag takes whatever it touches, whether it covers the whole thing or clips one corner: an edge the region reaches the tip of, a face it reaches any part of, and in object mode the object itself.',
+            'Drag across empty space. The region is a rectangle until you say otherwise: V steps the select tool through SQUARE, CIRCLE and LASSO, drawn freehand around what you want. Clicking the tool in the rail offers the same three, and its icon shows which one a drag would draw. A drag takes whatever it touches, whether it covers the whole thing or clips one corner: an edge the region reaches the tip of, a face it reaches any part of, and in object mode the object itself.',
+          ],
+          [
+            'An oval region',
+            'CIRCLE grows from where the drag began rather than corner to corner, and takes each of its two radii from how far the pointer has travelled along that axis, so it follows the pointer into whatever oval the drag asks for. Hold Shift while dragging and both radii become the distance to the pointer, which is the circle that grows evenly whichever way you go. A drag straight up, down or across opens no oval at all, since one of the two radii never leaves zero.',
           ],
           [
             'An edge loop',

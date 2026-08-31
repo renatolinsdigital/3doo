@@ -240,6 +240,13 @@ export const createToolSlice: StateCreator<
   },
 
   beginModal: (kind, element) => {
+    // A turn or a scale about the 3D cursor swings the selection round a point
+    // that may be nowhere near it, which looks like the object flying off until
+    // you know the pivot is set that way. Said here because this is the moment
+    // it decides what happens, not just a flag to notice in the status bar.
+    const orbiting = (kind === 'rotate' || kind === 'scale') && get().pivot === 'cursor';
+    const about = orbiting ? ' about the 3D cursor' : '';
+
     set({
       modal: {
         kind,
@@ -250,7 +257,7 @@ export const createToolSlice: StateCreator<
         // A scale of nothing is 1, and the status bar reads this out live.
         value: kind === 'scale' ? { x: 1, y: 1, z: 1 } : { x: 0, y: 0, z: 0 },
       },
-      status: `${kind.toUpperCase()}: ${MODAL_HINTS[kind]}, click or Enter to confirm, Esc to cancel`,
+      status: `${kind.toUpperCase()}${about}: ${MODAL_HINTS[kind]}, click or Enter to confirm, Esc to cancel`,
     });
   },
 

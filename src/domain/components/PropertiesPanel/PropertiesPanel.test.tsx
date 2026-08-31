@@ -103,3 +103,51 @@ describe('PropertiesPanel material slots', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 });
+
+describe('PropertiesPanel transform precision', () => {
+  beforeEach(() => {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    store.addPrimitive('box');
+  });
+
+  // LOCATION, ROTATION and SCALE each label their axes X, Y and Z, and the
+  // legend above them is a caption rather than a fieldset, so the row is picked
+  // out by the order the panel stacks them in.
+  const ROWS = { LOCATION: 0, ROTATION: 1, SCALE: 2 };
+  const field = (row: keyof typeof ROWS, axis: string) =>
+    screen.getAllByLabelText(axis)[ROWS[row]] as HTMLInputElement;
+
+  it('shows a dragged position to six places, not to sixteen', () => {
+    const store = useEditorStore.getState();
+    const id = useEditorStore.getState().objects[0].id;
+    // What a gizmo drag actually lands on.
+    store.setObjectTransforms([
+      { id, transform: { position: { x: -1.02940823421855, y: 1.245599230245133, z: 3.05e-16 } } },
+    ]);
+
+    render(<PropertiesPanel />);
+
+    expect(field('LOCATION', 'X').value).toBe('-1.029408');
+    expect(field('LOCATION', 'Y').value).toBe('1.245599');
+    expect(field('LOCATION', 'Z').value).toBe('0');
+    // Rounded for reading only: the store still holds what the drag produced.
+    expect(useEditorStore.getState().objects[0].transform.position.x).toBe(-1.02940823421855);
+  });
+
+  it('leaves the axes it was not asked about at full precision', async () => {
+    const store = useEditorStore.getState();
+    const id = useEditorStore.getState().objects[0].id;
+    const y = 0.5347744685783609;
+    store.setObjectTransforms([{ id, transform: { rotation: { x: 0, y, z: 0 } } }]);
+
+    render(<PropertiesPanel />);
+    const x = field('ROTATION', 'X');
+    await userEvent.clear(x);
+    await userEvent.type(x, '45{Enter}');
+
+    // Typing into one axis used to write the other two back at the two decimal
+    // places they were displayed with, quietly coarsening a turn nobody touched.
+    expect(useEditorStore.getState().objects[0].transform.rotation.y).toBe(y);
+  });
+});

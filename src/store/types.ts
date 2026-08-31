@@ -81,6 +81,8 @@ export interface OverlaySettings {
   statistics: boolean;
   /** The 3D cursor crosshair. Hiding it does not move or disable it. */
   cursor: boolean;
+  /** The square marking each selected object's origin. */
+  origins: boolean;
 }
 
 /**

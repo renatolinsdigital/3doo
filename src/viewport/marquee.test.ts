@@ -14,29 +14,44 @@ describe('selection marquee', () => {
     layer = createMarqueeLayer(overlay);
   });
 
-  const drag = (shape: 'box' | 'circle' | 'lasso', from: [number, number], to: [number, number]) =>
+  const drag = (
+    shape: 'box' | 'circle' | 'lasso',
+    from: [number, number],
+    to: [number, number],
+    uniform = false,
+  ) =>
     drawMarquee(
       overlay,
       layer,
-      marqueeShape(shape, new THREE.Vector2(...from), new THREE.Vector2(...to), [
+      marqueeShape(
+        shape,
         new THREE.Vector2(...from),
-        new THREE.Vector2(from[0], to[1]),
         new THREE.Vector2(...to),
-      ]),
+        [new THREE.Vector2(...from), new THREE.Vector2(from[0], to[1]), new THREE.Vector2(...to)],
+        uniform,
+      ),
     );
 
-  it('draws a circle drag as a circle', () => {
-    drag('circle', [100, 100], [100, 130]);
+  it('draws a circle drag as an oval that follows the pointer on both axes', () => {
+    drag('circle', [100, 100], [130, 150]);
 
-    // An SVG circle, not a div with a border-radius: the app's reset drops
+    // An SVG ellipse, not a div with a border-radius: the app's reset drops
     // `border-radius: 0 !important` on every element, so a round div is not
     // something CSS here can be asked for.
-    expect(layer.circle.getAttribute('r')).toBe('30');
-    expect(layer.circle.getAttribute('cx')).toBe('100');
-    expect(layer.circle.getAttribute('cy')).toBe('100');
+    expect(layer.ellipse.getAttribute('rx')).toBe('30');
+    expect(layer.ellipse.getAttribute('ry')).toBe('50');
+    expect(layer.ellipse.getAttribute('cx')).toBe('100');
+    expect(layer.ellipse.getAttribute('cy')).toBe('100');
     // The overlay is only the surface it is drawn on, stretched over the canvas.
     expect(overlay.classList.contains('viewport-canvas__marquee--drawn')).toBe(true);
     expect(overlay.style.width).toBe('100%');
+  });
+
+  it('holds it round while Shift is down, at the distance to the pointer', () => {
+    drag('circle', [100, 100], [130, 140], true);
+
+    expect(layer.ellipse.getAttribute('rx')).toBe('50');
+    expect(layer.ellipse.getAttribute('ry')).toBe('50');
   });
 
   it('draws a box drag as the overlay itself', () => {
@@ -53,25 +68,26 @@ describe('selection marquee', () => {
     drag('lasso', [0, 0], [10, 20]);
 
     expect(layer.polygon.getAttribute('points')).toBe('0,0 0,20 10,20');
-    expect(layer.circle.getAttribute('r')).toBe('0');
+    expect(layer.ellipse.getAttribute('rx')).toBe('0');
   });
 
   it('leaves no shape behind when the next drag is a different one', () => {
     drag('lasso', [0, 0], [10, 20]);
-    drag('circle', [50, 50], [50, 60]);
+    drag('circle', [50, 50], [60, 70]);
     expect(layer.polygon.getAttribute('points')).toBe('');
 
     drag('box', [0, 0], [5, 5]);
-    expect(layer.circle.getAttribute('r')).toBe('0');
+    expect(layer.ellipse.getAttribute('rx')).toBe('0');
   });
 
   it('puts everything away when the drag ends', () => {
-    drag('circle', [100, 100], [100, 130]);
+    drag('circle', [100, 100], [130, 150]);
 
     hideMarquee(overlay, layer);
 
     expect(overlay.style.display).toBe('none');
-    expect(layer.circle.getAttribute('r')).toBe('0');
+    expect(layer.ellipse.getAttribute('rx')).toBe('0');
+    expect(layer.ellipse.getAttribute('ry')).toBe('0');
     expect(overlay.classList.contains('viewport-canvas__marquee--drawn')).toBe(false);
   });
 });

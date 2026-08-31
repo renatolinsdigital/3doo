@@ -58,6 +58,11 @@ const OVERLAY_OPTIONS: readonly { key: keyof OverlaySettings; label: string; hin
     label: '3D CURSOR',
     hint: 'The 3D cursor ring in the viewport: hiding it does not move it',
   },
+  {
+    key: 'origins',
+    label: 'ORIGINS',
+    hint: 'A small square on the origin of every selected object, where the gizmo sits and what a rotation turns about, drawn over the geometry it is inside',
+  },
   { key: 'normals', label: 'NORMALS', hint: 'A short line out of every face along its normal' },
   {
     key: 'faceOrientation',

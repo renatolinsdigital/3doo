@@ -3,7 +3,7 @@ import type { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { describe, expect, it } from 'vitest';
 
-import { vec3 } from '@kernel/index';
+import { add, vec3 } from '@kernel/index';
 import { DEFAULT_PREFERENCES, evaluatedMesh, useEditorStore } from '@store/index';
 import type { SceneObject, ViewportSettings } from '@store/types';
 
@@ -425,6 +425,65 @@ describe('ObjectView under a modifier', () => {
 
     const preview = view.group.getObjectByName(`${object.id}:preview`) as THREE.LineSegments;
     expect(preview.visible).toBe(false);
+  });
+});
+
+describe('ObjectView origin marker', () => {
+  function originOf(view: ObjectView, id: string): THREE.Points {
+    return view.group.getObjectByName(`${id}:origin`) as THREE.Points;
+  }
+
+  function state(settings: ViewportSettings, isSelected: boolean) {
+    return {
+      mode: 'object' as const,
+      selectMode: 'vertex' as const,
+      isActive: isSelected,
+      isSelected,
+      eye: vec3(0, 0, 10),
+      selectionLine: SELECTION_LINE,
+      settings,
+    };
+  }
+
+  it('marks a selected object and leaves the rest unmarked', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), state(settings, false));
+    expect(originOf(view, object.id).visible).toBe(false);
+
+    view.update(object, evaluatedMesh(object), state(settings, true));
+    expect(originOf(view, object.id).visible).toBe(true);
+
+    // Drawn through the mesh it sits inside, unlike every other mark.
+    expect((originOf(view, object.id).material as THREE.PointsMaterial).depthTest).toBe(false);
+  });
+
+  it('goes away with the overlay', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), {
+      ...state(settings, true),
+      settings: { ...settings, overlays: { ...settings.overlays, origins: false } },
+    });
+
+    expect(originOf(view, object.id).visible).toBe(false);
+  });
+
+  it('stays on the group zero while an edit walks the mesh away from it', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+    view.update(object, evaluatedMesh(object), state(settings, true));
+
+    for (const vert of object.mesh.verts.values()) vert.co = add(vert.co, vec3(0, 3, 0));
+    view.update(object, evaluatedMesh(object), state(settings, true));
+
+    // The origin is the group's own zero, and vertices moving in edit mode do
+    // not move it: that gap is exactly what the marker is there to show, and
+    // what ORIGIN TO GEOMETRY closes.
+    const marker = originOf(view, object.id);
+    expect([...marker.geometry.getAttribute('position').array]).toEqual([0, 0, 0]);
   });
 });
 

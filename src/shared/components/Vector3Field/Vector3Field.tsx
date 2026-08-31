@@ -18,6 +18,8 @@ export interface Vector3FieldProps {
   /** Prefixes each axis letter, as "REL X". The letter alone without it. */
   labelPrefix?: string;
   step?: number;
+  /** Decimal places each axis shows and rounds a typed entry to. */
+  precision?: number;
   suffix?: string;
   disabled?: boolean;
   hint?: (axis: Axis) => string;
@@ -30,6 +32,7 @@ export function Vector3Field({
   legend,
   labelPrefix,
   step,
+  precision,
   suffix,
   disabled,
   hint,
@@ -40,6 +43,7 @@ export function Vector3Field({
       label={labelPrefix ? `${labelPrefix} ${axis.toUpperCase()}` : axis.toUpperCase()}
       value={value[axis]}
       step={step}
+      precision={precision}
       suffix={suffix}
       disabled={disabled}
       hint={hint?.(axis)}

@@ -162,3 +162,33 @@ describe('progress on a long operation', () => {
     expect(label).toBe('DIFFERENCE');
   });
 });
+
+describe('modal pivot warning', () => {
+  // The pivot is a tool setting, so resetScene leaves it wherever it was.
+  beforeEach(() => {
+    useEditorStore.getState().resetScene();
+    useEditorStore.getState().setPivot('median');
+  });
+
+  it('says a turn is about the cursor, since that is what sends it flying', () => {
+    // With the cursor pivot on, an object metres away from the cursor swings
+    // round on that radius and can leave the viewport on the first drag. The
+    // pivot flag in the bar is easy to miss; the line that says what the keypress
+    // just started is not.
+    useEditorStore.getState().setPivot('cursor');
+    useEditorStore.getState().beginModal('rotate');
+
+    expect(useEditorStore.getState().status).toContain('ROTATE about the 3D cursor');
+  });
+
+  it('keeps quiet on the median pivot, and on a move either way', () => {
+    useEditorStore.getState().beginModal('rotate');
+    expect(useEditorStore.getState().status).not.toContain('cursor');
+
+    // A translation is the same wherever it is measured from, so the pivot has
+    // nothing to do with where a move ends up.
+    useEditorStore.getState().setPivot('cursor');
+    useEditorStore.getState().beginModal('move');
+    expect(useEditorStore.getState().status).not.toContain('cursor');
+  });
+});

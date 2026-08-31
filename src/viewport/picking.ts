@@ -269,12 +269,31 @@ export function rectangleRegion(rect: BoxSelectRect): Region {
   return { contains, crosses: (a, b) => contains(a) || contains(b) || crossesEdges(corners, a, b) };
 }
 
-export function circleRegion(centre: THREE.Vector2, radius: number): Region {
-  const radiusSq = radius * radius;
+/**
+ * The oval a drag swept out from its centre.
+ *
+ * Both questions are answered in the space where the ellipse is a unit circle:
+ * dividing each axis by its own radius turns the stretch into a scale, and what
+ * is left is the circle test, which a segment can be measured against exactly.
+ */
+export function ellipseRegion(centre: THREE.Vector2, rx: number, ry: number): Region {
+  // A drag along one axis alone sweeps out no area, and scaling by a radius it
+  // never gained would put every point an infinite distance from the middle.
+  if (rx <= 0 || ry <= 0) return { contains: () => false, crosses: () => false };
+
+  const origin = new THREE.Vector2(0, 0);
+  const unit = (point: THREE.Vector2) =>
+    new THREE.Vector2((point.x - centre.x) / rx, (point.y - centre.y) / ry);
+
   return {
-    contains: (screen) => screen.distanceToSquared(centre) <= radiusSq,
-    crosses: (a, b) => distanceToSegment(centre, a, b) <= radius,
+    contains: (screen) => unit(screen).lengthSq() <= 1,
+    crosses: (a, b) => distanceToSegment(origin, unit(a), unit(b)) <= 1,
   };
+}
+
+/** The round case, which is what a drag sweeps while Shift holds both radii equal. */
+export function circleRegion(centre: THREE.Vector2, radius: number): Region {
+  return ellipseRegion(centre, radius, radius);
 }
 
 /**
@@ -324,24 +343,37 @@ function segmentsIntersect(
 /** What the overlay draws for a drag in progress, in canvas pixels. */
 export type Marquee =
   | { kind: 'box'; left: number; top: number; width: number; height: number }
-  | { kind: 'circle'; cx: number; cy: number; radius: number }
+  | { kind: 'ellipse'; cx: number; cy: number; rx: number; ry: number }
   | { kind: 'lasso'; points: readonly THREE.Vector2[] };
 
 /**
  * The shape a drag draws, alongside `regionForShape` for the one it picks with.
  *
- * Both read the same pair of points on purpose: a circle sweeps out from where
+ * Both read the same pair of points on purpose: an oval sweeps out from where
  * the drag began rather than filling the drag's own bounding box, and working
  * that out twice is how what is drawn and what is picked drift apart.
+ *
+ * `uniform` is Shift, held while the drag runs. An oval takes each radius from
+ * how far the pointer has gone along that axis, so it follows the pointer into
+ * whatever shape the drag asks for; Shift gives both radii the distance to the
+ * pointer instead, which is the circle that grows evenly whichever way it goes.
  */
 export function marqueeShape(
   shape: SelectShape,
   start: THREE.Vector2,
   current: THREE.Vector2,
   path: readonly THREE.Vector2[],
+  uniform: boolean,
 ): Marquee {
   if (shape === 'circle') {
-    return { kind: 'circle', cx: start.x, cy: start.y, radius: start.distanceTo(current) };
+    const radius = start.distanceTo(current);
+    return {
+      kind: 'ellipse',
+      cx: start.x,
+      cy: start.y,
+      rx: uniform ? radius : Math.abs(current.x - start.x),
+      ry: uniform ? radius : Math.abs(current.y - start.y),
+    };
   }
   if (shape === 'lasso') return { kind: 'lasso', points: path };
 
@@ -360,28 +392,31 @@ export function regionForShape(
   start: THREE.Vector2,
   end: THREE.Vector2,
   path: readonly THREE.Vector2[],
+  uniform: boolean,
 ): Region {
-  if (shape === 'circle') return circleRegion(start, start.distanceTo(end));
-  if (shape === 'lasso') return lassoRegion(path);
+  const marquee = marqueeShape(shape, start, end, path, uniform);
 
-  const box = marqueeShape('box', start, end, path);
-  if (box.kind !== 'box') return lassoRegion([]);
+  if (marquee.kind === 'ellipse') {
+    return ellipseRegion(new THREE.Vector2(marquee.cx, marquee.cy), marquee.rx, marquee.ry);
+  }
+  if (marquee.kind === 'lasso') return lassoRegion(marquee.points);
+
   return rectangleRegion({
-    minX: box.left,
-    minY: box.top,
-    maxX: box.left + box.width,
-    maxY: box.top + box.height,
+    minX: marquee.left,
+    minY: marquee.top,
+    maxX: marquee.left + marquee.width,
+    maxY: marquee.top + marquee.height,
   });
 }
 
 /** The screen box a marquee covers: what an object has to overlap to be worth testing. */
 export function marqueeBounds(marquee: Marquee): BoxSelectRect {
-  if (marquee.kind === 'circle') {
+  if (marquee.kind === 'ellipse') {
     return {
-      minX: marquee.cx - marquee.radius,
-      minY: marquee.cy - marquee.radius,
-      maxX: marquee.cx + marquee.radius,
-      maxY: marquee.cy + marquee.radius,
+      minX: marquee.cx - marquee.rx,
+      minY: marquee.cy - marquee.ry,
+      maxX: marquee.cx + marquee.rx,
+      maxY: marquee.cy + marquee.ry,
     };
   }
 
