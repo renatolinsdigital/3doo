@@ -38,6 +38,10 @@ function cornerKey(faceId: number, vertId: number): string {
  * vertex whose chamfers arrive along edges that are not fan neighbours is
  * capped once per gap. That is what keeps a partial selection, or a bevel run
  * over an earlier bevel, from leaving a hole.
+ *
+ * A face whose corner the chamfer cut away follows the profile across the gap
+ * itself, so a round end needs no cap of its own and no chord runs from the
+ * first segment to the last.
  */
 export function bevelEdges(
   mesh: BMesh,
@@ -70,13 +74,19 @@ export function bevelEdges(
     newVerts,
   );
 
+  const strips = beveled.map((edge) => planStrip(edge, cornerPoint));
+  // The profiles are laid out before anything is rebuilt: a face that follows a
+  // round end has to land on the very vertices the strip beside it uses.
+  for (const plan of strips) {
+    if (plan) buildRails(mesh, plan, segments, profiles, newVerts);
+  }
+
   const rebuilt = [...affectedFaces.values()].map((face) => ({
-    ring: rebuildRing(mesh, face, cornerPoint, splitVerts, beveledIds),
+    ring: rebuildRing(mesh, face, cornerPoint, splitVerts, beveledIds, profiles),
     materialIndex: face.materialIndex,
     smooth: face.smooth,
   }));
-  const strips = beveled.map((edge) => planStrip(edge, cornerPoint));
-  const caps = planCaps(mesh, beveled, beveledIds, cornerPoint);
+  const caps = planCaps(mesh, beveled, beveledIds, cornerPoint, splitVerts, profiles);
 
   const staleEdges = new Set<Edge>();
   for (const face of affectedFaces.values()) {
@@ -251,12 +261,17 @@ function rebuildRing(
   cornerPoint: ReadonlyMap<string, Vert>,
   splitVerts: ReadonlyMap<string, Vert>,
   beveledIds: ReadonlySet<number>,
+  profiles: ProfileCache,
 ): Vert[] {
   const ring: Vert[] = [];
 
   for (const loop of mesh.faceLoops(face)) {
     const corner = cornerPoint.get(cornerKey(face.id, loop.vert.id));
     if (corner) ring.push(corner);
+    else {
+      const rail = cutCornerRail(mesh, face, loop.vert, splitVerts, profiles);
+      if (rail) for (let i = 1; i < rail.length - 1; i++) ring.push(rail[i]);
+    }
     if (beveledIds.has(loop.edge.id)) continue;
 
     const near = splitVerts.get(`${loop.edge.id}:${loop.vert.id}`);
@@ -266,6 +281,31 @@ function rebuildRing(
   }
 
   return dedupeRing(ring);
+}
+
+/**
+ * The chamfer profile spanning a corner both of whose edges a chamfer cut back.
+ *
+ * The two cuts are the ends of one profile only when they came from the same
+ * beveled edge, which is what makes the face able to follow the round: cuts
+ * left by two different bevels have nothing running between them, and that
+ * corner stays a chord.
+ */
+function cutCornerRail(
+  mesh: BMesh,
+  face: Face,
+  vert: Vert,
+  splitVerts: ReadonlyMap<string, Vert>,
+  profiles: ProfileCache,
+): Vert[] | undefined {
+  const loop = mesh.loopOfVertInFace(face, vert);
+  if (!loop) return undefined;
+
+  const before = splitVerts.get(`${loop.prev.edge.id}:${vert.id}`);
+  const after = splitVerts.get(`${loop.edge.id}:${vert.id}`);
+  if (!before || !after) return undefined;
+
+  return profiles.get(`${before.id}:${after.id}:${vert.id}`);
 }
 
 function dedupeRing(ring: readonly Vert[]): Vert[] {
@@ -347,6 +387,26 @@ function profileRail(
   return rail;
 }
 
+/** Lays out both profile rails of a strip, which the cache then hands out. */
+function buildRails(
+  mesh: BMesh,
+  plan: StripPlan,
+  segments: number,
+  profiles: ProfileCache,
+  newVerts: Vert[],
+) {
+  profileRail(
+    mesh,
+    plan.railStart[0],
+    plan.railStart[1],
+    plan.cornerStart,
+    segments,
+    profiles,
+    newVerts,
+  );
+  profileRail(mesh, plan.railEnd[0], plan.railEnd[1], plan.cornerEnd, segments, profiles, newVerts);
+}
+
 function buildStrip(
   mesh: BMesh,
   plan: StripPlan,
@@ -392,6 +452,8 @@ function planCaps(
   beveled: readonly Edge[],
   beveledIds: ReadonlySet<number>,
   cornerPoint: ReadonlyMap<string, Vert>,
+  splitVerts: ReadonlyMap<string, Vert>,
+  profiles: ProfileCache,
 ): CapPlan[] {
   const candidates = new Map<number, Vert>();
   for (const edge of beveled) {
@@ -405,16 +467,21 @@ function planCaps(
     if (!fan) continue;
 
     const entries: CapPlan['entries'] = [];
+    let followed = false;
     for (const step of fan) {
       const corner = cornerPoint.get(cornerKey(step.face.id, vert.id));
-      if (!corner) continue;
+      if (!corner) {
+        // The rebuilt face runs along the profile here, so the strip already
+        // has a neighbour and a cap would be a second face over the same gap.
+        if (cutCornerRail(mesh, step.face, vert, splitVerts, profiles)) followed = true;
+        continue;
+      }
       entries.push({ corner, bridged: beveledIds.has(step.exitEdge.id) });
     }
 
-    // Two entries is enough: a chamfer that ends on a corner cut away by its
-    // own offsets leaves a two-sided gap, closed by the profile on one side and
-    // the rebuilt face on the other.
-    if (entries.length < 2) continue;
+    // Two entries is enough: chamfers reaching a vertex from opposite sides
+    // leave a gap with a profile down each side and no corner in between.
+    if (followed || entries.length < 2) continue;
     caps.push({ vert, entries });
   }
   return caps;

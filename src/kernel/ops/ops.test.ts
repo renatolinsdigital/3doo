@@ -229,15 +229,34 @@ describe('bevel', () => {
     }
   });
 
-  it('caps the round end of a chamfer that stops mid-surface', () => {
+  it('closes the round end of a chamfer that stops mid-surface', () => {
     for (const segments of [1, 2, 3, 4]) {
       const cube = createBox(2);
 
-      bevelEdges(cube, [[...cube.edges.values()][0]], { width: 0.2, segments });
+      const result = bevelEdges(cube, [[...cube.edges.values()][0]], { width: 0.2, segments });
 
       expect(isClosed(cube)).toBe(true);
       expect(eulerCharacteristic(cube)).toBe(2);
       expect(cube.validate()).toEqual([]);
+      // The strip and nothing else: the face beside the round end follows it,
+      // so no separate face closes the end off across the segments.
+      expect(result.faces).toHaveLength(segments);
+    }
+  });
+
+  it('runs the face beside a round end along the profile', () => {
+    const cube = createBox(2);
+    const top = faceAt(cube, vec3(0, 1, 0));
+    const edge = cube.faceEdges(top).find((candidate) => candidate.v0.co.z > 0.9);
+    if (!edge) throw new Error('No front edge on the top face');
+
+    bevelEdges(cube, [edge], { width: 0.2, segments: 4 });
+
+    // The chamfer cut the corner off both faces it ends on. Each keeps three
+    // corners, gains the two points the cuts landed on, and carries the three
+    // points inside the profile between them.
+    for (const side of [vec3(1, 0, 0), vec3(-1, 0, 0)]) {
+      expect(cube.faceVerts(faceAt(cube, side))).toHaveLength(8);
     }
   });
 
