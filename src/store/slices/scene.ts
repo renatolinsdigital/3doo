@@ -71,6 +71,43 @@ function defaultMaterial(): Material {
   };
 }
 
+/**
+ * How far an object's origin sits from the middle of its own mesh.
+ *
+ * The bounding box centre rather than the average of the vertices: a densely
+ * tessellated end would drag an average towards itself, and the origin is
+ * wanted where the shape looks centred.
+ */
+function originOffset(object: SceneObject): Vec3 {
+  const box = object.mesh.boundingBox();
+  return centroid([box.min, box.max]);
+}
+
+/**
+ * Puts one object's origin back on the middle of its own mesh.
+ *
+ * The vertices give up exactly what the origin gains, so nothing moves on
+ * screen. It writes into the mesh, so the caller has to own that mesh: one with
+ * other users would carry every one of them off its own origin.
+ */
+function recenterOrigin(object: SceneObject): SceneObject {
+  const offset = originOffset(object);
+  if (equals(offset, vec3())) return object;
+
+  for (const vert of object.mesh.verts.values()) vert.co = sub(vert.co, offset);
+
+  return {
+    ...object,
+    transform: {
+      ...object.transform,
+      position: transformPoint(composeMatrix(object.transform), offset),
+    },
+    // The primitive parameters describe a mesh built around the old origin;
+    // editing one now would regenerate it back over the move.
+    primitive: null,
+  };
+}
+
 export interface SceneSlice {
   objects: SceneObject[];
   activeObjectId: string | null;
@@ -551,7 +588,9 @@ export const createSceneSlice: StateCreator<
         .map((object) =>
           object.id === target.id
             ? // The parameters described the target's own shape, not the merge.
-              { ...object, mesh: merged, materials, primitive: null }
+              // The result spans everything that came in, so the target's old
+              // origin can now sit anywhere in it, or outside it altogether.
+              recenterOrigin({ ...object, mesh: merged, materials, primitive: null })
             : object,
         ),
       selectedObjectIds: [target.id],
@@ -671,7 +710,9 @@ export const createSceneSlice: StateCreator<
         .map((object) =>
           object.id === target.id
             ? // The parameters described a primitive shape the result is not.
-              { ...object, mesh, materials, primitive: null }
+              // A cut can take away the very part the origin was sitting in, so
+              // the origin goes back on what the boolean left behind.
+              recenterOrigin({ ...object, mesh, materials, primitive: null })
             : object,
         ),
       selectedObjectIds: [target.id],
@@ -689,8 +730,10 @@ export const createSceneSlice: StateCreator<
    *
    * The inverse of a merge, and the reason a merge is not lossy: a part is a
    * shell nothing joins to the rest, so the split is decided by the geometry
-   * rather than by the selection. Each part keeps the object's transform,
-   * material slots and modifier stack, so nothing moves or re-shades.
+   * rather than by the selection. Each part keeps the object's material slots
+   * and modifier stack, so nothing re-shades, and each gets its origin on its
+   * own middle rather than the shared one it was cut out of, so nothing moves
+   * on screen either.
    */
   separateLooseParts: () => {
     const state = get();
@@ -718,23 +761,30 @@ export const createSceneSlice: StateCreator<
     get().recordHistory('Separate');
 
     const [first, ...rest] = parts;
-    const separated = rest.map((mesh, index) => ({
-      ...object,
-      id: nextObjectId(),
-      name: `${object.name}.PART.${index + 2}`,
-      mesh,
-      transform: structuredClone(object.transform),
-      materials: structuredClone(object.materials),
-      modifiers: structuredClone(object.modifiers),
-      // The parameters described the whole shape, not this piece of it.
-      primitive: null,
-    }));
+    const separated = rest.map((mesh, index) =>
+      recenterOrigin({
+        ...object,
+        id: nextObjectId(),
+        name: `${object.name}.PART.${index + 2}`,
+        mesh,
+        transform: structuredClone(object.transform),
+        materials: structuredClone(object.materials),
+        modifiers: structuredClone(object.modifiers),
+        // The parameters described the whole shape, not this piece of it.
+        primitive: null,
+      }),
+    );
 
     set((state) => ({
       objects: state.objects.flatMap((candidate) =>
         candidate.id === object.id
           ? [
-              { ...candidate, mesh: first, name: `${object.name}.PART.1`, primitive: null },
+              recenterOrigin({
+                ...candidate,
+                mesh: first,
+                name: `${object.name}.PART.1`,
+                primitive: null,
+              }),
               ...separated,
             ]
           : [candidate],
@@ -857,45 +907,22 @@ export const createSceneSlice: StateCreator<
       return;
     }
 
-    const moves = new Map<string, { offset: Vec3; position: Vec3 }>();
-    for (const object of single) {
-      const box = object.mesh.boundingBox();
-      const offset = centroid([box.min, box.max]);
-      if (equals(offset, vec3())) continue;
-      moves.set(object.id, {
-        offset,
-        position: transformPoint(composeMatrix(object.transform), offset),
-      });
-    }
-
-    if (moves.size === 0) {
+    // Nothing to record and nothing to say when every origin is already there,
+    // so the offsets are read before the history entry rather than after.
+    const movable = single.filter((object) => !equals(originOffset(object), vec3()));
+    if (movable.length === 0) {
       set({ status: 'Origins are already on the geometry' });
       return;
     }
 
     get().recordHistory('Origin to geometry');
 
-    for (const object of single) {
-      const move = moves.get(object.id);
-      if (!move) continue;
-      for (const vert of object.mesh.verts.values()) vert.co = sub(vert.co, move.offset);
-    }
+    const moved = new Map(movable.map((object) => [object.id, recenterOrigin(object)]));
 
     set((state) => ({
-      objects: state.objects.map((object) => {
-        const move = moves.get(object.id);
-        return move
-          ? {
-              ...object,
-              transform: { ...object.transform, position: move.position },
-              // The primitive parameters describe a mesh built around the old
-              // origin; editing one now would regenerate it back over the move.
-              primitive: null,
-            }
-          : object;
-      }),
+      objects: state.objects.map((object) => moved.get(object.id) ?? object),
       meshVersion: state.meshVersion + 1,
-      status: `Origin to geometry on ${moves.size} object(s)`,
+      status: `Origin to geometry on ${moved.size} object(s)`,
     }));
   },
 

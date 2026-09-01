@@ -237,6 +237,32 @@ vertex lying along a path rather than at a corner (the midpoint left by
 subdividing an edge) merges nothing and always dissolves, whatever angle its
 faces meet at.
 
+### Object origins
+
+Every object carries an origin: the zero its vertex coordinates are measured
+from. It is the point **Location** names, the point the gizmo seats its handles
+on, the point a rotation or a scale turns about, and the plane a Mirror modifier
+reflects across. The amber square on a selected object marks it, drawn over the
+geometry rather than behind it because an origin usually sits inside the mesh.
+**Overlays → Origins** hides the square without moving anything.
+
+An object-mode move carries the origin along with the mesh. An edit-mode move
+does not: vertex coordinates change and the zero behind them stays put, so
+geometry dragged across the scene leaves its origin, its handles and its square
+behind. The <kbd>⊙</kbd> button at the foot of the tool rail (Origin to
+geometry) brings all three back onto the middle of the mesh. Nothing moves on
+screen, because the vertices give up exactly what the origin gains. It wants a
+single-user mesh: linked copies share their vertices, so moving one origin would
+drag every other copy off its own.
+
+Merge, Separate and the three booleans hand back geometry the old origin has no
+claim on, so each of them re-centres what it leaves behind, exactly as Origin to
+geometry would. A merge spans everything that came in, a separated part is one
+piece of what used to be a whole, and a cut can take away the very corner the
+origin was sitting in. Duplicate, Linked duplicate, Apply transform and
+Recalculate normals leave the origin alone: a copy is meant to behave like its
+source, and neither of the other two moves the geometry relative to its zero.
+
 ### The 3D cursor
 
 The amber crosshair is where new primitives are born and, when you want it to

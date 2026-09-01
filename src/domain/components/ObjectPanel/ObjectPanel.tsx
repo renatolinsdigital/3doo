@@ -24,12 +24,12 @@ export function ObjectPanel() {
         />
         <Button
           label="MERGE SELECTED"
-          hint="Merge the selected objects into the active one, each keeping where it sits (M)"
+          hint="Merge the selected objects into the active one, each keeping where it sits, with the origin on the middle of the result (M)"
           onClick={mergeSelected}
         />
         <Button
           label="SEPARATE"
-          hint="Split the active object into separate objects, one for each loose part (P)"
+          hint="Split the active object into separate objects, one for each loose part, each with its origin on its own middle (P)"
           onClick={separateLooseParts}
         />
         <Button

@@ -170,6 +170,14 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         kind: 'note',
         text: 'An object-mode move carries the origin along with the mesh. An edit-mode move does not: vertex coordinates change and the zero they are measured from stays put, so geometry dragged across the scene leaves its origin, its handles and its square behind. ORIGIN TO GEOMETRY brings all three back onto the shape. Nothing moves on screen, since the vertices give up exactly what the origin gains.',
       },
+      {
+        kind: 'prose',
+        text: 'MERGE, SEPARATE and the three booleans each hand back geometry the old origin has no claim on: a merge spans everything that came in, a separated part is one piece of what used to be a whole, and a cut can take away the very corner the origin was sitting in. So each of them re-centres the origin of every object it leaves behind, exactly as ORIGIN TO GEOMETRY would. Nothing moves on screen; the LOCATION numbers change to say where the shape now is.',
+      },
+      {
+        kind: 'prose',
+        text: 'The rest of the OBJECT panel leaves the origin where it is. DUPLICATE and LINKED DUPLICATE give the copy the origin its source has, so the two behave alike under a rotation. APPLY TRANSFORM bakes rotation and scale into the vertices and deliberately keeps the position, and RECALCULATE NORMALS only turns faces around. ORIGIN TO GEOMETRY is the button for the rest, on any object at any time, and it wants a single-user mesh: linked copies share their vertices, so moving one origin would drag every other copy off its own.',
+      },
     ],
   },
   {

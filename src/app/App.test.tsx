@@ -153,9 +153,12 @@ describe('App shell', () => {
     await userEvent.click(within(booleans).getByRole('button', { name: 'DIFFERENCE' }));
 
     // The cutter is consumed, and what is left is smaller than the box was.
+    // The origin follows the cut onto the middle of the half that survived, so
+    // the far edge is read in world space.
     expect(useEditorStore.getState().objects).toHaveLength(1);
-    const box = useEditorStore.getState().objects[0].mesh.boundingBox();
-    expect(box.max.x).toBeCloseTo(0, 5);
+    const cut = useEditorStore.getState().objects[0];
+    const box = cut.mesh.boundingBox();
+    expect(cut.transform.position.x + box.max.x).toBeCloseTo(0, 5);
     expect(screen.getByRole('status')).toHaveTextContent('Difference');
   });
 

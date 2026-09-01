@@ -107,6 +107,7 @@ export const createToolSlice: StateCreator<
     const object = activeObject(get());
     if (mode === 'edit' && !object) {
       set({ status: 'Select an object before entering edit mode' });
+      get().pushToast('warning', 'Select an object before entering edit mode');
       return;
     }
     set({ mode, modal: null, status: mode === 'edit' ? 'Edit mode' : 'Object mode' });

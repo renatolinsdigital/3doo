@@ -132,6 +132,8 @@ describe('editor store', () => {
     store().setMode('edit');
     expect(store().mode).toBe('object');
     expect(store().status).toMatch(/Select an object/i);
+    expect(store().toasts).toHaveLength(1);
+    expect(store().toasts[0].message).toMatch(/Select an object/i);
   });
 
   it('runs an operator and reports it in the status bar', () => {
@@ -772,10 +774,12 @@ describe('editor store', () => {
     expect(joined.id).toBe(first);
     expect(joined.mesh.faces.size).toBe(12);
     // Carried through world space: the second box keeps its 3 m offset instead
-    // of landing back on the target's origin.
+    // of landing back on the target's origin. The origin then moves onto the
+    // middle of what the merge made, halfway between the two boxes.
     const box = joined.mesh.boundingBox();
-    expect(box.min.x).toBeCloseTo(-0.5);
-    expect(box.max.x).toBeCloseTo(3.5);
+    expect(box.min.x).toBeCloseTo(-2);
+    expect(box.max.x).toBeCloseTo(2);
+    expect(joined.transform.position.x).toBeCloseTo(1.5);
   });
 
   it('merges a linked duplicate into its own original', () => {
@@ -810,10 +814,36 @@ describe('editor store', () => {
     expect(store().objects).toHaveLength(2);
     for (const object of store().objects) expect(object.mesh.faces.size).toBe(6);
     // The two boxes were 3 m apart when merged and stay 3 m apart after: the
-    // parts come out where the geometry sits, not stacked on the origin.
-    const centres = store().objects.map((object) => object.mesh.boundingBox().min.x);
+    // parts come out where the geometry sits, not stacked on the origin. Each
+    // one carries its own origin, on the middle of its own box.
+    const centres = store().objects.map((object) => object.transform.position.x);
     expect(Math.abs(centres[0] - centres[1])).toBeCloseTo(3);
+    for (const object of store().objects) {
+      const box = object.mesh.boundingBox();
+      expect(box.min.x).toBeCloseTo(-0.5);
+      expect(box.max.x).toBeCloseTo(0.5);
+    }
     expect(store().selectedObjectIds).toHaveLength(2);
+  });
+
+  it('puts the origin on the middle of what a boolean left behind', async () => {
+    store().addPrimitive('box');
+    const target = activeObject().id;
+    store().addPrimitive('box');
+    const cutter = activeObject().id;
+    store().setObjectTransform(cutter, { position: { x: 0.5, y: 0, z: 0 } });
+    useEditorStore.setState({ selectedObjectIds: [target, cutter], activeObjectId: target });
+
+    await store().booleanWithSelected('difference');
+
+    // Half the box is gone, so the origin moves a quarter of a metre to sit in
+    // the middle of the half that is left. Nothing moves on screen: that half
+    // still runs from -0.5 to 0 in world space.
+    const object = activeObject();
+    const box = object.mesh.boundingBox();
+    expect(object.transform.position.x).toBeCloseTo(-0.25);
+    expect(box.min.x).toBeCloseTo(-0.25);
+    expect(box.max.x).toBeCloseTo(0.25);
   });
 
   it('says so rather than acting when the mesh is one piece', () => {
