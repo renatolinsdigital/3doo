@@ -187,7 +187,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'Press Tab to enter edit mode, then 1, 2 and 3 to switch between vertex, edge and face selection. Switching modes never loses what you had picked: the selection propagates from the elements you chose to the ones the new mode works with.',
+        text: 'Press Tab to enter edit mode, then 1, 2 and 3 to switch between vertex, edge and face selection. Edit mode opens with nothing picked every time, so whatever is highlighted was picked on this trip in. Switching between 1, 2 and 3 never loses what you had picked: the selection propagates from the elements you chose to the ones the new mode works with.',
       },
       {
         kind: 'table',

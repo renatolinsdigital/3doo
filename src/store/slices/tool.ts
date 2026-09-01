@@ -110,7 +110,19 @@ export const createToolSlice: StateCreator<
       get().pushToast('warning', 'Select an object before entering edit mode');
       return;
     }
-    set({ mode, modal: null, status: mode === 'edit' ? 'Edit mode' : 'Object mode' });
+    // Edit mode opens on a clean mesh. Selection flags live on the geometry
+    // itself, so they outlast the session that made them: a mesh comes back
+    // holding whatever was picked last time, and an object-mode operation that
+    // works on the whole mesh (a boolean, a normals pass) can leave everything
+    // flagged. Either way what lit up on the way in was nothing the user chose.
+    if (mode === 'edit' && object) object.mesh.deselectAll();
+
+    set((state) => ({
+      mode,
+      modal: null,
+      meshVersion: state.meshVersion + 1,
+      status: mode === 'edit' ? 'Edit mode' : 'Object mode',
+    }));
   },
 
   toggleMode: () => get().setMode(get().mode === 'object' ? 'edit' : 'object'),

@@ -136,6 +136,23 @@ describe('editor store', () => {
     expect(store().toasts[0].message).toMatch(/Select an object/i);
   });
 
+  it('opens edit mode on a mesh with nothing selected', () => {
+    store().addPrimitive('box');
+    store().setMode('edit');
+    store().exec('selectAll', {}, 'Select all');
+    expect(activeObject().mesh.selectedFaces()).toHaveLength(6);
+
+    // The flags live on the geometry, so they were still there on the way back
+    // in and lit up faces nobody had picked this time round.
+    store().setMode('object');
+    store().setMode('edit');
+
+    const mesh = activeObject().mesh;
+    expect(mesh.selectedVerts()).toHaveLength(0);
+    expect(mesh.selectedEdges()).toHaveLength(0);
+    expect(mesh.selectedFaces()).toHaveLength(0);
+  });
+
   it('runs an operator and reports it in the status bar', () => {
     store().addPrimitive('box');
     store().setMode('edit');
