@@ -13,9 +13,6 @@ interface ToolEntry {
   label: string;
   shortcut: string;
   hint: string;
-  /** Operator to run on click; transform tools attach the gizmo instead. */
-  operator?: { name: string; params: Record<string, unknown> };
-  editOnly?: boolean;
 }
 
 /** What the select tool wears, and what its menu says, per region shape. */
@@ -66,42 +63,13 @@ const TOOLS: ToolEntry[] = [
     shortcut: 'S',
     hint: 'Drag the gizmo to scale the selection',
   },
-  {
-    id: 'extrude',
-    icon: '⇧',
-    label: 'Extrude',
-    shortcut: 'E',
-    hint: 'Pull the selected faces out along their normal',
-    operator: { name: 'extrude', params: { offset: 1 } },
-    editOnly: true,
-  },
-  {
-    id: 'inset',
-    icon: '⊡',
-    label: 'Inset',
-    shortcut: 'I',
-    hint: 'Shrink the selected faces inward and keep the border',
-    operator: { name: 'inset', params: { thickness: 0.2 } },
-    editOnly: true,
-  },
-  {
-    id: 'loopcut',
-    icon: '≡',
-    label: 'Loop cut',
-    shortcut: 'Ctrl+R',
-    hint: 'Insert a new edge loop across a ring of quads',
-    operator: { name: 'loopCut', params: { cuts: 1 } },
-    editOnly: true,
-  },
 ];
 
 export function ToolRail() {
-  const mode = useEditorStore((state) => state.mode);
   const activeTool = useEditorStore((state) => state.activeTool);
   const setActiveTool = useEditorStore((state) => state.setActiveTool);
   const selectShape = useEditorStore((state) => state.selectShape);
   const setSelectShape = useEditorStore((state) => state.setSelectShape);
-  const exec = useEditorStore((state) => state.exec);
   const originToGeometry = useEditorStore((state) => state.originToGeometry);
 
   const [shapeMenu, setShapeMenu] = useState<{ x: number; y: number } | null>(null);
@@ -116,30 +84,25 @@ export function ToolRail() {
 
   return (
     <nav className="tool-rail" aria-label="Tools">
-      {TOOLS.map((tool) => {
-        const disabled = tool.editOnly && mode !== 'edit';
-        return (
-          <IconButton
-            key={tool.id}
-            // The select button wears the shape it would draw, so the rail says
-            // what a drag is about to do without opening anything.
-            icon={tool.id === 'select' ? SHAPE_FACES[selectShape].icon : tool.icon}
-            label={tool.label}
-            shortcut={tool.shortcut}
-            hint={tool.hint}
-            active={activeTool === tool.id}
-            disabled={disabled}
-            onClick={(event) => {
-              setActiveTool(tool.id);
-              if (tool.operator) exec(tool.operator.name, tool.operator.params, tool.label);
-              if (tool.id === 'select') {
-                const rect = event.currentTarget.getBoundingClientRect();
-                setShapeMenu({ x: rect.right + 4, y: rect.top });
-              }
-            }}
-          />
-        );
-      })}
+      {TOOLS.map((tool) => (
+        <IconButton
+          key={tool.id}
+          // The select button wears the shape it would draw, so the rail says
+          // what a drag is about to do without opening anything.
+          icon={tool.id === 'select' ? SHAPE_FACES[selectShape].icon : tool.icon}
+          label={tool.label}
+          shortcut={tool.shortcut}
+          hint={tool.hint}
+          active={activeTool === tool.id}
+          onClick={(event) => {
+            setActiveTool(tool.id);
+            if (tool.id === 'select') {
+              const rect = event.currentTarget.getBoundingClientRect();
+              setShapeMenu({ x: rect.right + 4, y: rect.top });
+            }
+          }}
+        />
+      ))}
       {/* Below the rule because it is a command, not a tool: it runs once and
           leaves whatever tool you were holding in your hand. */}
       <hr className="tool-rail__rule" />
