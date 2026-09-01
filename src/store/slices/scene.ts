@@ -133,6 +133,7 @@ export interface SceneSlice {
   ) => void;
   setCursor: (position: Vec3, status?: string) => void;
   cursorToSelection: () => void;
+  cursorToSelectionOrigin: () => void;
   selectionToCursor: () => void;
 
   addMaterial: () => void;
@@ -951,11 +952,20 @@ export const createSceneSlice: StateCreator<
     get().setCursor(anchor, 'Cursor to selection');
   },
 
+  cursorToSelectionOrigin: () => {
+    const anchor = selectionOrigin(get());
+    if (!anchor) {
+      set({ status: 'Nothing selected' });
+      return;
+    }
+    get().setCursor(anchor, 'Cursor to selection origin');
+  },
+
   /**
    * Moves the selection so it lands on the cursor, keeping the offsets between
    * objects. Blender stacks every object origin on the cursor by default; here
-   * the group moves as a unit and lands on the point the gizmo is showing,
-   * which is what the user is actually looking at.
+   * the group moves as a unit and lands by the middle of its geometry, which is
+   * what the user is actually looking at.
    */
   selectionToCursor: () => {
     const state = get();
@@ -1270,11 +1280,16 @@ export function activeObject(state: {
 }
 
 /**
- * The world-space point the current selection hangs off, the same point the
- * gizmo sits on, so cursor snapping and the handles agree.
+ * The world-space point the current selection hangs off: the middle of the
+ * geometry. In edit mode the median of the selected vertices, in object mode
+ * the centre of what each selected object draws.
+ *
+ * Not the origin the gizmo sits on, deliberately. Snapping the cursor is about
+ * putting it on the shape you are looking at, and an edit-mode move can leave
+ * an origin metres away from that shape.
  *
  * Null when nothing is selected, which is what the callers report to the user
- * rather than silently snapping to the origin.
+ * rather than silently snapping to the world origin.
  */
 function selectionAnchor(state: EditorStore): Vec3 | null {
   const object = activeObject(state);
@@ -1294,6 +1309,28 @@ function selectionAnchor(state: EditorStore): Vec3 | null {
       displayCenter(candidate, evaluatedMesh(candidate, state.cursor, state.meshVersion)),
     ),
   );
+}
+
+/**
+ * Where the selection's origins are, rather than where its geometry is: the
+ * median of them in object mode, Blender's rule for snapping to origins.
+ *
+ * In edit mode it is the edited object's own, since the vertices being picked
+ * are not objects and have no origin between them. That is the case it earns
+ * its place in: an edit-mode move walks the mesh away from the origin, and this
+ * puts the cursor on the point that stayed behind.
+ */
+function selectionOrigin(state: EditorStore): Vec3 | null {
+  if (state.mode === 'edit') {
+    const object = activeObject(state);
+    return object ? { ...object.transform.position } : null;
+  }
+
+  const selected = state.objects.filter((candidate) =>
+    state.selectedObjectIds.includes(candidate.id),
+  );
+  if (selected.length === 0) return null;
+  return centroid(selected.map((candidate) => candidate.transform.position));
 }
 
 interface EvaluatedStack {

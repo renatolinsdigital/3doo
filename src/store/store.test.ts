@@ -1047,6 +1047,47 @@ describe('editor store', () => {
     expect(activeObject().transform.position.x).toBeCloseTo(0);
   });
 
+  it('separates the selection origin from the middle of its geometry', () => {
+    store().addPrimitive('box');
+    driftMesh(vec3(0, 3, 0));
+
+    store().cursorToSelection();
+    expect(store().cursor.y).toBeCloseTo(3);
+
+    // The edit moved the mesh and left the origin behind, which is the whole
+    // reason the two entries are not one entry.
+    store().cursorToSelectionOrigin();
+    expect(store().cursor.y).toBeCloseTo(0);
+  });
+
+  it('takes the median of the origins across a multi-object selection', () => {
+    store().addPrimitive('box');
+    const first = activeObject().id;
+    store().setObjectTransforms([{ id: first, transform: { position: { x: 2, y: 0, z: 0 } } }]);
+    store().addPrimitive('box');
+    const second = activeObject().id;
+    store().setObjectTransforms([{ id: second, transform: { position: { x: 6, y: 0, z: 0 } } }]);
+    store().selectAllObjects();
+
+    store().cursorToSelectionOrigin();
+
+    expect(store().cursor.x).toBeCloseTo(4);
+  });
+
+  it('reads the edited object off its own origin, not off the picked vertices', () => {
+    store().addPrimitive('box');
+    const id = activeObject().id;
+    store().setObjectTransforms([{ id, transform: { position: { x: 0, y: 7, z: 0 } } }]);
+    store().setMode('edit');
+    selectTopFace();
+
+    store().cursorToSelectionOrigin();
+
+    // The face sits half a metre above the origin; vertices are not objects and
+    // have no origin between them, so the object's own is what answers.
+    expect(store().cursor.y).toBeCloseTo(7);
+  });
+
   it('says so rather than snapping to the origin when nothing is selected', () => {
     store().addPrimitive('box');
     store().setActiveObject(null);

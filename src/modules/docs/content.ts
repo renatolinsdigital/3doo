@@ -409,6 +409,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         kind: 'note',
         text: 'The cursor is more than a pivot: Shift+C sends it to the world origin, Ctrl+Shift+C snaps it to the selection, Shift+V snaps the selection to it, and the mirror modifier can use it as its plane.',
       },
+      {
+        kind: 'note',
+        text: "CURSOR TO SELECTION and CURSOR TO SELECTION ORIGIN in the right-click menu are two different points, and an edit-mode move is what pulls them apart. The first goes to the middle of the geometry, which is the shape you are looking at. The second goes to the origin, which is the amber square and where the gizmo sits: the median of them across several objects, and the edited object's own in edit mode.",
+      },
     ],
   },
   {
