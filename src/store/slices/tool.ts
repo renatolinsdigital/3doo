@@ -11,7 +11,6 @@ import type {
   PivotMode,
   ProportionalSettings,
   SelectShape,
-  SnapSettings,
   ToolId,
 } from '../types';
 
@@ -61,7 +60,6 @@ export interface ToolSlice {
   activeTool: ToolId;
   selectShape: SelectShape;
   pivot: PivotMode;
-  snap: SnapSettings;
   proportional: ProportionalSettings;
   autoMerge: AutoMergeSettings;
   modal: ModalTransform | null;
@@ -74,7 +72,6 @@ export interface ToolSlice {
   cycleSelectShape: () => void;
   setPivot: (pivot: PivotMode) => void;
   stowTransformTool: () => void;
-  setSnap: (patch: Partial<SnapSettings>) => void;
   setProportional: (patch: Partial<ProportionalSettings>) => void;
   setAutoMerge: (patch: Partial<AutoMergeSettings>) => void;
   beginSlide: () => void;
@@ -95,7 +92,6 @@ export const createToolSlice: StateCreator<
   activeTool: 'select',
   selectShape: 'box',
   pivot: 'median',
-  snap: { enabled: false, mode: 'increment', increment: 0.25 },
   proportional: { enabled: false, radius: 1.5, falloff: 'smooth' },
   // Off by default, and a tenth of the default grid square when it is switched
   // on: wide enough to catch a slide run all the way onto its neighbour,
@@ -183,8 +179,6 @@ export const createToolSlice: StateCreator<
   },
 
   setPivot: (pivot) => set({ pivot }),
-
-  setSnap: (patch) => set((state) => ({ snap: { ...state.snap, ...patch } })),
 
   setProportional: (patch) =>
     set((state) => ({ proportional: { ...state.proportional, ...patch } })),

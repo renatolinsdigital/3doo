@@ -1,7 +1,7 @@
 import type { StateCreator } from 'zustand';
 
 import type { EditorStore } from '../useEditorStore';
-import type { Preferences } from '../types';
+import type { Preferences, SnapMode } from '../types';
 
 const STORAGE_KEY = '3doo:preferences';
 
@@ -12,6 +12,10 @@ export const DEFAULT_PREFERENCES: Preferences = {
   viewportBackground: '#1a1918',
   gridScale: 1,
   gridSubdivisions: 10,
+  snapEnabled: false,
+  snapMode: 'grid',
+  snapStep: 0.1,
+  historySize: 50,
   // VIEWPORT_COLORS.grid and .rust, which the viewport used to hard-code. Named
   // there in hex ints, written here as CSS so the colour inputs can show them.
   gridColor: '#3a2a28',
@@ -29,6 +33,36 @@ export const MAX_GRID_SCALE = 1000;
 /** One is no subdivision at all (every line heavy) and the cap keeps the mesh sane. */
 export const MIN_GRID_SUBDIVISIONS = 1;
 export const MAX_GRID_SUBDIVISIONS = 100;
+
+/** The same range as the grid scale it multiplies: past useful either way. */
+export const MIN_SNAP_STEP = MIN_GRID_SCALE;
+export const MAX_SNAP_STEP = MAX_GRID_SCALE;
+
+/**
+ * How many steps undo keeps.
+ *
+ * Ten is enough to back out of a bad idea; fifty is the ceiling because every
+ * step holds a whole copy of the scene, so what history costs is this figure
+ * times the size of the model.
+ */
+export const MIN_HISTORY_SIZE = 10;
+export const MAX_HISTORY_SIZE = 50;
+
+/**
+ * The multiple of the grid scale actually in force.
+ *
+ * The grid is a step of one, by definition. The custom figure is kept aside
+ * while the grid is chosen, so this is the one place that decides which of the
+ * two the viewport and the status bar are looking at.
+ */
+export function snapStepFor(mode: SnapMode, step: number): number {
+  return mode === 'grid' ? 1 : step;
+}
+
+/** What the snap in force is called, on the status bar. */
+export function snapStepLabel(mode: SnapMode, step: number): string {
+  return mode === 'grid' || step === 1 ? 'GRID' : `${step} GRID`;
+}
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 
@@ -89,6 +123,26 @@ export function coercePreferences(raw: unknown): Preferences {
         DEFAULT_PREFERENCES.gridSubdivisions,
       ),
     ),
+    snapEnabled:
+      typeof source.snapEnabled === 'boolean'
+        ? source.snapEnabled
+        : DEFAULT_PREFERENCES.snapEnabled,
+    snapMode: source.snapMode === 'custom' ? 'custom' : DEFAULT_PREFERENCES.snapMode,
+    snapStep: coerceNumber(
+      source.snapStep,
+      MIN_SNAP_STEP,
+      MAX_SNAP_STEP,
+      DEFAULT_PREFERENCES.snapStep,
+    ),
+    // Rounded: half a step is not a state anything can be restored to.
+    historySize: Math.round(
+      coerceNumber(
+        source.historySize,
+        MIN_HISTORY_SIZE,
+        MAX_HISTORY_SIZE,
+        DEFAULT_PREFERENCES.historySize,
+      ),
+    ),
     gridColor: coerceColor(source.gridColor, DEFAULT_PREFERENCES.gridColor),
     gridOpacity: coerceNumber(source.gridOpacity, 0, 1, DEFAULT_PREFERENCES.gridOpacity),
     gridMajorColor: coerceColor(source.gridMajorColor, DEFAULT_PREFERENCES.gridMajorColor),
@@ -137,6 +191,9 @@ export const createPreferencesSlice: StateCreator<
 > = (set, get) => {
   const apply = (next: Preferences) => {
     writePreferences(next);
+    // Re-capped as the figure changes rather than at the next edit, so lowering
+    // it hands the memory back while the user is still looking at the slider.
+    get().setHistoryLimit(next.historySize);
     // A hint already on screen would otherwise hang there once tooltips go off.
     set(next.tooltipsEnabled ? { ...next } : { ...next, hint: null });
   };
@@ -157,6 +214,10 @@ export const createPreferencesSlice: StateCreator<
         viewportBackground,
         gridScale,
         gridSubdivisions,
+        snapEnabled,
+        snapMode,
+        snapStep,
+        historySize,
         gridColor,
         gridOpacity,
         gridMajorColor,
@@ -169,6 +230,10 @@ export const createPreferencesSlice: StateCreator<
         viewportBackground,
         gridScale,
         gridSubdivisions,
+        snapEnabled,
+        snapMode,
+        snapStep,
+        historySize,
         gridColor,
         gridOpacity,
         gridMajorColor,

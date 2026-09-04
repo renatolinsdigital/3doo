@@ -71,7 +71,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'Work is autosaved to IndexedDB as you go, so a closed or crashed tab does not cost you the scene. Undo holds the last 64 steps.',
+        text: 'Work is autosaved to IndexedDB as you go, so a closed or crashed tab does not cost you the scene. Undo holds the last 50 steps, or however many the UNDO STEPS slider in preferences allows, and the ▤ button in the top bar opens the list to click straight back to one of them.',
       },
     ],
   },
@@ -90,7 +90,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Top bar',
-            'FILE, PREFS and the project name on the left; then the object/edit mode switch, the proportional, auto merge, orthographic and smooth-shading flags, the pivot picker, and the SHADING and OVERLAYS menus; the two framing buttons and the shortcut list on the right.',
+            'FILE, PREFS and the project name on the left; then the object/edit mode switch, the snap, proportional, auto merge, orthographic and smooth-shading flags, the pivot picker, and the SHADING and OVERLAYS menus; the history list, the two framing buttons and the shortcut list on the right.',
           ],
           [
             'Tool rail, far left',
@@ -415,7 +415,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'The cursor is more than a pivot: Shift+C sends it to the world origin, Ctrl+Shift+C snaps it to the selection, Shift+V snaps the selection to it, and the mirror modifier can use it as its plane.',
+        text: 'The cursor is more than a pivot: Shift+C sends it to the world origin, Ctrl+Shift+C snaps it to the selection, Shift+V snaps the selection to it, and the mirror modifier can use it as its plane. Placing it is an edit of its own, so Ctrl+Z puts the cursor back where it was and leaves the model alone.',
       },
       {
         kind: 'note',

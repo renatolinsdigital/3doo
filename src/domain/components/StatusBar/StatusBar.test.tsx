@@ -114,9 +114,13 @@ describe('StatusBar', () => {
     render(<StatusBar />);
     expect(screen.getByText('SNAP OFF')).toBeInTheDocument();
 
-    act(() => useEditorStore.getState().setSnap({ enabled: true, mode: 'vertex' }));
+    act(() => useEditorStore.getState().setPreferences({ snapEnabled: true, snapMode: 'grid' }));
 
-    expect(screen.getByText('SNAP VERTEX')).toBeInTheDocument();
+    expect(screen.getByText('SNAP GRID')).toBeInTheDocument();
+
+    act(() => useEditorStore.getState().setPreferences({ snapMode: 'custom', snapStep: 0.03 }));
+
+    expect(screen.getByText('SNAP 0.03 GRID')).toBeInTheDocument();
   });
 });
 

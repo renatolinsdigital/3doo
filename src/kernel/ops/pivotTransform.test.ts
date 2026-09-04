@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { vec3 } from '../math';
 
-import { pivotPosition } from './pivotTransform';
+import { pivotPosition, pivotReorient } from './pivotTransform';
 
 const noRotation = { rotationAxis: vec3(0, 1, 0), rotationAngle: 0 };
 const noScale = { scaleRatio: vec3(1, 1, 1) };
@@ -107,5 +107,44 @@ describe('pivotPosition', () => {
       expect(result.y).toBeCloseTo(0.5);
       expect(result.z).toBeCloseTo(3);
     });
+  });
+});
+
+describe('pivotReorient', () => {
+  const noTurn = vec3(0, 0, 0);
+
+  it('leaves a point where it stands when the pivot is the point itself', () => {
+    const point = vec3(-5, 0, 0);
+    const result = pivotReorient(point, point, noTurn, vec3(0, Math.PI / 4, 0));
+    expect(result).toEqual(point);
+  });
+
+  it('swings an off-pivot origin round to where the typed turn puts it', () => {
+    // The panel case: a box five metres out along -X, turned 45 degrees about
+    // Y with the 3D cursor at the origin, lands on the diagonal rather than
+    // spinning where it stands.
+    const result = pivotReorient(vec3(-5, 0, 0), vec3(0, 0, 0), noTurn, vec3(0, Math.PI / 4, 0));
+    expect(result.x).toBeCloseTo(-Math.SQRT1_2 * 5);
+    expect(result.y).toBeCloseTo(0);
+    expect(result.z).toBeCloseTo(Math.SQRT1_2 * 5);
+  });
+
+  it('measures the turn from the orientation the object already had', () => {
+    // Typing 90 into a field that already read 45 is another 45 degrees of
+    // travel, not 90: the field names where to end up, not how far to go.
+    const from = vec3(0, Math.PI / 4, 0);
+    const result = pivotReorient(vec3(-5, 0, 0), vec3(0, 0, 0), from, vec3(0, Math.PI / 2, 0));
+    const direct = pivotReorient(vec3(-5, 0, 0), vec3(0, 0, 0), noTurn, vec3(0, Math.PI / 4, 0));
+    expect(result.x).toBeCloseTo(direct.x);
+    expect(result.z).toBeCloseTo(direct.z);
+  });
+
+  it('puts a point back where it started when the turn is undone', () => {
+    const start = vec3(2, 3, -1);
+    const turned = pivotReorient(start, vec3(1, 0, 1), noTurn, vec3(0.3, -0.7, 1.1));
+    const back = pivotReorient(turned, vec3(1, 0, 1), vec3(0.3, -0.7, 1.1), noTurn);
+    expect(back.x).toBeCloseTo(start.x);
+    expect(back.y).toBeCloseTo(start.y);
+    expect(back.z).toBeCloseTo(start.z);
   });
 });

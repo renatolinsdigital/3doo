@@ -1333,3 +1333,106 @@ describe('editor store', () => {
     expect(store().meshVersion).toBe(versionBefore);
   });
 });
+
+describe('the 3D cursor as an edit of its own', () => {
+  beforeEach(() => {
+    store().resetScene();
+  });
+
+  it('undoes the cursor move and leaves the model where it stands', () => {
+    store().addPrimitive('box');
+    const id = store().objects[0].id;
+    store().setObjectTransform(id, { position: vec3(-5, 0, 0) });
+    store().recordHistory('Move object');
+    store().setObjectTransform(id, { position: vec3(-2, 0, 0) });
+
+    store().setCursor(vec3(1, 2, 3), 'Cursor placed');
+    store().undo();
+
+    // The cursor rides in the document, so undo always put it back. What it had
+    // no entry of its own for was the placement: Ctrl+Z used to take the move
+    // before it as well, and the box went back to -5 along with the cursor.
+    expect(store().cursor).toEqual(vec3(0, 0, 0));
+    expect(store().objects[0].transform.position).toEqual(vec3(-2, 0, 0));
+    expect(store().status).toBe('Undo: Cursor placed');
+  });
+
+  it('names the placement it undoes, however the cursor got there', () => {
+    store().addPrimitive('box');
+    store().setObjectTransform(store().objects[0].id, { position: vec3(4, 0, 0) });
+
+    store().cursorToSelection();
+
+    expect(store().historyUndo[0]).toBe('Cursor to selection');
+    expect(store().cursor.x).toBeCloseTo(4);
+  });
+
+  it('records nothing for a placement that lands where the cursor already is', () => {
+    store().addPrimitive('box');
+    const steps = store().historyUndo.length;
+
+    store().setCursor(vec3(0, 0, 0), 'Cursor to world origin');
+
+    // Shift+C twice is one placement and one no-op, and the no-op must not bury
+    // the edit behind it.
+    expect(store().historyUndo.length).toBe(steps);
+    expect(store().status).toBe('Cursor to world origin');
+  });
+});
+
+describe('history timeline', () => {
+  beforeEach(() => {
+    store().resetScene();
+    store().setPreferences({ historySize: 50 });
+  });
+
+  it('lists what each step would take back, newest first', () => {
+    store().addPrimitive('box');
+    store().addPrimitive('cylinder');
+
+    expect(store().historyUndo).toEqual(['Add CYLINDER', 'Add BOX']);
+    expect(store().historyRedo).toEqual([]);
+  });
+
+  it('travels several steps in one move and can come back', () => {
+    store().addPrimitive('box');
+    store().addPrimitive('cylinder');
+    store().addPrimitive('cone');
+
+    store().undoTimes(3);
+
+    expect(store().objects).toHaveLength(0);
+    expect(store().status).toBe('Undo 3 steps, back to: Add BOX');
+    expect(store().historyRedo).toEqual(['Add BOX', 'Add CYLINDER', 'Add CONE']);
+
+    store().redoTimes(2);
+
+    expect(store().objects).toHaveLength(2);
+    expect(store().status).toBe('Redo 2 steps, up to: Add CYLINDER');
+    expect(store().historyUndo).toEqual(['Add CYLINDER', 'Add BOX']);
+  });
+
+  it('stops at the end of the timeline rather than running off it', () => {
+    store().addPrimitive('box');
+
+    store().undoTimes(10);
+
+    expect(store().objects).toHaveLength(0);
+    expect(store().canUndo).toBe(false);
+    expect(store().status).toBe('Undo: Add BOX');
+  });
+
+  it('drops the oldest steps when the size is lowered', () => {
+    for (let step = 0; step < 12; step++) store().addPrimitive('box');
+    expect(store().historyUndo).toHaveLength(12);
+
+    store().setPreferences({ historySize: 10 });
+
+    // Lowering it is how the memory those snapshots hold is handed back, so the
+    // trim happens on the slider rather than at the next edit.
+    expect(store().historyUndo).toHaveLength(10);
+
+    store().setPreferences({ historySize: 50 });
+    expect(store().historyUndo).toHaveLength(10);
+  });
+});

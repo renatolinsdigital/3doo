@@ -2,7 +2,14 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
 import type { GridSettings } from './grid';
-import { ViewportGrid, gridLevel } from './grid';
+import {
+  SNAP_ROTATE_STEP,
+  SNAP_SCALE_STEP,
+  ViewportGrid,
+  gridLevel,
+  snapAmounts,
+  snapTo,
+} from './grid';
 
 /** The three coplanar line objects that make up the ground plane. */
 function groundPlane(grid: ViewportGrid) {
@@ -216,5 +223,67 @@ describe('fine lines through a zoom', () => {
     grid.update(99);
 
     expect(coarse.material.opacity).toBe(SETTINGS.majorOpacity);
+  });
+});
+
+describe('what snapping quantises to', () => {
+  it('hands back nothing at all while it is switched off', () => {
+    expect(snapAmounts(false, 1, 1)).toBeNull();
+  });
+
+  it('refuses a step of nothing rather than rounding every value to zero', () => {
+    // Nothing in the UI offers one, but a preferences file or a hand-edited
+    // storage blob can, and a step of zero would pin every transform in place.
+    expect(snapAmounts(true, 0, 1)).toBeNull();
+    expect(snapAmounts(true, -1, 1)).toBeNull();
+    expect(snapAmounts(true, 1, 0)).toBeNull();
+  });
+
+  it('lands a move on one whole grid scale at a step of 1', () => {
+    expect(snapAmounts(true, 1, 1)?.translate).toBeCloseTo(1);
+    expect(snapAmounts(true, 1, 2)?.translate).toBeCloseTo(2);
+  });
+
+  it('multiplies that scale by the step asked for, preset or typed', () => {
+    expect(snapAmounts(true, 0.1, 1)?.translate).toBeCloseTo(0.1);
+    expect(snapAmounts(true, 0.25, 1)?.translate).toBeCloseTo(0.25);
+    expect(snapAmounts(true, 0.03, 1)?.translate).toBeCloseTo(0.03);
+    expect(snapAmounts(true, 0.1, 2)?.translate).toBeCloseTo(0.2);
+  });
+
+  it('scales the turn and the scale by that same step', () => {
+    // Neither is a distance, so no grid square sets them: what the step divides
+    // is the modelling increment itself.
+    const half = snapAmounts(true, 0.5, 1);
+
+    expect(half?.rotate).toBeCloseTo(SNAP_ROTATE_STEP / 2);
+    expect(half?.scale).toBeCloseTo(SNAP_SCALE_STEP / 2);
+  });
+
+  it('leaves every amount alone when the camera moves', () => {
+    // The plane on screen rescales by ten through a zoom. The snap deliberately
+    // does not follow it: a step that changed by ten as you pulled back could
+    // not be relied on to put anything anywhere.
+    expect(gridLevel(10).step).not.toBe(gridLevel(1000).step);
+    expect(snapAmounts(true, 1, 1)?.translate).toBeCloseTo(1);
+  });
+
+  it('puts a whole turn on the round angles a modeller reaches for', () => {
+    for (const degrees of [15, 30, 45, 90, 180]) {
+      const angle = (degrees * Math.PI) / 180;
+      expect(snapTo(angle, SNAP_ROTATE_STEP)).toBeCloseTo(angle);
+    }
+  });
+});
+
+describe('snapTo', () => {
+  it('rounds onto the nearest multiple, either way', () => {
+    expect(snapTo(0.4, 0.25)).toBeCloseTo(0.5);
+    expect(snapTo(-0.4, 0.25)).toBeCloseTo(-0.5);
+    expect(snapTo(0.1, 0.25)).toBe(0);
+  });
+
+  it('leaves the value alone when there is no step to round onto', () => {
+    expect(snapTo(1.234, 0)).toBe(1.234);
   });
 });

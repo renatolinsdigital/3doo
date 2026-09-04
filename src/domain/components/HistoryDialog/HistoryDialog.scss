@@ -1,0 +1,73 @@
+@use '@global-styles/helpers' as *;
+
+.history-dialog {
+  &__list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    list-style: none;
+  }
+
+  &__step {
+    @include brutal-focus;
+
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    width: 100%;
+    min-height: var(--field-height);
+    padding: var(--space-1) var(--space-3);
+    background: var(--bone-dim);
+    border: var(--border-thin) solid var(--void);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--red);
+      color: var(--bone);
+    }
+
+    // Ahead of the present: drawn back, the way a redo is a step you have
+    // already taken once.
+    &--ahead {
+      background: transparent;
+      color: var(--ink-muted);
+    }
+
+    &--next {
+      border-color: var(--red);
+    }
+  }
+
+  &__label {
+    @include mono-value;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__count {
+    @include label-text;
+
+    flex: none;
+    opacity: 0.7;
+  }
+
+  &__now {
+    @include label-text;
+
+    padding: var(--space-1) var(--space-3);
+    color: var(--bone);
+    background: var(--void);
+    border: var(--border-thin) solid var(--void);
+  }
+
+  &__empty,
+  &__hint {
+    @include mono-value;
+
+    font-size: var(--text-xs);
+    color: var(--ink-muted);
+  }
+}

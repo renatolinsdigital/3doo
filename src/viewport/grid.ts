@@ -65,6 +65,51 @@ export function gridLevel(distance: number): { step: number; fade: number } {
 }
 
 /**
+ * The turn one whole grid step of snapping means, in radians.
+ *
+ * A turn is not a distance, so no grid square can set it. Fifteen degrees is
+ * the modelling convention: it divides a quarter turn six ways and a whole one
+ * by twenty-four, so 30, 45 and 90 all fall on it.
+ */
+export const SNAP_ROTATE_STEP = Math.PI / 12;
+
+/** The ratio one whole grid step of snapping means for a scale, for the same reason. */
+export const SNAP_SCALE_STEP = 0.1;
+
+/** What each kind of transform lands on multiples of while snapping is on. */
+export interface SnapAmounts {
+  /** World units, for a move. */
+  translate: number;
+  /** Radians, for a turn. */
+  rotate: number;
+  /** Ratio, for a scale. */
+  scale: number;
+}
+
+/**
+ * What snapping quantises to, or null when it is off.
+ *
+ * The move is `step` grid scales, taken straight from the preference and not
+ * from the plane on screen. The plane rescales itself by ten as the camera
+ * pulls back, and a snap that followed it would silently change what it lands
+ * on between one zoom and the next, which is no use for placing anything.
+ */
+export function snapAmounts(enabled: boolean, step: number, gridScale: number): SnapAmounts | null {
+  if (!enabled || !(step > 0) || !(gridScale > 0)) return null;
+
+  return {
+    translate: gridScale * step,
+    rotate: SNAP_ROTATE_STEP * step,
+    scale: SNAP_SCALE_STEP * step,
+  };
+}
+
+/** `value` rounded onto the nearest multiple of `step`. */
+export function snapTo(value: number, step: number): number {
+  return step > 0 ? Math.round(value / step) * step : value;
+}
+
+/**
  * Adaptive ground grid.
  *
  * Two overlaid grids (a fine one that fades with distance and a coarse one for

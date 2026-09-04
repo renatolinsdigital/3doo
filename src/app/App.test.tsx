@@ -344,6 +344,87 @@ describe('App shell', () => {
     expect(screen.getByRole('button', { name: 'PROP' })).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('flips snapping from the top bar, in either mode', async () => {
+    render(<App />);
+
+    const snap = screen.getByRole('button', { name: 'SNAP' });
+    // Unlike PROP and AUTO MERGE: a move on the grid is as useful for placing a
+    // whole object as it is for placing a vertex, so it is never disabled.
+    expect(snap).not.toHaveAttribute('aria-disabled');
+
+    await userEvent.click(snap);
+
+    expect(useEditorStore.getState().snapEnabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'SNAP' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('SNAP GRID')).toBeInTheDocument();
+  });
+
+  it('types a step of its own once CUSTOM is picked, and saves it', async () => {
+    // Snapping is a preference, so it outlives a scene reset: put back by hand.
+    act(() =>
+      useEditorStore
+        .getState()
+        .setPreferences({ snapEnabled: true, snapMode: 'grid', snapStep: 0.1 }),
+    );
+    render(<App />);
+
+    // Nothing to type into while the grid is what the steps are measured in.
+    expect(screen.queryByLabelText('Snap step')).not.toBeInTheDocument();
+    expect(screen.getByText('SNAP GRID')).toBeInTheDocument();
+
+    await userEvent.selectOptions(screen.getByLabelText('Snap to'), 'custom');
+    const field = screen.getByLabelText('Snap step');
+
+    await userEvent.clear(field);
+    await userEvent.type(field, '0.03');
+    fireEvent.blur(field);
+
+    // Saved as a preference, not just held on the bar: it is what the export
+    // writes out and what the next session reads back.
+    expect(useEditorStore.getState().currentPreferences()).toMatchObject({
+      snapEnabled: true,
+      snapMode: 'custom',
+      snapStep: 0.03,
+    });
+    expect(screen.getByText('SNAP 0.03 GRID')).toBeInTheDocument();
+
+    // Back to the grid and the figure is kept, not thrown away.
+    await userEvent.selectOptions(screen.getByLabelText('Snap to'), 'grid');
+    expect(screen.getByText('SNAP GRID')).toBeInTheDocument();
+    expect(useEditorStore.getState().snapStep).toBe(0.03);
+  });
+
+  it('holds the same snap setting in the top bar and in preferences', async () => {
+    act(() =>
+      useEditorStore
+        .getState()
+        .setPreferences({ snapEnabled: false, snapMode: 'grid', snapStep: 0.1 }),
+    );
+    render(<App />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'PREFS' }));
+    const dialog = screen.getByRole('dialog', { name: 'PREFERENCES' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'SNAPPING' }));
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'SNAP TRANSFORMS' }));
+
+    // One setting read from two places, so the bar is already showing it.
+    expect(useEditorStore.getState().snapEnabled).toBe(true);
+    expect(screen.getByRole('button', { name: 'SNAP' })).toHaveAttribute('aria-pressed', 'true');
+
+    // The step has no effect until the mode says to use it, so the field says
+    // so rather than taking a figure that would change nothing.
+    expect(within(dialog).getByLabelText('CUSTOM STEP')).toBeDisabled();
+
+    await userEvent.selectOptions(within(dialog).getByLabelText('SNAP TO'), 'custom');
+    const step = within(dialog).getByLabelText('CUSTOM STEP');
+    await userEvent.clear(step);
+    await userEvent.type(step, '0.03');
+    fireEvent.blur(step);
+
+    expect(screen.getByLabelText('Snap to')).toHaveValue('custom');
+    expect(screen.getByLabelText('Snap step')).toHaveValue('0.03');
+  });
+
   it('flips auto merge from the top bar, and only in edit mode', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'ADD' });
@@ -510,6 +591,34 @@ describe('App shell', () => {
 
     act(() => useEditorStore.setState({ viewLost: false }));
     expect(frameAll.className).not.toMatch(/tremble/);
+  });
+
+  it('opens the history from the top bar and travels back through it', async () => {
+    render(<App />);
+    const addPanel = screen.getByRole('region', { name: 'ADD' });
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CYLINDER' }));
+
+    await userEvent.click(screen.getByRole('button', { name: 'HISTORY' }));
+    const dialog = screen.getByRole('dialog', { name: 'HISTORY' });
+    await userEvent.click(within(dialog).getByRole('button', { name: /Add BOX/ }));
+
+    // Two steps in one click, and the scene is back to where the box arrived.
+    expect(useEditorStore.getState().objects).toHaveLength(0);
+  });
+
+  it('sets the number of undo steps from preferences', async () => {
+    render(<App />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'PREFS' }));
+    const dialog = screen.getByRole('dialog', { name: 'PREFERENCES' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'HISTORY' }));
+
+    fireEvent.change(within(dialog).getByRole('slider', { name: 'UNDO STEPS' }), {
+      target: { value: '10' },
+    });
+
+    expect(useEditorStore.getState().historySize).toBe(10);
   });
 
   it('credits the developer in the shortcuts overlay with a LinkedIn link', async () => {

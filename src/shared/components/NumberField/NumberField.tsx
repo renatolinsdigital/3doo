@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 
 import { useTooltipTrigger } from '../../hooks/useTooltipTrigger';
+import { cx } from '../../utils/cx';
 
 import './NumberField.scss';
 
@@ -17,6 +18,12 @@ export interface NumberFieldProps {
   integer?: boolean;
   suffix?: string;
   disabled?: boolean;
+  /**
+   * Keeps the accessible name but drops the visible label cell, for a field
+   * standing in a bar rather than in a column of rows. The label cell is also
+   * the scrub handle, so a bare field is typed and arrowed rather than dragged.
+   */
+  hideLabel?: boolean;
   hint?: string;
 }
 
@@ -43,6 +50,7 @@ export function NumberField({
   integer = false,
   suffix,
   disabled = false,
+  hideLabel = false,
   hint,
 }: NumberFieldProps) {
   const id = useId();
@@ -90,13 +98,13 @@ export function NumberField({
   };
 
   return (
-    <div className="number-field" {...tooltip}>
+    <div className={cx('number-field', hideLabel && 'number-field--bare')} {...tooltip}>
       <label
-        className="number-field__label"
+        className={hideLabel ? 'u-visually-hidden' : 'number-field__label'}
         htmlFor={id}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
+        onPointerDown={hideLabel ? undefined : handlePointerDown}
+        onPointerMove={hideLabel ? undefined : handlePointerMove}
+        onPointerUp={hideLabel ? undefined : handlePointerUp}
       >
         {label}
       </label>

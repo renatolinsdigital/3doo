@@ -1,0 +1,57 @@
+@use '@global-styles/helpers' as *;
+
+.slider {
+  @include brutal-focus-field;
+  @include field-grid;
+
+  &__label {
+    @include field-label;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__control {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 0 var(--space-3);
+    border: var(--border-thin) solid var(--void);
+    background: var(--bone);
+  }
+
+  &__input {
+    flex: 1;
+    min-width: 0;
+    // The one place a native control is left to draw itself: a hand-built
+    // track and thumb would be four vendor prefixes for the same rectangle.
+    accent-color: var(--red);
+    cursor: ew-resize;
+
+    &:disabled {
+      accent-color: var(--bone-shade);
+      cursor: default;
+      // See NumberField: a disabled control swallows the hover the row's hint
+      // hangs off, and the hint is what says why it is unavailable.
+      pointer-events: none;
+    }
+  }
+
+  &__value {
+    @include mono-value;
+
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-1);
+    min-width: 4ch;
+    justify-content: flex-end;
+    color: var(--void);
+  }
+
+  &__suffix {
+    @include label-text;
+
+    color: var(--ink-muted);
+  }
+}

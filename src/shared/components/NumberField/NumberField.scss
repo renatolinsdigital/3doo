@@ -4,6 +4,13 @@
   @include brutal-focus-field;
   @include field-grid;
 
+  // Contains the visually hidden label a bare field renders. See `.select`.
+  position: relative;
+
+  &--bare {
+    grid-template-columns: 1fr;
+  }
+
   &__label {
     @include field-label;
 

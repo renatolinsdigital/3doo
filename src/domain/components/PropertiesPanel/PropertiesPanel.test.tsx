@@ -151,3 +151,69 @@ describe('PropertiesPanel transform precision', () => {
     expect(useEditorStore.getState().objects[0].transform.rotation.y).toBe(y);
   });
 });
+
+describe('PropertiesPanel typed rotation pivot', () => {
+  const ROWS = { LOCATION: 0, ROTATION: 1, SCALE: 2 };
+  const field = (row: keyof typeof ROWS, axis: string) =>
+    screen.getAllByLabelText(axis)[ROWS[row]] as HTMLInputElement;
+
+  const boxFiveMetresOut = () => {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    store.addPrimitive('box');
+    const id = useEditorStore.getState().objects[0].id;
+    store.setObjectTransforms([{ id, transform: { position: { x: -5, y: 0, z: 0 } } }]);
+    store.setCursor({ x: 0, y: 0, z: 0 });
+    return id;
+  };
+
+  it('swings the object round the 3D cursor when that is the pivot', async () => {
+    boxFiveMetresOut();
+    useEditorStore.getState().setPivot('cursor');
+
+    render(<PropertiesPanel />);
+    const y = field('ROTATION', 'Y');
+    await userEvent.clear(y);
+    await userEvent.type(y, '45{Enter}');
+
+    // The handles stand on the cursor, so the turn has to happen there: the box
+    // used to keep its position and spin five metres away from the gizmo.
+    const { position, rotation } = useEditorStore.getState().objects[0].transform;
+    expect(rotation.y).toBeCloseTo(Math.PI / 4);
+    expect(position.x).toBeCloseTo(-Math.SQRT1_2 * 5);
+    expect(position.z).toBeCloseTo(Math.SQRT1_2 * 5);
+  });
+
+  it('turns the object where it stands on the median pivot', async () => {
+    boxFiveMetresOut();
+    useEditorStore.getState().setPivot('median');
+
+    render(<PropertiesPanel />);
+    const y = field('ROTATION', 'Y');
+    await userEvent.clear(y);
+    await userEvent.type(y, '45{Enter}');
+
+    const { position, rotation } = useEditorStore.getState().objects[0].transform;
+    expect(rotation.y).toBeCloseTo(Math.PI / 4);
+    expect(position).toEqual({ x: -5, y: 0, z: 0 });
+  });
+
+  it('reads the next turn off the one already typed rather than compounding it', async () => {
+    boxFiveMetresOut();
+    useEditorStore.getState().setPivot('cursor');
+
+    render(<PropertiesPanel />);
+    const y = field('ROTATION', 'Y');
+    await userEvent.clear(y);
+    await userEvent.type(y, '45{Enter}');
+    await userEvent.clear(y);
+    await userEvent.type(y, '90{Enter}');
+
+    // Two entries, one quarter turn: the field names where to end up, so the
+    // origin sits a quarter turn from where it started, not three eighths.
+    const { position, rotation } = useEditorStore.getState().objects[0].transform;
+    expect(rotation.y).toBeCloseTo(Math.PI / 2);
+    expect(position.x).toBeCloseTo(0);
+    expect(position.z).toBeCloseTo(5);
+  });
+});

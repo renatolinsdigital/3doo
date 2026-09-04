@@ -48,6 +48,44 @@
     }
   }
 
+  // The switch, its step and the field CUSTOM opens read as one control: they
+  // share their borders rather than sitting in a row with gaps, so the step is
+  // plainly the setting the switch turns on and not an unrelated picker beside
+  // it. The field is the odd one out, wearing its own border on the right.
+  &__snap {
+    display: inline-flex;
+    align-items: stretch;
+
+    .segmented {
+      border-right: none;
+    }
+
+    .select,
+    .number-field {
+      min-height: 0;
+    }
+
+    .select__input {
+      min-width: 10ch;
+      padding-inline: var(--space-2);
+      text-align: center;
+    }
+
+    .number-field {
+      border-left: none;
+    }
+
+    .number-field__input-wrap {
+      border-left: none;
+    }
+
+    .number-field__input {
+      width: 7ch;
+      padding-inline: var(--space-2);
+      text-align: center;
+    }
+  }
+
   &__menu {
     display: inline-flex;
   }

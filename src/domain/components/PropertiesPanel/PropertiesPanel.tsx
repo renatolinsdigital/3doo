@@ -6,6 +6,7 @@ import {
   METRE_PARAMS,
   PRIMITIVE_FIELDS,
   type PrimitiveParams,
+  pivotReorient,
   radToDeg,
   degToRad,
   vec3,
@@ -64,6 +65,8 @@ const PARAM_HINTS: Record<keyof PrimitiveParams, string> = {
 export function PropertiesPanel() {
   const object = useActiveObject();
   const mode = useEditorStore((state) => state.mode);
+  const pivot = useEditorStore((state) => state.pivot);
+  const cursor = useEditorStore((state) => state.cursor);
   const setObjectTransform = useEditorStore((state) => state.setObjectTransform);
   const updatePrimitiveParams = useEditorStore((state) => state.updatePrimitiveParams);
   const addMaterial = useEditorStore((state) => state.addMaterial);
@@ -137,12 +140,25 @@ export function PropertiesPanel() {
         precision={TRANSFORM_PRECISION}
         suffix="°"
         disabled={object.locked}
-        hint={(axis) => locked ?? `Rotation around the ${axis.toUpperCase()} axis, in degrees`}
-        onChange={(next) =>
-          setObjectTransform(object.id, {
-            rotation: vec3(degToRad(next.x), degToRad(next.y), degToRad(next.z)),
-          })
+        hint={(axis) =>
+          locked ??
+          `Rotation around the ${axis.toUpperCase()} axis, in degrees${
+            pivot === 'cursor' ? ', turning about the 3D cursor' : ''
+          }`
         }
+        onChange={(next) => {
+          const rotation = vec3(degToRad(next.x), degToRad(next.y), degToRad(next.z));
+          // The pivot decides what a turn is measured about whether it was
+          // dragged off the gizmo or typed here. About the 3D cursor the origin
+          // swings round it, so the position travels with the turn rather than
+          // the object spinning where it stands, metres from the handles.
+          const position =
+            pivot === 'cursor'
+              ? pivotReorient(transform.position, cursor, transform.rotation, rotation)
+              : transform.position;
+
+          setObjectTransform(object.id, { rotation, position });
+        }}
       />
 
       <Vector3Field

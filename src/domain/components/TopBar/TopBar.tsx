@@ -5,14 +5,22 @@ import {
   Button,
   ContextMenu,
   IconButton,
+  NumberField,
   SegmentedControl,
   SegmentedToggle,
+  Select,
   TextField,
   type ContextMenuEntry,
 } from '@shared/components';
 import { cx } from '@shared/utils/cx';
-import { useActiveObject, useActiveShadingSmooth, useEditorStore } from '@store/index';
-import type { EditorMode, OverlaySettings, PivotMode, ShadingMode } from '@store/types';
+import {
+  MAX_SNAP_STEP,
+  MIN_SNAP_STEP,
+  useActiveObject,
+  useActiveShadingSmooth,
+  useEditorStore,
+} from '@store/index';
+import type { EditorMode, OverlaySettings, PivotMode, ShadingMode, SnapMode } from '@store/types';
 
 import { useProjectFiles } from '../../hooks/useProjectFiles';
 
@@ -39,6 +47,11 @@ const SHADING_OPTIONS: readonly { value: ShadingMode; label: string; hint: strin
     hint: 'See-through surfaces, so box-select reaches what is behind',
   },
   { value: 'matcap', label: 'MATCAP', hint: 'Flat, high-contrast shading that reads form' },
+];
+
+const SNAP_OPTIONS: readonly { value: SnapMode; label: string }[] = [
+  { value: 'grid', label: 'GRID' },
+  { value: 'custom', label: 'CUSTOM' },
 ];
 
 const PIVOT_OPTIONS = [
@@ -90,8 +103,15 @@ export function TopBar({ brand }: TopBarProps) {
   const mode = useEditorStore((state) => state.mode);
   const setMode = useEditorStore((state) => state.setMode);
   const projectName = useEditorStore((state) => state.projectName);
+  const undoSteps = useEditorStore((state) => state.historyUndo.length);
   const setProjectName = useEditorStore((state) => state.setProjectName);
   const openDialog = useEditorStore((state) => state.openDialog);
+  // Snapping is a preference, so this bar and the preferences dialog are two
+  // views of one setting rather than two settings that have to be kept in step.
+  const snapEnabled = useEditorStore((state) => state.snapEnabled);
+  const snapMode = useEditorStore((state) => state.snapMode);
+  const snapStep = useEditorStore((state) => state.snapStep);
+  const setPreferences = useEditorStore((state) => state.setPreferences);
   const proportional = useEditorStore((state) => state.proportional);
   const setProportional = useEditorStore((state) => state.setProportional);
   const autoMerge = useEditorStore((state) => state.autoMerge);
@@ -112,6 +132,11 @@ export function TopBar({ brand }: TopBarProps) {
   const viewLost = useEditorStore((state) => state.viewLost);
 
   const { newProject, saveProject, openProject, importMesh } = useProjectFiles();
+
+  const snapHint =
+    snapMode === 'grid'
+      ? 'Snap: a move, a turn and a scale land on the grid instead of wherever the pointer left them'
+      : `Snap: a move, a turn and a scale land on steps of ${snapStep} of the grid square set in preferences, instead of wherever the pointer left them`;
 
   const shadingLabel = SHADING_OPTIONS.find((option) => option.value === shading)?.label ?? 'SOLID';
   const shadingEntries: ContextMenuEntry[] = SHADING_OPTIONS.map((option) => ({
@@ -196,6 +221,37 @@ export function TopBar({ brand }: TopBarProps) {
           value={mode}
           onChange={setMode}
         />
+        <span className="top-bar__snap">
+          <SegmentedToggle
+            label="SNAP"
+            // A ruled square: the grid the step is measured against.
+            icon="▦"
+            iconOnly
+            pressed={snapEnabled}
+            hint={snapHint}
+            onChange={(enabled) => setPreferences({ snapEnabled: enabled })}
+          />
+          <Select<SnapMode>
+            label="Snap to"
+            hideLabel
+            value={snapMode}
+            options={SNAP_OPTIONS}
+            hint="What the steps are measured in: GRID lands on the squares themselves, CUSTOM opens a field for a step of your own"
+            onChange={(mode) => setPreferences({ snapMode: mode })}
+          />
+          {snapMode === 'custom' ? (
+            <NumberField
+              label="Snap step"
+              hideLabel
+              value={snapStep}
+              min={MIN_SNAP_STEP}
+              max={MAX_SNAP_STEP}
+              step={0.01}
+              hint="The step, as a multiple of the grid SCALE set in preferences: 1 is one whole square, 0.03 three hundredths of one. This adjustment is is saved with your preferences."
+              onChange={(step) => setPreferences({ snapStep: step })}
+            />
+          ) : null}
+        </span>
         <SegmentedToggle
           label="PROP"
           // A point with its falloff ring around it, the same ring the
@@ -273,6 +329,18 @@ export function TopBar({ brand }: TopBarProps) {
       </div>
 
       <div className="top-bar__actions">
+        <IconButton
+          label="HISTORY"
+          // A stack of steps, which is what the dialog lists.
+          icon="▤"
+          className="top-bar__icon"
+          hint={
+            undoSteps > 0
+              ? `Undo history: ${undoSteps} ${undoSteps === 1 ? 'step' : 'steps'} to go back through, click one to travel there`
+              : 'Undo history: nothing to go back to yet'
+          }
+          onClick={() => openDialog('history')}
+        />
         <IconButton
           label="FRAME SEL"
           // Crosshair over a point: the camera centres on what is selected.

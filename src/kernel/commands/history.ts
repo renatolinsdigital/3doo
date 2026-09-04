@@ -16,13 +16,30 @@ export class History {
   private past: HistoryEntry[] = [];
   private future: HistoryEntry[] = [];
 
-  constructor(private readonly limit = 64) {}
+  constructor(private limit = 64) {}
 
   /** Call with the document as it looks *before* the mutation. */
   record(label: string, document: ProjectDocument): void {
     this.past.push({ label, document });
-    if (this.past.length > this.limit) this.past.shift();
+    this.trim();
     this.future = [];
+  }
+
+  /**
+   * Re-caps the timeline.
+   *
+   * Every entry holds a whole scene, so the cap is the memory this class costs.
+   * Lowering it drops the oldest steps then and there rather than waiting for
+   * the next edit, which is the point of lowering it.
+   */
+  setLimit(limit: number): void {
+    this.limit = Math.max(1, Math.floor(limit));
+    this.trim();
+  }
+
+  private trim(): void {
+    if (this.past.length > this.limit) this.past.splice(0, this.past.length - this.limit);
+    if (this.future.length > this.limit) this.future.splice(0, this.future.length - this.limit);
   }
 
   /**
@@ -49,6 +66,50 @@ export class History {
     if (!entry) return null;
     this.past.push({ label: entry.label, document: current });
     return entry;
+  }
+
+  /**
+   * Travels several steps at once, for a click straight into the timeline.
+   *
+   * The document each step hands back is the one the next step starts from, so
+   * the trip costs no more than a single step does: only the state it lands on
+   * is ever loaded into the scene. Runs out quietly at the end of the timeline
+   * and reports the last entry it reached.
+   */
+  undoTimes(count: number, current: ProjectDocument): HistoryEntry | null {
+    return this.travel(count, current, (document) => this.undo(document));
+  }
+
+  redoTimes(count: number, current: ProjectDocument): HistoryEntry | null {
+    return this.travel(count, current, (document) => this.redo(document));
+  }
+
+  private travel(
+    count: number,
+    current: ProjectDocument,
+    step: (document: ProjectDocument) => HistoryEntry | null,
+  ): HistoryEntry | null {
+    let landed: HistoryEntry | null = null;
+    let document = current;
+
+    for (let taken = 0; taken < count; taken++) {
+      const entry = step(document);
+      if (!entry) break;
+      landed = entry;
+      document = entry.document;
+    }
+
+    return landed;
+  }
+
+  /** What each undo would take back, newest first: the order a list reads in. */
+  get undoLabels(): string[] {
+    return this.past.map((entry) => entry.label).reverse();
+  }
+
+  /** What each redo would put back, the next one first. */
+  get redoLabels(): string[] {
+    return this.future.map((entry) => entry.label).reverse();
   }
 
   get canUndo(): boolean {

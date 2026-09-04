@@ -13,6 +13,7 @@ export { LoopOperationsPanel } from './LoopOperationsPanel/LoopOperationsPanel';
 export { TopologyPanel } from './TopologyPanel/TopologyPanel';
 export { MergeDialog } from './MergeDialog/MergeDialog';
 export { ExportDialog } from './ExportDialog/ExportDialog';
+export { HistoryDialog } from './HistoryDialog/HistoryDialog';
 export { PreferencesDialog } from './PreferencesDialog/PreferencesDialog';
 export { ShortcutOverlay } from './ShortcutOverlay/ShortcutOverlay';
 export { CursorMenu } from './CursorMenu/CursorMenu';

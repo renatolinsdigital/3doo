@@ -1,13 +1,27 @@
-import { Accordion, Button, ColorField, Modal, NumberField, Toggle } from '@shared/components';
+import {
+  Accordion,
+  Button,
+  ColorField,
+  Modal,
+  NumberField,
+  Select,
+  Slider,
+  Toggle,
+} from '@shared/components';
 import {
   MAX_GRID_SCALE,
   MAX_GRID_SUBDIVISIONS,
+  MAX_HISTORY_SIZE,
   MAX_SELECTION_LINE_WIDTH,
+  MAX_SNAP_STEP,
   MIN_GRID_SCALE,
   MIN_GRID_SUBDIVISIONS,
+  MIN_HISTORY_SIZE,
   MIN_SELECTION_LINE_WIDTH,
+  MIN_SNAP_STEP,
   useEditorStore,
 } from '@store/index';
+import type { SnapMode } from '@store/types';
 
 import {
   PREFERENCES_FILE,
@@ -16,6 +30,13 @@ import {
   saveTextFile,
   wrongKindMessage,
 } from '../../services/download';
+
+import './PreferencesDialog.scss';
+
+const SNAP_OPTIONS: readonly { value: SnapMode; label: string }[] = [
+  { value: 'grid', label: 'GRID' },
+  { value: 'custom', label: 'CUSTOM' },
+];
 
 export function PreferencesDialog() {
   const open = useEditorStore((state) => state.dialog === 'preferences');
@@ -26,6 +47,10 @@ export function PreferencesDialog() {
   const viewportBackground = useEditorStore((state) => state.viewportBackground);
   const gridScale = useEditorStore((state) => state.gridScale);
   const gridSubdivisions = useEditorStore((state) => state.gridSubdivisions);
+  const snapEnabled = useEditorStore((state) => state.snapEnabled);
+  const snapMode = useEditorStore((state) => state.snapMode);
+  const snapStep = useEditorStore((state) => state.snapStep);
+  const historySize = useEditorStore((state) => state.historySize);
   const gridColor = useEditorStore((state) => state.gridColor);
   const gridOpacity = useEditorStore((state) => state.gridOpacity);
   const gridMajorColor = useEditorStore((state) => state.gridMajorColor);
@@ -161,6 +186,54 @@ export function PreferencesDialog() {
           hint="How solid the heavy lines are: 0 hides them, 1 is a flat line"
           onChange={(opacity) => setPreferences({ gridMajorOpacity: opacity })}
         />
+      </Accordion>
+
+      <Accordion title="SNAPPING">
+        <Toggle
+          label="SNAP TRANSFORMS"
+          checked={snapEnabled}
+          hint="A move, a turn and a scale land on whole steps instead of wherever the pointer left them. The same switch as the one in the top bar"
+          onChange={(enabled) => setPreferences({ snapEnabled: enabled })}
+        />
+        <Select<SnapMode>
+          label="SNAP TO"
+          value={snapMode}
+          options={SNAP_OPTIONS}
+          hint="What the steps are measured in: GRID lands on the squares themselves, CUSTOM on the step below. The same picker as the one in the top bar"
+          onChange={(mode) => setPreferences({ snapMode: mode })}
+        />
+        <NumberField
+          label="CUSTOM STEP"
+          value={snapStep}
+          min={MIN_SNAP_STEP}
+          max={MAX_SNAP_STEP}
+          step={0.05}
+          suffix="×"
+          disabled={snapMode === 'grid'}
+          hint={
+            snapMode === 'grid'
+              ? 'The step CUSTOM uses, as a multiple of the SCALE above. Set SNAP TO to CUSTOM to use it'
+              : 'How far apart the steps are, as a multiple of the SCALE above: 1 is one whole square, 0.1 a tenth of one.'
+          }
+          onChange={(step) => setPreferences({ snapStep: step })}
+        />
+      </Accordion>
+
+      <Accordion title="HISTORY">
+        <Slider
+          label="UNDO STEPS"
+          value={historySize}
+          min={MIN_HISTORY_SIZE}
+          max={MAX_HISTORY_SIZE}
+          suffix="steps"
+          hint="How many edits Ctrl+Z can walk back through, and how many the history dialog lists"
+          onChange={(historySize) => setPreferences({ historySize })}
+        />
+        <p className="preferences__hint">
+          Undo keeps a whole copy of the scene per step, so this figure multiplies the model rather
+          than adding to it. Lower it if editing turns sluggish or the tab is killed for
+          memory.
+        </p>
       </Accordion>
 
       <Accordion title="SELECTION LINE">

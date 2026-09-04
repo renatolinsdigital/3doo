@@ -27,4 +27,8 @@ export const useEditorStore = create<EditorStore>()(
   })),
 );
 
+// The undo timeline is built before any slice exists, at the size a fresh
+// install uses, so a size restored from storage is handed over once here.
+useEditorStore.getState().setHistoryLimit(useEditorStore.getState().historySize);
+
 export const editorStore = useEditorStore;

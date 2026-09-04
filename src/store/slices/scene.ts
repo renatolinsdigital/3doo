@@ -42,6 +42,7 @@ import {
 import { WorkerUnavailable, booleanOffThread, canRunOffThread } from '../booleanOffThread';
 import type { EditorStore } from '../useEditorStore';
 import type { LastOperator, Material, SceneObject } from '../types';
+import { DEFAULT_PREFERENCES } from './preferences';
 
 const BOOLEAN_LABELS: Record<BooleanOp, string> = {
   union: 'Union',
@@ -49,8 +50,24 @@ const BOOLEAN_LABELS: Record<BooleanOp, string> = {
   intersect: 'Intersect',
 };
 
-/** Undo lives outside React state: only its two flags ever drive a render. */
-const history = new History(64);
+/**
+ * Undo lives outside React state: the store mirrors its flags and its labels,
+ * and the documents themselves never reach a render.
+ *
+ * Built at the size a fresh install uses. A stored preference is handed over
+ * once the store exists, in `useEditorStore`.
+ */
+const history = new History(DEFAULT_PREFERENCES.historySize);
+
+/** The mirror the undo buttons and the history dialog render from. */
+function historyState() {
+  return {
+    canUndo: history.canUndo,
+    canRedo: history.canRedo,
+    historyUndo: history.undoLabels,
+    historyRedo: history.redoLabels,
+  };
+}
 
 let objectCounter = 0;
 let materialCounter = 0;
@@ -118,6 +135,10 @@ export interface SceneSlice {
   meshVersion: number;
   canUndo: boolean;
   canRedo: boolean;
+  /** What each undo would take back, newest first, for the history dialog. */
+  historyUndo: string[];
+  /** What each redo would put back, the next one first. */
+  historyRedo: string[];
   status: string;
   lastOperator: LastOperator | null;
   /**
@@ -200,6 +221,11 @@ export interface SceneSlice {
   discardHistory: () => void;
   undo: () => void;
   redo: () => void;
+  /** Steps several entries back at once, for a click into the history dialog. */
+  undoTimes: (count: number) => void;
+  redoTimes: (count: number) => void;
+  /** Re-caps the timeline, dropping the oldest steps the new size cannot hold. */
+  setHistoryLimit: (limit: number) => void;
   touchMesh: (status?: string) => void;
 
   /** `restoreLayout` puts the folded panels back too, for a file load, not for undo. */
@@ -226,6 +252,8 @@ export const createSceneSlice: StateCreator<
   meshVersion: 0,
   canUndo: false,
   canRedo: false,
+  historyUndo: [],
+  historyRedo: [],
   status: 'Ready',
   lastOperator: null,
   lockedAttempt: null,
@@ -249,7 +277,7 @@ export const createSceneSlice: StateCreator<
 
   recordHistoryDocument: (label, document) => {
     history.record(label, document);
-    set({ canUndo: history.canUndo, canRedo: history.canRedo });
+    set(historyState());
   },
 
   addPrimitive: (kind, params) => {
@@ -968,7 +996,26 @@ export const createSceneSlice: StateCreator<
     }));
   },
 
-  setCursor: (position, status = 'Cursor placed') => set({ cursor: { ...position }, status }),
+  /**
+   * Moves the 3D cursor, as an edit of its own.
+   *
+   * The cursor rides in the document, so undo was already putting it back: what
+   * it had no entry for was the move itself, and Ctrl+Z after placing it undid
+   * whatever edit came before instead, taking the model with it. One entry per
+   * placement is what makes Ctrl+Z give the cursor back and leave the rest of
+   * the scene where it stands.
+   *
+   * A placement that lands where the cursor already is records nothing, so
+   * pressing Shift+C twice does not bury the edit behind it.
+   */
+  setCursor: (position, status = 'Cursor placed') => {
+    if (equals(get().cursor, position)) {
+      set({ status });
+      return;
+    }
+    get().recordHistory(status);
+    set({ cursor: { ...position }, status });
+  },
 
   cursorToSelection: () => {
     const anchor = selectionAnchor(get());
@@ -1214,35 +1261,46 @@ export const createSceneSlice: StateCreator<
 
   discardHistory: () => {
     history.drop();
-    set({ canUndo: history.canUndo, canRedo: history.canRedo });
+    set(historyState());
   },
 
-  undo: () => {
-    const entry = history.undo(get().snapshotDocument());
+  undo: () => get().undoTimes(1),
+
+  redo: () => get().redoTimes(1),
+
+  undoTimes: (count) => {
+    const steps = Math.min(count, get().historyUndo.length);
+    const entry = history.undoTimes(count, get().snapshotDocument());
     if (!entry) {
       set({ status: 'Nothing to undo' });
       return;
     }
     get().loadProjectDocument(entry.document);
     set({
-      canUndo: history.canUndo,
-      canRedo: history.canRedo,
-      status: `Undo: ${entry.label}`,
+      ...historyState(),
+      // A trip through the dialog says how far it went; a plain Ctrl+Z has only
+      // ever named what it took back.
+      status: steps > 1 ? `Undo ${steps} steps, back to: ${entry.label}` : `Undo: ${entry.label}`,
     });
   },
 
-  redo: () => {
-    const entry = history.redo(get().snapshotDocument());
+  redoTimes: (count) => {
+    const steps = Math.min(count, get().historyRedo.length);
+    const entry = history.redoTimes(count, get().snapshotDocument());
     if (!entry) {
       set({ status: 'Nothing to redo' });
       return;
     }
     get().loadProjectDocument(entry.document);
     set({
-      canUndo: history.canUndo,
-      canRedo: history.canRedo,
-      status: `Redo: ${entry.label}`,
+      ...historyState(),
+      status: steps > 1 ? `Redo ${steps} steps, up to: ${entry.label}` : `Redo: ${entry.label}`,
     });
+  },
+
+  setHistoryLimit: (limit) => {
+    history.setLimit(limit);
+    set(historyState());
   },
 
   loadProjectDocument: (document, restoreLayout = false) => {
@@ -1275,8 +1333,7 @@ export const createSceneSlice: StateCreator<
       selectedObjectIds: [],
       cursor: vec3(),
       projectName: 'untitled',
-      canUndo: false,
-      canRedo: false,
+      ...historyState(),
       status: 'New project',
       lastOperator: null,
       lockedAttempt: null,

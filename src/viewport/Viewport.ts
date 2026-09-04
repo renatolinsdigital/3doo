@@ -32,11 +32,11 @@ import {
   translateVerts,
   vec3,
 } from '@kernel/index';
-import { activeObject, evaluatedMesh, useEditorStore } from '@store/index';
+import { activeObject, evaluatedMesh, snapStepFor, useEditorStore } from '@store/index';
 import type { CursorSnapTargets, SceneObject } from '@store/types';
 
 import { CameraController, MAX_ORBIT_DISTANCE } from './CameraController';
-import { ViewportGrid } from './grid';
+import { type SnapAmounts, ViewportGrid, snapAmounts, snapTo } from './grid';
 import { type MarqueeLayer, createMarqueeLayer, drawMarquee, hideMarquee } from './marquee';
 import {
   type FacingElements,
@@ -795,6 +795,11 @@ export class Viewport {
         { fireImmediately: true },
       ),
       store.subscribe(
+        (state) => [state.snapEnabled, state.snapMode, state.snapStep, state.gridScale] as const,
+        () => this.syncGizmoSnap(),
+        { equalityFn: shallowArrayEqual, fireImmediately: true },
+      ),
+      useEditorStore.subscribe(
         (state) => [state.overlays.grid, state.overlays.axes] as const,
         ([grid, axes]) => this.grid.setVisibility(grid, axes),
         { equalityFn: shallowArrayEqual, fireImmediately: true },
@@ -1278,6 +1283,31 @@ export class Viewport {
     state.touchMesh();
   };
 
+  /**
+   * What snapping quantises to right now, or null when it is off.
+   *
+   * Read fresh at every step rather than captured at drag start, so flipping
+   * the switch or changing the step mid-drag takes effect where the user
+   * expects it to rather than at the next drag.
+   */
+  private snapping(): SnapAmounts | null {
+    const { snapEnabled, snapMode, snapStep, gridScale } = useEditorStore.getState();
+    return snapAmounts(snapEnabled, snapStepFor(snapMode, snapStep), gridScale);
+  }
+
+  /**
+   * Hands the gizmo the two amounts it can quantise on its own.
+   *
+   * TransformControls covers a move and a turn about one axis, which is exactly
+   * the part of a drag it drives itself. The scale, the free turn and the
+   * keyboard transforms are applied here instead, and snap their own amount.
+   */
+  private syncGizmoSnap(): void {
+    const amounts = this.snapping();
+    this.gizmo.translationSnap = amounts?.translate ?? null;
+    this.gizmo.rotationSnap = amounts?.rotate ?? null;
+  }
+
   /** Where a world point lands on the canvas, in the same pixels as the pointer. */
   private projectToPixels(point: THREE.Vector3): THREE.Vector2 {
     const ndc = point.clone().project(this.camera);
@@ -1486,8 +1516,15 @@ export class Viewport {
     drag.applied += step;
 
     const state = useEditorStore.getState();
+    // Quantised off the running total rather than the step: one pointer move
+    // covers a fraction of a notch, so rounding each step on its own would
+    // round every one of them to nothing and the turn would never move.
+    const snap = this.snapping();
+    const total = snap ? snapTo(drag.applied, snap.rotate) : drag.applied;
+    const settled = snap ? snapTo(previous, snap.rotate) : previous;
+
     if (drag.modal) {
-      state.updateModal({ value: vec3(THREE.MathUtils.radToDeg(drag.applied), 0, 0) });
+      state.updateModal({ value: vec3(THREE.MathUtils.radToDeg(total), 0, 0) });
     }
 
     const baseline = this.gizmoBaseline;
@@ -1501,7 +1538,7 @@ export class Viewport {
       // Re-applied whole against the drag-start baseline, so pinning an axis
       // part-way through re-reads the same total turn about the new one rather
       // than stacking it on what the old one had already done.
-      this.gizmoProxy.quaternion.copy(turn(drag.applied).multiply(baseline.quaternion));
+      this.gizmoProxy.quaternion.copy(turn(total).multiply(baseline.quaternion));
       this.applyObjectGroupTransform(state);
       return;
     }
@@ -1511,8 +1548,9 @@ export class Viewport {
 
     // Edit mode has no per-vertex baseline to re-apply against, so it turns by
     // the step since the last move and `applyEditTransform` re-seats the
-    // baseline behind it.
-    this.gizmoProxy.quaternion.copy(turn(drag.applied - previous).multiply(baseline.quaternion));
+    // baseline behind it. Snapping leaves that step at zero while the pointer
+    // crosses a notch without reaching the next, which reads as nothing to do.
+    this.gizmoProxy.quaternion.copy(turn(total - settled).multiply(baseline.quaternion));
     this.applyEditTransform(state, object);
   }
 
@@ -1894,7 +1932,15 @@ export class Viewport {
 
     this.updateModalLine();
 
-    const factor = gizmoScaleRatio(this.pointerPixels.distanceTo(drag.pivotPixels), drag.reference);
+    const dragged = gizmoScaleRatio(
+      this.pointerPixels.distanceTo(drag.pivotPixels),
+      drag.reference,
+    );
+    // Held off zero at the smallest notch: a factor of nothing flattens the
+    // selection to a point, and dragging back out cannot bring its shape back.
+    const snap = this.snapping();
+    const factor = snap ? Math.max(snap.scale, snapTo(dragged, snap.scale)) : dragged;
+
     const state = useEditorStore.getState();
     const along = (axis: string) => (drag.axis.includes(axis) ? factor : 1);
     const target = vec3(along('X'), along('Y'), along('Z'));

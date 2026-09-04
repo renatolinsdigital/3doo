@@ -8,6 +8,7 @@ import {
   AddPanel,
   BooleanPanel,
   ExportDialog,
+  HistoryDialog,
   LoopOperationsPanel,
   MergeDialog,
   ModifierStack,
@@ -98,6 +99,7 @@ export function ModelingModule() {
       <StatusBar />
 
       <ExportDialog />
+      <HistoryDialog />
       <MergeDialog />
       <PreferencesDialog />
       <ShortcutOverlay />

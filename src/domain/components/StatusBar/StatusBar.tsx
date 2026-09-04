@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { cx } from '@shared/utils/cx';
-import { useEditorStore, useSceneStats } from '@store/index';
+import { snapStepLabel, useEditorStore, useSceneStats } from '@store/index';
 import type { ModalTransform, OperationProgress } from '@store/types';
 
 import './StatusBar.scss';
@@ -38,7 +38,9 @@ export function StatusBar() {
   const status = useEditorStore((state) => state.status);
   const mode = useEditorStore((state) => state.mode);
   const selectMode = useEditorStore((state) => state.selectMode);
-  const snap = useEditorStore((state) => state.snap);
+  const snapEnabled = useEditorStore((state) => state.snapEnabled);
+  const snapMode = useEditorStore((state) => state.snapMode);
+  const snapStep = useEditorStore((state) => state.snapStep);
   const proportional = useEditorStore((state) => state.proportional);
   const autoMerge = useEditorStore((state) => state.autoMerge);
   const pivot = useEditorStore((state) => state.pivot);
@@ -82,7 +84,7 @@ export function StatusBar() {
           {mode === 'edit' ? `EDIT / ${selectMode.toUpperCase()}` : 'OBJECT'}
         </Flag>
         <Flag on={pivot === 'cursor'}>PIVOT {pivot === 'cursor' ? 'CURSOR' : 'MEDIAN'}</Flag>
-        <Flag on={snap.enabled}>SNAP {snap.enabled ? snap.mode.toUpperCase() : 'OFF'}</Flag>
+        <Flag on={snapEnabled}>SNAP {snapEnabled ? snapStepLabel(snapMode, snapStep) : 'OFF'}</Flag>
         <Flag on={proportional.enabled}>
           PROP {proportional.enabled ? proportional.falloff.toUpperCase() : 'OFF'}
         </Flag>

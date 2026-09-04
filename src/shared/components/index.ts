@@ -13,6 +13,7 @@ export {
 export { TextField, type TextFieldProps } from './TextField/TextField';
 export { Toggle, type ToggleProps } from './Toggle/Toggle';
 export { Select, type SelectOption, type SelectProps } from './Select/Select';
+export { Slider, type SliderProps } from './Slider/Slider';
 export { ColorField, type ColorFieldProps } from './ColorField/ColorField';
 export {
   Vector3Field,

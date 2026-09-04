@@ -19,7 +19,8 @@ export type SelectShape = 'box' | 'circle' | 'lasso';
 
 export type ToolId = 'select' | 'move' | 'rotate' | 'scale' | 'extrude' | 'inset' | 'loopcut';
 
-export type SnapMode = 'increment' | 'vertex' | 'edge' | 'face';
+/** What snapping measures against: the grid square itself, or a step you set. */
+export type SnapMode = 'grid' | 'custom';
 
 export type PivotMode = 'median' | 'cursor' | 'individual' | 'active';
 
@@ -47,12 +48,6 @@ export interface SceneObject {
   activeMaterial: number;
   /** Set while a freshly added primitive can still be re-parameterised. */
   primitive: { kind: PrimitiveKind; params: PrimitiveParams } | null;
-}
-
-export interface SnapSettings {
-  enabled: boolean;
-  mode: SnapMode;
-  increment: number;
 }
 
 /**
@@ -154,6 +149,35 @@ export interface Preferences {
   gridScale: number;
   /** How many divisions fall between two heavy lines. */
   gridSubdivisions: number;
+  /**
+   * Snapping: a move, a turn and a scale land on whole steps instead of
+   * wherever the pointer left them.
+   *
+   * Kept here beside `gridScale` rather than with the tools, because the step
+   * below is measured against it: they are one setting, and the top bar and the
+   * preferences dialog are two views of it.
+   */
+  snapEnabled: boolean;
+  /** Whether the steps are grid squares, or `snapStep` of one. */
+  snapMode: SnapMode;
+  /**
+   * The custom step, as a multiple of `gridScale`, used while `snapMode` is
+   * custom. 1 is one whole square, 0.1 a tenth of one.
+   *
+   * Kept while the mode is grid rather than reset to 1, so switching to the
+   * grid and back does not cost the figure that was typed. Unlike the plane it
+   * is named against it does not rescale with the zoom: a step that changed by
+   * ten every time the camera pulled back could not place anything.
+   */
+  snapStep: number;
+  /**
+   * How many steps undo keeps, from `MIN_HISTORY_SIZE` to `MAX_HISTORY_SIZE`.
+   *
+   * A preference rather than a fixed cap because what it costs depends on the
+   * scene: each step is a whole copy of it, so the same fifty steps are nothing
+   * on a few boxes and hundreds of megabytes on a dense sculpt.
+   */
+  historySize: number;
   /** `#rrggbb` of the fine division lines, and how solid they are (0 to 1). */
   gridColor: string;
   gridOpacity: number;
@@ -168,7 +192,7 @@ export interface Toast {
   message: string;
 }
 
-export type DialogId = 'export' | 'shortcuts' | 'merge' | 'preferences' | null;
+export type DialogId = 'export' | 'shortcuts' | 'merge' | 'preferences' | 'history' | null;
 
 export interface HintState {
   text: string;
