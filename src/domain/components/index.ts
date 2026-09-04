@@ -17,3 +17,4 @@ export { HistoryDialog } from './HistoryDialog/HistoryDialog';
 export { PreferencesDialog } from './PreferencesDialog/PreferencesDialog';
 export { ShortcutOverlay } from './ShortcutOverlay/ShortcutOverlay';
 export { CursorMenu } from './CursorMenu/CursorMenu';
+export { ViewAxes } from './ViewAxes/ViewAxes';

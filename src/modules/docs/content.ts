@@ -104,7 +104,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Panel titles',
             'Every panel folds away when its title is clicked. Which ones are folded is saved with the project.',
           ],
-          ['Viewport', 'The scene. Orbit, pan and zoom here; right-click places the 3D cursor.'],
+          [
+            'Viewport',
+            'The scene. Orbit, pan and zoom here; right-click places the 3D cursor. The axis widget rides in its top right corner.',
+          ],
           [
             'Right column',
             'OUTLINER for the object list, PROPERTIES for the active object, MODIFIERS for its stack.',
@@ -458,7 +461,15 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Axis views',
             '7 for top, Ctrl+1 for front, Ctrl+3 for side. 5 toggles orthographic and perspective.',
           ],
+          [
+            'The axis widget',
+            'The six coloured ends in the top right corner turn with the camera, so it always says which way the world is facing. Click one to look from that side: the lettered ends are +X, +Y and +Z, and the hollow ones are their negatives.',
+          ],
         ],
+      },
+      {
+        kind: 'note',
+        text: 'The widget doubles as a readout for a transform in progress. Pin a move, a turn or a scale to an axis, or grab one handle of the gizmo, and the two axes it is leaving alone fade back so the corner says what is about to move. A drag that starts anywhere in that corner other than on an end still orbits the scene, so the widget costs no viewport.',
       },
       {
         kind: 'table',

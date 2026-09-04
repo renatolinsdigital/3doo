@@ -3,6 +3,7 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 
 import { AXIS_COLORS, ObjectView, VIEWPORT_COLORS } from '@bridge/index';
 import {
+  type Axis,
   type BMesh,
   type PivotTool,
   type SelectMode,
@@ -56,6 +57,7 @@ import {
   pickObjectsInRegion,
   regionForShape,
 } from './picking';
+import { pinnedAxes, publishViewAxes, resetViewAxes } from './viewAxes';
 
 /** Beyond this multiple of the max zoom, the scene reads as empty rather than distant. */
 const VIEW_LOST_DISTANCE = MAX_ORBIT_DISTANCE * 0.45;
@@ -463,6 +465,8 @@ export class Viewport {
   /** Last cursor written to the canvas; the render loop would otherwise set it every frame. */
   private appliedCursor = '';
   private recentVerts: { objectId: string; ids: Set<number>; expiresAt: number } | null = null;
+  /** Last frame handed to the corner axis widget, so an unchanged one is not resent. */
+  private publishedViewAxes = '';
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -3077,8 +3081,57 @@ export class Viewport {
     this.updateSelectionOutlines();
     if (this.modalGuideUp()) this.standDownGizmo();
     this.expireRecentVerts();
+    this.publishViewAxes();
     this.renderer.render(this.scene, this.camera);
   };
+
+  /**
+   * Hands the corner widget the camera's orientation and whatever axis a
+   * transform is pinned to.
+   *
+   * Only on a change: the widget writes to the DOM when it hears, and an orbit
+   * that has come to rest would otherwise have it rewriting the same numbers
+   * sixty times a second.
+   */
+  private publishViewAxes(): void {
+    const right = new THREE.Vector3();
+    const up = new THREE.Vector3();
+    const toward = new THREE.Vector3();
+    this.camera.matrixWorld.extractBasis(right, up, toward);
+    const axes = this.pinnedTransformAxes();
+
+    const signature = `${right.toArray()}|${up.toArray()}|${toward.toArray()}|${axes?.join('') ?? ''}`;
+    if (signature === this.publishedViewAxes) return;
+    this.publishedViewAxes = signature;
+
+    publishViewAxes({
+      basis: {
+        right: vec3(right.x, right.y, right.z),
+        up: vec3(up.x, up.y, up.z),
+        toward: vec3(toward.x, toward.y, toward.z),
+      },
+      axes,
+    });
+  }
+
+  /**
+   * The axes a transform in progress is running along, or null when it is free.
+   *
+   * Two sources, because a transform is pinned two ways: X, Y or Z during a
+   * modal drag, which the store carries, and the handle a gizmo drag was
+   * grabbed by, which only the gizmo knows. A plane handle names two axes and
+   * the free handle names none.
+   */
+  private pinnedTransformAxes(): readonly Axis[] | null {
+    const modal = useEditorStore.getState().modal;
+    if (modal?.axis) return pinnedAxes(modal.axis, modal.excludeAxis);
+
+    if (!this.gizmoDragging) return null;
+    const handle = (this.gizmo as unknown as { axis: string | null }).axis ?? '';
+    const axes = (['x', 'y', 'z'] as const).filter((axis) => handle.toLowerCase().includes(axis));
+    // All three is the free handle, which pins nothing at all.
+    return axes.length > 0 && axes.length < 3 ? axes : null;
+  }
 
   /**
    * Marks the pointer for whichever transform is under way.
@@ -3159,6 +3212,9 @@ export class Viewport {
     // Handed over before anything is torn down, for whichever viewport is
     // mounted next.
     useEditorStore.getState().setCameraPose(this.controls.pose());
+    // The widget outlives no viewport: without this it would sit at the last
+    // orientation this one published until the next one draws a frame.
+    resetViewAxes();
 
     for (const unsubscribe of this.unsubscribers) unsubscribe();
     this.canvas.removeEventListener('pointerdown', this.handlePointerDown);

@@ -1,0 +1,114 @@
+.view-axes {
+  position: absolute;
+  // Clear of the right-hand panel column, which floats over the viewport
+  // rather than sitting beside it: the widget would otherwise be behind the
+  // outliner, where the corner of the viewport actually is. One gap from the
+  // column, the same gap the column keeps from the edge.
+  top: var(--panel-gap);
+  right: calc(var(--right-column) + var(--panel-gap) * 2);
+  // One rung over the panel layer rather than under it, so nothing floating
+  // there can swallow it again. Still far below the menus and tooltips, which
+  // have to open over the widget.
+  z-index: calc(var(--z-panel) + 1);
+  width: 92px;
+  height: 92px;
+  // The corner is still viewport: an orbit that starts here has to reach the
+  // canvas underneath. Only the ends themselves answer the pointer.
+  pointer-events: none;
+  user-select: none;
+
+  &__plate {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+
+  &__spoke {
+    stroke-width: 3;
+    stroke-linecap: round;
+
+    &--x {
+      stroke: var(--red);
+    }
+
+    &--y {
+      stroke: var(--amber);
+    }
+
+    &--z {
+      stroke: var(--cyan);
+    }
+  }
+
+  &__ball {
+    pointer-events: auto;
+    cursor: pointer;
+
+    circle {
+      // The same hard outline the buttons wear, so the widget reads as part of
+      // the same tool rather than as a picture of one.
+      stroke: var(--void);
+      stroke-width: 2;
+    }
+
+    text {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 700;
+      fill: var(--void);
+      text-anchor: middle;
+      dominant-baseline: central;
+      pointer-events: none;
+    }
+
+    &--x circle {
+      fill: var(--red);
+    }
+
+    &--y circle {
+      fill: var(--amber);
+    }
+
+    &--z circle {
+      fill: var(--cyan);
+    }
+
+    // A negative end is the axis in outline: filled with the viewport's own
+    // ground so the spoke does not show through, and wearing its colour on the
+    // rim instead. Hovering fills it, which is the only place the widget says
+    // "this is a button" before you press it.
+    &--negative circle {
+      fill: var(--ash);
+      stroke-width: 3;
+    }
+
+    &--negative.view-axes__ball--x circle {
+      stroke: var(--red);
+    }
+
+    &--negative.view-axes__ball--y circle {
+      stroke: var(--amber);
+    }
+
+    &--negative.view-axes__ball--z circle {
+      stroke: var(--cyan);
+    }
+
+    &--negative:hover.view-axes__ball--x circle {
+      fill: var(--red);
+    }
+
+    &--negative:hover.view-axes__ball--y circle {
+      fill: var(--amber);
+    }
+
+    &--negative:hover.view-axes__ball--z circle {
+      fill: var(--cyan);
+    }
+
+    &:hover circle {
+      stroke: var(--bone);
+    }
+  }
+}

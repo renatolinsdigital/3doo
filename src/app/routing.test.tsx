@@ -6,8 +6,11 @@ import { App } from './App';
 import { moduleForPath } from './modules';
 
 // The modeling module mounts the real viewport, which needs a WebGL context
-// jsdom does not provide. Only the Three.js entry point is stubbed.
-vi.mock('@viewport/index', () => ({
+// jsdom does not provide. Only the Three.js entry point is stubbed; the rest of
+// the module is real, since the corner axis widget reads its frame channel
+// from here.
+vi.mock('@viewport/index', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@viewport/index')>()),
   Viewport: class {
     resize() {}
     dispose() {}
@@ -125,9 +128,7 @@ describe('docs module', () => {
 
     // The operation, its shortcut and the note that goes with it, gathered out
     // of a section the reader would otherwise have to know to open.
-    expect(
-      screen.getByRole('row', { name: /Slide .*vertex select/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /Slide .*vertex select/ })).toBeInTheDocument();
     expect(screen.getByText(/in edit mode is the whole of it/)).toBeInTheDocument();
     // Cut to the rows that matched: its neighbour in the same table is gone.
     expect(screen.queryByRole('row', { name: /Chamfers the selected edges/ })).toBeNull();

@@ -45,6 +45,11 @@
   --field-label-min: 56px;
   --box-size: 16px;
   --rail-size: 48px;
+  // The floating right-hand column. Read by anything that has to keep clear of
+  // it, since the panels are over the viewport rather than beside it: the
+  // narrower one the tablet layout uses, and none at all on a phone, are set on
+  // the shell where those breakpoints live.
+  --right-column: 264px;
 
   // Spacing scale
   --space-1: 2px;

@@ -7,8 +7,11 @@ import { useEditorStore } from '@store/index';
 import { App } from './App';
 
 // The real viewport needs a WebGL context, which jsdom does not provide. Only
-// the Three.js entry point is stubbed; every panel below is the real component.
-vi.mock('@viewport/index', () => ({
+// the Three.js entry point is stubbed; every panel below is the real component,
+// and the rest of the module is real too, since the corner axis widget reads
+// its frame channel from here.
+vi.mock('@viewport/index', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@viewport/index')>()),
   Viewport: class {
     resize() {}
     dispose() {}

@@ -63,7 +63,7 @@
 
   &__right {
     inset-inline-end: var(--panel-gap);
-    width: 264px;
+    width: var(--right-column);
 
     // The outliner scrolls inside itself rather than pushing the panels below
     // it out of reach as the scene grows.
@@ -73,16 +73,17 @@
   }
 
   @include tablet-down {
+    --right-column: 224px;
+
     &__left {
       display: none;
-    }
-
-    &__right {
-      width: 224px;
     }
   }
 
   @include mobile {
+    // Nothing to keep clear of once the column is gone.
+    --right-column: 0px;
+
     &__right {
       display: none;
     }
