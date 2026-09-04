@@ -101,28 +101,32 @@ function originOffset(object: SceneObject): Vec3 {
 }
 
 /**
- * Puts one object's origin back on the middle of its own mesh.
+ * Puts one object's origin on a world point, leaving the mesh where it stands.
  *
  * The vertices give up exactly what the origin gains, so nothing moves on
- * screen. It writes into the mesh, so the caller has to own that mesh: one with
+ * screen: the point read in the object's own frame is the shift every vertex
+ * owes. It writes into the mesh, so the caller has to own that mesh: one with
  * other users would carry every one of them off its own origin.
  */
-function recenterOrigin(object: SceneObject): SceneObject {
-  const offset = originOffset(object);
-  if (equals(offset, vec3())) return object;
-
-  for (const vert of object.mesh.verts.values()) vert.co = sub(vert.co, offset);
+function moveOrigin(object: SceneObject, position: Vec3): SceneObject {
+  const local = inverseTransformPoint(object.transform, position);
+  for (const vert of object.mesh.verts.values()) vert.co = sub(vert.co, local);
 
   return {
     ...object,
-    transform: {
-      ...object.transform,
-      position: transformPoint(composeMatrix(object.transform), offset),
-    },
+    transform: { ...object.transform, position: { ...position } },
     // The primitive parameters describe a mesh built around the old origin;
     // editing one now would regenerate it back over the move.
     primitive: null,
   };
+}
+
+/** Puts one object's origin back on the middle of its own mesh. */
+function recenterOrigin(object: SceneObject): SceneObject {
+  const offset = originOffset(object);
+  if (equals(offset, vec3())) return object;
+
+  return moveOrigin(object, transformPoint(composeMatrix(object.transform), offset));
 }
 
 export interface SceneSlice {
@@ -193,6 +197,8 @@ export interface SceneSlice {
   cursorToSelection: () => void;
   cursorToSelectionOrigin: () => void;
   selectionToCursor: () => void;
+  /** Moves the origins of the selection, or of the objects named, onto the cursor. */
+  originToCursor: (ids?: readonly string[]) => void;
 
   addMaterial: () => void;
   updateMaterial: (index: number, patch: Partial<Material>) => void;
@@ -1078,6 +1084,53 @@ export const createSceneSlice: StateCreator<
     set({ status: 'Selection to cursor' });
   },
 
+  /**
+   * Moves each selected object's origin onto the 3D cursor, the way Blender's
+   * Set Origin > Origin to 3D Cursor does.
+   *
+   * The mirror of `selectionToCursor`: that one carries the geometry to the
+   * cursor, this one leaves the geometry where it stands and brings the origin,
+   * the gizmo and the ORIGINS marker over instead. Every selected object lands
+   * its origin on the same point, so a group of them ends up sharing one.
+   */
+  originToCursor: (ids) => {
+    const { objects, selectedObjectIds, cursor } = get();
+    const targetIds = ids ?? selectedObjectIds;
+    const targets = objects.filter((object) => targetIds.includes(object.id) && !object.locked);
+    if (targets.length === 0) {
+      set({ status: 'Nothing selected' });
+      return;
+    }
+
+    // A linked duplicate shares its mesh instance, so shifting one object's
+    // vertices would carry every other user of that mesh off its own origin.
+    const single = targets.filter(
+      (object) => objects.filter((other) => other.mesh === object.mesh).length === 1,
+    );
+    if (single.length === 0) {
+      set({ status: 'Linked meshes have to be made single-user first' });
+      return;
+    }
+
+    // Nothing to record and nothing to say when every origin is already there,
+    // so the ones that would move are counted before the history entry.
+    const movable = single.filter((object) => !equals(object.transform.position, cursor));
+    if (movable.length === 0) {
+      set({ status: 'Origins are already on the cursor' });
+      return;
+    }
+
+    get().recordHistory('Origin to cursor');
+
+    const moved = new Map(movable.map((object) => [object.id, moveOrigin(object, cursor)]));
+
+    set((state) => ({
+      objects: state.objects.map((object) => moved.get(object.id) ?? object),
+      meshVersion: state.meshVersion + 1,
+      status: `Origin to cursor on ${moved.size} object(s)`,
+    }));
+  },
+
   addMaterial: () => {
     get().patchActiveObject(
       (object) => {
@@ -1482,10 +1535,10 @@ export function evaluatedMesh(object: SceneObject, cursor: Vec3 = vec3(), versio
 /**
  * World-space centre of what an object actually draws.
  *
- * What the 3D cursor snaps to, and what the camera frames: both are about the
- * shape on screen rather than the origin, which may be nowhere near it and
- * which an array modifier carries the geometry away from entirely. The gizmo
- * does sit on the origin, deliberately, so it does not read this.
+ * What the 3D cursor snaps to, what the camera frames, and where the gizmo sits
+ * on the MEDIAN pivot: all three are about the shape on screen rather than the
+ * origin, which may be nowhere near it and which an array modifier carries the
+ * geometry away from entirely.
  *
  * Takes the evaluated mesh rather than deriving it, so callers that have
  * already run the modifier stack do not run it twice.

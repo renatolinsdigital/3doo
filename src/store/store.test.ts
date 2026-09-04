@@ -1078,6 +1078,64 @@ describe('editor store', () => {
     expect(activeObject().mesh.boundingBox().max.y).toBeCloseTo(3.5);
   });
 
+  it('moves every selected origin onto the cursor and leaves the geometry where it stands', () => {
+    store().addPrimitive('box');
+    const first = activeObject().id;
+    store().setObjectTransforms([{ id: first, transform: { position: { x: 2, y: 0, z: 0 } } }]);
+    store().addPrimitive('box');
+    const second = activeObject().id;
+    store().setObjectTransforms([{ id: second, transform: { position: { x: 6, y: 0, z: 0 } } }]);
+    store().selectAllObjects();
+    store().setCursor({ x: 0, y: 1, z: 0 });
+
+    store().originToCursor();
+
+    // Both land on the one point, which is what gives a set of parts a shared
+    // hinge, and each box keeps the world position it had.
+    const [near, far] = store().objects;
+    expect(near.transform.position).toEqual({ x: 0, y: 1, z: 0 });
+    expect(far.transform.position).toEqual({ x: 0, y: 1, z: 0 });
+    expect(near.mesh.boundingBox().max.x).toBeCloseTo(2.5);
+    expect(near.mesh.boundingBox().max.y).toBeCloseTo(-0.5);
+    expect(far.mesh.boundingBox().max.x).toBeCloseTo(6.5);
+  });
+
+  it('reads the cursor through the object scale when it moves the origin', () => {
+    store().addPrimitive('box');
+    const id = activeObject().id;
+    store().setObjectTransforms([{ id, transform: { scale: { x: 2, y: 2, z: 2 } } }]);
+    store().setCursor({ x: 4, y: 0, z: 0 });
+
+    store().originToCursor();
+
+    // The origin gained 4 in world under a 2x scale, so the vertices owe 2.
+    expect(activeObject().transform.position.x).toBeCloseTo(4);
+    expect(activeObject().mesh.boundingBox().max.x).toBeCloseTo(-1.5);
+  });
+
+  it('leaves an origin already on the cursor alone and says so', () => {
+    store().addPrimitive('box');
+
+    store().originToCursor();
+
+    expect(store().status).toContain('already');
+    // Nothing changed, so nothing was recorded: one step back is the add.
+    store().undo();
+    expect(store().objects).toHaveLength(0);
+  });
+
+  it('refuses to move the origin of a linked mesh onto the cursor', () => {
+    store().addPrimitive('box');
+    store().duplicateSelected(true);
+    store().selectAllObjects();
+    store().setCursor({ x: 3, y: 0, z: 0 });
+
+    store().originToCursor();
+
+    expect(store().objects.every((object) => object.transform.position.x === 0)).toBe(true);
+    expect(store().status).toContain('single-user');
+  });
+
   it('moves the cursor onto the selection and the selection back onto it', () => {
     store().addPrimitive('box');
     const id = activeObject().id;

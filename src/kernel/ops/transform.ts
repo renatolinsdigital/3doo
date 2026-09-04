@@ -12,7 +12,7 @@ import {
 import type { BMesh } from '../mesh';
 import type { Vert } from '../mesh/types';
 
-export type PivotMode = 'median' | 'cursor' | 'individual' | 'active';
+export type PivotMode = 'origin' | 'median' | 'cursor';
 
 export type FalloffCurve = 'smooth' | 'sphere' | 'root' | 'linear' | 'sharp' | 'constant';
 

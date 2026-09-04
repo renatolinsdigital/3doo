@@ -1,13 +1,16 @@
 import { useEffect } from 'react';
 
 import { activeObject, useEditorStore } from '@store/index';
-import type { SelectMode, ShadingMode } from '@store/types';
+import type { PivotMode, SelectMode, ShadingMode } from '@store/types';
 
 import { matchBinding } from '../keymap/keymap';
 
 import { useProjectFiles } from './useProjectFiles';
 
 const SHADING_CYCLE: ShadingMode[] = ['solid', 'solidWire', 'wireframe', 'xray', 'matcap'];
+
+/** The order Ctrl+. steps through, which is the order the top bar lists. */
+const PIVOT_CYCLE: PivotMode[] = ['origin', 'median', 'cursor'];
 
 /**
  * Which element type X (delete) and Delete (dissolve) act on.
@@ -224,7 +227,7 @@ export function useKeymap(): void {
           state.selectionToCursor();
           break;
         case 'togglePivot':
-          state.setPivot(state.pivot === 'cursor' ? 'median' : 'cursor');
+          state.setPivot(PIVOT_CYCLE[(PIVOT_CYCLE.indexOf(state.pivot) + 1) % PIVOT_CYCLE.length]);
           break;
         case 'frameSelected':
           state.frameSelected();

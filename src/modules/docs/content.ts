@@ -164,11 +164,15 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'prose',
-        text: 'Every object carries an origin: the zero every one of its vertex coordinates is measured from. It is the point LOCATION names, the point the gizmo seats its handles on, the point a rotation or a scale turns about, and the plane a mirror modifier reflects across. The amber square on a selected object is where it is, drawn over the geometry rather than behind it since an origin usually sits inside the mesh. ORIGINS under OVERLAYS hides it.',
+        text: 'Every object carries an origin: the zero every one of its vertex coordinates is measured from. It is the point LOCATION names, the point a rotation or a scale turns about on the ORIGIN pivot, and the plane a mirror modifier reflects across. The amber square on a selected object is where it is, drawn over the geometry rather than behind it since an origin usually sits inside the mesh. ORIGINS under OVERLAYS hides it.',
       },
       {
         kind: 'note',
-        text: 'An object-mode move carries the origin along with the mesh. An edit-mode move does not: vertex coordinates change and the zero they are measured from stays put, so geometry dragged across the scene leaves its origin, its handles and its square behind. ORIGIN TO GEOMETRY brings all three back onto the shape. Nothing moves on screen, since the vertices give up exactly what the origin gains.',
+        text: 'An object-mode move carries the origin along with the mesh. An edit-mode move does not: vertex coordinates change and the zero they are measured from stays put, so geometry dragged across the scene leaves its origin and its square behind. ORIGIN TO GEOMETRY brings both back onto the shape. Nothing moves on screen, since the vertices give up exactly what the origin gains.',
+      },
+      {
+        kind: 'note',
+        text: 'ORIGIN TO GEOMETRY picks the middle of the mesh for you. To put an origin somewhere of your own choosing, place the 3D cursor there and pick ORIGIN OF SELECTED TO CURSOR from the viewport right-click menu. Every selected object lands its origin on that one point, which is how a set of parts is given a shared hinge to turn about.',
       },
       {
         kind: 'prose',
@@ -404,14 +408,20 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         kind: 'table',
         head: ['PIVOT', 'ROTATES AND SCALES AROUND'],
         rows: [
-          ['Median', 'The centre of the selection. The default.'],
-          ['3D cursor', 'Wherever you placed the cursor. Ctrl+. toggles between this and median.'],
           [
-            'Individual origins',
-            'Each element on its own centre, so faces scale in place rather than toward each other.',
+            'Origin',
+            "The object's own origin, so it turns and scales where it stands. Across several objects it is the active one's origin, the last you clicked. In edit mode, the origin of the object being edited.",
           ],
-          ['Active element', 'The last thing you clicked.'],
+          [
+            'Median',
+            'The middle of what the selection draws: the picked vertices in edit mode, the shape itself in object mode. Where an origin has been left behind the geometry, this is the one that stays on the shape. The default.',
+          ],
+          ['3D cursor', 'Wherever you placed the cursor.'],
         ],
+      },
+      {
+        kind: 'note',
+        text: 'The PIVOT box in the top bar picks between the three, and Ctrl+. steps through them in that order. The gizmo is always seated on the pivot in force, so the point a turn is measured about is the point you grab it by, and moving the pivot moves the handles with it.',
       },
       {
         kind: 'note',
@@ -419,7 +429,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: "CURSOR TO SELECTION and CURSOR TO SELECTION ORIGIN in the right-click menu are two different points, and an edit-mode move is what pulls them apart. The first goes to the middle of the geometry, which is the shape you are looking at. The second goes to the origin, which is the amber square and where the gizmo sits: the median of them across several objects, and the edited object's own in edit mode.",
+        text: "CURSOR TO SELECTION and CURSOR TO SELECTION ORIGIN in the right-click menu are two different points, and an edit-mode move is what pulls them apart. The first goes to the middle of the geometry, which is the shape you are looking at. The second goes to the origin, which is the amber square: the median of them across several objects, and the edited object's own in edit mode.",
+      },
+      {
+        kind: 'note',
+        text: 'SELECTION TO CURSOR and ORIGIN OF SELECTED TO CURSOR move opposite halves of the same object. The first carries the geometry over and leaves the origins where they were. The second leaves the geometry exactly where it stands and brings the origins over, so nothing moves on screen and the LOCATION numbers change to say where the shape now is.',
       },
     ],
   },

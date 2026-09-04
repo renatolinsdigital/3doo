@@ -45,6 +45,20 @@ describe('CursorMenu', () => {
     expect(useEditorStore.getState().cursor.y).toBeCloseTo(3);
   });
 
+  it('brings the origin of the selection to the cursor without moving the shape', async () => {
+    const store = useEditorStore.getState();
+    store.addPrimitive('box');
+    store.setCursor({ x: 0, y: 4, z: 0 });
+
+    openMenu();
+    render(<CursorMenu />);
+    await userEvent.click(screen.getByRole('menuitem', { name: 'ORIGIN OF SELECTED TO CURSOR' }));
+
+    const object = useEditorStore.getState().objects[0];
+    expect(object.transform.position.y).toBeCloseTo(4);
+    expect(object.mesh.boundingBox().max.y).toBeCloseTo(-3.5);
+  });
+
   it('names the keys the editor actually answers to', () => {
     openMenu();
     render(<CursorMenu />);

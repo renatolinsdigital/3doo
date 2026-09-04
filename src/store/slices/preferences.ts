@@ -41,12 +41,12 @@ export const MAX_SNAP_STEP = MAX_GRID_SCALE;
 /**
  * How many steps undo keeps.
  *
- * Ten is enough to back out of a bad idea; fifty is the ceiling because every
- * step holds a whole copy of the scene, so what history costs is this figure
- * times the size of the model.
+ * Ten is enough to back out of a bad idea, fifty is what a fresh install keeps,
+ * and a hundred is the ceiling because every step holds a whole copy of the
+ * scene: what history costs is this figure times the size of the model.
  */
 export const MIN_HISTORY_SIZE = 10;
-export const MAX_HISTORY_SIZE = 50;
+export const MAX_HISTORY_SIZE = 100;
 
 /**
  * The multiple of the grid scale actually in force.

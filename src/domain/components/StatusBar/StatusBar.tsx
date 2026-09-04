@@ -83,7 +83,9 @@ export function StatusBar() {
         <Flag on={mode === 'edit'}>
           {mode === 'edit' ? `EDIT / ${selectMode.toUpperCase()}` : 'OBJECT'}
         </Flag>
-        <Flag on={pivot === 'cursor'}>PIVOT {pivot === 'cursor' ? 'CURSOR' : 'MEDIAN'}</Flag>
+        {/* Lit whenever the pivot is off the default, the way the flags beside
+            it light when their setting is on. */}
+        <Flag on={pivot !== 'median'}>PIVOT {pivot.toUpperCase()}</Flag>
         <Flag on={snapEnabled}>SNAP {snapEnabled ? snapStepLabel(snapMode, snapStep) : 'OFF'}</Flag>
         <Flag on={proportional.enabled}>
           PROP {proportional.enabled ? proportional.falloff.toUpperCase() : 'OFF'}

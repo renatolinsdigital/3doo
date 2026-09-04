@@ -31,6 +31,7 @@ export function CursorMenu() {
   const cursorToSelection = useEditorStore((state) => state.cursorToSelection);
   const cursorToSelectionOrigin = useEditorStore((state) => state.cursorToSelectionOrigin);
   const selectionToCursor = useEditorStore((state) => state.selectionToCursor);
+  const originToCursor = useEditorStore((state) => state.originToCursor);
   const cursorVisible = useEditorStore((state) => state.overlays.cursor);
   const setOverlay = useEditorStore((state) => state.setOverlay);
 
@@ -91,7 +92,7 @@ export function CursorMenu() {
     {
       id: 'cursor-to-selection-origin',
       label: 'CURSOR TO SELECTION ORIGIN',
-      hint: 'Move the cursor onto the origin instead: the amber square, where the gizmo sits. In edit mode, the origin of the object being edited',
+      hint: 'Move the cursor onto the origin instead: the amber square, and where the gizmo sits on the ORIGIN pivot. In edit mode, the origin of the object being edited',
       onSelect: cursorToSelectionOrigin,
     },
     {
@@ -99,6 +100,12 @@ export function CursorMenu() {
       label: 'SELECTION TO CURSOR',
       hint: `Move the selection so it lands on the cursor${shortcut('selectionToCursor')}`,
       onSelect: selectionToCursor,
+    },
+    {
+      id: 'origin-of-selected-to-cursor',
+      label: 'ORIGIN OF SELECTED TO CURSOR',
+      hint: 'Move the origin of every selected object onto the cursor, leaving the geometry where it stands',
+      onSelect: originToCursor,
     },
     { id: 'rule-2', separator: true },
     {

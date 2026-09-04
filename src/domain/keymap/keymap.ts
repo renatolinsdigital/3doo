@@ -237,7 +237,7 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
     id: 'togglePivot',
     key: '.',
     ctrl: true,
-    label: 'Toggle median / cursor pivot',
+    label: 'Cycle pivot: origin, median, cursor',
     group: 'Cursor',
   },
 

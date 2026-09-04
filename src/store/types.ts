@@ -22,7 +22,15 @@ export type ToolId = 'select' | 'move' | 'rotate' | 'scale' | 'extrude' | 'inset
 /** What snapping measures against: the grid square itself, or a step you set. */
 export type SnapMode = 'grid' | 'custom';
 
-export type PivotMode = 'median' | 'cursor' | 'individual' | 'active';
+/**
+ * What a rotation or a scale turns about.
+ *
+ * ORIGIN is the object's own origin, the amber square, and across a selection
+ * of several it is the active object's. MEDIAN is the middle of what is
+ * selected, and CURSOR the 3D cursor. Whichever is in force, the gizmo is
+ * seated on it: what a turn is measured about is what you grab it by.
+ */
+export type PivotMode = 'origin' | 'median' | 'cursor';
 
 export type NavigationPreset = 'blender' | 'maya';
 

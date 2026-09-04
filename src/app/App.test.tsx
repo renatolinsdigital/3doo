@@ -482,15 +482,31 @@ describe('App shell', () => {
 
   it('switches the transform pivot from the top bar', async () => {
     render(<App />);
-    const pivot = screen.getByRole('group', { name: 'Pivot' });
-    expect(within(pivot).getByRole('button', { name: 'MEDIAN' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    const pivot = screen.getByRole('combobox', { name: 'PIVOT' });
+    expect(pivot).toHaveValue('median');
 
-    await userEvent.click(within(pivot).getByRole('button', { name: 'CURSOR' }));
-
+    await userEvent.selectOptions(pivot, 'cursor');
     expect(useEditorStore.getState().pivot).toBe('cursor');
+
+    await userEvent.selectOptions(pivot, 'origin');
+    expect(useEditorStore.getState().pivot).toBe('origin');
+  });
+
+  it('steps the pivot through all three from the keyboard', () => {
+    // The pivot outlives resetScene, so the test before this one leaves it
+    // wherever it finished.
+    useEditorStore.getState().setPivot('origin');
+    render(<App />);
+
+    // Ctrl rather than Shift: `Shift+.` arrives as `>` and matches nothing.
+    fireEvent.keyDown(window, { key: '.', ctrlKey: true });
+    expect(useEditorStore.getState().pivot).toBe('median');
+
+    fireEvent.keyDown(window, { key: '.', ctrlKey: true });
+    expect(useEditorStore.getState().pivot).toBe('cursor');
+
+    fireEvent.keyDown(window, { key: '.', ctrlKey: true });
+    expect(useEditorStore.getState().pivot).toBe('origin');
   });
 
   it('asks the viewport to frame from the top bar buttons', async () => {

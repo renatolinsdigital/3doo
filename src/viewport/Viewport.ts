@@ -32,7 +32,13 @@ import {
   translateVerts,
   vec3,
 } from '@kernel/index';
-import { activeObject, evaluatedMesh, snapStepFor, useEditorStore } from '@store/index';
+import {
+  activeObject,
+  displayCenter,
+  evaluatedMesh,
+  snapStepFor,
+  useEditorStore,
+} from '@store/index';
 import type { CursorSnapTargets, SceneObject } from '@store/types';
 
 import { CameraController, MAX_ORBIT_DISTANCE } from './CameraController';
@@ -1145,16 +1151,14 @@ export class Viewport {
   /**
    * Positions the gizmo for object mode.
    *
-   * With one object selected it sits on that object's origin, oriented to the
-   * object. With several it sits at the median of their origins with a neutral
-   * (world-aligned) orientation, and the drag is applied to every one of them:
-   * Blender's median-point, global pivot default for multi-object transforms.
+   * The handles always stand on the pivot, whichever one is in force: the point
+   * a turn is measured about is the point you grab it by, so nothing swings
+   * round a point the gizmo never named. `objectPivotPoint` is the one place
+   * that decides where that is, and `applyObjectGroupTransform` measures the
+   * drag about the very seat this leaves behind.
    *
-   * The origin, not the middle of the mesh: it is the point the object's
-   * position names, the point the ORIGINS overlay marks, and the point a
-   * rotation or scale turns about, so the handles stand where all three agree.
-   * An edit-mode move leaves the origin behind the geometry, and ORIGIN TO
-   * GEOMETRY in the tool rail is what brings it back.
+   * The drag is applied to every unlocked object in the selection, so a group
+   * moves as a unit about the one point.
    */
   private updateObjectGizmo(
     state: ReturnType<typeof useEditorStore.getState>,
@@ -1173,30 +1177,71 @@ export class Viewport {
     this.gizmoHelper.visible = !this.modalGuideUp();
     this.transformGroup = transformable.map((object) => object.id);
 
-    if (state.pivot === 'cursor') {
-      // World-aligned on purpose: orbiting a point outside the object around
-      // the object's own axes is not what "about the cursor" means.
-      const { cursor } = state;
-      this.gizmoProxy.position.set(cursor.x, cursor.y, cursor.z);
-      this.gizmoProxy.rotation.set(0, 0, 0);
-      this.gizmoProxy.scale.set(1, 1, 1);
-    } else if (transformable.length === 1) {
-      const { position, rotation, scale } = transformable[0].transform;
-      this.gizmoProxy.position.set(position.x, position.y, position.z);
-      this.gizmoProxy.rotation.set(rotation.x, rotation.y, rotation.z);
-      this.gizmoProxy.scale.set(scale.x, scale.y, scale.z);
-    } else {
-      const pivot = centroid(transformable.map((object) => object.transform.position));
-      this.gizmoProxy.position.set(pivot.x, pivot.y, pivot.z);
-      this.gizmoProxy.rotation.set(0, 0, 0);
-      this.gizmoProxy.scale.set(1, 1, 1);
-    }
+    const pivot = this.objectPivotPoint(state, transformable);
+    this.gizmoProxy.position.set(pivot.x, pivot.y, pivot.z);
+
+    // A lone object lends the handles its own axes, so they follow how it has
+    // been turned. About the cursor they stay world-aligned: orbiting a point
+    // outside the object around the object's own axes is not what "about the
+    // cursor" means. A group has no one orientation to take, so it is
+    // world-aligned as well.
+    const oriented =
+      transformable.length === 1 && state.pivot !== 'cursor' ? transformable[0].transform : null;
+    this.gizmoProxy.rotation.set(
+      oriented?.rotation.x ?? 0,
+      oriented?.rotation.y ?? 0,
+      oriented?.rotation.z ?? 0,
+    );
+    this.gizmoProxy.scale.set(
+      oriented?.scale.x ?? 1,
+      oriented?.scale.y ?? 1,
+      oriented?.scale.z ?? 1,
+    );
 
     this.captureGizmoBaseline();
     this.gizmo.attach(this.gizmoProxy);
   }
 
-  /** In edit mode the gizmo drives the selection's median point on the one active object. */
+  /**
+   * Where an object-mode turn or scale is measured about, and so where the
+   * handles are seated.
+   *
+   * MEDIAN is the middle of what the selection draws rather than of its
+   * origins: an edit-mode move or an array modifier can leave an origin nowhere
+   * near the shape, and the shape is what you are looking at when you ask to
+   * turn it about its middle. It is the point the 3D cursor snaps to on CURSOR
+   * TO SELECTION, so the two agree on what "the selection" means.
+   *
+   * ORIGIN is the object's own origin, and across a group the active object's:
+   * one point rather than one per object, since the handles have to stand on
+   * the thing the turn is measured about. It falls back to the first of them
+   * when the active object is locked or unset, which still leaves the pivot on
+   * an origin rather than on a point belonging to none of them.
+   */
+  private objectPivotPoint(
+    state: ReturnType<typeof useEditorStore.getState>,
+    transformable: readonly SceneObject[],
+  ): Vec3 {
+    if (state.pivot === 'cursor') return state.cursor;
+
+    if (state.pivot === 'median') {
+      return centroid(
+        transformable.map((object) =>
+          displayCenter(object, evaluatedMesh(object, state.cursor, state.meshVersion)),
+        ),
+      );
+    }
+
+    const anchor =
+      transformable.find((object) => object.id === state.activeObjectId) ?? transformable[0];
+    return anchor.transform.position;
+  }
+
+  /**
+   * In edit mode the gizmo drives the selection on the one active object,
+   * seated wherever the pivot says a turn is measured from: the middle of the
+   * picked vertices, the object's own origin, or the 3D cursor.
+   */
   private updateEditGizmo(
     state: ReturnType<typeof useEditorStore.getState>,
     gizmoMode: 'translate' | 'rotate' | 'scale',
@@ -1218,11 +1263,13 @@ export class Viewport {
     this.gizmoHelper.visible = !this.modalGuideUp();
     this.transformGroup = [];
 
-    const median = medianPoint(selected);
+    // Zero is the object's origin in its own frame, so the ORIGIN pivot takes
+    // the same road out to world space that the median does.
+    const local = state.pivot === 'origin' ? vec3() : medianPoint(selected);
     const anchor =
       state.pivot === 'cursor'
         ? new THREE.Vector3(state.cursor.x, state.cursor.y, state.cursor.z)
-        : new THREE.Vector3(median.x, median.y, median.z).applyMatrix4(
+        : new THREE.Vector3(local.x, local.y, local.z).applyMatrix4(
             this.views.get(object.id)?.group.matrix ?? new THREE.Matrix4(),
           );
     this.gizmoProxy.position.copy(anchor);
@@ -2301,10 +2348,10 @@ export class Viewport {
    * object's own transform at drag start. That avoids compounding rounding
    * error across many pointer-move ticks in a single drag.
    *
-   * The pivot is wherever the gizmo was seated, which is the displayed centre
-   * rather than the object origin, so an arrayed object rotates about the
-   * middle of the array, and each object's origin is carried around that point
-   * rather than staying put.
+   * The turn is measured about wherever the gizmo was seated, which is the
+   * pivot in force: each object's origin is carried around that point rather
+   * than staying put, unless the point is the object's own origin, where the
+   * offset is zero and it turns where it stands.
    */
   private applyObjectGroupTransform(
     state: ReturnType<typeof useEditorStore.getState>,

@@ -54,10 +54,11 @@ const SNAP_OPTIONS: readonly { value: SnapMode; label: string }[] = [
   { value: 'custom', label: 'CUSTOM' },
 ];
 
-const PIVOT_OPTIONS = [
-  { value: 'median', label: 'MEDIAN', hint: 'Rotate and scale around the middle of the selection' },
-  { value: 'cursor', label: 'CURSOR', hint: 'Rotate and scale around the 3D cursor instead' },
-] as const;
+const PIVOT_OPTIONS: readonly { value: PivotMode; label: string }[] = [
+  { value: 'origin', label: 'ORIGIN' },
+  { value: 'median', label: 'MEDIAN' },
+  { value: 'cursor', label: 'CURSOR' },
+];
 
 const OVERLAY_OPTIONS: readonly { key: keyof OverlaySettings; label: string; hint: string }[] = [
   {
@@ -74,7 +75,7 @@ const OVERLAY_OPTIONS: readonly { key: keyof OverlaySettings; label: string; hin
   {
     key: 'origins',
     label: 'ORIGINS',
-    hint: 'A small square on the origin of every selected object, where the gizmo sits and what a rotation turns about, drawn over the geometry it is inside',
+    hint: 'A small square on the origin of every selected object, what a rotation turns about on the ORIGIN pivot, drawn over the geometry it is inside',
   },
   { key: 'normals', label: 'NORMALS', hint: 'A short line out of every face along its normal' },
   {
@@ -306,12 +307,15 @@ export function TopBar({ brand }: TopBarProps) {
           }
           onChange={(smooth) => exec('shade', { smooth }, smooth ? 'Shade smooth' : 'Shade flat')}
         />
-        <SegmentedControl<PivotMode>
-          label="Pivot"
-          options={PIVOT_OPTIONS}
-          value={pivot === 'cursor' ? 'cursor' : 'median'}
-          onChange={setPivot}
-        />
+        <span className="top-bar__pivot">
+          <Select<PivotMode>
+            label="PIVOT"
+            options={PIVOT_OPTIONS}
+            value={pivot}
+            hint="What a turn or a scale happens around (Ctrl + . toggles through the three)"
+            onChange={setPivot}
+          />
+        </span>
         <TopBarMenu
           label={shadingLabel}
           ariaLabel={`Shading: ${shadingLabel}`}
