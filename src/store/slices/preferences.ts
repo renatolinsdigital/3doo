@@ -12,6 +12,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   viewportBackground: '#1a1918',
   gridScale: 1,
   gridSubdivisions: 10,
+  lockVerticalOrbit: false,
   snapEnabled: false,
   snapMode: 'grid',
   snapStep: 0.1,
@@ -123,6 +124,10 @@ export function coercePreferences(raw: unknown): Preferences {
         DEFAULT_PREFERENCES.gridSubdivisions,
       ),
     ),
+    lockVerticalOrbit:
+      typeof source.lockVerticalOrbit === 'boolean'
+        ? source.lockVerticalOrbit
+        : DEFAULT_PREFERENCES.lockVerticalOrbit,
     snapEnabled:
       typeof source.snapEnabled === 'boolean'
         ? source.snapEnabled
@@ -212,6 +217,7 @@ export const createPreferencesSlice: StateCreator<
         selectionLineWidth,
         selectionLineColor,
         viewportBackground,
+        lockVerticalOrbit,
         gridScale,
         gridSubdivisions,
         snapEnabled,
@@ -228,6 +234,7 @@ export const createPreferencesSlice: StateCreator<
         selectionLineWidth,
         selectionLineColor,
         viewportBackground,
+        lockVerticalOrbit,
         gridScale,
         gridSubdivisions,
         snapEnabled,

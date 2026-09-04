@@ -9,6 +9,56 @@ import type { CameraPose, NavigationPreset } from '@store/types';
 export const MAX_ORBIT_DISTANCE = 5000;
 
 /**
+ * How near the pole the camera may stand.
+ *
+ * Straight up is where the polar angle stops meaning anything: the view
+ * direction and the up vector line up, and `lookAt` has no way left to decide
+ * which way round the picture goes. A locked orbit holds here; an unlocked one
+ * steps across rather than landing on it.
+ */
+const POLE_EPSILON = 0.001;
+
+const TWO_PI = Math.PI * 2;
+
+/**
+ * Where a vertical drag leaves the polar angle.
+ *
+ * Locked, it stops just short of straight up and straight down. Unlocked, it
+ * wraps the whole way round: past the pole the angle keeps growing, which puts
+ * the camera on the far side of the axis and carries on down the other side,
+ * so a slow drag turns the model over rather than jamming against the top of
+ * it. `upSign` is what keeps that crossing continuous on screen.
+ */
+export function orbitPhi(phi: number, delta: number, locked: boolean): number {
+  const next = phi + delta;
+  if (locked) return Math.max(POLE_EPSILON, Math.min(Math.PI - POLE_EPSILON, next));
+
+  const wrapped = wrapAngle(next);
+  // Landing exactly on a pole is the one place the maths gives out, so a drag
+  // that would stop there is nudged the way it was already going.
+  const toPole = Math.min(wrapped, Math.abs(wrapped - Math.PI), TWO_PI - wrapped);
+  if (toPole >= POLE_EPSILON) return wrapped;
+  return wrapAngle(wrapped + (delta < 0 ? -POLE_EPSILON : POLE_EPSILON));
+}
+
+/** An angle brought back into 0 to 2π, whichever way round it went. */
+function wrapAngle(angle: number): number {
+  return ((angle % TWO_PI) + TWO_PI) % TWO_PI;
+}
+
+/**
+ * Which way up the camera is held at this polar angle.
+ *
+ * Between the poles the world's own up will do. Past one, the camera is
+ * hanging under the axis looking back up at the scene, and world up would flip
+ * the picture end for end in a single frame: turning the camera's own up over
+ * instead is what makes rolling across the pole look like one continuous turn.
+ */
+export function upSign(phi: number): number {
+  return Math.sin(phi) < 0 ? -1 : 1;
+}
+
+/**
  * Orbit / pan / zoom with configurable bindings.
  *
  * Written by hand rather than using OrbitControls because the two presets bind
@@ -28,6 +78,8 @@ export class CameraController {
   panSpeed = 0.0018;
   zoomSpeed = 0.0012;
   preset: NavigationPreset = 'blender';
+  /** Whether a vertical orbit stops at the poles instead of rolling over them. */
+  lockVerticalOrbit = false;
 
   constructor(
     private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera,
@@ -99,9 +151,11 @@ export class CameraController {
 
     if (this.action === 'orbit') {
       this.spherical.theta -= deltaX * this.orbitSpeed;
-      this.spherical.phi -= deltaY * this.orbitSpeed;
-      // Clamping short of the poles avoids the gimbal flip at straight up/down.
-      this.spherical.phi = Math.max(0.001, Math.min(Math.PI - 0.001, this.spherical.phi));
+      this.spherical.phi = orbitPhi(
+        this.spherical.phi,
+        -deltaY * this.orbitSpeed,
+        this.lockVerticalOrbit,
+      );
     } else {
       const scale = this.spherical.radius * this.panSpeed;
       const right = new THREE.Vector3();
@@ -179,14 +233,13 @@ export class CameraController {
     this.apply();
   }
 
-  resetRoll(): void {
-    this.camera.up.set(0, 1, 0);
-    this.apply();
-  }
-
   private apply(): void {
     const offset = new THREE.Vector3().setFromSpherical(this.spherical);
     this.camera.position.copy(this.target).add(offset);
+    // Set every time rather than only when a drag crosses a pole: a restored
+    // pose and the axis views drop the camera anywhere, and the sign has to
+    // match wherever it landed rather than wherever it was last dragged.
+    this.camera.up.set(0, upSign(this.spherical.phi), 0);
     this.camera.lookAt(this.target);
     this.camera.updateMatrixWorld();
 

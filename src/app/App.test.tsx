@@ -626,6 +626,20 @@ describe('App shell', () => {
     expect(useEditorStore.getState().objects).toHaveLength(0);
   });
 
+  it('unlocks the vertical orbit by default and locks it from preferences', async () => {
+    render(<App />);
+    // Off out of the box: a vertical drag rolls over the top rather than
+    // stopping dead at the bottom or top face.
+    expect(useEditorStore.getState().lockVerticalOrbit).toBe(false);
+
+    await userEvent.click(screen.getByRole('button', { name: 'PREFS' }));
+    const dialog = screen.getByRole('dialog', { name: 'PREFERENCES' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'VIEWPORT' }));
+    await userEvent.click(within(dialog).getByRole('checkbox', { name: 'LOCK VERTICAL ORBIT' }));
+
+    expect(useEditorStore.getState().lockVerticalOrbit).toBe(true);
+  });
+
   it('sets the number of undo steps from preferences', async () => {
     render(<App />);
 

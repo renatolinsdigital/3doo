@@ -150,6 +150,15 @@ export interface Preferences {
   /** `#rrggbb` the viewport clears to behind the scene. */
   viewportBackground: string;
   /**
+   * Whether an orbit stops when it reaches straight up or straight down.
+   *
+   * Off by default, so a vertical drag rolls over the pole and carries on round
+   * the other side, upside down, the way a turntable does. On, the orbit holds
+   * just short of the pole: the horizon never turns over, which is worth having
+   * when a model is being worked on level and the view is not meant to flip.
+   */
+  lockVerticalOrbit: boolean;
+  /**
    * Multiplier on the grid's own step, not a length: the plane rescales itself
    * by powers of ten as the camera pulls back, so a square is this many units
    * times whichever decade the zoom has settled on.

@@ -45,6 +45,7 @@ export function PreferencesDialog() {
   const selectionLineWidth = useEditorStore((state) => state.selectionLineWidth);
   const selectionLineColor = useEditorStore((state) => state.selectionLineColor);
   const viewportBackground = useEditorStore((state) => state.viewportBackground);
+  const lockVerticalOrbit = useEditorStore((state) => state.lockVerticalOrbit);
   const gridScale = useEditorStore((state) => state.gridScale);
   const gridSubdivisions = useEditorStore((state) => state.gridSubdivisions);
   const snapEnabled = useEditorStore((state) => state.snapEnabled);
@@ -131,6 +132,12 @@ export function PreferencesDialog() {
           value={viewportBackground}
           hint="What the viewport clears to behind the scene. The grid, the axes and the overlays keep their own colours"
           onChange={(color) => setPreferences({ viewportBackground: color })}
+        />
+        <Toggle
+          label="LOCK VERTICAL ORBIT"
+          checked={lockVerticalOrbit}
+          hint="Stop the orbit at straight up and straight down instead of rolling over"
+          onChange={(locked) => setPreferences({ lockVerticalOrbit: locked })}
         />
       </Accordion>
 

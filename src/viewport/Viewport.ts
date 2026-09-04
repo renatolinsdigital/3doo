@@ -859,6 +859,13 @@ export class Viewport {
         { fireImmediately: true },
       ),
       store.subscribe(
+        (state) => state.lockVerticalOrbit,
+        (locked) => {
+          this.controls.lockVerticalOrbit = locked;
+        },
+        { fireImmediately: true },
+      ),
+      store.subscribe(
         (state) => [state.orthographic, state.focalLength, state.clipStart, state.clipEnd] as const,
         () => this.applyCameraSettings(),
         { equalityFn: shallowArrayEqual, fireImmediately: true },

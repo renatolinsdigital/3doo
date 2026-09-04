@@ -451,7 +451,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'Orbit, pan, zoom',
-            'Middle-drag orbits, Shift+middle-drag pans, the wheel zooms. A Maya preset is available if that is the muscle memory you have.',
+            'Middle-drag orbits, Shift+middle-drag pans, the wheel zooms. A Maya preset is available if that is the muscle memory you have. A vertical drag rolls over the top and comes down the far side upside down, which LOCK VERTICAL ORBIT under PREFS stops it doing.',
           ],
           [
             'Frame the selection',
@@ -528,7 +528,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'PREFS in the top bar holds the settings that belong to you rather than to a scene: whether hint tooltips appear, the viewport background, the scale, colour and opacity of the grid, and how thick and what colour the outline around selected objects is drawn. They are stored on this device and deliberately kept out of project files, so opening a scene someone sent you never repaints your viewport.',
+        text: 'PREFS in the top bar holds the settings that belong to you rather than to a scene: whether hint tooltips appear, the viewport background, whether a vertical orbit stops at the poles, the scale, colour and opacity of the grid, and how thick and what colour the outline around selected objects is drawn. They are stored on this device and deliberately kept out of project files, so opening a scene someone sent you never repaints your viewport.',
       },
       {
         kind: 'note',
