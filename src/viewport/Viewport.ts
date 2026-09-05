@@ -3081,6 +3081,7 @@ export class Viewport {
     const distance = this.controls.distance;
     this.grid.update(distance);
     this.extendFarPlane(distance);
+    this.tightenNearPlane(distance);
     this.updateViewLost(distance);
     this.updateCursor();
     this.updateProportionalRing();
@@ -3202,6 +3203,33 @@ export class Viewport {
       this.orthographicCamera.far = far;
       this.orthographicCamera.updateProjectionMatrix();
     }
+  }
+
+  /**
+   * Draws the near clipping plane in as the zoom closes on the target.
+   *
+   * The counterpart to `extendFarPlane`, and the reason a small object survives
+   * being zoomed into. `clipStart` alone is a fixed 0.05 m, so once the orbit
+   * came within about a hand's width of what it was looking at, the frustum
+   * began at the object and cut through it: the shape thinned into a wedge and
+   * then vanished, well before the zoom limit. Capping the near plane at a
+   * tenth of the orbit distance leaves the whole object in front of it at any
+   * zoom, down to the smallest one the size floor allows.
+   *
+   * A tenth rather than something finer so that `clipStart` still means what it
+   * says over the whole normal working range: someone who raised it to cut away
+   * foreground clutter keeps that cut everywhere except the last stretch of the
+   * zoom, where honouring it would take the object away instead of the clutter.
+   * Depth precision is the other reason not to go finer than the zoom needs.
+   */
+  private tightenNearPlane(distance: number): void {
+    const near = Math.min(useEditorStore.getState().clipStart, distance / 10);
+    // Ratio rather than a fixed epsilon: the useful step at 1000 m out is
+    // metres, and at a tenth of a millimetre in it is microns.
+    if (Math.abs(this.perspectiveCamera.near - near) < near * 0.01) return;
+
+    this.perspectiveCamera.near = near;
+    this.perspectiveCamera.updateProjectionMatrix();
   }
 
   /** Flags when the orbit has scrolled far enough out that Frame All should draw attention. */

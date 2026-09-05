@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
-import { CameraController, orbitPhi, upSign } from './CameraController';
+import { MIN_OBJECT_SIZE } from '@kernel/index';
+
+import { CameraController, MIN_ORBIT_DISTANCE, orbitPhi, upSign } from './CameraController';
 
 const TWO_PI = Math.PI * 2;
 
@@ -79,5 +81,38 @@ describe('orbiting past the pole', () => {
     controls.setPose({ target: { x: 0, y: 0, z: 0 }, radius: 5, phi: 4, theta: 0 });
 
     expect(camera.up.y).toBe(-1);
+  });
+});
+
+describe('zooming in on something small', () => {
+  /** One wheel notch, the way the viewport hands them over. */
+  function wheel(controls: CameraController, deltaY: number) {
+    controls.onWheel({ deltaY } as WheelEvent);
+  }
+
+  it('closes in far enough for an object at the size floor to fill the view', () => {
+    const { controls } = controllerAt(Math.PI / 3);
+
+    for (let notch = 0; notch < 400; notch += 1) wheel(controls, -100);
+
+    expect(controls.distance).toBe(MIN_ORBIT_DISTANCE);
+    // At a 50 degree field of view this orbit spans about twice the floor, so
+    // the smallest object allowed covers roughly half the viewport height.
+    const spanned = 2 * controls.distance * Math.tan((50 * Math.PI) / 180 / 2);
+    expect(spanned).toBeLessThan(MIN_OBJECT_SIZE * 4);
+  });
+
+  it('frames a millimetre-scale object close enough to see it', () => {
+    const { controls } = controllerAt(Math.PI / 3);
+    const box = new THREE.Box3(
+      new THREE.Vector3(-0.0005, -0.0005, -0.0005),
+      new THREE.Vector3(0.0005, 0.0005, 0.0005),
+    );
+
+    controls.frameBox(box);
+
+    // Framing used to stop at half a metre, which left a 1 mm box a speck.
+    expect(controls.distance).toBeLessThan(0.01);
+    expect(controls.distance).toBeGreaterThanOrEqual(MIN_ORBIT_DISTANCE);
   });
 });

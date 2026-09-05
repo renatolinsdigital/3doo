@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import {
   INTEGER_PARAMS,
   METRE_PARAMS,
+  MIN_OBJECT_SIZE,
   PRIMITIVE_FIELDS,
   type PrimitiveParams,
   pivotReorient,
@@ -61,6 +62,23 @@ const PARAM_HINTS: Record<keyof PrimitiveParams, string> = {
   subdivisions: 'How many times to split the base icosahedron',
   capFill: 'Fill the open ends with a face instead of leaving them open',
 };
+
+/** The smallest each parameter may be dialled to. Lengths stop at the size floor. */
+function paramMinimum(field: keyof PrimitiveParams): number {
+  if (field === 'segments' || field === 'rings') return 3;
+  return METRE_PARAMS.has(field) ? MIN_OBJECT_SIZE : 0;
+}
+
+/**
+ * Decimals a parameter is typed and shown to.
+ *
+ * Lengths need four to reach `MIN_OBJECT_SIZE`: at the field's usual three a
+ * tenth of a millimetre rounds to nothing on the way in, and the floor would
+ * be a number nobody could actually enter.
+ */
+function paramPrecision(field: keyof PrimitiveParams): number | undefined {
+  return METRE_PARAMS.has(field) ? 4 : undefined;
+}
 
 export function PropertiesPanel() {
   const object = useActiveObject();
@@ -192,7 +210,8 @@ export function PropertiesPanel() {
                 value={object.primitive?.params[field] as number}
                 integer={INTEGER_PARAMS.has(field)}
                 suffix={METRE_PARAMS.has(field) ? 'm' : undefined}
-                min={field === 'segments' || field === 'rings' ? 3 : 0}
+                min={paramMinimum(field)}
+                precision={paramPrecision(field)}
                 hint={PARAM_HINTS[field]}
                 onChange={(value) => updatePrimitiveParams({ [field]: value })}
               />

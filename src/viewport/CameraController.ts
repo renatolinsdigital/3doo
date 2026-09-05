@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 
+import { MIN_OBJECT_SIZE } from '@kernel/index';
 import type { CameraPose, NavigationPreset } from '@store/types';
 
 /**
@@ -7,6 +8,16 @@ import type { CameraPose, NavigationPreset } from '@store/types';
  * can decide when the scene has scrolled out of comfortable view.
  */
 export const MAX_ORBIT_DISTANCE = 5000;
+
+/**
+ * Hard clamp on how far the orbit can zoom in.
+ *
+ * Matched to `MIN_OBJECT_SIZE` so that an object sitting on the size floor can
+ * still be brought up to fill the view: at a 50 degree field of view an orbit
+ * this close spans about twice the floor, which puts the smallest object the
+ * editor allows across roughly half the height of the viewport.
+ */
+export const MIN_ORBIT_DISTANCE = MIN_OBJECT_SIZE;
 
 /**
  * How near the pole the camera may stand.
@@ -181,7 +192,7 @@ export class CameraController {
     const factor = Math.exp(event.deltaY * this.zoomSpeed);
     this.spherical.radius = THREE.MathUtils.clamp(
       this.spherical.radius * factor,
-      0.05,
+      MIN_ORBIT_DISTANCE,
       MAX_ORBIT_DISTANCE,
     );
     this.apply();
@@ -211,7 +222,7 @@ export class CameraController {
     this.target.copy(center);
     const fov = this.camera instanceof THREE.PerspectiveCamera ? this.camera.fov : 50;
     this.spherical.radius = Math.max(
-      0.5,
+      MIN_ORBIT_DISTANCE,
       (radius * 2.4) / Math.tan(THREE.MathUtils.degToRad(fov) * 0.5),
     );
     this.apply();

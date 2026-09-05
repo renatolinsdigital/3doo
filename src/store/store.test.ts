@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  MIN_OBJECT_SIZE,
   type Vec3,
   add,
   dot,
@@ -943,6 +944,33 @@ describe('editor store', () => {
     // The default box spans ±0.5, so twice that once the scale lives in the mesh.
     const xs = [...object.mesh.verts.values()].map((vert) => vert.co.x);
     expect(Math.max(...xs)).toBeCloseTo(1);
+  });
+
+  it('holds a shrinking object at the size floor', () => {
+    store().addPrimitive('box');
+    const id = activeObject().id;
+
+    store().setObjectTransform(id, { scale: { x: 1e-9, y: 1e-9, z: 1e-9 } });
+
+    // The default box is 1 m across, so its scale is its size in metres.
+    expect(activeObject().transform.scale.x).toBeCloseTo(MIN_OBJECT_SIZE, 12);
+  });
+
+  it('holds the floor in a batched setObjectTransforms call too', () => {
+    store().addPrimitive('box');
+    const id = activeObject().id;
+
+    store().setObjectTransforms([{ id, transform: { scale: { x: 0, y: 0, z: 0 } } }]);
+
+    expect(activeObject().transform.scale.x).toBeCloseTo(MIN_OBJECT_SIZE, 12);
+  });
+
+  it('will not build a primitive finer than the size floor', () => {
+    store().addPrimitive('box');
+
+    store().updatePrimitiveParams({ size: 0 });
+
+    expect(activeObject().primitive?.params.size).toBe(MIN_OBJECT_SIZE);
   });
 
   it('flips the winding when a mirrored scale is baked in', () => {

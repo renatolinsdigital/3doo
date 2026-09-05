@@ -37,6 +37,27 @@ export const INTEGER_PARAMS = new Set<keyof PrimitiveParams>(['segments', 'rings
  */
 export const METRE_PARAMS = new Set<keyof PrimitiveParams>(['size', 'radius', 'radius2', 'height']);
 
+/**
+ * The smallest a length may be set to, in metres, and the floor an object's
+ * longest side is held above.
+ *
+ * A tenth of a millimetre. It sits under the smallest thing anyone builds as
+ * real geometry: fine sand runs 0.06 to 0.2 mm across, a human hair 0.02 to
+ * 0.18 mm, and a blade of grass 2 to 5 mm wide, so a game's foliage, its
+ * particle cards and its smallest hard-surface details all clear it by a wide
+ * margin. Below the floor is dust and pollen, which ship as sprites and
+ * shaders rather than as meshes.
+ *
+ * What fixes the floor is the viewport rather than the mesh. Positions reach
+ * the GPU as float32 and the near clip plane has to stand well in front of
+ * whatever it is looking at, so a shape much finer than this cannot be drawn
+ * whole however close the camera gets: it thins, tears open along the near
+ * plane, and goes. The camera meets the floor from its own side by drawing
+ * the near plane in as the orbit closes, which is what keeps an object this
+ * small in one piece on screen.
+ */
+export const MIN_OBJECT_SIZE = 0.0001;
+
 export const DEFAULT_PRIMITIVE_PARAMS: PrimitiveParams = {
   size: 1,
   radius: 0.5,
@@ -60,10 +81,17 @@ export const PRIMITIVE_DEFAULT_OVERRIDES: Partial<Record<PrimitiveKind, Partial<
     capsule: { height: 2 },
   };
 
-/** Rounds the count params so the properties panel never shows "10.286" segments. */
+/**
+ * Rounds the count params so the properties panel never shows "10.286"
+ * segments, and holds every length at or above `MIN_OBJECT_SIZE`.
+ */
 export function normalizePrimitiveParams(params: PrimitiveParams): PrimitiveParams {
   return {
     ...params,
+    size: Math.max(MIN_OBJECT_SIZE, params.size),
+    radius: Math.max(MIN_OBJECT_SIZE, params.radius),
+    radius2: Math.max(MIN_OBJECT_SIZE, params.radius2),
+    height: Math.max(MIN_OBJECT_SIZE, params.height),
     segments: Math.round(params.segments),
     rings: Math.round(params.rings),
     subdivisions: Math.round(params.subdivisions),

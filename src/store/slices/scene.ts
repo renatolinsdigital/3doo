@@ -18,6 +18,7 @@ import {
   applyModifier,
   booleanMeshStaged,
   centroid,
+  clampObjectScale,
   cloneMesh,
   composeMatrix,
   createModifier,
@@ -98,6 +99,24 @@ function defaultMaterial(): Material {
 function originOffset(object: SceneObject): Vec3 {
   const box = object.mesh.boundingBox();
   return centroid([box.min, box.max]);
+}
+
+/**
+ * `object`'s transform with `patch` folded in, and any new scale held to the
+ * floor that keeps the object big enough to draw.
+ *
+ * Every scale an object can be given arrives through here, whether it was
+ * dragged on the gizmo, typed into the properties panel or accumulated by the
+ * modal S tool, so this is the one place the floor has to hold.
+ */
+function withScaleFloor(
+  object: SceneObject,
+  patch: Partial<SceneObject['transform']>,
+): SceneObject['transform'] {
+  const transform = { ...object.transform, ...patch };
+  if (!patch.scale) return transform;
+
+  return { ...transform, scale: clampObjectScale(object.mesh, transform.scale) };
 }
 
 /**
@@ -970,7 +989,7 @@ export const createSceneSlice: StateCreator<
     set((state) => ({
       objects: state.objects.map((candidate) =>
         candidate.id === id
-          ? { ...candidate, transform: { ...candidate.transform, ...transform } }
+          ? { ...candidate, transform: withScaleFloor(candidate, transform) }
           : candidate,
       ),
       meshVersion: state.meshVersion + 1,
@@ -995,7 +1014,7 @@ export const createSceneSlice: StateCreator<
       objects: state.objects.map((object) => {
         const transform = patchMap.get(object.id);
         return transform && !object.locked
-          ? { ...object, transform: { ...object.transform, ...transform } }
+          ? { ...object, transform: withScaleFloor(object, transform) }
           : object;
       }),
       meshVersion: state.meshVersion + 1,

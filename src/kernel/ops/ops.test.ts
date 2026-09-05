@@ -4,6 +4,7 @@ import { type Vec3, clamp, degToRad, distance, dot, lerp, sub, vec3 } from '../m
 import { BMesh } from '../mesh';
 import type { Edge, Face, Vert } from '../mesh/types';
 import {
+  MIN_OBJECT_SIZE,
   createBox,
   createCircle,
   createCone,
@@ -40,7 +41,7 @@ import {
   triangulateFaces,
   trisToQuads,
 } from './subdivide';
-import { rotateVerts, scaleVerts, translateVerts } from './transform';
+import { clampObjectScale, rotateVerts, scaleVerts, translateVerts } from './transform';
 import {
   faceLoopAtClick,
   hasConnectedEdges,
@@ -1389,6 +1390,70 @@ describe('transform', () => {
     const moved = [...grid.verts.values()].filter((vert) => vert.co.y > 0.001);
     expect(moved.length).toBeGreaterThan(1);
     expect(corner.co.y).toBeCloseTo(1);
+  });
+});
+
+describe('object size floor', () => {
+  /** The longest side of `mesh` once `scale` is applied to it. */
+  function widest(mesh: BMesh, scale: Vec3): number {
+    const box = mesh.boundingBox();
+    return Math.max(
+      (box.max.x - box.min.x) * Math.abs(scale.x),
+      (box.max.y - box.min.y) * Math.abs(scale.y),
+      (box.max.z - box.min.z) * Math.abs(scale.z),
+    );
+  }
+
+  it('leaves a scale that keeps the object above the floor alone', () => {
+    const cube = createBox(2);
+    const scale = vec3(0.01, 0.01, 0.01);
+
+    expect(clampObjectScale(cube, scale)).toEqual(scale);
+  });
+
+  it('holds a shrinking object at the floor', () => {
+    const cube = createBox(2);
+
+    const clamped = clampObjectScale(cube, vec3(1e-9, 1e-9, 1e-9));
+
+    expect(widest(cube, clamped)).toBeCloseTo(MIN_OBJECT_SIZE, 12);
+  });
+
+  it('keeps the proportions and the mirrored signs of what it clamps', () => {
+    const cube = createBox(2);
+
+    const clamped = clampObjectScale(cube, vec3(1e-9, -2e-9, 4e-9));
+
+    expect(widest(cube, clamped)).toBeCloseTo(MIN_OBJECT_SIZE, 12);
+    expect(clamped.y / clamped.x).toBeCloseTo(-2);
+    expect(clamped.z / clamped.x).toBeCloseTo(4);
+  });
+
+  it('gives a scale of zero something to pull on again', () => {
+    const cube = createBox(2);
+
+    const clamped = clampObjectScale(cube, vec3(0, 0, 0));
+
+    expect(clamped.x).toBeGreaterThan(0);
+    expect(widest(cube, clamped)).toBeCloseTo(MIN_OBJECT_SIZE, 12);
+  });
+
+  it('leaves a mesh built finer than the floor as it was modelled', () => {
+    // Scale is not what made this one small, so it is not scale's to undo.
+    const speck = createBox(MIN_OBJECT_SIZE / 10);
+    const scale = vec3(1, 1, 1);
+
+    expect(clampObjectScale(speck, scale)).toEqual(scale);
+  });
+
+  it('never grows an object it is asked to shrink', () => {
+    const cube = createBox(2);
+
+    for (const factor of [0.5, 0.01, 1e-6, 1e-12]) {
+      const clamped = clampObjectScale(cube, vec3(factor, factor, factor));
+      expect(clamped.x).toBeLessThanOrEqual(1);
+      expect(widest(cube, clamped)).toBeGreaterThanOrEqual(MIN_OBJECT_SIZE * 0.999);
+    }
   });
 });
 
