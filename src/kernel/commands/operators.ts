@@ -8,6 +8,7 @@ import {
   bevelEdges,
   budgetRefusal,
   bridgeEdgeLoops,
+  circleVerts,
   connectVerts,
   deleteGeometry,
   dissolveEdges,
@@ -38,6 +39,7 @@ import {
   setShading,
   shrinkFatten,
   shrinkSelection,
+  spaceVerts,
   subdivideEdges,
   subdivideFaces,
   subdivisionCost,
@@ -269,6 +271,30 @@ export const OPERATORS: Record<string, OperatorHandler> = {
       keepShape: readBoolean(params, 'keepShape', true),
     });
     return { status: `Relaxed ${moved} vertices` };
+  },
+
+  circle: ({ mesh }, params) => {
+    const verts = mesh.selectedVerts();
+    if (verts.length < 3) {
+      return { status: 'Select a loop of three or more vertices', refused: true };
+    }
+
+    const moved = circleVerts(mesh, verts, { factor: readNumber(params, 'factor', 1) });
+    if (moved === 0) {
+      return { status: 'No loop runs through that selection to round out', refused: true };
+    }
+    return { status: `Rounded ${moved} vertices onto a circle` };
+  },
+
+  space: ({ mesh }, params) => {
+    const verts = mesh.selectedVerts();
+    if (verts.length === 0) return { status: 'Select vertices to space out', refused: true };
+
+    const moved = spaceVerts(mesh, verts, { factor: readNumber(params, 'factor', 1) });
+    if (moved === 0) {
+      return { status: 'No loop runs through that selection to space along', refused: true };
+    }
+    return { status: `Spaced ${moved} vertices evenly` };
   },
 
   mergeByDistance: ({ mesh, selectMode }, params) => {

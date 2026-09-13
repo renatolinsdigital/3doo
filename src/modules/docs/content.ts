@@ -253,7 +253,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'Every operator below lives in one of the three edit-mode panels: OPERATIONS holds the ones that add geometry (extrude, inset, bevel), LOOP OPERATIONS the ones that run along an edge loop (loop cut, subdivide, relax), and TOPOLOGY the ones that join, weld, clean up or widen the selection. Most have a shortcut. A button is disabled whenever the current selection cannot feed it, and its hint says what to select instead, so the panels double as a guide to what each one needs.',
+        text: 'Every operator below lives in one of the three edit-mode panels: OPERATIONS holds the ones that add geometry (extrude, inset, bevel), LOOP OPERATIONS the ones that run along an edge loop (loop cut, subdivide, relax, circle, space), and TOPOLOGY the ones that join, weld, clean up or widen the selection. Most have a shortcut. A button is disabled whenever the current selection cannot feed it, and its hint says what to select instead, so the panels double as a guide to what each one needs.',
       },
       {
         kind: 'table',
@@ -282,6 +282,14 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           [
             'Relax',
             'Pulls the kinks out of a selected loop and evens out its spacing without changing the shape it runs over, the way the relax of LoopTools does in Blender. Each vertex is drawn onto the midpoint of its neighbours, the loop is then spread evenly along the line that leaves, and every vertex is dropped back onto the surface it came from, which is what KEEP SHAPE does, and why a relaxed loop slides across the mesh rather than sinking into it. Where the selection runs out, the vertex it ran out at holds still and the rest are spaced against it. A selection that is not a loop smooths against its whole neighbourhood instead, and an open border keeps its outline: there is no surface past a border to come back to, so its vertices only even out along it. FACTOR is how far each pass travels, ITERATIONS how many passes to take.',
+          ],
+          [
+            'Circle',
+            'Rounds the selected loop out onto the circle that fits it best. The loop is flattened onto its own average plane and every vertex is carried in or out to the one radius, keeping the direction it already sits in from the centre, so the loop comes back round without being reshuffled. The circle is a least squares fit rather than the middle of the selection, which is what lets half a ring be rounded as accurately as a whole one. Each loop in the selection is fitted on its own, so both ends of a cylinder can be rounded in one go. FACTOR is how far to go: 1 lands on the circle, less rounds the loop off part of the way.',
+          ],
+          [
+            'Space',
+            'Slides the selected vertices along the loop they lie on until the gaps between them are even, leaving every bend of that loop where it is. It is the half of relax that only evens out spacing, and it is what to reach for on a loop whose shape is right and whose spacing is not, where a relax would round off the corners as it went. A loop that closes on itself is spaced right round; one that stops is spaced between the two vertices it stopped at, which hold still so the loop stays joined to the mesh. The spacing is measured along the loop, so on a coarse one the gaps across it can still differ by a few percent: a second click closes that. Follow a circle with a space to turn any ring into a regular one.',
           ],
           [
             'Slide (Shift+G)',

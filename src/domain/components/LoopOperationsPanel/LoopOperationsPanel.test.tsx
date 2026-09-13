@@ -25,7 +25,48 @@ function button(name: string) {
   return screen.getByRole('button', { name });
 }
 
-const OPERATIONS = ['LOOP CUT', 'SUBDIVIDE', 'RELAX'];
+const OPERATIONS = ['LOOP CUT', 'SUBDIVIDE', 'RELAX', 'CIRCLE', 'SPACE'];
+
+/** A cylinder in edit mode with its top ring selected, as a loop operator wants. */
+function editTopRing() {
+  const store = useEditorStore.getState();
+  store.resetScene();
+  store.addPrimitive('cylinder');
+  store.setMode('edit');
+
+  const mesh = activeMesh();
+  const ring = [...mesh.verts.values()].filter((vert) => vert.co.y > 0);
+  act(() => {
+    for (const vert of ring) vert.selected = true;
+    mesh.flushSelection('vertex');
+    useEditorStore.getState().touchMesh();
+  });
+  return ring;
+}
+
+type RingVert = { co: { x: number; y: number; z: number } };
+
+/** How far each of `ring` sits from the axis the cylinder was built on. */
+function radii(ring: readonly RingVert[]): number[] {
+  return ring.map((vert) => Math.hypot(vert.co.x, vert.co.z));
+}
+
+const angleOf = (vert: RingVert) => Math.atan2(vert.co.z, vert.co.x);
+
+/** The ring in the order it runs round the axis, whatever the mesh order is. */
+function byAngle(ring: readonly RingVert[]): RingVert[] {
+  return ring.slice().sort((a, b) => angleOf(a) - angleOf(b));
+}
+
+/** The widest gap round the ring over the narrowest: 1 when the spacing is even. */
+function evenness(ring: readonly RingVert[]): number {
+  const sorted = byAngle(ring);
+  const gaps = sorted.map((vert, i) => {
+    const next = sorted[(i + 1) % sorted.length];
+    return Math.hypot(vert.co.x - next.co.x, vert.co.z - next.co.z);
+  });
+  return Math.max(...gaps) / Math.min(...gaps);
+}
 
 /** A box grown to a few thousand faces, the way a session of subdividing does. */
 function denseBox() {
@@ -101,6 +142,46 @@ describe('LoopOperationsPanel', () => {
 
     await userEvent.click(within(warning).getByRole('button', { name: 'SUBDIVIDE ANYWAY' }));
     expect(activeMesh().faces.size).toBe(93750);
+  });
+
+  it('rounds a squashed ring back out onto a circle', async () => {
+    const ring = editTopRing();
+    act(() => {
+      for (const vert of ring) vert.co = { ...vert.co, x: vert.co.x * 0.5 };
+      useEditorStore.getState().touchMesh();
+    });
+    render(<LoopOperationsPanel />);
+
+    await userEvent.click(button('CIRCLE'));
+
+    const after = radii(ring);
+    expect(Math.max(...after) / Math.min(...after)).toBeCloseTo(1, 9);
+  });
+
+  it('evens out the gaps of a bunched ring without adding geometry', async () => {
+    const ring = editTopRing();
+    const mesh = activeMesh();
+    const before = { verts: mesh.verts.size, faces: mesh.faces.size };
+    // One vertex of the ring slid round to within a degree of its neighbour,
+    // where the rest of a 24 segment ring sits fifteen degrees apart.
+    act(() => {
+      const sorted = byAngle(ring);
+      const crowded = angleOf(sorted[4]) + Math.PI / 180;
+      sorted[5].co = {
+        x: Math.cos(crowded) * 0.5,
+        y: sorted[5].co.y,
+        z: Math.sin(crowded) * 0.5,
+      };
+      useEditorStore.getState().touchMesh();
+    });
+    expect(evenness(ring)).toBeGreaterThan(10);
+    render(<LoopOperationsPanel />);
+
+    await userEvent.click(button('SPACE'));
+
+    expect(evenness(ring)).toBeLessThan(1.2);
+    expect(mesh.verts.size).toBe(before.verts);
+    expect(mesh.faces.size).toBe(before.faces);
   });
 
   it('relaxes the selection without adding or removing geometry', async () => {

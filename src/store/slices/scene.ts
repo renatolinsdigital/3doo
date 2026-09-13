@@ -11,6 +11,8 @@ import {
   type Vec3,
   DEFAULT_PRIMITIVE_PARAMS,
   History,
+  METRE_PARAMS,
+  MIN_OBJECT_SIZE,
   PRIMITIVE_DEFAULT_OVERRIDES,
   PRIMITIVE_LABELS,
   SELECTION_OPERATORS,
@@ -75,6 +77,20 @@ let materialCounter = 0;
 let lockAttemptCounter = 0;
 let recentVertsCounter = 0;
 
+/**
+ * The objects the size floor is currently holding, keyed by the dial that ran
+ * into it, so each is reported once.
+ *
+ * A drag hands the store a scale on every pointer tick, so an object pinned at
+ * the floor would otherwise announce itself sixty times a second. A key goes in
+ * when the floor first catches the object and comes out when a value gets
+ * through untouched, which is the only way back to a size worth warning about
+ * again. The two dials are counted apart because reaching the floor on one says
+ * nothing about the other: an object already scaled as small as it goes can
+ * still have its radius typed down past the limit.
+ */
+const heldAtSizeFloor = new Set<string>();
+
 function nextObjectId(): string {
   objectCounter += 1;
   return `object-${objectCounter}`;
@@ -108,15 +124,54 @@ function originOffset(object: SceneObject): Vec3 {
  * Every scale an object can be given arrives through here, whether it was
  * dragged on the gizmo, typed into the properties panel or accumulated by the
  * modal S tool, so this is the one place the floor has to hold.
+ *
+ * `held` says the floor actually caught something: the scale asked for was
+ * smaller than the one handed back. Nothing else can tell the difference
+ * between an object that stopped shrinking and a drag that has simply run out
+ * of room, which is the difference the warning is there to close.
  */
 function withScaleFloor(
   object: SceneObject,
   patch: Partial<SceneObject['transform']>,
-): SceneObject['transform'] {
+): { transform: SceneObject['transform']; held: boolean } {
   const transform = { ...object.transform, ...patch };
-  if (!patch.scale) return transform;
+  if (!patch.scale) return { transform, held: false };
 
-  return { ...transform, scale: clampObjectScale(object.mesh, transform.scale) };
+  const scale = clampObjectScale(object.mesh, transform.scale);
+  const asked = transform.scale;
+  const held = scale.x !== asked.x || scale.y !== asked.y || scale.z !== asked.z;
+  return { transform: { ...transform, scale }, held };
+}
+
+/**
+ * Notes which objects the floor is holding and writes the warning for the ones
+ * that have not said so yet, or null when they all have.
+ *
+ * The whole batch is one message rather than one each: scaling a selection to
+ * nothing would otherwise stack a toast per object.
+ */
+function sizeFloorWarning(
+  dial: 'scale' | 'length',
+  entries: readonly { object: SceneObject; held: boolean }[],
+): string | null {
+  const fresh: SceneObject[] = [];
+
+  for (const { object, held } of entries) {
+    const key = `${dial}:${object.id}`;
+    if (!held) heldAtSizeFloor.delete(key);
+    else if (!heldAtSizeFloor.has(key)) {
+      heldAtSizeFloor.add(key);
+      fresh.push(object);
+    }
+  }
+
+  if (fresh.length === 0) return null;
+
+  const floor = `${MIN_OBJECT_SIZE * 1000} mm`;
+  const limit = dial === 'scale' ? `scale below ${floor} across` : `be built finer than ${floor}`;
+  return fresh.length === 1
+    ? `${fresh[0].name} has reached the size limit: it will not ${limit}.`
+    : `${fresh.length} objects have reached the size limit: they will not ${limit}.`;
 }
 
 /**
@@ -375,9 +430,18 @@ export const createSceneSlice: StateCreator<
     if (!object?.primitive) return;
 
     const { kind } = object.primitive;
-    const resolved = normalizePrimitiveParams({ ...object.primitive.params, ...params });
+    const asked = { ...object.primitive.params, ...params };
+    const resolved = normalizePrimitiveParams(asked);
     const mesh = createPrimitive(kind, resolved);
     const previous = object.mesh;
+
+    // A length the user dialled below the floor comes back raised, and the
+    // field it was typed into shows the floor rather than the figure: without
+    // a word here the panel simply stops responding to the drag.
+    const held = [...METRE_PARAMS].some(
+      (field) => params[field] !== undefined && resolved[field] !== asked[field],
+    );
+    const warning = sizeFloorWarning('length', [{ object, held }]);
 
     set((state) => ({
       objects: state.objects.map((candidate) => {
@@ -390,7 +454,10 @@ export const createSceneSlice: StateCreator<
         return candidate.mesh === previous ? { ...candidate, mesh } : candidate;
       }),
       meshVersion: state.meshVersion + 1,
+      status: warning ?? state.status,
     }));
+
+    if (warning) get().pushToast('warning', warning);
   },
 
   setActiveObject: (id, additive = false) => {
@@ -981,19 +1048,24 @@ export const createSceneSlice: StateCreator<
 
   setObjectTransform: (id, transform) => {
     const object = get().objects.find((candidate) => candidate.id === id);
-    if (object?.locked) {
+    if (!object) return;
+    if (object.locked) {
       get().noteLockedAttempt(object.id);
       return;
     }
 
+    const next = withScaleFloor(object, transform);
+    const warning = sizeFloorWarning('scale', [{ object, held: next.held }]);
+
     set((state) => ({
       objects: state.objects.map((candidate) =>
-        candidate.id === id
-          ? { ...candidate, transform: withScaleFloor(candidate, transform) }
-          : candidate,
+        candidate.id === id ? { ...candidate, transform: next.transform } : candidate,
       ),
       meshVersion: state.meshVersion + 1,
+      status: warning ?? state.status,
     }));
+
+    if (warning) get().pushToast('warning', warning);
   },
 
   /**
@@ -1010,15 +1082,30 @@ export const createSceneSlice: StateCreator<
     if (patches.length === 0) return;
     const patchMap = new Map(patches.map((patch) => [patch.id, patch.transform]));
 
+    const resolved = new Map<string, SceneObject['transform']>();
+    const floored: { object: SceneObject; held: boolean }[] = [];
+
+    for (const object of get().objects) {
+      const patch = patchMap.get(object.id);
+      if (!patch || object.locked) continue;
+
+      const next = withScaleFloor(object, patch);
+      resolved.set(object.id, next.transform);
+      floored.push({ object, held: next.held });
+    }
+
+    const warning = sizeFloorWarning('scale', floored);
+
     set((state) => ({
       objects: state.objects.map((object) => {
-        const transform = patchMap.get(object.id);
-        return transform && !object.locked
-          ? { ...object, transform: withScaleFloor(object, transform) }
-          : object;
+        const transform = resolved.get(object.id);
+        return transform ? { ...object, transform } : object;
       }),
       meshVersion: state.meshVersion + 1,
+      status: warning ?? state.status,
     }));
+
+    if (warning) get().pushToast('warning', warning);
   },
 
   /**
@@ -1399,6 +1486,7 @@ export const createSceneSlice: StateCreator<
 
   resetScene: () => {
     history.clear();
+    heldAtSizeFloor.clear();
     set({
       objects: [],
       activeObjectId: null,

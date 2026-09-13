@@ -20,12 +20,13 @@ const count = (value: number) => Math.round(value).toLocaleString('en-US');
 
 /**
  * The operators that work along edge loops: cutting new ones in, cutting the
- * existing ones finer, and evening out the spacing of the ones already there.
+ * existing ones finer, and tidying up the ones already there.
  *
  * They belong together because they read the same topology: a loop cut walks
  * the ring of quads across an edge, a subdivide carries each of its cuts on as
- * a loop through the mesh, and relax straightens and spreads one out. The operators
- * that add geometry without following a loop live in `OperationsPanel`.
+ * a loop through the mesh, and relax, circle and space each take a loop that is
+ * already there and put it in order. The operators that add geometry without
+ * following a loop live in `OperationsPanel`.
  */
 export function LoopOperationsPanel() {
   const exec = useEditorStore((state) => state.exec);
@@ -47,6 +48,8 @@ export function LoopOperationsPanel() {
   const [relaxFactor, setRelaxFactor] = useState(0.5);
   const [relaxIterations, setRelaxIterations] = useState(1);
   const [relaxKeepShape, setRelaxKeepShape] = useState(true);
+  const [circleFactor, setCircleFactor] = useState(1);
+  const [spaceFactor, setSpaceFactor] = useState(1);
 
   // Subdivision is the one operator here that multiplies rather than adds, so
   // it is the one that can take the tab down, the more so now its cuts travel
@@ -188,6 +191,50 @@ export function LoopOperationsPanel() {
               'Relax',
             )
           }
+        />
+      </FieldRow>
+
+      <FieldRow legend="CIRCLE" columns={1}>
+        <NumberField
+          label="FACTOR"
+          value={circleFactor}
+          step={0.1}
+          min={0}
+          max={1}
+          hint="How far each vertex travels toward the circle: 1 lands on it, less rounds the loop off part of the way"
+          onChange={setCircleFactor}
+        />
+        <Button
+          label="CIRCLE"
+          disabled={selection.verts < 3}
+          hint={
+            selection.verts >= 3
+              ? 'Round the selected loop out onto the circle that fits it best, flattening it onto its own plane. Each vertex keeps the direction it sits in from the centre, so follow it with SPACE for an even ring'
+              : 'Select a loop of three or more vertices to round out'
+          }
+          onClick={() => exec('circle', { factor: circleFactor }, 'Circle')}
+        />
+      </FieldRow>
+
+      <FieldRow legend="SPACE" columns={1}>
+        <NumberField
+          label="FACTOR"
+          value={spaceFactor}
+          step={0.1}
+          min={0}
+          max={1}
+          hint="How far each vertex travels toward its even share of the loop"
+          onChange={setSpaceFactor}
+        />
+        <Button
+          label="SPACE"
+          disabled={selection.verts === 0}
+          hint={
+            selection.verts > 0
+              ? 'Slide the selected vertices along the loop they lie on until the gaps between them are even, leaving every bend of it where it is. The two ends of the selection hold still, and the rest are spaced against them'
+              : 'Select the vertices of a loop to even out the spacing of'
+          }
+          onClick={() => exec('space', { factor: spaceFactor }, 'Space')}
         />
       </FieldRow>
 

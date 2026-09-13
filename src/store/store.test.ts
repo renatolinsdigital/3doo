@@ -965,12 +965,104 @@ describe('editor store', () => {
     expect(activeObject().transform.scale.x).toBeCloseTo(MIN_OBJECT_SIZE, 12);
   });
 
+  it('says so the first time the floor catches a shrinking object', () => {
+    store().addPrimitive('box');
+    const id = activeObject().id;
+    useEditorStore.setState({ toasts: [] });
+
+    store().setObjectTransform(id, { scale: { x: 1e-9, y: 1e-9, z: 1e-9 } });
+
+    const toasts = store().toasts;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].variant).toBe('warning');
+    expect(toasts[0].message).toContain('size limit');
+    expect(store().status).toContain('size limit');
+  });
+
+  it('stays quiet for the rest of a drag that is already at the floor', () => {
+    store().addPrimitive('box');
+    const id = activeObject().id;
+    useEditorStore.setState({ toasts: [] });
+
+    // What a drag looks like from here on: a smaller scale every pointer tick,
+    // every one of them held at the same floor.
+    for (const factor of [1e-9, 1e-10, 1e-11]) {
+      store().setObjectTransform(id, { scale: { x: factor, y: factor, z: factor } });
+    }
+
+    expect(store().toasts).toHaveLength(1);
+  });
+
+  it('warns again once the object has been scaled back off the floor', () => {
+    store().addPrimitive('box');
+    const id = activeObject().id;
+    useEditorStore.setState({ toasts: [] });
+
+    store().setObjectTransform(id, { scale: { x: 1e-9, y: 1e-9, z: 1e-9 } });
+    store().setObjectTransform(id, { scale: { x: 1, y: 1, z: 1 } });
+    store().setObjectTransform(id, { scale: { x: 1e-9, y: 1e-9, z: 1e-9 } });
+
+    expect(store().toasts).toHaveLength(2);
+  });
+
+  it('says nothing when a scale the floor never touched goes through', () => {
+    store().addPrimitive('box');
+    const id = activeObject().id;
+    useEditorStore.setState({ toasts: [] });
+
+    store().setObjectTransform(id, { scale: { x: 0.5, y: 0.5, z: 0.5 } });
+
+    expect(store().toasts).toHaveLength(0);
+  });
+
+  it('reports a whole batch held at the floor as one warning', () => {
+    store().addPrimitive('box');
+    const first = activeObject().id;
+    store().addPrimitive('box');
+    const second = activeObject().id;
+    useEditorStore.setState({ toasts: [] });
+
+    store().setObjectTransforms([
+      { id: first, transform: { scale: { x: 0, y: 0, z: 0 } } },
+      { id: second, transform: { scale: { x: 0, y: 0, z: 0 } } },
+    ]);
+
+    const toasts = store().toasts;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].message).toContain('2 objects');
+  });
+
   it('will not build a primitive finer than the size floor', () => {
     store().addPrimitive('box');
 
     store().updatePrimitiveParams({ size: 0 });
 
     expect(activeObject().primitive?.params.size).toBe(MIN_OBJECT_SIZE);
+  });
+
+  it('says so when a primitive length is dialled past the floor', () => {
+    store().addPrimitive('box');
+    useEditorStore.setState({ toasts: [] });
+
+    store().updatePrimitiveParams({ size: 0 });
+    store().updatePrimitiveParams({ size: 0 });
+
+    const toasts = store().toasts;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].message).toContain('size limit');
+  });
+
+  it('counts the scale and the length dials apart', () => {
+    store().addPrimitive('box');
+    const id = activeObject().id;
+    useEditorStore.setState({ toasts: [] });
+
+    // Already held at the floor by scale, which says nothing about what the
+    // SIZE field is allowed to do next.
+    store().setObjectTransform(id, { scale: { x: 1e-9, y: 1e-9, z: 1e-9 } });
+    store().updatePrimitiveParams({ size: 0 });
+
+    expect(store().toasts).toHaveLength(2);
   });
 
   it('flips the winding when a mirrored scale is baked in', () => {

@@ -152,6 +152,29 @@ would sit on a seam nothing references. A loop traverses its edge from
 that side takes the points reversed. Wire edges have no face to rebuild and are
 replaced by their own chain of segments instead.
 
+### Loop chains (`chains.ts`, `relax.ts`, `circle.ts`, `space.ts`)
+
+Three operators reshape a loop that is already in the mesh, and all three start
+from the same reading of the selection. `findChains` asks, of each selected
+vertex, how many of its neighbours are selected too: two makes it part of a
+chain, one makes it the end the chain is measured against, and anything else
+makes it a loose vertex with no loop through it. Walking the links from either
+side gives each chain in order, along with whether it closes on itself and which
+vertices pin its ends. A chain running along an open border keeps a copy of that
+border as it was, since there is no surface past a border to come back to.
+
+`relaxVerts` pulls each vertex onto the midpoint of its neighbours, spreads the
+chain evenly along the line that leaves, and drops every vertex back onto the
+faces it came from, so the loop slides across the shape instead of sinking into
+it. `spaceVerts` takes only the spreading, so the loop keeps every bend it has.
+`circleVerts` fits a plane and a circle instead: Newell's normal over a unit
+sized copy of the loop gives the plane, an algebraic least squares fit gives the
+centre and radius on it, and each vertex is carried to that radius along the
+direction it already sits in. The fit is least squares rather than the centroid
+and a mean radius because an arc, or a loop crowded down one side, sits off its
+own centroid, and a circle drawn from there would swing the whole selection
+sideways.
+
 ### Merge by distance (`merge.ts`)
 
 The primary automatic topology cleanup. A spatial hash buckets vertices by

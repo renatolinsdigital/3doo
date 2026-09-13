@@ -1,6 +1,17 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { type Vec3, clamp, degToRad, distance, dot, lerp, sub, vec3 } from '../math';
+import {
+  type Vec3,
+  clamp,
+  cross,
+  degToRad,
+  distance,
+  dot,
+  lerp,
+  normalize,
+  sub,
+  vec3,
+} from '../math';
 import { BMesh } from '../mesh';
 import type { Edge, Face, Vert } from '../mesh/types';
 import {
@@ -31,6 +42,8 @@ import { bridgeEdgeLoops, fillHole } from './fill';
 import { insetFaces } from './inset';
 import { canLoopCut, loopCut } from './loopcut';
 import { relaxVerts } from './relax';
+import { circleVerts } from './circle';
+import { spaceVerts } from './space';
 import { countMergeByDistance, mergeByDistance, mergeVerts } from './merge';
 import { flipNormals, recalculateNormals } from './normals';
 import { budgetRefusal, vertsAfterEdgeSubdivide, worthWarning } from './budget';
@@ -516,6 +529,152 @@ describe('relax', () => {
       expect(after[i].co).toEqual(before[i]);
     }
     expect(moved.co.y).toBeCloseTo(0, 6);
+  });
+});
+
+describe('circle and space', () => {
+  /** The top ring of an open cylinder, in the order it runs round the axis. */
+  function topRing(mesh: BMesh): Vert[] {
+    return [...mesh.verts.values()]
+      .filter((vert) => vert.co.y > 0)
+      .sort((a, b) => Math.atan2(a.co.z, a.co.x) - Math.atan2(b.co.z, b.co.x));
+  }
+
+  function gaps(ring: readonly Vert[]): number[] {
+    return ring.map((vert, i) => distance(vert.co, ring[(i + 1) % ring.length].co));
+  }
+
+  /** How far each vertex sits from the axis the cylinder was built on. */
+  function radii(ring: readonly Vert[]): number[] {
+    return ring.map((vert) => Math.hypot(vert.co.x, vert.co.z));
+  }
+
+  /** A cylinder whose top ring has been squashed into an ellipse. */
+  function squashedTube(): BMesh {
+    const tube = createCylinder(0.5, 1, 12, false);
+    for (const vert of topRing(tube)) vert.co = vec3(vert.co.x * 0.5, vert.co.y, vert.co.z);
+    return tube;
+  }
+
+  /** How far the furthest of `points` sits off the plane the first three name. */
+  function offPlane(points: readonly Vec3[]): number {
+    const normal = normalize(cross(sub(points[1], points[0]), sub(points[2], points[0])));
+    return Math.max(...points.map((point) => Math.abs(dot(sub(point, points[0]), normal))));
+  }
+
+  it('rounds a squashed ring back out to one radius', () => {
+    const tube = squashedTube();
+    const ring = topRing(tube);
+    expect(Math.max(...radii(ring)) / Math.min(...radii(ring))).toBeCloseTo(2, 6);
+
+    circleVerts(tube, ring);
+
+    const after = radii(ring);
+    expect(Math.max(...after) / Math.min(...after)).toBeCloseTo(1, 9);
+    // In between the two axes of the ellipse it came from, which is where the
+    // one radius that fits them both has to sit.
+    expect(after[0]).toBeGreaterThan(0.25);
+    expect(after[0]).toBeLessThan(0.5);
+    expect(tube.validate()).toEqual([]);
+  });
+
+  it('brings a ring pushed out of its own plane back into one', () => {
+    const tube = createCylinder(0.5, 1, 12, false);
+    const ring = topRing(tube);
+    ring[2].co = vec3(ring[2].co.x, 0.9, ring[2].co.z);
+    ring[6].co = vec3(ring[6].co.x, 0.2, ring[6].co.z);
+    expect(offPlane(ring.map((vert) => vert.co))).toBeGreaterThan(0.1);
+
+    circleVerts(tube, ring);
+
+    expect(offPlane(ring.map((vert) => vert.co))).toBeLessThan(1e-9);
+  });
+
+  it('leaves an arc that already lies on a circle where it is', () => {
+    // Half a ring, which sits well off its own centroid: a fit that took the
+    // centroid for the centre would haul the whole arc sideways, and it is the
+    // least squares fit that knows better.
+    const tube = createCylinder(0.5, 1, 16, false);
+    const arc = topRing(tube).slice(0, 8);
+    const before = arc.map((vert) => ({ ...vert.co }));
+
+    circleVerts(tube, arc);
+
+    for (let i = 0; i < arc.length; i++) expect(distance(arc[i].co, before[i])).toBeLessThan(1e-9);
+  });
+
+  it('takes a partial factor part of the way', () => {
+    const whole = squashedTube();
+    const half = squashedTube();
+    const started = topRing(half).map((vert) => ({ ...vert.co }));
+
+    circleVerts(whole, topRing(whole));
+    circleVerts(half, topRing(half), { factor: 0.5 });
+
+    topRing(half).forEach((vert, i) => {
+      const midway = lerp(started[i], topRing(whole)[i].co, 0.5);
+      expect(distance(vert.co, midway)).toBeLessThan(1e-9);
+    });
+  });
+
+  it('leaves a selection with no loop running through it alone', () => {
+    const grid = createGrid(4, 4);
+    const corner = [...grid.verts.values()].find((vert) => vert.co.x === -2 && vert.co.z === -2);
+    if (!corner) throw new Error('no corner vertex');
+    const before = { ...corner.co };
+
+    expect(circleVerts(grid, [corner])).toBe(0);
+    expect(spaceVerts(grid, [corner])).toBe(0);
+    expect(corner.co).toEqual(before);
+  });
+
+  it('evens out the gaps of a loop bunched up against itself', () => {
+    const tube = createCylinder(0.5, 1, 8, false);
+    const ring = topRing(tube);
+    // One vertex slid round from 45° to within 5° of its neighbour, where the
+    // rest of the ring sits 45° apart.
+    const angle = degToRad(5);
+    ring[4].co = vec3(Math.cos(angle) * 0.5, 0.5, Math.sin(angle) * 0.5);
+    const before = gaps(topRing(tube));
+    expect(Math.max(...before) / Math.min(...before)).toBeGreaterThan(8);
+
+    spaceVerts(tube, ring);
+
+    // Not dead even: the spacing is measured along the ring and the gaps are
+    // measured across it, and on a ring of only eight the two differ by a few
+    // percent at every corner.
+    const after = gaps(topRing(tube));
+    expect(Math.max(...after) / Math.min(...after)).toBeLessThan(1.2);
+    expect(tube.validate()).toEqual([]);
+  });
+
+  it('spaces a chain along itself, keeping the line it traced and its ends', () => {
+    const grid = createGrid(4, 4);
+    // The middle column bent into a V, then crowded up against the point of it.
+    // Spacing evens the gaps and leaves the V, where a relax would round it off.
+    const column = [...grid.verts.values()]
+      .filter((vert) => vert.co.x === 0)
+      .sort((a, b) => a.co.z - b.co.z);
+    expect(column).toHaveLength(5);
+    for (const vert of column) vert.co = vec3(Math.abs(vert.co.z) - 2, 0, vert.co.z);
+    for (const [i, z] of [-0.2, 0, 0.2].entries()) {
+      column[i + 1].co = vec3(Math.abs(z) - 2, 0, z);
+    }
+
+    spaceVerts(grid, column);
+
+    // The two ends of the selection are what the rest is spaced against, so
+    // they hold the V where it was.
+    expect(column[0].co).toEqual(vec3(0, 0, -2));
+    expect(column[4].co).toEqual(vec3(0, 0, 2));
+    // Four equal steps along a V of two straight arms: quarter, point, three
+    // quarters.
+    expect(column[1].co.x).toBeCloseTo(-1, 6);
+    expect(column[1].co.z).toBeCloseTo(-1, 6);
+    expect(column[2].co.x).toBeCloseTo(-2, 6);
+    expect(column[2].co.z).toBeCloseTo(0, 6);
+    expect(column[3].co.x).toBeCloseTo(-1, 6);
+    expect(column[3].co.z).toBeCloseTo(1, 6);
   });
 });
 

@@ -54,6 +54,9 @@ Unknown operator "extrud". Available: bevel, bridge, delete, deselectAll, ...
 | `bevel` | `width`, `segments`, `clampOverlap` | Needs an edge selection |
 | `loopCut` | `cuts`, `slide` | Starts from the first selected edge |
 | `subdivide` | `cuts`, `smooth` | Splits edges in edge select mode, faces otherwise; reports the new vertices |
+| `relax` | `factor`, `iterations`, `keepShape` | Straightens and spaces a selected loop, keeping it on the surface |
+| `circle` | `factor` | Rounds each selected loop onto the circle that fits it best |
+| `space` | `factor` | Evens the gaps along each selected loop, leaving its shape alone |
 | `shrinkFatten` | `distance` | Moves along vertex normals |
 
 ### Cleanup

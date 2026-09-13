@@ -1,16 +1,15 @@
-import {
-  type Vec3,
-  addScaled,
-  centroid,
-  clamp,
-  distance,
-  distanceSq,
-  dot,
-  lerp,
-  sub,
-} from '../math';
+import { type Vec3, addScaled, centroid, clamp, distanceSq, dot, lerp, sub } from '../math';
 import type { BMesh } from '../mesh';
 import type { Vert } from '../mesh/types';
+
+import {
+  type Chain,
+  type ChainPatch,
+  chainPath,
+  findChains,
+  isClosedChain,
+  spreadAlong,
+} from './chains';
 
 export interface RelaxOptions {
   /** 0..1 blend from where a vertex sits toward where the relax wants it. */
@@ -31,182 +30,17 @@ export interface RelaxOptions {
   keepShape?: boolean;
 }
 
-/**
- * What the selection looks like around one vertex.
- *
- * A chain runs through it, a patch surrounds it, and a pin is the end of a
- * chain that ran out: the vertex the rest of that chain is spaced against, so
- * it holds still. Which one a vertex is in is a question about the selection as
- * much as the mesh: two neighbours selected either side of it means the user
- * picked a loop, and only one means they picked where that loop stops.
- */
-type Neighbourhood =
-  | { kind: 'chain'; before: Vert; after: Vert; border: boolean }
-  | { kind: 'patch'; verts: Vert[] }
-  | { kind: 'pin' };
-
-interface Chain {
-  /** The vertices being relaxed, in the order they run along the chain. */
-  verts: Vert[];
-  /** The vertices pinning the ends; null when the chain closes on itself. */
-  head: Vert | null;
-  tail: Vert | null;
-  /**
-   * The border this chain runs along, as it was before the first pass, or null
-   * for a chain running across the surface.
-   *
-   * A border is where the mesh stops, so there is no surface past it to drop a
-   * smoothed vertex back onto and smoothing one eats into the outline for good:
-   * relax a plane's border a few times and its corners are gone. A border chain
-   * only spreads out along the border it already occupies.
-   */
-  border: Vec3[] | null;
-}
-
-function neighbourhood(mesh: BMesh, vert: Vert, selected: ReadonlySet<number>): Neighbourhood {
-  const neighbours = vert.edges.map((edge) => mesh.edgeOther(edge, vert));
-  const inSelection = neighbours.filter((neighbour) => selected.has(neighbour.id));
-
-  const border = vert.edges.filter((edge) => mesh.isBoundaryEdge(edge));
-  if (border.length === 2) {
-    const ends = border.map((edge) => mesh.edgeOther(edge, vert));
-    // Only when the selection runs along the border, rather than merely
-    // reaching it: a loop that crosses the mesh and stops at the edge of it is
-    // pinned there, not slid along it.
-    if (ends.some((end) => selected.has(end.id))) {
-      return { kind: 'chain', before: ends[0], after: ends[1], border: true };
-    }
-  }
-
-  if (inSelection.length === 2) {
-    return { kind: 'chain', before: inSelection[0], after: inSelection[1], border: false };
-  }
-
-  return inSelection.length === 1 ? { kind: 'pin' } : { kind: 'patch', verts: neighbours };
-}
-
-/** Distance along `path` at each of its points; the last entry is its length. */
-function arcLengths(path: readonly Vec3[], closed: boolean): number[] {
-  const at = [0];
-  for (let i = 1; i < path.length; i++) at.push(at[i - 1] + distance(path[i - 1], path[i]));
-  if (closed) at.push(at[at.length - 1] + distance(path[path.length - 1], path[0]));
-  return at;
-}
-
-/** The point `s` along `path`, measured from its start. */
-function pointAlong(path: readonly Vec3[], at: readonly number[], s: number): Vec3 {
-  const total = at[at.length - 1];
-  if (total === 0) return path[0];
-
-  const target = clamp(s, 0, total);
-  let i = 1;
-  while (i < at.length - 1 && at[i] < target) i++;
-
-  const span = at[i] - at[i - 1];
-  // On a closed path the last segment runs back to where it started.
-  return lerp(path[i - 1], path[i] ?? path[0], span === 0 ? 0 : (target - at[i - 1]) / span);
-}
-
-/** Spreads `count` points evenly along `path`, and reports where they land. */
-function spreadAlong(path: readonly Vec3[], closed: boolean, count: number): Vec3[] {
-  const at = arcLengths(path, closed);
-  const total = at[at.length - 1];
-
-  if (!closed) {
-    // The ends of the path are the pinned vertices, so the spacing runs between
-    // them and the moving vertices take the gaps in the middle.
-    const step = total / (count + 1);
-    return Array.from({ length: count }, (_, i) => pointAlong(path, at, (i + 1) * step));
-  }
-
-  // Spread from where the loop already lies rather than from whichever vertex
-  // the walk happened to start at: the offset that moves the loop least is the
-  // average of what each vertex would otherwise have to travel. Without it an
-  // already even loop would still rotate by a fraction of a segment.
-  const step = total / count;
-  let offset = 0;
-  for (let i = 0; i < count; i++) offset += at[i] - i * step;
-  offset /= count;
-
-  return Array.from({ length: count }, (_, i) =>
-    pointAlong(path, at, (((i * step + offset) % total) + total) % total),
-  );
-}
-
-/**
- * Where a chain wants its vertices, read off where they are now.
- *
- * Two things at once, which is what relaxing a loop means: every point is
- * pulled onto the midpoint of its neighbours, which is what takes a kink out,
- * and the vertices are then spread evenly along the path that leaves, which is
- * what evens out the spacing. A border keeps the path it has and only takes the
- * second.
- */
 function chainTargets(chain: Chain): Vec3[] {
-  const { head, tail } = chain;
-  const closed = head === null || tail === null;
-  const points = chain.verts.map((vert) => vert.co);
-
+  const closed = isClosedChain(chain);
   if (chain.border) return spreadAlong(chain.border, closed, chain.verts.length);
 
-  const path = closed ? points : [head.co, ...points, tail.co];
+  const path = chainPath(chain);
   const smoothed = path.map((point, i) => {
     if (!closed && (i === 0 || i === path.length - 1)) return point;
     return lerp(path[(i - 1 + path.length) % path.length], path[(i + 1) % path.length], 0.5);
   });
 
   return spreadAlong(smoothed, closed, chain.verts.length);
-}
-
-function collectChains(
-  live: readonly Vert[],
-  links: ReadonlyMap<number, { before: Vert; after: Vert; border: boolean }>,
-): Chain[] {
-  const visited = new Set<number>();
-  const chains: Chain[] = [];
-
-  /** Follows the chain out of `from` through `into`, and reports where it ended. */
-  const walk = (from: Vert, into: Vert, ordered: Vert[], append: boolean): Vert => {
-    let previous = from;
-    let current = into;
-    let link = links.get(current.id);
-
-    while (link && !visited.has(current.id)) {
-      visited.add(current.id);
-      if (append) ordered.push(current);
-      else ordered.unshift(current);
-
-      const onward = link.before === previous ? link.after : link.before;
-      previous = current;
-      current = onward;
-      link = links.get(current.id);
-    }
-
-    return current;
-  };
-
-  for (const vert of live) {
-    const link = links.get(vert.id);
-    if (!link || visited.has(vert.id)) continue;
-
-    visited.add(vert.id);
-    const ordered = [vert];
-    const tail = walk(vert, link.after, ordered, true);
-    const head = walk(vert, link.before, ordered, false);
-
-    // The walk came back to where it started, so the chain closes on itself and
-    // has no ends to pin.
-    const closed = tail === vert || head === vert;
-    const path = ordered.map((member) => member.co);
-    chains.push({
-      verts: ordered,
-      head: closed ? null : head,
-      tail: closed ? null : tail,
-      border: !link.border ? null : closed ? path : [head.co, ...path, tail.co],
-    });
-  }
-
-  return chains;
 }
 
 /** The point of triangle `abc` closest to `p`. */
@@ -277,7 +111,7 @@ function closestOnPath(p: Vec3, path: readonly Vec3[], closed: boolean): Vec3 {
 function surfaceAnchor(
   mesh: BMesh,
   chains: readonly Chain[],
-  patch: readonly { vert: Vert; neighbours: Vert[] }[],
+  patch: readonly ChainPatch[],
 ): (vert: Vert, point: Vec3) => Vec3 {
   const rings = new Map<number, Vec3[]>();
   const nearby = new Map<number, number[]>();
@@ -296,7 +130,7 @@ function surfaceAnchor(
 
   for (const chain of chains) {
     if (chain.border) {
-      const path = { path: chain.border, closed: chain.head === null };
+      const path = { path: chain.border, closed: isClosedChain(chain) };
       for (const vert of chain.verts) borders.set(vert.id, path);
       continue;
     }
@@ -363,21 +197,9 @@ export function relaxVerts(
   const iterations = Math.max(1, Math.floor(options.iterations ?? 1));
   const keepShape = options.keepShape ?? true;
 
-  const live = verts.filter((vert) => mesh.verts.has(vert.id));
+  const { live, chains, patch } = findChains(mesh, verts);
   if (live.length === 0 || factor === 0) return 0;
 
-  const selected = new Set(live.map((vert) => vert.id));
-  const links = new Map<number, { before: Vert; after: Vert; border: boolean }>();
-  const patch: { vert: Vert; neighbours: Vert[] }[] = [];
-
-  for (const vert of live) {
-    const hood = neighbourhood(mesh, vert, selected);
-    if (hood.kind === 'chain') links.set(vert.id, hood);
-    else if (hood.kind === 'patch' && hood.verts.length > 0)
-      patch.push({ vert, neighbours: hood.verts });
-  }
-
-  const chains = collectChains(live, links);
   const anchor = keepShape ? surfaceAnchor(mesh, chains, patch) : null;
   const settle = (vert: Vert, point: Vec3) => (anchor ? anchor(vert, point) : point);
 
