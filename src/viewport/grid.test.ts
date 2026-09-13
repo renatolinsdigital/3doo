@@ -115,12 +115,15 @@ describe('grid divisions', () => {
     expect(extent(fine)).toBe(extent(coarse));
   });
 
-  it('stretches the centre lines across the plane they sit under', () => {
+  it('leaves the centre lines out of it: what they answer to is the zoom', () => {
+    // They stand for the world axes, not for a grid square, so neither the
+    // scale nor the subdivisions move them. `centre lines through a zoom` is
+    // where the length they are actually drawn at comes from.
     const grid = new ViewportGrid();
-    grid.setGrid({ ...SETTINGS, scale: 2 });
-    const [fine, , axes] = groundPlane(grid);
+    const before = extent(groundPlane(grid)[2]);
+    grid.setGrid({ ...SETTINGS, scale: 2, subdivisions: 5 });
 
-    expect(extent(axes)).toBe(extent(fine));
+    expect(extent(groundPlane(grid)[2])).toBe(before);
   });
 
   it('paints each set from its own colour and opacity', () => {
@@ -223,6 +226,51 @@ describe('fine lines through a zoom', () => {
     grid.update(99);
 
     expect(coarse.material.opacity).toBe(SETTINGS.majorOpacity);
+  });
+});
+
+/** How far one centre line runs out from the origin, in world units. */
+function reach(line: THREE.Object3D): number {
+  return (extent(line) / 2) * line.scale.x;
+}
+
+describe('centre lines through a zoom', () => {
+  it('runs them well past the corner of the view, wherever the camera stands', () => {
+    const grid = new ViewportGrid();
+    const [, , axes] = groundPlane(grid);
+
+    for (const distance of [0.0001, 0.01, 1, 100, 5000]) {
+      grid.update(distance);
+      expect(reach(axes)).toBeGreaterThanOrEqual(distance * 10);
+    }
+  });
+
+  it('and no further, so the clip has the precision to place them', () => {
+    // Fifty units long at every zoom, which is what they used to be, is
+    // thousands of view widths once the camera is close in. All but a sliver of
+    // the line is then clipped away before it is drawn, float32 has too little
+    // left to say where that sliver lands, and the axis comes out a few pixels
+    // off the grid's own centre line underneath it: two lines where there is
+    // one. Below a millimetre the reach stops following the zoom down, so the
+    // bound is read from the distances the zoom is actually taken at.
+    const grid = new ViewportGrid();
+    const [, , axes] = groundPlane(grid);
+
+    for (const distance of [0.01, 0.5, 1, 100, 5000]) {
+      grid.update(distance);
+      expect(reach(axes) / distance).toBeLessThanOrEqual(50);
+    }
+  });
+
+  it('keeps a line to see when the camera is sitting on its target', () => {
+    // A restored pose can put the camera on the pivot, and a reach taken
+    // straight from the distance would scale the lines away to a point.
+    const grid = new ViewportGrid();
+    const [, , axes] = groundPlane(grid);
+
+    grid.update(0);
+
+    expect(reach(axes)).toBeGreaterThan(0);
   });
 });
 

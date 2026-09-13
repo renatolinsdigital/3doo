@@ -45,6 +45,28 @@ const GRID_CELLS = 100;
 const FINE_FADE_START = 0.5;
 
 /**
+ * The closest the zoom is read as being, in world units.
+ *
+ * The orbit can come nearer than this, and everything the plane is sized from
+ * would go to nothing with it: the step, and the reach of the centre lines.
+ */
+const MIN_EYE_DISTANCE = 0.001;
+
+/**
+ * How far out the centre lines reach, in camera distances.
+ *
+ * They are not part of the quantised grid: all they have to do is leave the
+ * frustum from wherever the camera is standing, which fifty distances does from
+ * any angle. Going further is not free. A line thousands of view widths long is
+ * clipped down to a sliver of itself before it is drawn, and the float the clip
+ * is worked out in has too little precision left to say where that sliver
+ * lands: held at a fixed length, as these were, each axis drifted a few pixels
+ * off the grid's own centre line underneath it as the camera closed in, and the
+ * two read as one line drawn twice.
+ */
+const AXIS_REACH = 50;
+
+/**
  * The size the grid is drawn at for a camera distance, and how much of the fine
  * lines' opacity is left at it.
  *
@@ -54,7 +76,7 @@ const FINE_FADE_START = 0.5;
  * standing are the heavy ones, which are in the same places either side of it.
  */
 export function gridLevel(distance: number): { step: number; fade: number } {
-  const eye = Math.max(distance, 0.001);
+  const eye = Math.max(distance, MIN_EYE_DISTANCE);
   const step = Math.max(Math.pow(10, Math.floor(Math.log10(eye)) - 1), 0.01);
 
   // Where the camera sits inside the decade this step covers: 0 where the fine
@@ -137,6 +159,7 @@ export class ViewportGrid {
       transparent: true,
       depthWrite: false,
     });
+    this.buildAxes();
 
     this.setGrid(settings);
 
@@ -177,7 +200,6 @@ export class ViewportGrid {
       this.shape = shape;
       reshape(this.fine, extent, cells, settings.color);
       reshape(this.coarse, extent, majors, settings.majorColor);
-      this.buildAxes(extent / 2);
     }
 
     this.opacity = settings.opacity;
@@ -203,16 +225,22 @@ export class ViewportGrid {
 
     this.fine.scale.setScalar(step);
     this.coarse.scale.setScalar(step);
-    this.axes.scale.setScalar(Math.max(step, 1));
+    this.axes.scale.setScalar(Math.max(distance, MIN_EYE_DISTANCE) * AXIS_REACH);
 
     if (fade === this.fade) return;
     this.fade = fade;
     this.applyOpacity();
   }
 
-  /** The two world centre lines, spanning the grid they sit under. */
-  private buildAxes(span: number): void {
-    const positions = new Float32Array([-span, 0, 0, span, 0, 0, 0, 0, -span, 0, 0, span]);
+  /**
+   * The two world centre lines, as a unit cross for `update` to size.
+   *
+   * Built once: nothing in the preferences reaches them. How far they run is
+   * the zoom's business and the colours are the app's own, the same two the
+   * gizmo paints its X and Z handles with.
+   */
+  private buildAxes(): void {
+    const positions = new Float32Array([-1, 0, 0, 1, 0, 0, 0, 0, -1, 0, 0, 1]);
     // Run through THREE.Color rather than written out as raw channels: with
     // colour management on, that is the same sRGB-to-working conversion the
     // gizmo's materials get from `setHex`. Hand-written values would land in a
