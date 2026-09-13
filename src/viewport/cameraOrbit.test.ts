@@ -3,7 +3,15 @@ import { describe, expect, it } from 'vitest';
 
 import { MIN_OBJECT_SIZE } from '@kernel/index';
 
-import { CameraController, MIN_ORBIT_DISTANCE, orbitPhi, upSign } from './CameraController';
+import {
+  CameraController,
+  MAX_ORBIT_DISTANCE,
+  MIN_ORBIT_DISTANCE,
+  orbitPhi,
+  upSign,
+  viewLostReason,
+  zoomSpent,
+} from './CameraController';
 
 const TWO_PI = Math.PI * 2;
 
@@ -114,5 +122,143 @@ describe('zooming in on something small', () => {
     // Framing used to stop at half a metre, which left a 1 mm box a speck.
     expect(controls.distance).toBeLessThan(0.01);
     expect(controls.distance).toBeGreaterThanOrEqual(MIN_ORBIT_DISTANCE);
+  });
+});
+
+describe('a zoom that has stopped biting', () => {
+  /** One wheel notch in, the way the viewport hands them over. */
+  function zoomIn(controls: CameraController, notches: number) {
+    for (let notch = 0; notch < notches; notch += 1) {
+      controls.onWheel({ deltaY: -100 } as WheelEvent);
+    }
+  }
+
+  /** How far the camera stands from a one metre box sitting on the origin. */
+  function gapToBox(camera: THREE.PerspectiveCamera): number {
+    const box = new THREE.Box3(
+      new THREE.Vector3(-0.5, -0.5, -0.5),
+      new THREE.Vector3(0.5, 0.5, 0.5),
+    );
+    return box.distanceToPoint(camera.position);
+  }
+
+  it('leaves a camera framed on its model alone', () => {
+    // The pivot is on the model, so every notch of the wheel closes a real
+    // share of what is left between them.
+    const { camera, controls } = controllerAt(Math.PI / 3);
+
+    expect(zoomSpent(controls.distance, gapToBox(camera))).toBe(false);
+
+    zoomIn(controls, 20);
+    expect(zoomSpent(controls.distance, gapToBox(camera))).toBe(false);
+  });
+
+  it('says nothing while the camera is in amongst the geometry', () => {
+    // No gap to close and plenty of orbit left: this is a close-up working,
+    // which is most of a zoom in, since the camera is inside the bounding box
+    // of what it is looking at long before it gets near anything.
+    expect(zoomSpent(0.5, 0)).toBe(false);
+  });
+
+  it('catches the wheel going dead on a model the camera is right up against', () => {
+    // The reported one, and the one the gap could never have caught: the
+    // camera is inside the box it closed in on, so there is no gap to measure,
+    // and the orbit is on its clamp so the wheel does nothing at all.
+    const { camera, controls } = controllerAt(Math.PI / 3);
+    controls.frameBox(
+      new THREE.Box3(new THREE.Vector3(-0.5, -0.5, -0.5), new THREE.Vector3(0.5, 0.5, 0.5)),
+    );
+    expect(zoomSpent(controls.distance, gapToBox(camera))).toBe(false);
+
+    zoomIn(controls, 100);
+
+    expect(controls.distance).toBe(MIN_ORBIT_DISTANCE);
+    expect(gapToBox(camera)).toBe(0);
+    expect(zoomSpent(controls.distance, gapToBox(camera))).toBe(true);
+  });
+
+  it('really has stopped moving by then, which is what the user sees', () => {
+    const { controls } = controllerAt(Math.PI / 3);
+    controls.frameBox(
+      new THREE.Box3(new THREE.Vector3(-0.5, -0.5, -0.5), new THREE.Vector3(0.5, 0.5, 0.5)),
+    );
+    zoomIn(controls, 100);
+
+    const stalled = controls.distance;
+    zoomIn(controls, 50);
+
+    expect(controls.distance).toBe(stalled);
+  });
+
+  it('catches the pivot a pan left out in empty space', () => {
+    const { camera, controls } = controllerAt(Math.PI / 3);
+    // The pan that causes it: the pivot carried thirty metres off the model,
+    // which is still sitting on the origin.
+    controls.setPose({ target: { x: 30, y: 0, z: 0 }, radius: 5, phi: Math.PI / 3, theta: 0 });
+
+    // Nothing is wrong yet: the orbit is still wide enough to matter.
+    expect(zoomSpent(controls.distance, gapToBox(camera))).toBe(false);
+
+    // Then the user scrolls, and scrolls, because nothing seems to be getting
+    // any closer. Which it is not: the camera is converging on the pivot.
+    zoomIn(controls, 30);
+    expect(zoomSpent(controls.distance, gapToBox(camera))).toBe(true);
+  });
+
+  it('catches an orbit that has run all the way down to its clamp', () => {
+    const { camera, controls } = controllerAt(Math.PI / 3);
+    controls.setPose({ target: { x: 30, y: 0, z: 0 }, radius: 5, phi: Math.PI / 3, theta: 0 });
+
+    zoomIn(controls, 400);
+
+    expect(controls.distance).toBe(MIN_ORBIT_DISTANCE);
+    expect(zoomSpent(controls.distance, gapToBox(camera))).toBe(true);
+  });
+
+  it('clears again once the camera is framed back on the model', () => {
+    const { camera, controls } = controllerAt(Math.PI / 3);
+    controls.setPose({ target: { x: 30, y: 0, z: 0 }, radius: 5, phi: Math.PI / 3, theta: 0 });
+    zoomIn(controls, 60);
+    expect(zoomSpent(controls.distance, gapToBox(camera))).toBe(true);
+
+    controls.frameBox(
+      new THREE.Box3(new THREE.Vector3(-0.5, -0.5, -0.5), new THREE.Vector3(0.5, 0.5, 0.5)),
+    );
+
+    expect(zoomSpent(controls.distance, gapToBox(camera))).toBe(false);
+  });
+});
+
+describe('what Frame All is asked to say', () => {
+  it('says nothing while the camera is working normally', () => {
+    // Framed on a one metre box: four metres of gap and five of orbit to
+    // close it with.
+    expect(viewLostReason(5, 4)).toBeNull();
+  });
+
+  it('calls an orbit scrolled out past the scene far', () => {
+    expect(viewLostReason(MAX_ORBIT_DISTANCE * 0.9, 2500)).toBe('far');
+  });
+
+  it('calls a zoom that can no longer close the gap stuck', () => {
+    // A tenth of a metre of orbit left against thirty metres of gap: the
+    // wheel has nothing to give.
+    expect(viewLostReason(0.1, 30)).toBe('stuck');
+  });
+
+  it('reports the distance first when the camera is both', () => {
+    // Out past the scene, and with an orbit that could not close the gap
+    // either. Coming back in is the move, and saying so is more use than
+    // explaining the pivot.
+    expect(viewLostReason(MAX_ORBIT_DISTANCE * 0.9, 1e6)).toBe('far');
+  });
+
+  it('says nothing when there is no gap to close and room left to close it', () => {
+    // The camera is in amongst the geometry, which is where a close-up works.
+    expect(viewLostReason(0.5, 0)).toBeNull();
+  });
+
+  it('calls a wheel that has run out of orbit stuck, gap or no gap', () => {
+    expect(viewLostReason(MIN_ORBIT_DISTANCE, 0)).toBe('stuck');
   });
 });

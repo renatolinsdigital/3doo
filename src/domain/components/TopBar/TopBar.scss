@@ -129,11 +129,14 @@
     min-width: 132px;
   }
 
-  // The parallelogram sits low in its em box, so it reads a pixel below the
-  // ring on the flag next to it. Nudged back up rather than left uneven.
-  &__ortho .segmented__icon {
-    position: relative;
-    bottom: 1px;
+  // One box for every icon in the bar, whichever control is wearing it, so a
+  // row of them reads as one row. The drawings fill their own viewBox, so the
+  // box is the size: nothing here depends on what a font would have done with
+  // a glyph.
+  &__glyph {
+    display: block;
+    width: var(--box-size);
+    height: var(--box-size);
   }
 
   // The rail sizes its icon buttons to fill a column; here they are their own

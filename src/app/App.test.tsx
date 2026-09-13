@@ -600,16 +600,60 @@ describe('App shell', () => {
     expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
   });
 
+  it('draws every top bar icon at one size, whatever it is a picture of', () => {
+    render(<App />);
+    const glyphs = [...document.querySelectorAll('.top-bar .top-bar__glyph')];
+
+    // Snap, proportional, auto merge, ortho, smooth, history and the two frame
+    // buttons. They were Unicode glyphs, and the crosshair on FRAME SEL came
+    // out at about half the height of the ruled square on SNAP.
+    expect(glyphs).toHaveLength(8);
+    for (const glyph of glyphs) {
+      expect(glyph.tagName.toLowerCase()).toBe('svg');
+      // One box, and drawings that fill it, so no font gets a say in the size.
+      expect(glyph.getAttribute('viewBox')).toBe('0 0 16 16');
+      expect(glyph.getAttribute('width')).toBeNull();
+      expect(glyph.getAttribute('height')).toBeNull();
+    }
+  });
+
+  it('gives each icon button a picture rather than a character', () => {
+    render(<App />);
+
+    for (const name of ['HISTORY', 'FRAME SEL', 'FRAME ALL', 'SNAP', 'ORTHO']) {
+      const button = screen.getByRole('button', { name });
+      expect(button.querySelector('.top-bar__glyph')).not.toBeNull();
+    }
+  });
+
   it('trembles the Frame All button once the viewport reports the scene is out of view', () => {
     render(<App />);
     const frameAll = screen.getByRole('button', { name: 'FRAME ALL' });
     expect(frameAll.className).not.toMatch(/tremble/);
 
-    act(() => useEditorStore.setState({ viewLost: true }));
+    act(() => useEditorStore.setState({ viewLost: 'far' }));
     expect(frameAll.className).toMatch(/tremble/);
 
-    act(() => useEditorStore.setState({ viewLost: false }));
+    act(() => useEditorStore.setState({ viewLost: null }));
     expect(frameAll.className).not.toMatch(/tremble/);
+  });
+
+  it('trembles it for a zoom that has stopped biting, and says which trap it is', () => {
+    render(<App />);
+    const frameAll = screen.getByRole('button', { name: 'FRAME ALL' });
+
+    act(() => useEditorStore.setState({ viewLost: 'stuck' }));
+
+    expect(frameAll.className).toMatch(/tremble/);
+
+    // The tremble says something is wrong; only the hint says which of the two
+    // traps the camera is in, and so which way out the click takes.
+    vi.useFakeTimers();
+    fireEvent.mouseEnter(frameAll);
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(screen.getByRole('tooltip')).toHaveTextContent(/run out of zoom/);
   });
 
   it('opens the history from the top bar and travels back through it', async () => {

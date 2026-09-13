@@ -1,13 +1,21 @@
 import * as THREE from 'three';
 
 import { MIN_OBJECT_SIZE } from '@kernel/index';
-import type { CameraPose, NavigationPreset } from '@store/types';
+import type { CameraPose, NavigationPreset, ViewLostReason } from '@store/types';
 
 /**
  * Hard clamp on how far the orbit can zoom out. Shared with the viewport so it
  * can decide when the scene has scrolled out of comfortable view.
  */
 export const MAX_ORBIT_DISTANCE = 5000;
+
+/**
+ * How far out the orbit has to scroll before the scene counts as lost.
+ *
+ * Most of the way to the clamp: short of this there is still a plausible
+ * reason to be out here, looking at a large scene whole.
+ */
+const VIEW_LOST_DISTANCE = MAX_ORBIT_DISTANCE * 0.45;
 
 /**
  * Hard clamp on how far the orbit can zoom in.
@@ -18,6 +26,50 @@ export const MAX_ORBIT_DISTANCE = 5000;
  * editor allows across roughly half the height of the viewport.
  */
 export const MIN_ORBIT_DISTANCE = MIN_OBJECT_SIZE;
+
+/**
+ * The share of the gap to the scene the orbit still has to be able to close
+ * for the wheel to be worth turning.
+ *
+ * A tenth: below that, closing the orbit the whole way would bring the camera
+ * less than a tenth nearer whatever it is looking at, which on screen is
+ * nothing.
+ */
+const ZOOM_REACH = 0.1;
+
+/**
+ * Whether zooming in has stopped being able to help.
+ *
+ * The wheel moves the camera along its orbit, so the nearest the scene can be
+ * brought is the pivot the orbit turns about: collapse the radius to nothing
+ * and the camera arrives at the pivot and stops. That is fine while the pivot
+ * sits on the model, which is where framing puts it, and it is the whole
+ * problem once a pan has carried the pivot off into empty space. From there
+ * every notch of the wheel shortens a radius that was never what stood between
+ * the camera and the model, the steps shrink along with it, and the zoom grinds
+ * to a halt with the model as far off and as small as it was. Blender is famous
+ * for it.
+ *
+ * `gap` is how far the camera stands from the scene itself, and `radius` is all
+ * the zoom has left to give. Once the second is a small fraction of the first
+ * there is nothing left to gain by turning the wheel, and once the orbit is
+ * down on its clamp there is nothing left to turn it with. The way back from
+ * both is to put the pivot on the scene again, which is what Frame All does.
+ */
+export function zoomSpent(radius: number, gap: number): boolean {
+  // The orbit is as tight as it is allowed to get, so the wheel has nothing
+  // left to do at all: the next notch changes no number anywhere, which is
+  // the stall a user actually runs into. It takes about eighty-five notches
+  // from a framed object to get here, and the gap does not come into it: by
+  // then the camera is usually inside the thing it was closing in on.
+  if (radius <= MIN_ORBIT_DISTANCE) return true;
+
+  // Short of that the wheel still moves the camera, and the question is
+  // whether moving it is worth anything. No gap means the camera is in
+  // amongst the geometry already, which is where a close-up works.
+  if (!Number.isFinite(gap) || gap <= 0) return false;
+  return radius < gap * ZOOM_REACH;
+}
 
 /**
  * How near the pole the camera may stand.
@@ -267,4 +319,21 @@ export class CameraController {
       this.camera.updateProjectionMatrix();
     }
   }
+}
+
+/**
+ * Whether the scene has got away from the camera, and which way.
+ *
+ * The two traps a navigating camera falls into, and Frame All is the way
+ * out of both, which is why they are one answer rather than two. 'far' is
+ * the orbit scrolled out past everything there is, read off the orbit alone.
+ * 'stuck' is the zoom that has stopped biting, which needs `gap`: how far the
+ * camera actually stands from the scene. See `zoomSpent`.
+ *
+ * Distance wins when both are true: from that far out the zoom being spent
+ * is a symptom of the same thing, and coming back in is the first move.
+ */
+export function viewLostReason(distance: number, gap: number): ViewLostReason | null {
+  if (distance > VIEW_LOST_DISTANCE) return 'far';
+  return zoomSpent(distance, gap) ? 'stuck' : null;
 }

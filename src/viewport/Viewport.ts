@@ -40,9 +40,9 @@ import {
   snapStepFor,
   useEditorStore,
 } from '@store/index';
-import type { CursorSnapTargets, SceneObject } from '@store/types';
+import type { CursorSnapTargets, SceneObject, ViewLostReason } from '@store/types';
 
-import { CameraController, MAX_ORBIT_DISTANCE } from './CameraController';
+import { CameraController, viewLostReason } from './CameraController';
 import { type SnapAmounts, ViewportGrid, snapAmounts, snapTo } from './grid';
 import { type MarqueeLayer, createMarqueeLayer, drawMarquee, hideMarquee } from './marquee';
 import {
@@ -58,9 +58,6 @@ import {
   regionForShape,
 } from './picking';
 import { pinnedAxes, publishViewAxes, resetViewAxes } from './viewAxes';
-
-/** Beyond this multiple of the max zoom, the scene reads as empty rather than distant. */
-const VIEW_LOST_DISTANCE = MAX_ORBIT_DISTANCE * 0.45;
 
 /** Minimum gap between recorded lasso points, in pixels. */
 const LASSO_POINT_SPACING = 6;
@@ -461,7 +458,15 @@ export class Viewport {
   private grabGizmo: ((pointer: GizmoPointer) => void) | null = null;
   /** Set while a handle grab is held back to see whether the gesture is a click. */
   private deferredGrab = false;
-  private viewLostReported = false;
+  private viewLostReported: ViewLostReason | null = null;
+  /**
+   * Everything the scene draws, as one box, rebuilt only when the scene is.
+   *
+   * Read every frame to tell whether the zoom still has anywhere to go, and
+   * geometry does not move between syncs, so it is worked out once per change
+   * rather than once per frame.
+   */
+  private sceneBoxCache: THREE.Box3 | null = null;
   /** Last cursor written to the canvas; the render loop would otherwise set it every frame. */
   private appliedCursor = '';
   private recentVerts: { objectId: string; ids: Set<number>; expiresAt: number } | null = null;
@@ -938,6 +943,7 @@ export class Viewport {
 
   /** Rebuilds every object's GPU buffers from the kernel meshes. */
   syncScene(): void {
+    this.sceneBoxCache = null;
     const state = useEditorStore.getState();
     const settings = {
       shading: state.shading,
@@ -3038,19 +3044,30 @@ export class Viewport {
   // -------------------------------------------------------------- framing
 
   private frame(target: 'selected' | 'all'): void {
+    const selected = useEditorStore.getState().selectedObjectIds;
+    const box = target === 'all' ? this.sceneBounds() : this.bounds((id) => selected.includes(id));
+    if (box.isEmpty()) return;
+    this.controls.frameBox(box);
+  }
+
+  /** The box around every visible object the given filter keeps. */
+  private bounds(keep: (id: string) => boolean): THREE.Box3 {
     const state = useEditorStore.getState();
     const box = new THREE.Box3();
 
     for (const object of state.objects) {
-      if (!object.visible) continue;
-      if (target === 'selected' && !state.selectedObjectIds.includes(object.id)) continue;
+      if (!object.visible || !keep(object.id)) continue;
       const view = this.views.get(object.id);
-      if (!view) continue;
-      box.expandByObject(view.group);
+      if (view) box.expandByObject(view.group);
     }
 
-    if (box.isEmpty()) return;
-    this.controls.frameBox(box);
+    return box;
+  }
+
+  /** Everything the scene draws, worked out once per change to it. */
+  private sceneBounds(): THREE.Box3 {
+    this.sceneBoxCache ??= this.bounds(() => true);
+    return this.sceneBoxCache;
   }
 
   // ------------------------------------------------------------- lifecycle
@@ -3232,12 +3249,26 @@ export class Viewport {
     this.perspectiveCamera.updateProjectionMatrix();
   }
 
-  /** Flags when the orbit has scrolled far enough out that Frame All should draw attention. */
+  /** Flags when Frame All should draw attention to itself, and why. */
   private updateViewLost(distance: number): void {
-    const lost = useEditorStore.getState().objects.length > 0 && distance > VIEW_LOST_DISTANCE;
+    const state = useEditorStore.getState();
+    const lost = state.objects.length === 0 ? null : this.lostView(distance);
     if (lost === this.viewLostReported) return;
     this.viewLostReported = lost;
-    useEditorStore.getState().setViewLost(lost);
+    state.setViewLost(lost);
+  }
+
+  /**
+   * Which way the scene has been lost, if it has.
+   *
+   * All this end supplies is where the scene is: nothing visible leaves no gap
+   * for a zoom to be failing to close, and the orbit is then judged on its own
+   * distance. The rule itself is `viewLostReason`.
+   */
+  private lostView(distance: number): ViewLostReason | null {
+    const box = this.sceneBounds();
+    const gap = box.isEmpty() ? 0 : box.distanceToPoint(this.camera.position);
+    return viewLostReason(distance, gap);
   }
 
   dispose(): void {

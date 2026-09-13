@@ -20,7 +20,14 @@ import {
   useActiveShadingSmooth,
   useEditorStore,
 } from '@store/index';
-import type { EditorMode, OverlaySettings, PivotMode, ShadingMode, SnapMode } from '@store/types';
+import type {
+  EditorMode,
+  OverlaySettings,
+  PivotMode,
+  ShadingMode,
+  SnapMode,
+  ViewLostReason,
+} from '@store/types';
 
 import { useProjectFiles } from '../../hooks/useProjectFiles';
 
@@ -53,6 +60,20 @@ const SNAP_OPTIONS: readonly { value: SnapMode; label: string }[] = [
   { value: 'grid', label: 'GRID' },
   { value: 'custom', label: 'CUSTOM' },
 ];
+
+/**
+ * What Frame All says for itself, by how the scene was lost.
+ *
+ * The button trembles either way, and the hint is the only thing that can say
+ * which trap the camera is in, so it names the way out rather than repeating
+ * that something is wrong.
+ */
+const VIEW_LOST_HINTS: Record<ViewLostReason | 'here', string> = {
+  here: 'Frame the camera on the whole scene (Home)',
+  far: "You've zoomed out past your scene: click to come back",
+  stuck:
+    'The wheel has run out of zoom: the camera is as close to the point it turns about as it goes. Click to put that point back on your model, which gives the zoom its range back',
+};
 
 const PIVOT_OPTIONS: readonly { value: PivotMode; label: string }[] = [
   { value: 'origin', label: 'ORIGIN' },
@@ -225,8 +246,7 @@ export function TopBar({ brand }: TopBarProps) {
         <span className="top-bar__snap">
           <SegmentedToggle
             label="SNAP"
-            // A ruled square: the grid the step is measured against.
-            icon="▦"
+            icon={<SnapIcon />}
             iconOnly
             pressed={snapEnabled}
             hint={snapHint}
@@ -255,9 +275,7 @@ export function TopBar({ brand }: TopBarProps) {
         </span>
         <SegmentedToggle
           label="PROP"
-          // A point with its falloff ring around it, the same ring the
-          // viewport draws once this is on.
-          icon="◉"
+          icon={<ProportionalIcon />}
           iconOnly
           pressed={proportional.enabled}
           disabled={mode !== 'edit'}
@@ -270,8 +288,7 @@ export function TopBar({ brand }: TopBarProps) {
         />
         <SegmentedToggle
           label="AUTO MERGE"
-          // Two corners meeting at one point: the weld itself.
-          icon="⋈"
+          icon={<AutoMergeIcon />}
           iconOnly
           pressed={autoMerge.enabled}
           disabled={mode !== 'edit'}
@@ -284,19 +301,15 @@ export function TopBar({ brand }: TopBarProps) {
         />
         <SegmentedToggle
           label="ORTHO"
-          // Parallel projection: the square a perspective camera would taper.
-          icon="▱"
+          icon={<OrthoIcon />}
           iconOnly
-          className="top-bar__ortho"
           pressed={orthographic}
           hint="Orthographic camera: no perspective, so parallel lines stay parallel"
           onChange={(value) => setViewportSetting({ orthographic: value })}
         />
         <SegmentedToggle
           label="SMOOTH"
-          // A ball half in shadow: the gradient across a face that shading
-          // smooth is asking for, against the flat one it replaces.
-          icon="◐"
+          icon={<SmoothIcon />}
           iconOnly
           pressed={smoothShaded}
           disabled={!activeObject}
@@ -335,8 +348,7 @@ export function TopBar({ brand }: TopBarProps) {
       <div className="top-bar__actions">
         <IconButton
           label="HISTORY"
-          // A stack of steps, which is what the dialog lists.
-          icon="▤"
+          icon={<HistoryIcon />}
           className="top-bar__icon"
           hint={
             undoSteps > 0
@@ -347,27 +359,22 @@ export function TopBar({ brand }: TopBarProps) {
         />
         <IconButton
           label="FRAME SEL"
-          // Crosshair over a point: the camera centres on what is selected.
-          icon="⌖"
+          icon={<FrameSelectedIcon />}
           className="top-bar__icon"
-          hint="Frame the camera on selection (.)"
+          hint="Frame the camera on selected element (.)"
           onClick={frameSelected}
         />
         <IconButton
           label="FRAME ALL"
-          // The corners of a frame drawn around everything there is.
-          icon="⛶"
+          icon={<FrameAllIcon />}
           className={cx('top-bar__icon', viewLost && 'top-bar__icon--tremble')}
-          hint={
-            viewLost
-              ? "You've zoomed out past your scene: click to come back"
-              : 'Frame the camera on the whole scene (Home)'
-          }
+          hint={VIEW_LOST_HINTS[viewLost ?? 'here']}
           onClick={frameAll}
         />
         <Button
           label="?"
           variant="ghost"
+          className="top-bar__icon"
           hint="Keyboard shortcuts (Shift+?)"
           onClick={() => openDialog('shortcuts')}
         />
@@ -431,5 +438,114 @@ function TopBarMenu({ label, menuLabel, entries, hint, ariaLabel, className }: T
           )
         : null}
     </span>
+  );
+}
+
+/**
+ * The bar's icons, drawn rather than typed.
+ *
+ * They were Unicode glyphs, and a glyph is only ever as big as the font feels
+ * like drawing it: the crosshair came out at half the height of the ruled
+ * square beside it, and the fallback font differs by platform, so no amount of
+ * tuning the font size would have held the row level everywhere. Every icon
+ * below is one 16 by 16 drawing in `currentColor`, so they match each other
+ * exactly and follow the button through its pressed and disabled states.
+ */
+function Glyph({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      className="top-bar__glyph"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
+/** A ruled square: the grid the step is measured against. */
+function SnapIcon() {
+  return (
+    <Glyph>
+      <rect x="2" y="2" width="12" height="12" />
+      <path d="M6 2v12M10 2v12M2 6h12M2 10h12" />
+    </Glyph>
+  );
+}
+
+/** A point with its falloff ring around it, the ring the viewport draws. */
+function ProportionalIcon() {
+  return (
+    <Glyph>
+      <circle cx="8" cy="8" r="6" />
+      <circle cx="8" cy="8" r="1.75" fill="currentColor" stroke="none" />
+    </Glyph>
+  );
+}
+
+/** Two corners meeting at one point: the weld itself. */
+function AutoMergeIcon() {
+  return (
+    <Glyph>
+      <path d="M2 3.5 5 8 2 12.5" />
+      <path d="M14 3.5 11 8 14 12.5" />
+      <circle cx="8" cy="8" r="1.75" fill="currentColor" stroke="none" />
+    </Glyph>
+  );
+}
+
+/** Parallel projection: the square a perspective camera would taper. */
+function OrthoIcon() {
+  return (
+    <Glyph>
+      <path d="M6 3h8l-4 10H2Z" />
+    </Glyph>
+  );
+}
+
+/** A ball half in shadow: the gradient across a face smooth shading asks for. */
+function SmoothIcon() {
+  return (
+    <Glyph>
+      <circle cx="8" cy="8" r="6" />
+      <path d="M8 2a6 6 0 0 1 0 12Z" fill="currentColor" stroke="none" />
+    </Glyph>
+  );
+}
+
+/** A stack of steps, which is what the history dialog lists. */
+function HistoryIcon() {
+  return (
+    <Glyph>
+      <circle cx="3.5" cy="4" r="1.25" fill="currentColor" stroke="none" />
+      <circle cx="3.5" cy="8" r="1.25" fill="currentColor" stroke="none" />
+      <circle cx="3.5" cy="12" r="1.25" fill="currentColor" stroke="none" />
+      <path d="M7 4h7M7 8h7M7 12h7" />
+    </Glyph>
+  );
+}
+
+/** Crosshair over a point: the camera centres on what is selected. */
+function FrameSelectedIcon() {
+  return (
+    <Glyph>
+      <circle cx="8" cy="8" r="4.25" />
+      <path d="M8 1v2.25M8 12.75V15M1 8h2.25M12.75 8H15" />
+      <circle cx="8" cy="8" r="1.25" fill="currentColor" stroke="none" />
+    </Glyph>
+  );
+}
+
+/** The corners of a frame drawn around everything there is. */
+function FrameAllIcon() {
+  return (
+    <Glyph>
+      <path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" />
+    </Glyph>
   );
 }

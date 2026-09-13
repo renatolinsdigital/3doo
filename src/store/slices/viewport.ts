@@ -6,6 +6,7 @@ import type {
   NavigationPreset,
   OverlaySettings,
   ShadingMode,
+  ViewLostReason,
   ViewportSettings,
 } from '../types';
 
@@ -13,8 +14,8 @@ export interface ViewportSlice extends ViewportSettings {
   /** Incremented to ask the viewport to frame geometry; it is not camera state. */
   frameRequest: { target: 'selected' | 'all'; nonce: number } | null;
   axisViewRequest: { axis: 'x' | 'y' | 'z'; negative: boolean; nonce: number } | null;
-  /** True once the camera has orbited far enough that the scene is hard to make out. */
-  viewLost: boolean;
+  /** Why the scene is out of view, or null while it is where the camera can see it. */
+  viewLost: ViewLostReason | null;
   /**
    * Where the camera was left, written once as the viewport is torn down.
    *
@@ -32,7 +33,7 @@ export interface ViewportSlice extends ViewportSettings {
   frameSelected: () => void;
   frameAll: () => void;
   setAxisView: (axis: 'x' | 'y' | 'z', negative?: boolean) => void;
-  setViewLost: (lost: boolean) => void;
+  setViewLost: (lost: ViewLostReason | null) => void;
   setCameraPose: (pose: CameraPose) => void;
 }
 
@@ -62,7 +63,7 @@ export const createViewportSlice: StateCreator<
   navigation: 'blender',
   frameRequest: null,
   axisViewRequest: null,
-  viewLost: false,
+  viewLost: null,
   cameraPose: null,
 
   setShading: (shading) => set({ shading, status: `Shading: ${shading}` }),

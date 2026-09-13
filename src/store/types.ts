@@ -203,6 +203,15 @@ export interface Preferences {
   gridMajorOpacity: number;
 }
 
+/**
+ * Why Frame All is asking to be clicked.
+ *
+ * Two ways to lose the scene and one way back from both. 'far' is the orbit
+ * scrolled out past everything there is; 'stuck' is the pivot left somewhere
+ * the model is not, where the wheel turns and nothing comes any closer.
+ */
+export type ViewLostReason = 'far' | 'stuck';
+
 export interface Toast {
   id: string;
   variant: 'success' | 'error' | 'warning' | 'info';
