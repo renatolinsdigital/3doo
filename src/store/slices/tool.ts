@@ -27,7 +27,7 @@ const MODAL_HINTS: Record<ModalTransform['kind'], string> = {
   rotate: 'move the mouse, X/Y/Z to constrain',
   scale: 'move the mouse, X/Y/Z to constrain',
   slide: 'move the mouse',
-  bevel: 'push the pointer in toward the selection',
+  bevel: 'draw the guide line out from the selection',
   inset: 'push the pointer in toward the selection',
   extrude: 'move the pointer along the normal',
 };

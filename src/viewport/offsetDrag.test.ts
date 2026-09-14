@@ -3,7 +3,13 @@ import { describe, expect, it } from 'vitest';
 
 import { bevelEdges, cloneMesh, createBox } from '@kernel/index';
 
-import { axisAmount, inwardDirection, offsetAmount } from './Viewport';
+import {
+  axisAmount,
+  guideAmount,
+  inwardAmount,
+  inwardDirection,
+  startsOffsetHold,
+} from './Viewport';
 
 const at = (x: number, y: number) => new THREE.Vector2(x, y);
 
@@ -42,7 +48,7 @@ describe('axisAmount', () => {
   });
 
   it('falls back to the vertical when there is no line to measure along', () => {
-    // An extrude nose-on to the camera, or a drag that began on top of the
+    // An extrude nose-on to the camera, or an inset seeded on top of the
     // selection. Canvas y grows downward, so a drag upward is the one that
     // reads as pulling out.
     expect(axisAmount(at(0, -100), null, 0.01)).toBeCloseTo(1);
@@ -55,54 +61,110 @@ describe('axisAmount', () => {
   });
 });
 
-describe('offsetAmount', () => {
-  /** The selection lies off to the right of where the drag began. */
-  const inward = at(1, 0);
+describe('guideAmount', () => {
+  /** The pointer sat 300 pixels out from the selection when the drag was seeded. */
+  const reference = 300;
 
-  it('opens at nothing, wherever the pointer was when the key was pressed', () => {
-    // The travel is measured from the start of the drag rather than from the
-    // selection, so pressing I with the pointer across the viewport does not
-    // begin with the faces already shrunk to nothing.
-    for (const kind of ['bevel', 'inset', 'extrude'] as const) {
-      expect(offsetAmount(kind, at(0, 0), inward, 0.01)).toBe(0);
-    }
+  it('opens at nothing, however long the line was when the key was pressed', () => {
+    // The length is read against the one the line started at rather than
+    // against the selection, so pressing Ctrl+B with the pointer across the
+    // viewport does not begin with the chamfer already cut.
+    expect(guideAmount(reference, reference, 0.01)).toBe(0);
+    expect(guideAmount(20, 20, 0.01)).toBe(0);
   });
 
-  it('opens a bevel and an inset as the pointer is pushed in toward the selection', () => {
-    // One gesture for the pair: push in toward the geometry being cut.
-    expect(offsetAmount('bevel', at(100, 0), inward, 0.01)).toBeCloseTo(1);
-    expect(offsetAmount('inset', at(200, 0), inward, 0.01)).toBeCloseTo(2);
+  it('widens the chamfer as the line is drawn out', () => {
+    // The same gesture a modal scale uses: the longer the line, the bigger the
+    // number.
+    expect(guideAmount(400, reference, 0.01)).toBeCloseTo(1);
+    expect(guideAmount(500, reference, 0.01)).toBeCloseTo(2);
   });
 
-  it('goes on opening once the pointer has swept past the selection', () => {
-    // Travel along the way in, not distance from the selection: a pointer that
-    // has crossed the middle has not started closing the cut again, which is
-    // what a radius would have it do.
-    expect(offsetAmount('inset', at(400, 0), inward, 0.01)).toBeCloseTo(4);
+  it('closes the chamfer back to nothing rather than turning it inside out', () => {
+    // A negative width is a chamfer cut backward.
+    expect(guideAmount(200, reference, 0.01)).toBe(0);
+    expect(guideAmount(0, reference, 0.01)).toBe(0);
   });
 
-  it('closes a bevel or an inset back to nothing rather than turning it inside out', () => {
-    // A negative width is a chamfer cut backward, and a negative inset pushes
-    // the border out through the face beside it.
-    expect(offsetAmount('bevel', at(-100, 0), inward, 0.01)).toBe(0);
-    expect(offsetAmount('inset', at(-100, 0), inward, 0.01)).toBe(0);
-  });
-
-  it('lets an extrude through to the other side of zero', () => {
-    // Where the region sinks into the surface instead of rising off it.
-    expect(offsetAmount('extrude', at(-100, 0), inward, 0.01)).toBeCloseTo(-1);
+  it('opens from a drag seeded on top of the selection', () => {
+    // Where the pointer usually is after picking a face: there is no direction
+    // to read off a line of no length, but there is still a length to grow.
+    expect(guideAmount(100, 0, 0.01)).toBeCloseTo(1);
   });
 
   it('carries the object scale, so the same travel reads the same on screen', () => {
     // The rate is world units per pixel divided by the object's own scale: a
     // model built ten times the size takes a tenth of the object-space width
     // to cover the same pixels.
-    expect(offsetAmount('bevel', at(100, 0), inward, 0.01 / 10)).toBeCloseTo(0.1);
+    expect(guideAmount(400, reference, 0.01 / 10)).toBeCloseTo(0.1);
   });
 
   it('answers nothing rather than a width no operator could use', () => {
-    expect(offsetAmount('bevel', at(100, 0), inward, Number.NaN)).toBe(0);
-    expect(offsetAmount('extrude', at(Number.POSITIVE_INFINITY, 0), inward, 0.01)).toBe(0);
+    expect(guideAmount(400, reference, Number.NaN)).toBe(0);
+    expect(guideAmount(Number.POSITIVE_INFINITY, reference, 0.01)).toBe(0);
+  });
+});
+
+describe('inwardAmount', () => {
+  /** The selection lies off to the right of where the drag began. */
+  const inward = at(1, 0);
+
+  it('opens at nothing, wherever the pointer was when the key was pressed', () => {
+    // The travel is measured from the start of the drag rather than from the
+    // selection, so pressing I with the pointer across the viewport does not
+    // begin with the face already shrunk to nothing.
+    expect(inwardAmount(at(0, 0), inward, 0.01)).toBe(0);
+  });
+
+  it('opens the ring as the pointer is pushed in toward the selection', () => {
+    // The ring is cut into the face, so the gesture that opens it runs the same
+    // way: in toward the geometry being cut.
+    expect(inwardAmount(at(100, 0), inward, 0.01)).toBeCloseTo(1);
+    expect(inwardAmount(at(200, 0), inward, 0.01)).toBeCloseTo(2);
+  });
+
+  it('keeps widening past the selection rather than dead-ending at it', () => {
+    // Sweeping the pointer on across the model reads as more travel inward, not
+    // as the pointer backing off again.
+    expect(inwardAmount(at(800, 0), inward, 0.01)).toBeCloseTo(8);
+  });
+
+  it('closes the ring back to nothing rather than turning it inside out', () => {
+    // A negative inset pushes the border out through the face beside it.
+    expect(inwardAmount(at(-100, 0), inward, 0.01)).toBe(0);
+  });
+
+  it('reads the vertical when the drag began on top of the selection', () => {
+    // There is no way in to read off a pointer already sitting on the face, so
+    // the drag falls back to the line every other pointer gesture ends on.
+    expect(inwardAmount(at(0, -100), null, 0.01)).toBeCloseTo(1);
+    expect(inwardAmount(at(0, 100), null, 0.01)).toBe(0);
+  });
+
+  it('answers nothing rather than a thickness no operator could use', () => {
+    expect(inwardAmount(at(100, 0), inward, Number.NaN)).toBe(0);
+  });
+});
+
+describe('startsOffsetHold', () => {
+  it('reads a press at nothing as the drag starting', () => {
+    // The guide line went up on the keypress, and a hand used to dragging the
+    // gizmo presses the button next. Confirming there would take the line away
+    // in the same instant, leaving the mesh as it was and nothing to show for
+    // the key.
+    expect(startsOffsetHold(0, 0)).toBe(true);
+  });
+
+  it('leaves the click that ends a pointer-led drag alone', () => {
+    // Move the pointer first and the distance is no longer nothing, so the
+    // click means what it always meant.
+    expect(startsOffsetHold(0, 0.4)).toBe(false);
+    expect(startsOffsetHold(0, -0.4)).toBe(false);
+  });
+
+  it('keeps the right button for cancelling, held drag or not', () => {
+    expect(startsOffsetHold(2, 0)).toBe(false);
+    expect(startsOffsetHold(2, 0.4)).toBe(false);
   });
 });
 

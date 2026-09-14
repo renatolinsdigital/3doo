@@ -233,10 +233,9 @@ const MODAL_AXIS_REACH_PX = 400;
  * How far the pointer has to sit from the selection for "toward it" to mean
  * anything.
  *
- * The direction a bevel or an inset opens along is read once, when the drag is
- * seeded, and holds for the whole of it. Reading it off a pointer already
- * sitting on the selection would pin the drag to a line picked out of a few
- * pixels of noise.
+ * The direction an inset opens along is read once, when the drag is seeded, and
+ * holds for the whole of it. Reading it off a pointer already sitting on the
+ * selection would pin the drag to a line picked out of a few pixels of noise.
  */
 const MIN_INWARD_PX = 8;
 
@@ -257,10 +256,10 @@ function offsetParams(kind: OffsetDrag['kind'], amount: number): Record<string, 
 /**
  * The way in: from the pointer toward the selection, as a unit vector on screen.
  *
- * The line a bevel and an inset are measured along, because both open as the
- * pointer is pushed in toward the geometry they are cutting. Null when the
- * pointer is already on the selection and there is no way in to read, which
- * leaves `axisAmount` to fall back to the vertical.
+ * The line an inset is measured along, because the border ring it cuts grows
+ * into the face rather than out of it, and the gesture that opens it runs the
+ * same way. Null when the pointer is already on the selection and there is no
+ * way in to read, which leaves `axisAmount` to fall back to the vertical.
  */
 export function inwardDirection(
   from: THREE.Vector2,
@@ -273,18 +272,19 @@ export function inwardDirection(
 /**
  * How far along a line on screen the pointer has been dragged, in object units.
  *
- * Only travel along the line counts, so the pointer can wander off it without
- * dragging the distance with it, and it goes on reading past the far end:
- * pushing an inset on through the face and out the other side keeps widening it
- * rather than dead-ending halfway.
+ * What an extrude and an inset read: the region normal for one, the way in for
+ * the other. Only travel along that line counts, so the pointer can wander off
+ * it without dragging the shape with it, and it goes on reading past the far
+ * end: pushing an inset on through the face and out the other side keeps
+ * widening it rather than dead-ending halfway.
  */
 export function axisAmount(
   travel: THREE.Vector2,
   screenAxis: THREE.Vector2 | null,
   unitsPerPixel: number,
 ): number {
-  // No line to measure along: an extrude pointing back at the camera, or a drag
-  // that began on top of the selection. Pulling up is pulling out is the
+  // No line to measure along: an extrude pointing back at the camera, or an
+  // inset seeded on top of the selection. Pulling up is pulling out is the
   // reading left, and canvas y grows downward, hence the negation.
   const along = screenAxis ? travel.dot(screenAxis) : -travel.y;
   const amount = along * unitsPerPixel;
@@ -292,21 +292,49 @@ export function axisAmount(
 }
 
 /**
- * The distance the pointer is asking for, on the side of zero the operator can use.
+ * How far the guide line has been drawn out since the drag began, in object units.
  *
- * A bevel run the wrong way is a chamfer cut backward, and a negative inset
- * pushes the border out through the face beside it: both close back to nothing
- * instead. An extrude is the one with a shape on the other side of zero, the
- * region sinking into the surface rather than rising off it.
+ * What a bevel reads, dragged the way a scale is: the dashed line runs from the
+ * selection out to the pointer, and the length of that line is the cut. Draw it
+ * out and the chamfer opens with it, whichever way round the selection the
+ * pointer travels, and bring the pointer back in and it closes again. It closes
+ * no further than nothing, a negative width being a chamfer cut backward.
  */
-export function offsetAmount(
-  kind: OffsetDrag['kind'],
+export function guideAmount(pointerPx: number, referencePx: number, unitsPerPixel: number): number {
+  const amount = (pointerPx - referencePx) * unitsPerPixel;
+  return Number.isFinite(amount) ? Math.max(0, amount) : 0;
+}
+
+/**
+ * The travel an inset reads, on the side of zero it can use.
+ *
+ * The ring is cut into the face, so pushing the pointer in toward the selection
+ * is what opens it. Coming back out past where the drag began closes it to
+ * nothing rather than turning it inside out: a negative inset pushes the border
+ * out through the face beside it. An extrude is the one with a shape on the
+ * other side of zero, the region sinking into the surface rather than rising
+ * off it.
+ */
+export function inwardAmount(
   travel: THREE.Vector2,
   screenAxis: THREE.Vector2 | null,
   unitsPerPixel: number,
 ): number {
-  const amount = axisAmount(travel, screenAxis, unitsPerPixel);
-  return kind === 'extrude' ? amount : Math.max(0, amount);
+  return Math.max(0, axisAmount(travel, screenAxis, unitsPerPixel));
+}
+
+/**
+ * Whether a press is starting an offset drag rather than confirming one.
+ *
+ * The keyboard gesture leaves the pointer free, so a click is how it ends, but
+ * every other tool here is grabbed and dragged, and that is what the hand
+ * reaches for after E. The two only collide at the press: a distance still at
+ * nothing has nothing worth confirming, so that press opens the drag and the
+ * release ends it, while a press after the pointer has been moved out to a
+ * distance means what it always did.
+ */
+export function startsOffsetHold(button: number, amount: number): boolean {
+  return button === 0 && amount === 0;
 }
 
 /**
@@ -323,15 +351,29 @@ interface OffsetDrag {
   /** The selection's median, which the guide line is drawn from or through. */
   pivot: THREE.Vector3;
   pivotPixels: THREE.Vector2;
-  /** Where the pointer sat when the drag was seeded: where the distance reads zero. */
+  /** Where the pointer sat when the drag was seeded: where an extrude and an inset read zero. */
   from: THREE.Vector2;
+  /**
+   * How long the guide line was at that same moment, in pixels.
+   *
+   * What a bevel is measured against: the line runs from the selection out to
+   * the pointer, and the length it has gained since is the cut.
+   */
+  reference: number;
   /** Whether that has been read yet, which takes a pointer position. */
   seeded: boolean;
+  /**
+   * Whether the distance is being dragged with the button held down.
+   *
+   * Set by a press that lands while the distance is still nothing, which is a
+   * drag about to start rather than a confirm of one. The release ends it.
+   */
+  held: boolean;
   /** Object-space units per pixel of travel, so the shape keeps up with the pointer. */
   unitsPerPixel: number;
   /** The world direction an extrude travels along. Null for the other two. */
   axis: THREE.Vector3 | null;
-  /** The line on screen the travel is read along: that axis, or the way in. */
+  /** The line on screen the travel is read along: that axis, or an inset's way in. */
   screenAxis: THREE.Vector2 | null;
   /** The distance the last preview ran with. */
   amount: number;
@@ -1963,7 +2005,38 @@ export class Viewport {
     if (!this.activeModal()) return;
     event.preventDefault();
     event.stopPropagation();
+
+    const drag = this.offsetDrag;
+    if (drag && startsOffsetHold(event.button, drag.amount)) {
+      this.holdOffsetDrag(drag, event);
+      return;
+    }
+
     this.finishModal(event.button === 2);
+  };
+
+  /**
+   * Takes the press as the start of the drag: zero moves to the pointer.
+   *
+   * The canvas keeps the pointer for the rest of the gesture, so the distance
+   * goes on reading once the drag has run out over a panel, which is where a
+   * face pulled out across the viewport ends up.
+   */
+  private holdOffsetDrag(drag: OffsetDrag, event: PointerEvent): void {
+    // Seeded at the press rather than wherever the pointer happened to be at
+    // the keypress: this is where the drag begins, so this is where it reads
+    // nothing.
+    this.seedOffsetDrag(drag, this.pointerPosition(event));
+    drag.held = true;
+    this.canvas.setPointerCapture(event.pointerId);
+  }
+
+  /** The release that ends a press-and-drag offset. One never held ignores it. */
+  private handleModalPointerUp = (event: PointerEvent): void => {
+    if (!this.offsetDrag?.held || event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.finishOffsetDrag(false);
   };
 
   /** Right-click cancels, so the menu it would otherwise open is swallowed. */
@@ -2040,11 +2113,11 @@ export class Viewport {
    *
    * The same shape as the modal scale and slide: no button is held, so it ends
    * on a click, Enter or Escape, and the history entry goes in before anything
-   * changes so a cancel can drop it. A bevel and an inset open as the pointer
-   * is pushed in toward the geometry they are cutting, so they get the line a
-   * scale draws, from the selection out to the pointer. An extrude runs along
-   * one direction of its own, the region normal, so it gets that axis drawn
-   * through the geometry instead.
+   * changes so a cancel can drop it. A bevel is driven the way a scale is, by
+   * the line drawn from the selection out to the pointer. An inset opens the
+   * other way, as the pointer is pushed in toward the face it cuts into. An
+   * extrude runs along one direction of its own, the region normal, so it gets
+   * that axis drawn through the geometry instead.
    */
   private beginOffsetDrag(kind: OffsetDrag['kind']): void {
     if (this.offsetDrag || this.scaleDrag || this.rotateDrag || this.slideDrag) return;
@@ -2079,7 +2152,9 @@ export class Viewport {
       pivot,
       pivotPixels: this.projectToPixels(pivot),
       from: this.pointerPixels.clone(),
+      reference: 0,
       seeded: false,
+      held: false,
       unitsPerPixel: this.worldPerPixel(pivot) / Math.max(meanScale, 1e-6),
       axis,
       screenAxis: axis ? this.projectDirection(pivot, axis) : null,
@@ -2095,7 +2170,19 @@ export class Viewport {
 
     window.addEventListener('keydown', this.handleModalKey, true);
     window.addEventListener('pointerdown', this.handleModalPointer, true);
+    window.addEventListener('pointerup', this.handleModalPointerUp, true);
     window.addEventListener('contextmenu', this.handleModalContextMenu, true);
+  }
+
+  /** Where the drag reads nothing: the pointer's place, and the guide line's length. */
+  private seedOffsetDrag(drag: OffsetDrag, at: THREE.Vector2): void {
+    drag.from = at;
+    drag.reference = at.distanceTo(drag.pivotPixels);
+    // Which way is in only becomes known here, with a pointer position to read
+    // it from. An extrude has a line of its own, the region normal, taken when
+    // the drag began.
+    if (drag.kind === 'inset') drag.screenAxis = inwardDirection(at, drag.pivotPixels);
+    drag.seeded = true;
   }
 
   /** Runs the operator out to whatever distance the pointer has been dragged. */
@@ -2109,27 +2196,31 @@ export class Viewport {
     // only known once the pointer first moves. Measuring from there is what
     // opens the distance at nothing wherever the pointer was sitting.
     if (!drag.seeded) {
-      drag.from = this.pointerPixels.clone();
-      // Which way is in only becomes known here, with a pointer position to
-      // read it from. An extrude has a line of its own, the region normal,
-      // taken when the drag began.
-      if (drag.kind !== 'extrude') {
-        drag.screenAxis = inwardDirection(drag.from, drag.pivotPixels);
-      }
-      drag.seeded = true;
+      this.seedOffsetDrag(drag, this.pointerPixels.clone());
       return;
     }
 
-    const amount = offsetAmount(
-      drag.kind,
-      this.pointerPixels.clone().sub(drag.from),
-      drag.screenAxis,
-      drag.unitsPerPixel,
-    );
+    const amount = this.offsetDragAmount(drag);
     if (Math.abs(amount - drag.amount) < 1e-5) return;
 
     drag.amount = amount;
     this.previewOffset(drag);
+  }
+
+  /** The distance the pointer is asking for, by the reading its operator takes. */
+  private offsetDragAmount(drag: OffsetDrag): number {
+    if (drag.kind === 'bevel') {
+      return guideAmount(
+        this.pointerPixels.distanceTo(drag.pivotPixels),
+        drag.reference,
+        drag.unitsPerPixel,
+      );
+    }
+
+    const travel = this.pointerPixels.clone().sub(drag.from);
+    return drag.kind === 'inset'
+      ? inwardAmount(travel, drag.screenAxis, drag.unitsPerPixel)
+      : axisAmount(travel, drag.screenAxis, drag.unitsPerPixel);
   }
 
   /**
@@ -2172,6 +2263,7 @@ export class Viewport {
 
     window.removeEventListener('keydown', this.handleModalKey, true);
     window.removeEventListener('pointerdown', this.handleModalPointer, true);
+    window.removeEventListener('pointerup', this.handleModalPointerUp, true);
     window.removeEventListener('contextmenu', this.handleModalContextMenu, true);
 
     // A confirm that never left the start has nothing to keep either: the

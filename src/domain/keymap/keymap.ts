@@ -59,7 +59,7 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
     key: 'b',
     ctrl: true,
     mode: 'edit',
-    label: 'Bevel: drag the width in toward the selection',
+    label: 'Bevel: drag the width out from the selection',
     group: 'Modelling',
   },
   { id: 'loopCut', key: 'r', ctrl: true, label: 'Loop cut', mode: 'edit', group: 'Modelling' },
