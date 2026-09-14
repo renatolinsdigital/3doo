@@ -3273,19 +3273,20 @@ export class Viewport {
   }
 
   /**
-   * Re-traces the selection outlines when the camera has moved.
+   * Redraws what the camera position decides, once it has actually moved.
    *
-   * Which edges are on a silhouette depends on where it is seen from, so an
-   * orbit changes the outline even though nothing in the scene did. Views with
-   * nothing outlined return immediately, so this costs nothing when there is no
-   * selection.
+   * Two overlays depend on where the model is seen from: the selection outline,
+   * since which edges are on a silhouette changes with the eye, and the
+   * wireframe, which leaves out the edges lying on the far side. An orbit
+   * changes both even though nothing in the scene did. Views with neither
+   * return immediately, so this costs nothing on an empty or hidden scene.
    */
   private updateSelectionOutlines(): void {
     if (this.camera.position.distanceToSquared(this.outlineEye) < 1e-10) return;
     this.outlineEye.copy(this.camera.position);
 
     const eye = vec3(this.camera.position.x, this.camera.position.y, this.camera.position.z);
-    for (const view of this.views.values()) view.refreshOutline(eye);
+    for (const view of this.views.values()) view.refreshForCamera(eye);
   }
 
   /**

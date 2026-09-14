@@ -39,18 +39,30 @@ describe('surface stencil stamp', () => {
 
 describe('surface depth offset', () => {
   /**
-   * The wireframe is built from the same vertices as the fill, so nothing but
-   * this offset keeps an edge in front of the face it runs along. One unit of
-   * it left edges fading in and out as a mesh deformed.
+   * Every mark on a mesh is built from the same vertices as the fill, so a few
+   * units of depth are what break the tie between them. One unit left them
+   * fading in and out as a mesh deformed.
    */
   it.each(['solid', 'solidWire', 'matcap'] as const)(
-    'sinks the %s fill well clear of the wireframe on it',
+    'breaks the %s fill out of its depth tie with the marks on it',
     (shading) => {
       const material = surface(shading);
 
       expect(material.polygonOffset).toBe(true);
-      expect(material.polygonOffsetFactor).toBeGreaterThanOrEqual(4);
       expect(material.polygonOffsetUnits).toBeGreaterThanOrEqual(4);
+    },
+  );
+
+  /**
+   * The slope-scaled term grows with how steeply a polygon is turned away, so
+   * on a face seen edge-on it sank the fill far enough for the far side of the
+   * model to climb through, as a second line beside the near one and as a band
+   * of back-face shading along the contour.
+   */
+  it.each(['solid', 'solidWire', 'matcap'] as const)(
+    'sinks the %s fill by a constant, never by its slope',
+    (shading) => {
+      expect(surface(shading).polygonOffsetFactor).toBe(0);
     },
   );
 
@@ -96,15 +108,14 @@ describe('selection outline material', () => {
   });
 
   it('lifts the line clear of the surface it traces', () => {
-    // Both halves of the same bargain: the fill sinks away from the camera and
-    // the outline rises towards it. The line lies exactly on the silhouette,
-    // which is where a fill's depth swings fastest, so one offset alone left
-    // the surface eating the inner half of its own outline.
+    // The line lies exactly on the silhouette, which is where a fill's depth
+    // swings fastest across a pixel, so it rises towards the camera by that
+    // same slope rather than trusting the constant the fill is sunk by.
     const outline = createOutlineMaterial({ color: 0xe5342a, width: 2 });
 
     expect(outline.polygonOffset).toBe(true);
     expect(outline.polygonOffsetFactor).toBeLessThanOrEqual(-1);
-    expect(surface('solid').polygonOffsetFactor).toBeGreaterThanOrEqual(4);
+    expect(surface('solid').polygonOffsetUnits).toBeGreaterThan(0);
   });
 });
 
@@ -118,6 +129,22 @@ describe('wireframe material', () => {
     // as running across the face in front of it. X-ray and wireframe still show
     // it: neither leaves any depth for this to test against.
     expect(createWireMaterial(true).depthTest).toBe(true);
+  });
+
+  it('rises off the surface by its slope, which a plain line cannot ask for', () => {
+    // The whole reason the wire is drawn as quads. WebGL offsets polygons and
+    // nothing else, and without this the fill ate the last pixels of an edge
+    // wherever it ran into a junction between faces seen nearly edge-on.
+    const wire = createWireMaterial(false);
+
+    expect(wire.polygonOffset).toBe(true);
+    expect(wire.polygonOffsetFactor).toBeLessThanOrEqual(-1);
+  });
+
+  it('writes no depth, so the marks drawn after it still come through', () => {
+    // It sits a slope ahead of the surface: writing depth there would hide the
+    // vertex-mode fade and the normals, which run along the same edges.
+    expect(createWireMaterial(false).depthWrite).toBe(false);
   });
 });
 
@@ -135,6 +162,6 @@ describe('selected face overlay', () => {
 
     expect(overlay.polygonOffset).toBe(true);
     expect(overlay.polygonOffsetFactor).toBeLessThanOrEqual(-1);
-    expect(surface('solid').polygonOffsetFactor).toBeGreaterThanOrEqual(4);
+    expect(surface('solid').polygonOffsetUnits).toBeGreaterThan(0);
   });
 });

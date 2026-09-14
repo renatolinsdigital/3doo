@@ -146,24 +146,18 @@ function buildEdges(mesh: BMesh): EdgeBuffers {
 }
 
 /**
- * The edges that trace a mesh's outline from where the camera stands.
- *
- * An edge is on the silhouette when the two faces sharing it disagree about
- * facing the camera; an edge with anything other than two faces (a boundary,
- * a bare wire) always is, which is what gives flat and open shapes an outline
- * as well as closed ones.
+ * Whether a face is turned towards the camera, answered once per face.
  *
  * `eye` is the camera in the mesh's own space. Testing there rather than in
  * world space is not an approximation: for any invertible transform the sign of
  * `normal · (eye - centre)` is the same on both sides of it, so the answer is
  * exact and no face has to be transformed to get it.
  */
-export function buildSilhouetteEdges(mesh: BMesh, eye: Vec3): Float32Array {
-  const positions: number[] = [];
+function cameraFacing(mesh: BMesh, eye: Vec3): (face: Face) => boolean {
   // One test per face rather than one per edge-side: every face is shared.
   const facing = new Map<number, boolean>();
 
-  const facesCamera = (face: Face): boolean => {
+  return (face: Face): boolean => {
     const cached = facing.get(face.id);
     if (cached !== undefined) return cached;
 
@@ -175,6 +169,49 @@ export function buildSilhouetteEdges(mesh: BMesh, eye: Vec3): Float32Array {
     facing.set(face.id, towards > 0);
     return towards > 0;
   };
+}
+
+/**
+ * The edges worth drawing over an opaque surface: everything except the ones
+ * lying on the far side of it.
+ *
+ * An edge whose every face is turned away is behind the model from here, and
+ * the depth test is the wrong tool for saying so. Near a contour the far side
+ * runs within a pixel of the near one, close enough that rounding lets it
+ * through, and it drew as a short second line beside the edge it sits behind or
+ * as a stub hanging off a corner. Answering it from the topology instead is
+ * exact at any zoom.
+ *
+ * Skipped in x-ray and wireframe shading, where seeing through the model is the
+ * point (see `ObjectView`).
+ */
+export function buildFrontEdgePositions(mesh: BMesh, eye: Vec3): Float32Array {
+  const positions: number[] = [];
+  const facesCamera = cameraFacing(mesh, eye);
+
+  for (const edge of mesh.edges.values()) {
+    // A boundary or bare wire belongs to no far side, so it always draws.
+    const drawn = edge.loops.length !== 2 || edge.loops.some((loop) => facesCamera(loop.face));
+    if (!drawn) continue;
+
+    positions.push(edge.v0.co.x, edge.v0.co.y, edge.v0.co.z);
+    positions.push(edge.v1.co.x, edge.v1.co.y, edge.v1.co.z);
+  }
+
+  return new Float32Array(positions);
+}
+
+/**
+ * The edges that trace a mesh's outline from where the camera stands.
+ *
+ * An edge is on the silhouette when the two faces sharing it disagree about
+ * facing the camera; an edge with anything other than two faces (a boundary,
+ * a bare wire) always is, which is what gives flat and open shapes an outline
+ * as well as closed ones.
+ */
+export function buildSilhouetteEdges(mesh: BMesh, eye: Vec3): Float32Array {
+  const positions: number[] = [];
+  const facesCamera = cameraFacing(mesh, eye);
 
   for (const edge of mesh.edges.values()) {
     const onOutline =

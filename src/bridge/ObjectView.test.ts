@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
-import type { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { describe, expect, it } from 'vitest';
 
 import { add, vec3 } from '@kernel/index';
@@ -8,6 +8,7 @@ import { DEFAULT_PREFERENCES, evaluatedMesh, useEditorStore } from '@store/index
 import type { SceneObject, ViewportSettings } from '@store/types';
 
 import { ObjectView } from './ObjectView';
+import { buildFrontEdgePositions } from './meshBuffers';
 
 const SELECTION_LINE = {
   color: DEFAULT_PREFERENCES.selectionLineColor,
@@ -243,7 +244,7 @@ describe('ObjectView selection outline', () => {
 
     // Orbiting to a corner puts six edges on the silhouette; nothing in the
     // scene changed, so only this path can pick that up.
-    view.refreshOutline(vec3(10, 10, 10));
+    view.refreshForCamera(vec3(10, 10, 10));
 
     expect(segmentCount(outlineOf(view, object.id))).toBe(6);
   });
@@ -350,7 +351,15 @@ describe('ObjectView under a modifier', () => {
     };
   }
 
-  const segmentsOf = (line: THREE.LineSegments) => line.geometry.getAttribute('position').count / 2;
+  // Both are instanced quads, one per segment, so the count is on
+  // `instanceStart`: `position` holds the quad the shader expands, not the line.
+  const segmentsOf = (line: LineSegments2) =>
+    line.geometry.getAttribute('instanceStart')?.count ?? 0;
+
+  // What an opaque surface leaves on screen: the edges that are not on the far
+  // side of the mesh from where `viewState` puts the camera.
+  const frontEdgesOf = (mesh: Parameters<typeof buildFrontEdgePositions>[0]) =>
+    buildFrontEdgePositions(mesh, vec3(0, 0, 10)).length / 6;
 
   it('draws the shape the stack makes, and the cage that makes it, in edit mode', () => {
     const { object, settings } = subdividedBox();
@@ -359,19 +368,18 @@ describe('ObjectView under a modifier', () => {
 
     view.update(object, display, viewState(settings, 'edit'));
 
-    const preview = view.group.getObjectByName(`${object.id}:preview`) as THREE.LineSegments;
+    const preview = view.group.getObjectByName(`${object.id}:preview`) as LineSegments2;
     const surface = view.group.getObjectByName(`${object.id}:solid`) as THREE.Mesh;
     const wire = view.group.children.find(
-      (child): child is THREE.LineSegments =>
-        child instanceof THREE.LineSegments && child !== preview,
+      (child): child is LineSegments2 => child instanceof LineSegments2 && child !== preview,
     );
 
     // A level of subdivision cuts every edge and adds one per new face, so the
     // two counts part company even though the box has not moved a vertex.
     expect(display.edges.size).toBeGreaterThan(object.mesh.edges.size);
     expect(preview.visible).toBe(true);
-    expect(segmentsOf(preview)).toBe(display.edges.size);
-    expect(wire && segmentsOf(wire)).toBe(object.mesh.edges.size);
+    expect(segmentsOf(preview)).toBe(frontEdgesOf(display));
+    expect(wire && segmentsOf(wire)).toBe(frontEdgesOf(object.mesh));
 
     // And the surface is still the result, not the cage.
     const triangles = surface.geometry.getAttribute('position').count / 3;
@@ -492,8 +500,10 @@ describe('ObjectView vertex fade', () => {
     const lines = view.group.children.filter(
       (child): child is THREE.LineSegments => child instanceof THREE.LineSegments,
     );
-    // Between the plain wire and the selected edges, by render order.
-    return lines[1];
+    // The first plain line set on the object. The wire and the selected edges
+    // are drawn as quads for their depth offset, and the alpha this one runs
+    // along a segment is the one thing that cannot be, so it stays a line.
+    return lines[0];
   }
 
   function editState(settings: ViewportSettings, selectMode: 'vertex' | 'edge') {

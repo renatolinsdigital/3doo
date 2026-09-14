@@ -73,32 +73,47 @@ function getMatcap(): THREE.Texture {
 }
 
 /**
- * Sinks the shaded surface into the depth buffer, under the wireframe on it.
+ * Breaks the depth tie between the shaded surface and the marks drawn on it.
  *
- * The wireframe runs along the very edges of the triangles under it and is
- * built from the same vertices, so the two come out of the rasteriser at the
- * same depth and which one survives comes down to float rounding: an edge
- * shows solid on one face, stipple on the next, and changes again as the mesh
- * deforms under it. Offsetting the fill (the only thing WebGL can offset: there
- * is no POLYGON_OFFSET_LINE) settles that, and a line still disappears properly
- * behind geometry in front of it.
+ * Every mark the viewport puts on a mesh is built from the same vertices as the
+ * fill under it, so the two come out of the rasteriser at the same depth and
+ * which one survives comes down to float rounding: a mark shows on one face,
+ * stipples on the next, and changes again as the mesh deforms under it. A few
+ * units of the depth buffer's own resolution settle that, and they stay a
+ * vanishingly small distance at any zoom.
  *
- * Slope-scaled *and* constant: the factor alone is zero on a polygon facing the
- * camera square on, which is where the flattest, longest edges are.
- *
- * Four of each rather than one. A line and a triangle interpolate depth along
- * different paths across the same pixel, so they can disagree by several units
- * of depth rather than the one a single unit buys, and the disagreement grows
- * with how far the quad under the line has been bent out of plane, which is why
- * this showed up as edges fading in and out while a mesh was being deformed.
- * The unit is the depth buffer's own resolution at that fragment, so four of
- * them stay a vanishingly small distance at any zoom, far too little for a
- * hidden edge behind the surface to climb through.
+ * Constant only, with no slope-scaled term. The slope term grows with how
+ * steeply a polygon is turned away from the camera, so on a face seen nearly
+ * edge-on, which is every silhouette and every tight corner, it sank the fill
+ * far enough for the geometry behind it to climb through: edges from the far
+ * side drew as a second line beside the near one, and the back face won a band
+ * of pixels along the contour and painted it in its own shading. What a line
+ * needs at those angles is a slope-scaled bias of its own, and that now lives
+ * on the line (see `WIRE_DEPTH_OFFSET`) instead of being paid for by sinking
+ * everything else.
  */
 const SURFACE_DEPTH_OFFSET = {
   polygonOffset: true,
-  polygonOffsetFactor: 4,
+  polygonOffsetFactor: 0,
   polygonOffsetUnits: 4,
+} as const;
+
+/**
+ * Lifts the wireframe off the surface it runs along.
+ *
+ * Slope-scaled, and the wire is only able to ask for that because it is drawn
+ * as quads: WebGL offsets polygons and nothing else, with no
+ * POLYGON_OFFSET_LINE, so a plain line takes whatever depth the rasteriser
+ * hands it. Through `LineMaterial` the wire becomes polygons, and the factor
+ * then buys exactly what a line lying along a fold needs, a bias that grows
+ * with the surface's own steepness. That is where the fill used to eat the last
+ * few pixels of an edge as it ran into a junction, which read as a line
+ * stopping short of the corner it belongs to.
+ */
+const WIRE_DEPTH_OFFSET = {
+  polygonOffset: true,
+  polygonOffsetFactor: -4,
+  polygonOffsetUnits: -4,
 } as const;
 
 /**
@@ -176,22 +191,37 @@ export function createFaceOrientationMaterial(): THREE.Material {
 /**
  * The wireframe, and the red one drawn over it for the selected edges.
  *
+ * `LineMaterial` rather than `LineBasicMaterial`, for the depth offset above
+ * rather than for width: a plain line cannot be offset at all, so the wire used
+ * to depend on the fill being sunk under it, and at a junction between faces
+ * running nearly edge-on that was not enough. The last few pixels of an edge
+ * lost the depth test and the line stopped short of the corner. As quads the
+ * wire carries its own bias and meets the corner. The cost is `resolution`,
+ * which the shader needs to turn a pixel width into clip space (see
+ * `ObjectView.setResolution`).
+ *
  * Both depth-tested, selected or not, for the reason the vertex dots are: a
  * solid or matcap surface is opaque, and a selected edge round the back showing
- * through it reads as running across the face in front. The surface's own depth
- * offset is what keeps the near-side lines visible, since an edge and the faces
- * meeting along it share a depth to the last bit.
+ * through it reads as running across the face in front.
+ *
+ * Writing no depth, because every mark on the geometry is drawn after this one
+ * and has to come through: a wire that wrote depth while sitting a slope ahead
+ * of the surface would hide the vertex-mode fade and the normals drawn on the
+ * same edges.
  *
  * Nothing is hidden in x-ray or wireframe shading even so: the first writes no
  * depth and the second draws no fill, so there is nothing for this to test
  * against, which is how a user asks to see through the model.
  */
-export function createWireMaterial(selected: boolean): THREE.LineBasicMaterial {
-  return new THREE.LineBasicMaterial({
+export function createWireMaterial(selected: boolean): LineMaterial {
+  return new LineMaterial({
     color: selected ? VIEWPORT_COLORS.red : VIEWPORT_COLORS.void,
+    linewidth: 1,
     transparent: true,
     opacity: selected ? 1 : 0.55,
     depthTest: true,
+    depthWrite: false,
+    ...WIRE_DEPTH_OFFSET,
   });
 }
 
@@ -202,13 +232,20 @@ export function createWireMaterial(selected: boolean): THREE.LineBasicMaterial {
  * preview is there to say what the stack is making of it. Without it a
  * subdivision that only cuts faces, moving nothing, leaves edit mode looking
  * exactly as it did before the modifier was added.
+ *
+ * Quads and the same depth offset as the cage above it, for the same reason:
+ * these lines lie on the shape the stack built and would be eaten at its folds
+ * otherwise.
  */
-export function createPreviewWireMaterial(): THREE.LineBasicMaterial {
-  return new THREE.LineBasicMaterial({
+export function createPreviewWireMaterial(): LineMaterial {
+  return new LineMaterial({
     color: VIEWPORT_COLORS.void,
+    linewidth: 1,
     transparent: true,
     opacity: 0.3,
     depthTest: true,
+    depthWrite: false,
+    ...WIRE_DEPTH_OFFSET,
   });
 }
 

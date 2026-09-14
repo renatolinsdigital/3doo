@@ -9,7 +9,7 @@ Each mesh produces three GPU buffer sets, rebuilt when `meshVersion` changes:
 | Buffer set | Contents | Drawn as |
 | --- | --- | --- |
 | Solid | Triangulated positions, normals, UVs, material groups | `THREE.Mesh` |
-| Edges | Line segment endpoints | `THREE.LineSegments` |
+| Edges | Line segment endpoints | `LineSegments2` |
 | Points | Vertex positions with selection colours | `THREE.Points` |
 
 `buildMeshBuffers` in `src/bridge/meshBuffers.ts` is pure: it takes a `BMesh` and
@@ -68,14 +68,54 @@ The object's transform is applied as a matrix on the group with
 `matrixAutoUpdate = false`, so it is written once per sync rather than
 recomputed every frame.
 
-### The selection outline is not a plain line
+### Lines on a surface are drawn as quads
 
-WebGL ignores `LineBasicMaterial.linewidth`. Whatever a plain line asks for, it
-is drawn one pixel wide, which is why the outline is a `LineSegments2` with a
-`LineMaterial` instead: that pair expands each segment into a quad in the vertex
-shader, so a width above 1 actually renders. The width and colour are user
-preferences (see [state-management.md](state-management.md#user-preferences)),
-and a preference that could not be honoured would not be worth offering.
+WebGL ignores `LineBasicMaterial.linewidth`, and offsets polygons and nothing
+else: there is no `POLYGON_OFFSET_LINE`. A plain line therefore comes out one
+pixel wide at whatever depth the rasteriser hands it, which is the same depth as
+the surface it runs along, since both are built from the same vertices. The
+wireframe, the selected edges, the modifier preview and the selection outline
+are all `LineSegments2` with a `LineMaterial` instead: that pair expands each
+segment into a quad in the vertex shader, and a quad can be offset.
+
+The wire rises towards the camera by four units of the depth buffer's own
+resolution **scaled by the surface's slope**, and the fill is sunk by a constant
+four with no slope term at all. Both halves matter. The slope-scaled part is
+what a line running into a junction between faces seen nearly edge-on needs, and
+without it the fill ate the last few pixels of the edge, so the line stopped
+short of its corner. Putting that slope term on the fill instead, which is where
+it used to live, sank the surface so far at those same angles that the far side
+of the model climbed through it: back edges drew as a second line beside the near
+one, and the back face won a band of pixels along the contour and shaded it.
+
+The fill keeps its constant offset because the marks that are not drawn as quads
+(the vertex dots, the vertex-mode fade, the normals) still need the depth tie
+between them and the surface broken.
+
+### Edges on the far side are not drawn at all
+
+Depth is the wrong tool for hiding the back of a model: near a contour the far
+side runs within a pixel of the near one, close enough that rounding lets it
+through. `buildFrontEdgePositions` leaves out every edge whose faces all face
+away from the camera, which is exact at any zoom, and boundary edges are always
+kept since they have no far side. Skipped in x-ray and wireframe shading, where
+seeing through the model is the point, and never applied to the selected edges,
+since a selection has to read wherever the user made it.
+
+Which edges those are depends on where the camera stands, so the wireframe is
+rebuilt on a camera move, the same way the outline is re-traced. Picking is
+unaffected: it works from the full edge buffer, so an edge round the back can
+still be clicked.
+
+### The selection outline
+
+Only the silhouette is traced, never every edge: the wireframe already says
+where the geometry runs, and an outline is about which object you are holding.
+Its width and colour are user preferences (see
+[state-management.md](state-management.md#user-preferences)), which is the
+second reason it cannot be a plain line: WebGL draws every one of those a single
+pixel wide, and a preference that could not be honoured would not be worth
+offering.
 
 The cost of that shader is `resolution`. It converts a width in **screen pixels**
 into clip space itself, so it has to be told how large the viewport is:

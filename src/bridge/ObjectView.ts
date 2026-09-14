@@ -23,7 +23,12 @@ import {
   createWireMaterial,
   disposeMaterial,
 } from './materials';
-import { buildMeshBuffers, buildNormalLines, buildSilhouetteEdges } from './meshBuffers';
+import {
+  buildFrontEdgePositions,
+  buildMeshBuffers,
+  buildNormalLines,
+  buildSilhouetteEdges,
+} from './meshBuffers';
 
 /**
  * How much the outline darkens on a selected object that is not the active one.
@@ -95,11 +100,11 @@ export class ObjectView {
   private readonly solid = new THREE.Mesh();
   private readonly cage = new THREE.Mesh();
   private readonly backfaces = new THREE.Mesh();
-  private readonly wire = new THREE.LineSegments();
-  private readonly previewWire = new THREE.LineSegments();
+  private readonly wire = new LineSegments2();
+  private readonly previewWire = new LineSegments2();
   private readonly vertexHighlight = new THREE.LineSegments();
   private readonly selectedFaces = new THREE.Mesh();
-  private readonly selectedEdges = new THREE.LineSegments();
+  private readonly selectedEdges = new LineSegments2();
   private readonly points = new THREE.Points();
   private readonly hoverPoint = new THREE.Points();
   private readonly recentPoints = new THREE.Points();
@@ -118,8 +123,18 @@ export class ObjectView {
   /** Whether the current mode has vertices to hover at all. */
   private hoverable = false;
 
-  /** Held for `refreshOutline`, which re-traces the silhouette as the camera moves. */
+  /** Held for `refreshForCamera`, which re-traces the silhouette as the camera moves. */
   private outlined: { mesh: BMesh; object: SceneObject } | null = null;
+
+  /**
+   * The meshes the wireframe is culled against, while an opaque surface makes
+   * that worth doing. Which edges are on the far side changes with the camera,
+   * the same way the outline does, so `refreshForCamera` rebuilds from this.
+   */
+  private culled: { cage: BMesh; preview: BMesh | null; object: SceneObject } | null = null;
+
+  /** The shape the modifier stack made, which is what the preview wire draws. */
+  private previewMesh: BMesh | null = null;
 
   /** Triangle index to kernel face id, for raycast picking. */
   triangleFaceIds: Int32Array = new Int32Array(0);
@@ -242,6 +257,7 @@ export class ObjectView {
       // Nothing of a hidden object is drawn, outline included, and dropping it
       // here is what stops the camera re-tracing a silhouette nobody can see.
       this.outlined = null;
+      this.culled = null;
       this.hoverable = false;
       return;
     }
@@ -264,10 +280,11 @@ export class ObjectView {
     this.vertPositions = cage.points.positions;
     this.edgePositions = cage.edges.positions;
 
+    this.previewMesh = displayMesh;
     this.updateSolid(object, buffers.solid, cage.solid, state);
     this.updateCage(cage.solid, state);
-    this.updateWireframe(cage.edges, state);
-    this.updatePreviewWire(buffers.edges);
+    this.updateWireframe(cage.edges, state, cageMesh, object);
+    this.updatePreviewWire(buffers.edges, object, state);
     this.updateOutline(object, displayMesh, state);
     this.updatePoints(cage.points, state);
     this.updateRecentPoints(cage.points, state);
@@ -365,23 +382,36 @@ export class ObjectView {
   private updateWireframe(
     edges: ReturnType<typeof buildMeshBuffers>['edges'],
     state: ObjectViewState,
+    cageMesh: BMesh,
+    object: SceneObject,
   ): void {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(edges.positions, 3));
-    this.replaceGeometry(this.wire, geometry);
-
     const shading: ShadingMode = state.settings.shading;
-    this.wire.visible =
+    const drawsWire =
       shading === 'wireframe' ||
       shading === 'solidWire' ||
       shading === 'xray' ||
       state.mode === 'edit';
 
-    const selected = new THREE.BufferGeometry();
-    selected.setAttribute('position', new THREE.BufferAttribute(edges.selectedPositions, 3));
-    this.replaceGeometry(this.selectedEdges, selected);
-    this.selectedEdges.visible =
-      state.mode === 'edit' && state.isActive && edges.selectedPositions.length > 0;
+    // Only an opaque surface hides a far side, and only then is dropping those
+    // edges the same picture with less in it. X-ray and wireframe keep every
+    // edge, since seeing through the model is what they are for.
+    this.culled =
+      drawsWire && shading !== 'wireframe' && shading !== 'xray'
+        ? { cage: cageMesh, preview: this.picksCage ? this.previewMesh : null, object }
+        : null;
+    this.setLinePositions(
+      this.wire,
+      this.culled ? this.frontEdges(cageMesh, object, state.eye) : edges.positions,
+      drawsWire,
+    );
+
+    // Never culled: a selection has to read wherever it is, and an edge picked
+    // round the back is one the user chose.
+    this.setLinePositions(
+      this.selectedEdges,
+      edges.selectedPositions,
+      state.mode === 'edit' && state.isActive,
+    );
 
     const highlight = new THREE.BufferGeometry();
     highlight.setAttribute('position', new THREE.BufferAttribute(edges.partialPositions, 3));
@@ -409,16 +439,22 @@ export class ObjectView {
    * moving them changes nothing else about the picture, so without this edit
    * mode gives no sign the modifier is there at all.
    */
-  private updatePreviewWire(edges: ReturnType<typeof buildMeshBuffers>['edges']): void {
-    this.previewWire.visible = this.picksCage;
-    if (!this.previewWire.visible) {
-      this.replaceGeometry(this.previewWire, new THREE.BufferGeometry());
+  private updatePreviewWire(
+    edges: ReturnType<typeof buildMeshBuffers>['edges'],
+    object: SceneObject,
+    state: ObjectViewState,
+  ): void {
+    if (!this.picksCage) {
+      this.setLinePositions(this.previewWire, new Float32Array(0), false);
       return;
     }
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(edges.positions, 3));
-    this.replaceGeometry(this.previewWire, geometry);
+    const preview = this.culled?.preview;
+    this.setLinePositions(
+      this.previewWire,
+      preview ? this.frontEdges(preview, object, state.eye) : edges.positions,
+      true,
+    );
   }
 
   /**
@@ -451,25 +487,57 @@ export class ObjectView {
   }
 
   /**
-   * Tells the outline shader how large the viewport is, in CSS pixels.
+   * Tells the line shaders how large the viewport is, in CSS pixels.
    *
    * A pixel width means nothing to a vertex shader working in clip space, so
-   * `LineMaterial` divides by this. Left at its `(1, 1)` default the outline
-   * comes out wider than the screen.
+   * `LineMaterial` divides by this. Left at its `(1, 1)` default every line
+   * drawn as quads, the wireframe included, comes out wider than the screen.
    */
   setResolution(width: number, height: number): void {
-    (this.outline.material as LineMaterial).resolution.set(width, height);
+    for (const line of [this.outline, this.wire, this.selectedEdges, this.previewWire]) {
+      (line.material as LineMaterial).resolution.set(width, height);
+    }
   }
 
   /**
-   * Re-traces the outline from a new camera position.
+   * Redraws what depends on where the camera stands.
    *
-   * A silhouette depends on where it is seen from, so orbiting changes which
-   * edges are on it even when nothing in the scene has moved.
+   * Two things do: which edges are on the silhouette the outline traces, and
+   * which are on the far side and so left out of the wireframe. Orbiting
+   * changes both even when nothing in the scene has moved.
    */
-  refreshOutline(eye: Vec3): void {
-    if (!this.outlined) return;
-    this.traceOutline(eye);
+  refreshForCamera(eye: Vec3): void {
+    if (this.outlined) this.traceOutline(eye);
+    if (!this.culled) return;
+
+    // A set can empty and fill again as the camera turns around a mesh, so both
+    // are handed back the visibility they were drawn with rather than whatever
+    // the last position of the camera left them at.
+    const { cage, preview, object } = this.culled;
+    this.setLinePositions(this.wire, this.frontEdges(cage, object, eye), true);
+    if (preview) {
+      this.setLinePositions(this.previewWire, this.frontEdges(preview, object, eye), true);
+    }
+  }
+
+  /** The mesh's edges minus the ones lying on its far side, in object space. */
+  private frontEdges(mesh: BMesh, object: SceneObject, eye: Vec3): Float32Array {
+    return buildFrontEdgePositions(mesh, inverseTransformPoint(object.transform, eye));
+  }
+
+  /**
+   * Hands a line set to a `LineSegments2`, which wants its own geometry type.
+   *
+   * An empty one is left without positions, and hidden: an instanced geometry
+   * with no instances has no bounding sphere for the frustum check to work
+   * with. Whether it comes back is the caller's to say, since a set can empty
+   * and fill again as the camera turns around a mesh.
+   */
+  private setLinePositions(line: LineSegments2, positions: Float32Array, visible: boolean): void {
+    const geometry = new LineSegmentsGeometry();
+    if (positions.length > 0) geometry.setPositions(positions);
+    this.replaceGeometry(line, geometry);
+    line.visible = visible && positions.length > 0;
   }
 
   private traceOutline(eye: Vec3): void {
