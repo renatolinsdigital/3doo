@@ -54,7 +54,13 @@ import {
   triangulateFaces,
   trisToQuads,
 } from './subdivide';
-import { clampObjectScale, rotateVerts, scaleVerts, translateVerts } from './transform';
+import {
+  clampObjectScale,
+  proportionalInfluence,
+  rotateVerts,
+  scaleVerts,
+  translateVerts,
+} from './transform';
 import {
   faceLoopAtClick,
   hasConnectedEdges,
@@ -1549,6 +1555,42 @@ describe('transform', () => {
     const moved = [...grid.verts.values()].filter((vert) => vert.co.y > 0.001);
     expect(moved.length).toBeGreaterThan(1);
     expect(corner.co.y).toBeCloseTo(1);
+  });
+
+  it('carries the same vertices whether the falloff is worked out here or handed in', () => {
+    // A drag works the influence out once at the start and reuses it, which is
+    // both far cheaper and what stops the circle of influence crawling along
+    // with the vertices as they move. It has to land in the same place.
+    const options = { enabled: true, radius: 2, falloff: 'smooth' } as const;
+    const perCall = createGrid(4, 4);
+    const handedIn = createGrid(4, 4);
+
+    translateVerts(perCall, [[...perCall.verts.values()][0]], vec3(0, 1, 0), options);
+
+    const corner = [...handedIn.verts.values()][0];
+    const influence = proportionalInfluence(handedIn, [corner], options);
+    translateVerts(handedIn, [corner], vec3(0, 1, 0), influence);
+
+    const a = [...perCall.verts.values()].map((vert) => vert.co.y);
+    const b = [...handedIn.verts.values()].map((vert) => vert.co.y);
+    expect(b.length).toBe(a.length);
+    for (let i = 0; i < a.length; i++) expect(b[i]).toBeCloseTo(a[i], 9);
+  });
+
+  it('holds the influence still while the vertices move under it', () => {
+    // Recomputed per step, a vertex just outside the radius is pulled in as
+    // soon as its neighbours have moved towards it, and the patch spreads.
+    const options = { enabled: true, radius: 1, falloff: 'smooth' } as const;
+    const mesh = createGrid(4, 8);
+    const corner = [...mesh.verts.values()][0];
+    const influence = proportionalInfluence(mesh, [corner], options);
+
+    for (let step = 0; step < 10; step++) {
+      translateVerts(mesh, [corner], vec3(0, 0.1, 0), influence);
+    }
+
+    const carried = [...mesh.verts.values()].filter((vert) => vert.co.y > 1e-9).length;
+    expect(carried).toBe(influence.reached.length + 1);
   });
 });
 

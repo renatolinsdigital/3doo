@@ -68,6 +68,7 @@ function subdividedBox(): { object: SceneObject; view: ObjectView } {
       color: DEFAULT_PREFERENCES.selectionLineColor,
       width: DEFAULT_PREFERENCES.selectionLineWidth,
     },
+    meshVersion: 1,
     settings,
   });
   view.group.updateMatrixWorld(true);
@@ -160,6 +161,7 @@ describe('picking a mesh under a modifier preview', () => {
       isActive: true,
       isSelected: true,
       eye: vec3(3, 2.4, 4),
+      meshVersion: 2,
       selectionLine: {
         color: DEFAULT_PREFERENCES.selectionLineColor,
         width: DEFAULT_PREFERENCES.selectionLineWidth,

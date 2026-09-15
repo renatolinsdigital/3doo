@@ -298,3 +298,53 @@ describe('serialization', () => {
     expect([...copy.verts.values()][0].co.x).toBe(-1);
   });
 });
+
+describe('normals after a move', () => {
+  /** Every vertex normal, in mesh order, so two runs can be compared. */
+  const normalsOf = (mesh: BMesh) => [...mesh.verts.values()].map((vert) => ({ ...vert.normal }));
+
+  it('recomputes the moved patch to the same answer as recomputing everything', () => {
+    // The drag path only recomputes around what it moved, which is the single
+    // biggest saving on a dense mesh. It is only allowed to be faster, never
+    // different: a vertex on the rim of the patch still weighs the faces
+    // outside it, which is the part a naive subset pass gets wrong.
+    const incremental = createGrid(2, 12);
+    const whole = cloneMesh(incremental);
+
+    const pick = (mesh: BMesh) => [...mesh.verts.values()].filter((_, i) => i % 37 === 0);
+    for (const mesh of [incremental, whole]) {
+      for (const vert of pick(mesh)) {
+        vert.co = vec3(vert.co.x, vert.co.y + 0.35, vert.co.z);
+      }
+    }
+
+    incremental.computeNormals(pick(incremental));
+    whole.computeNormals();
+
+    const after = normalsOf(incremental);
+    const expected = normalsOf(whole);
+    expect(after.length).toBe(expected.length);
+    for (let i = 0; i < after.length; i++) {
+      expect(after[i].x).toBeCloseTo(expected[i].x, 6);
+      expect(after[i].y).toBeCloseTo(expected[i].y, 6);
+      expect(after[i].z).toBeCloseTo(expected[i].z, 6);
+    }
+  });
+
+  it('turns the faces around a moved vertex, and leaves the rest alone', () => {
+    const mesh = createGrid(2, 4);
+    const [vert] = [...mesh.verts.values()];
+    const far = [...mesh.faces.values()].at(-1);
+    mesh.computeNormals();
+    const before = far ? { ...far.normal } : null;
+
+    vert.co = vec3(vert.co.x, vert.co.y + 1, vert.co.z);
+    mesh.computeNormals([vert]);
+
+    const touched = mesh.vertFaces(vert);
+    expect(touched.length).toBeGreaterThan(0);
+    for (const face of touched) expect(Math.abs(face.normal.y)).toBeLessThan(1);
+    // A face at the other end of the grid never moved, so it never turned.
+    if (far && before) expect(far.normal.y).toBeCloseTo(before.y, 9);
+  });
+});

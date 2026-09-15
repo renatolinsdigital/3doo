@@ -5,7 +5,10 @@ import { AXIS_COLORS, ObjectView, VIEWPORT_COLORS } from '@bridge/index';
 import {
   type Axis,
   type BMesh,
+  type FalloffCurve,
   type PivotTool,
+  type ProportionalInfluence,
+  type ProportionalOptions,
   type SelectMode,
   type SlidePlan,
   type SlideRail,
@@ -27,6 +30,7 @@ import {
   pivotPosition,
   planEdgeSlide,
   planVertexSlide,
+  proportionalInfluence,
   rotateVerts,
   scaleVerts,
   selectEdgeLoop,
@@ -492,6 +496,14 @@ export class Viewport {
   /** The rails a slide may travel along, drawn while one is running. */
   private readonly slideGuide: THREE.LineSegments;
   private gizmoBaseline: GizmoBaseline | null = null;
+  /** What `proportionalSpread` last worked out, and what it was worked out from. */
+  private dragSpread: {
+    mesh: BMesh;
+    count: number;
+    radius: number;
+    falloff: FalloffCurve;
+    influence: ProportionalInfluence;
+  } | null = null;
   /** Ids of the selected, unlocked objects a group gizmo drag in object mode applies to. */
   private transformGroup: string[] = [];
   private readonly objectBaselines = new Map<string, Transform>();
@@ -1004,7 +1016,11 @@ export class Viewport {
       let view = this.views.get(object.id);
       if (!view) {
         view = new ObjectView(object.id);
-        view.setResolution(this.outlineResolution.x, this.outlineResolution.y);
+        view.setResolution(
+          this.outlineResolution.x,
+          this.outlineResolution.y,
+          this.renderer.getPixelRatio(),
+        );
         this.views.set(object.id, view);
         this.scene.add(view.group);
       }
@@ -1018,6 +1034,7 @@ export class Viewport {
         isSelected: state.selectedObjectIds.includes(object.id),
         eye: vec3(this.camera.position.x, this.camera.position.y, this.camera.position.z),
         selectionLine: { color: state.selectionLineColor, width: state.selectionLineWidth },
+        meshVersion: state.meshVersion,
         settings,
       });
     }
@@ -1383,6 +1400,9 @@ export class Viewport {
     this.endScaleDrag();
     this.endRotateDrag();
     this.autoMergeSelection();
+    // The next drag measures its own falloff, from wherever the selection has
+    // ended up rather than from where this one found it.
+    this.dragSpread = null;
 
     // `gizmoDragging` is already false, so this resync is the one that re-seats
     // the gizmo on where the selection actually landed.
@@ -2382,6 +2402,44 @@ export class Viewport {
   };
 
   /**
+   * The vertices a proportional drag carries, worked out once and then reused.
+   *
+   * Finding them means measuring every vertex in the mesh against every
+   * selected one, which on a dense mesh is the slowest thing a pointer move
+   * sets off. It is also supposed to be settled: the falloff is measured from
+   * where the selection stood when the drag began, so recomputing it from the
+   * vertices as they move would let the circle of influence crawl along with
+   * them. Held until the selection, the radius or the curve changes, which is
+   * what the wheel does mid-drag.
+   */
+  private proportionalSpread(
+    state: ReturnType<typeof useEditorStore.getState>,
+    object: SceneObject,
+    selected: readonly Vert[],
+  ): ProportionalOptions | ProportionalInfluence {
+    if (!state.proportional.enabled || state.proportional.radius <= 0) return state.proportional;
+
+    const held = this.dragSpread;
+    const same =
+      held &&
+      held.mesh === object.mesh &&
+      held.count === selected.length &&
+      held.radius === state.proportional.radius &&
+      held.falloff === state.proportional.falloff;
+    if (same) return held.influence;
+
+    const influence = proportionalInfluence(object.mesh, selected, state.proportional);
+    this.dragSpread = {
+      mesh: object.mesh,
+      count: selected.length,
+      radius: state.proportional.radius,
+      falloff: state.proportional.falloff,
+      influence,
+    };
+    return influence;
+  }
+
+  /**
    * Applies a gizmo drag to the selected vertices of the object being edited.
    *
    * Rotate and scale turn about wherever the gizmo was seated: the selection's
@@ -2401,6 +2459,7 @@ export class Viewport {
     const selected = object.mesh.selectedVerts();
     if (selected.length === 0) return;
 
+    const spread = this.proportionalSpread(state, object, selected);
     const tool = state.activeTool as PivotTool;
     const worldPivot = vec3(baseline.position.x, baseline.position.y, baseline.position.z);
     const pivot = inverseTransformPoint(object.transform, worldPivot);
@@ -2418,7 +2477,7 @@ export class Viewport {
         inverseTransformDirection(object.transform, axis),
         angle,
         pivot,
-        state.proportional,
+        spread,
       );
       this.captureGizmoBaseline();
       state.touchMesh();
@@ -2428,7 +2487,7 @@ export class Viewport {
     if (tool === 'scale') {
       if (!scaleStep) return;
 
-      scaleVerts(object.mesh, selected, scaleStep, pivot, state.proportional);
+      scaleVerts(object.mesh, selected, scaleStep, pivot, spread);
       state.touchMesh();
       return;
     }
@@ -2443,7 +2502,7 @@ export class Viewport {
       object.mesh,
       selected,
       vec3(delta.x / (scale.x || 1), delta.y / (scale.y || 1), delta.z / (scale.z || 1)),
-      state.proportional,
+      spread,
     );
     this.captureGizmoBaseline();
     state.touchMesh();
@@ -3171,7 +3230,9 @@ export class Viewport {
 
     this.renderer.setSize(width, height, false);
     this.outlineResolution.set(width, height);
-    for (const view of this.views.values()) view.setResolution(width, height);
+    for (const view of this.views.values()) {
+      view.setResolution(width, height, this.renderer.getPixelRatio());
+    }
 
     const aspect = width / height;
     this.perspectiveCamera.aspect = aspect;

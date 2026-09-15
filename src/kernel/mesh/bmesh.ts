@@ -202,6 +202,23 @@ export class BMesh {
     return null;
   }
 
+  /**
+   * How many corners a face has, without building the list to count it.
+   *
+   * The display pass counts every face before it fills its buffers, and at a
+   * hundred thousand faces the array `faceLoops` hands back for each one is the
+   * whole cost of asking.
+   */
+  faceLoopCount(face: Face): number {
+    let count = 0;
+    let loop = face.loop;
+    do {
+      count++;
+      loop = loop.next;
+    } while (loop !== face.loop && count < 4096);
+    return count;
+  }
+
   faceLoops(face: Face): Loop[] {
     const loops: Loop[] = [];
     let loop = face.loop;
@@ -290,25 +307,80 @@ export class BMesh {
     face.normal = polygonNormal(this.facePoints(face));
   }
 
-  /** Recomputes every face normal and the area-weighted vertex normals. */
-  computeNormals(): void {
-    const accumulator = new Map<number, Vec3>();
-    for (const vert of this.verts.values()) accumulator.set(vert.id, vec3());
+  /**
+   * Recomputes face normals and the area-weighted vertex normals.
+   *
+   * With `moved`, only the geometry that could have changed: the faces around
+   * those vertices, and the vertex normals of every vertex those faces touch.
+   * Nothing else can have moved, so nothing else can have turned. A drag runs
+   * this on every pointer move, and over a whole mesh that was the single
+   * costliest thing a moved vertex set off: 281 ms on a 98k-face mesh, against
+   * a couple for the handful of faces a drag actually bends.
+   */
+  computeNormals(moved?: Iterable<Vert>): void {
+    const faces = moved ? this.facesAround(moved) : [...this.faces.values()];
+    const turned = new Set(faces.map((face) => face.id));
+    const verts = new Map<number, Vert>();
 
-    for (const face of this.faces.values()) {
+    // Area-weighted, so a big face pulls a shared vertex further round than a
+    // sliver does, summed in place rather than through a map of vectors.
+    const sums = new Map<number, { x: number; y: number; z: number }>();
+    for (const face of faces) {
       this.updateFaceNormal(face);
       const weight = this.faceArea(face);
       for (const vert of this.faceVerts(face)) {
-        const current = accumulator.get(vert.id) ?? vec3();
-        accumulator.set(vert.id, add(current, mul(face.normal, weight)));
+        verts.set(vert.id, vert);
+        const sum = sums.get(vert.id) ?? { x: 0, y: 0, z: 0 };
+        sum.x += face.normal.x * weight;
+        sum.y += face.normal.y * weight;
+        sum.z += face.normal.z * weight;
+        sums.set(vert.id, sum);
       }
     }
 
-    for (const vert of this.verts.values()) {
-      const sum = accumulator.get(vert.id) ?? vec3();
-      const normal = normalize(sum);
+    // A vertex on the edge of the moved patch also belongs to faces outside it,
+    // which have not turned but still weigh on where its normal points.
+    if (moved) {
+      for (const vert of verts.values()) {
+        const sum = sums.get(vert.id) ?? { x: 0, y: 0, z: 0 };
+        for (const face of this.vertFaces(vert)) {
+          if (turned.has(face.id)) continue;
+          const weight = this.faceArea(face);
+          sum.x += face.normal.x * weight;
+          sum.y += face.normal.y * weight;
+          sum.z += face.normal.z * weight;
+        }
+        sums.set(vert.id, sum);
+      }
+    }
+
+    for (const vert of verts.values()) {
+      const sum = sums.get(vert.id) ?? { x: 0, y: 0, z: 0 };
+      const normal = normalize(vec3(sum.x, sum.y, sum.z));
       vert.normal = normal.x === 0 && normal.y === 0 && normal.z === 0 ? vec3(0, 1, 0) : normal;
     }
+
+    // A vertex with no face at all still owns a normal, and a full pass is the
+    // only one that can say so: nothing moved it into the set above.
+    if (!moved) {
+      for (const vert of this.verts.values()) {
+        if (!verts.has(vert.id)) vert.normal = vec3(0, 1, 0);
+      }
+    }
+  }
+
+  /** Every face touching one of these vertices, each listed once. */
+  private facesAround(verts: Iterable<Vert>): Face[] {
+    const seen = new Set<number>();
+    const faces: Face[] = [];
+    for (const vert of verts) {
+      for (const face of this.vertFaces(vert)) {
+        if (seen.has(face.id)) continue;
+        seen.add(face.id);
+        faces.push(face);
+      }
+    }
+    return faces;
   }
 
   // --------------------------------------------------------------- selection
@@ -389,7 +461,9 @@ export class BMesh {
     let tris = 0;
     let selectedFaces = 0;
     for (const face of this.faces.values()) {
-      tris += Math.max(0, this.faceLoops(face).length - 2);
+      // Counted rather than listed: the status bar reads this on every store
+      // change, and a list built per face is the whole cost of it.
+      tris += Math.max(0, this.faceLoopCount(face) - 2);
       if (face.selected) selectedFaces++;
     }
     let selectedVerts = 0;

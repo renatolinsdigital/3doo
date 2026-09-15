@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import { createBox, createPlane, vec3, BMesh } from '@kernel/index';
 
-import { buildMeshBuffers, buildSilhouetteEdges } from './meshBuffers';
+import {
+  buildEdgeCull,
+  buildMeshBuffers,
+  buildSilhouetteEdges,
+  frontEdgePositions,
+} from './meshBuffers';
 
 /** Silhouette buffers are pairs of points, so two vertices per edge. */
 function edgeCount(positions: Float32Array): number {
@@ -46,6 +51,46 @@ describe('silhouette edges', () => {
     // wireframe, and a cube has 12 edges however it is turned.
     expect(all).toBe(12);
     expect(edgeCount(buildSilhouetteEdges(mesh, vec3(3, 7, 11)))).toBeLessThan(all);
+  });
+});
+
+describe('front edges', () => {
+  const frontEdges = (mesh: BMesh, eye: ReturnType<typeof vec3>) =>
+    edgeCount(frontEdgePositions(buildEdgeCull(mesh), eye));
+
+  it('leaves a cube seen face on with the square that is all anyone can see', () => {
+    // Every other face is edge-on or behind, so the eight edges they own are
+    // the ones the depth test was letting through beside the contour, as a
+    // second line next to the near edge and as a stub off a corner.
+    expect(frontEdges(createBox(1), vec3(0, 0, 10))).toBe(4);
+  });
+
+  it('keeps every edge of a cube seen from a corner but the three behind it', () => {
+    expect(frontEdges(createBox(1), vec3(10, 10, 10))).toBe(9);
+  });
+
+  it('keeps a flat plane whole from either side, having no far side to be on', () => {
+    const plane = createPlane(1);
+
+    expect(frontEdges(plane, vec3(0, 10, 0))).toBe(4);
+    expect(frontEdges(plane, vec3(0, -10, 0))).toBe(4);
+  });
+
+  it('always keeps a bare wire edge', () => {
+    const mesh = new BMesh();
+    mesh.addEdge(mesh.addVert(vec3(0, 0, 0)), mesh.addVert(vec3(1, 0, 0)));
+
+    expect(frontEdges(mesh, vec3(0, 0, 5))).toBe(1);
+  });
+
+  it('reads the same tables from any camera, since only the mesh sets them', () => {
+    // The tables are what make this cheap enough to run on a moving camera:
+    // they are flattened once and then only read.
+    const cull = buildEdgeCull(createBox(1));
+
+    expect(edgeCount(frontEdgePositions(cull, vec3(0, 0, 10)))).toBe(4);
+    expect(edgeCount(frontEdgePositions(cull, vec3(0, 0, -10)))).toBe(4);
+    expect(edgeCount(frontEdgePositions(cull, vec3(10, 10, 10)))).toBe(9);
   });
 });
 

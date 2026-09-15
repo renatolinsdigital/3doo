@@ -23,6 +23,68 @@ export interface ProportionalOptions {
   falloff: FalloffCurve;
 }
 
+/**
+ * Which unselected vertices a proportional edit carries, and how far each one
+ * goes with it.
+ *
+ * Worked out once and then handed to every step of a drag, for two reasons.
+ * The cheap one is that finding it means measuring every vertex in the mesh
+ * against every selected one, which on a 98k-vertex mesh cost a third of a
+ * second on each pointer move. The one that matters more is that the answer is
+ * supposed to be fixed: the falloff is measured from where the selection stood
+ * when the drag began, and recomputing it from the vertices as they move lets
+ * the circle of influence crawl across the mesh as you drag.
+ */
+export interface ProportionalInfluence {
+  reached: readonly { vert: Vert; influence: number }[];
+}
+
+function isInfluence(
+  value: ProportionalOptions | ProportionalInfluence | undefined,
+): value is ProportionalInfluence {
+  return value !== undefined && 'reached' in value;
+}
+
+/**
+ * The vertices within the falloff radius of a selection, with their weights.
+ *
+ * Measured from where the selection is when this is called, which for a drag
+ * means where it stood at the start (see `ProportionalInfluence`).
+ */
+export function proportionalInfluence(
+  mesh: BMesh,
+  verts: readonly Vert[],
+  options: ProportionalOptions,
+): ProportionalInfluence {
+  const reached: { vert: Vert; influence: number }[] = [];
+  if (!options.enabled || options.radius <= 0) return { reached };
+
+  const selected = new Set(verts.map((vert) => vert.id));
+  const origins = verts.map((vert) => vert.co);
+  const radius = options.radius;
+
+  for (const candidate of mesh.verts.values()) {
+    if (selected.has(candidate.id)) continue;
+
+    let nearestSquared = Infinity;
+    for (const origin of origins) {
+      const dx = candidate.co.x - origin.x;
+      const dy = candidate.co.y - origin.y;
+      const dz = candidate.co.z - origin.z;
+      const squared = dx * dx + dy * dy + dz * dz;
+      if (squared < nearestSquared) nearestSquared = squared;
+      // Nothing nearer than touching, so stop measuring the rest.
+      if (nearestSquared === 0) break;
+    }
+    if (nearestSquared >= radius * radius) continue;
+
+    const influence = falloff(1 - Math.sqrt(nearestSquared) / radius, options.falloff);
+    if (influence > 0) reached.push({ vert: candidate, influence });
+  }
+
+  return { reached };
+}
+
 export function medianPoint(verts: readonly Vert[]): Vec3 {
   return centroid(verts.map((vert) => vert.co));
 }
@@ -35,44 +97,38 @@ function applyDisplacement(
   mesh: BMesh,
   verts: readonly Vert[],
   displace: (vert: Vert, influence: number) => Vec3,
-  proportional?: ProportionalOptions,
+  proportional?: ProportionalOptions | ProportionalInfluence,
 ): void {
-  const selectedIds = new Set(verts.map((vert) => vert.id));
-  // Falloff has to measure from where the selection started, so capture the
-  // origins before anything moves.
-  const origins = verts.map((vert) => vert.co);
+  // Worked out before anything moves: the falloff measures from where the
+  // selection started, and a set handed in was measured at the start of a drag
+  // for the same reason.
+  const spread = isInfluence(proportional)
+    ? proportional
+    : proportional?.enabled && proportional.radius > 0
+      ? proportionalInfluence(mesh, verts, proportional)
+      : null;
 
+  const moved: Vert[] = [...verts];
   for (const vert of verts) vert.co = displace(vert, 1);
 
-  if (proportional?.enabled && proportional.radius > 0) {
-    for (const candidate of mesh.verts.values()) {
-      if (selectedIds.has(candidate.id)) continue;
-
-      let nearest = Infinity;
-      for (const origin of origins) {
-        const distance = Math.hypot(
-          candidate.co.x - origin.x,
-          candidate.co.y - origin.y,
-          candidate.co.z - origin.z,
-        );
-        if (distance < nearest) nearest = distance;
-      }
-      if (nearest >= proportional.radius) continue;
-
-      const influence = falloff(1 - nearest / proportional.radius, proportional.falloff);
-      if (influence <= 0) continue;
-      candidate.co = displace(candidate, influence);
+  if (spread) {
+    for (const { vert, influence } of spread.reached) {
+      vert.co = displace(vert, influence);
+      moved.push(vert);
     }
   }
 
-  mesh.computeNormals();
+  // Only the faces around what moved can have turned, and on a dense mesh that
+  // is the difference between a pointer move costing a couple of milliseconds
+  // and costing the best part of a second.
+  mesh.computeNormals(moved);
 }
 
 export function translateVerts(
   mesh: BMesh,
   verts: readonly Vert[],
   offset: Vec3,
-  proportional?: ProportionalOptions,
+  proportional?: ProportionalOptions | ProportionalInfluence,
 ): void {
   applyDisplacement(
     mesh,
@@ -89,7 +145,7 @@ export function rotateVerts(
   axis: Vec3,
   angle: number,
   pivot: Vec3,
-  proportional?: ProportionalOptions,
+  proportional?: ProportionalOptions | ProportionalInfluence,
 ): void {
   applyDisplacement(
     mesh,
@@ -107,7 +163,7 @@ export function scaleVerts(
   verts: readonly Vert[],
   scale: Vec3,
   pivot: Vec3,
-  proportional?: ProportionalOptions,
+  proportional?: ProportionalOptions | ProportionalInfluence,
 ): void {
   applyDisplacement(
     mesh,

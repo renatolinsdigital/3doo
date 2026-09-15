@@ -96,16 +96,26 @@ between them and the surface broken.
 
 Depth is the wrong tool for hiding the back of a model: near a contour the far
 side runs within a pixel of the near one, close enough that rounding lets it
-through. `buildFrontEdgePositions` leaves out every edge whose faces all face
-away from the camera, which is exact at any zoom, and boundary edges are always
-kept since they have no far side. Skipped in x-ray and wireframe shading, where
+through. `frontEdgePositions` leaves out every edge whose faces all face away
+from the camera, which is exact at any zoom, and keeps every edge with some
+number of faces other than two, since a boundary, a bare wire and a non-manifold
+fan have no far side to be on. Skipped in x-ray and wireframe shading, where
 seeing through the model is the point, and never applied to the selected edges,
 since a selection has to read wherever the user made it.
 
-Which edges those are depends on where the camera stands, so the wireframe is
-rebuilt on a camera move, the same way the outline is re-traced. Picking is
-unaffected: it works from the full edge buffer, so an edge round the back can
-still be clicked.
+Which edges those are depends on where the camera stands, so this runs on every
+frame of an orbit, and that is what decides how it is written. It reads flat
+typed arrays that `buildEdgeCull` flattens out of the half-edge graph: face
+normals and centres, and two face indices per edge. Walking the mesh itself
+instead costs 17 ms a frame on a 49k-edge sphere against 0.35 ms over the
+tables, because the walk pays a map lookup per face, a vector allocated per
+centre and a loop chased per edge. The tables change only when the mesh does,
+so `ObjectView` holds them against the store's mesh version and a gizmo drag,
+which redraws on every pointer move without moving a vertex, does not rebuild
+them.
+
+Picking is unaffected: it works from the full edge buffer, so an edge round the
+back can still be clicked.
 
 ### The selection outline
 

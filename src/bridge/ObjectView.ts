@@ -24,10 +24,12 @@ import {
   disposeMaterial,
 } from './materials';
 import {
-  buildFrontEdgePositions,
+  type EdgeCull,
+  buildEdgeCull,
   buildMeshBuffers,
   buildNormalLines,
   buildSilhouetteEdges,
+  frontEdgePositions,
 } from './meshBuffers';
 
 /**
@@ -38,6 +40,29 @@ import {
  * operations will run on.
  */
 const INACTIVE_OUTLINE_TINT = 0.68;
+
+/**
+ * How wide the wireframe is drawn, in device pixels.
+ *
+ * Not one, though one is what it replaces. A quad antialiases along both of its
+ * long edges, and a quad exactly one pixel across spends most of its width on
+ * that falloff: measured against the plain line it took over from, it lands at
+ * about three quarters of the ink. 1.4 reads as the same line.
+ */
+const WIRE_WIDTH_DEVICE_PX = 1.4;
+
+/**
+ * A held cull table and what it was built from.
+ *
+ * Both halves are needed to know it is still good: the modifier stack hands out
+ * a new mesh each time it evaluates, while edit-mode operators write into the
+ * one mesh in place and say so by bumping the version.
+ */
+interface CullSlot {
+  mesh: BMesh;
+  version: number;
+  cull: EdgeCull;
+}
 
 /**
  * The fade's colour buffer: selection red throughout, alpha from the weights.
@@ -70,6 +95,14 @@ export interface ObjectViewState {
   /** Colour and pixel width of the object-mode outline, from the user's preferences. */
   selectionLine: { color: string; width: number };
   settings: ViewportSettings;
+  /**
+   * The store's mesh version, which says when geometry has actually changed.
+   *
+   * An edit-mode operator writes into the mesh it was handed, so its identity
+   * says nothing about whether the vertices moved. This is what tells the cull
+   * tables they are stale.
+   */
+  meshVersion: number;
   /** Kernel ids of vertices to flash as just-created; empty most of the time. */
   recentVerts?: ReadonlySet<number>;
 }
@@ -127,11 +160,20 @@ export class ObjectView {
   private outlined: { mesh: BMesh; object: SceneObject } | null = null;
 
   /**
-   * The meshes the wireframe is culled against, while an opaque surface makes
-   * that worth doing. Which edges are on the far side changes with the camera,
-   * the same way the outline does, so `refreshForCamera` rebuilds from this.
+   * What the wireframe is culled against, while an opaque surface makes that
+   * worth doing. Which edges are on the far side changes with the camera, the
+   * same way the outline does, so `refreshForCamera` rebuilds from this.
    */
-  private culled: { cage: BMesh; preview: BMesh | null; object: SceneObject } | null = null;
+  private culled: { cage: EdgeCull; preview: EdgeCull | null; object: SceneObject } | null = null;
+
+  /**
+   * The cull tables, held between frames for the cage and for the preview.
+   *
+   * They are flattened out of a mesh and only change when it does, so a camera
+   * move reads them and a gizmo drag, which redraws on every pointer move
+   * without touching a vertex, does not pay to build them again.
+   */
+  private readonly cullTables = new Map<'cage' | 'preview', CullSlot>();
 
   /** The shape the modifier stack made, which is what the preview wire draws. */
   private previewMesh: BMesh | null = null;
@@ -395,13 +437,20 @@ export class ObjectView {
     // Only an opaque surface hides a far side, and only then is dropping those
     // edges the same picture with less in it. X-ray and wireframe keep every
     // edge, since seeing through the model is what they are for.
-    this.culled =
-      drawsWire && shading !== 'wireframe' && shading !== 'xray'
-        ? { cage: cageMesh, preview: this.picksCage ? this.previewMesh : null, object }
-        : null;
+    const culls = drawsWire && shading !== 'wireframe' && shading !== 'xray';
+    this.culled = culls
+      ? {
+          cage: this.cullTableFor('cage', cageMesh, state.meshVersion),
+          preview:
+            this.picksCage && this.previewMesh
+              ? this.cullTableFor('preview', this.previewMesh, state.meshVersion)
+              : null,
+          object,
+        }
+      : null;
     this.setLinePositions(
       this.wire,
-      this.culled ? this.frontEdges(cageMesh, object, state.eye) : edges.positions,
+      this.culled ? this.frontEdges(this.culled.cage, object, state.eye) : edges.positions,
       drawsWire,
     );
 
@@ -487,15 +536,26 @@ export class ObjectView {
   }
 
   /**
-   * Tells the line shaders how large the viewport is, in CSS pixels.
+   * Tells the line shaders how large the viewport is, in CSS pixels, and how
+   * many device pixels one of those covers.
    *
    * A pixel width means nothing to a vertex shader working in clip space, so
-   * `LineMaterial` divides by this. Left at its `(1, 1)` default every line
-   * drawn as quads, the wireframe included, comes out wider than the screen.
+   * `LineMaterial` divides by the resolution. Left at its `(1, 1)` default
+   * every line drawn as quads, the wireframe included, comes out wider than
+   * the screen.
+   *
+   * The wire asks in **device** pixels, since that is what a plain line drew
+   * and what the viewport is still meant to look like. A width given in CSS
+   * pixels comes out that much heavier on every display with more than one
+   * device pixel to them. The outline is left alone: its width is a user
+   * preference, given in the CSS pixels the preference is written in.
    */
-  setResolution(width: number, height: number): void {
+  setResolution(width: number, height: number, pixelRatio: number): void {
     for (const line of [this.outline, this.wire, this.selectedEdges, this.previewWire]) {
       (line.material as LineMaterial).resolution.set(width, height);
+    }
+    for (const line of [this.wire, this.selectedEdges, this.previewWire]) {
+      (line.material as LineMaterial).linewidth = WIRE_WIDTH_DEVICE_PX / Math.max(1, pixelRatio);
     }
   }
 
@@ -521,8 +581,18 @@ export class ObjectView {
   }
 
   /** The mesh's edges minus the ones lying on its far side, in object space. */
-  private frontEdges(mesh: BMesh, object: SceneObject, eye: Vec3): Float32Array {
-    return buildFrontEdgePositions(mesh, inverseTransformPoint(object.transform, eye));
+  private frontEdges(cull: EdgeCull, object: SceneObject, eye: Vec3): Float32Array {
+    return frontEdgePositions(cull, inverseTransformPoint(object.transform, eye));
+  }
+
+  /** The cull table for a mesh, flattened again only once the mesh has moved on. */
+  private cullTableFor(slot: 'cage' | 'preview', mesh: BMesh, version: number): EdgeCull {
+    const held = this.cullTables.get(slot);
+    if (held && held.mesh === mesh && held.version === version) return held.cull;
+
+    const cull = buildEdgeCull(mesh);
+    this.cullTables.set(slot, { mesh, version, cull });
+    return cull;
   }
 
   /**

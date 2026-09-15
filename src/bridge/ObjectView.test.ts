@@ -1,14 +1,15 @@
 import * as THREE from 'three';
 import type { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { add, vec3 } from '@kernel/index';
 import { DEFAULT_PREFERENCES, evaluatedMesh, useEditorStore } from '@store/index';
 import type { SceneObject, ViewportSettings } from '@store/types';
 
 import { ObjectView } from './ObjectView';
-import { buildFrontEdgePositions } from './meshBuffers';
+import * as meshBuffers from './meshBuffers';
+import { buildEdgeCull, frontEdgePositions } from './meshBuffers';
 
 const SELECTION_LINE = {
   color: DEFAULT_PREFERENCES.selectionLineColor,
@@ -52,6 +53,7 @@ describe('ObjectView', () => {
       isSelected: true,
       eye: vec3(0, 0, 10),
       selectionLine: SELECTION_LINE,
+      meshVersion: 1,
       settings,
     };
 
@@ -75,6 +77,7 @@ describe('ObjectView', () => {
       isSelected: true,
       eye: vec3(0, 0, 10),
       selectionLine: SELECTION_LINE,
+      meshVersion: 1,
       settings,
     };
 
@@ -115,6 +118,7 @@ describe('ObjectView selection outline', () => {
       isSelected: true,
       eye: vec3(0, 0, 10),
       selectionLine: SELECTION_LINE,
+      meshVersion: 1,
       settings,
     };
 
@@ -140,6 +144,7 @@ describe('ObjectView selection outline', () => {
       isSelected: true,
       eye: vec3(0, 0, 10),
       selectionLine: SELECTION_LINE,
+      meshVersion: 1,
       settings,
     });
 
@@ -155,6 +160,7 @@ describe('ObjectView selection outline', () => {
       isSelected: true,
       eye: vec3(0, 0, 10),
       selectionLine: SELECTION_LINE,
+      meshVersion: 1,
       settings,
     };
 
@@ -178,6 +184,7 @@ describe('ObjectView selection outline', () => {
       isActive: true,
       eye: vec3(0, 0, 10),
       selectionLine: SELECTION_LINE,
+      meshVersion: 1,
       settings,
     };
     const stamping = () =>
@@ -207,6 +214,7 @@ describe('ObjectView selection outline', () => {
       isSelected: true,
       eye: vec3(0, 0, 10),
       selectionLine: { color: '#3de0d0', width: 5 },
+      meshVersion: 1,
       settings,
     });
 
@@ -222,9 +230,36 @@ describe('ObjectView selection outline', () => {
     const { object } = scene();
     const view = new ObjectView(object.id);
 
-    view.setResolution(1280, 720);
+    view.setResolution(1280, 720, 1);
 
     expect(outlineMaterial(view, object.id).resolution.toArray()).toEqual([1280, 720]);
+  });
+
+  it('sizes the wire in device pixels, not the CSS pixels a display stretches', () => {
+    // A plain line was one device pixel. The wire is quads now, and a width
+    // asked for in CSS pixels reads heavier on every display with more than one
+    // device pixel to them.
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+    view.update(object, evaluatedMesh(object), {
+      mode: 'object' as const,
+      selectMode: 'vertex' as const,
+      isActive: true,
+      isSelected: false,
+      eye: vec3(0, 0, 10),
+      selectionLine: SELECTION_LINE,
+      meshVersion: 1,
+      settings: { ...settings, shading: 'solidWire' },
+    });
+
+    view.setResolution(1280, 720, 2);
+    const wire = view.group.children.find(
+      (child): child is LineSegments2 => child instanceof LineSegments2 && child.renderOrder === 0,
+    );
+
+    expect((wire?.material as LineMaterial).linewidth).toBeCloseTo(0.7);
+    // The outline keeps asking in the CSS pixels its preference is written in.
+    expect(outlineMaterial(view, object.id).linewidth).toBeGreaterThanOrEqual(1);
   });
 
   it('re-traces from a new camera position without a rebuild', () => {
@@ -238,6 +273,7 @@ describe('ObjectView selection outline', () => {
       isSelected: true,
       eye: vec3(0, 0, 10),
       selectionLine: SELECTION_LINE,
+      meshVersion: 1,
       settings,
     });
     expect(segmentCount(outlineOf(view, object.id))).toBe(4);
@@ -267,6 +303,7 @@ describe('ObjectView hover mark', () => {
       isSelected: true,
       eye: vec3(0, 0, 10),
       selectionLine: SELECTION_LINE,
+      meshVersion: 1,
       settings,
     };
   }
@@ -347,6 +384,7 @@ describe('ObjectView under a modifier', () => {
       isSelected: true,
       eye: vec3(0, 0, 10),
       selectionLine: SELECTION_LINE,
+      meshVersion: 1,
       settings,
     };
   }
@@ -358,8 +396,8 @@ describe('ObjectView under a modifier', () => {
 
   // What an opaque surface leaves on screen: the edges that are not on the far
   // side of the mesh from where `viewState` puts the camera.
-  const frontEdgesOf = (mesh: Parameters<typeof buildFrontEdgePositions>[0]) =>
-    buildFrontEdgePositions(mesh, vec3(0, 0, 10)).length / 6;
+  const frontEdgesOf = (mesh: Parameters<typeof buildEdgeCull>[0]) =>
+    frontEdgePositions(buildEdgeCull(mesh), vec3(0, 0, 10)).length / 6;
 
   it('draws the shape the stack makes, and the cage that makes it, in edit mode', () => {
     const { object, settings } = subdividedBox();
@@ -399,6 +437,33 @@ describe('ObjectView under a modifier', () => {
 
     view.update(object, evaluatedMesh(object), viewState(settings, 'object'));
     expect(view.pickTarget).toBe(view.surfaceTarget);
+  });
+
+  it('re-culls the wire from a new camera without touching the mesh again', () => {
+    // The tables the cull runs over are flattened out of the mesh, which costs
+    // more than the whole pass does. A drag redraws on every pointer move and
+    // an orbit re-culls on every frame, so neither may pay for that twice.
+    const { object, settings } = subdividedBox();
+    const view = new ObjectView(object.id);
+    const state = viewState(settings, 'edit');
+    const flatten = vi.spyOn(meshBuffers, 'buildEdgeCull');
+    // The one mesh the stack evaluated, the way the viewport hands the same
+    // memoised result to every redraw at a given version.
+    const display = evaluatedMesh(object);
+
+    view.update(object, display, state);
+    const first = flatten.mock.calls.length;
+    expect(first).toBeGreaterThan(0);
+
+    // Same mesh, same version: a redraw and an orbit both read what is held.
+    view.update(object, display, state);
+    view.refreshForCamera(vec3(10, 10, 10));
+    expect(flatten.mock.calls.length).toBe(first);
+
+    // An edit says so by bumping the version, and then they are rebuilt.
+    view.update(object, display, { ...state, meshVersion: state.meshVersion + 1 });
+    expect(flatten.mock.calls.length).toBeGreaterThan(first);
+    flatten.mockRestore();
   });
 
   it('leaves the preview to the wireframe itself in object mode', () => {
@@ -449,6 +514,7 @@ describe('ObjectView origin marker', () => {
       isSelected,
       eye: vec3(0, 0, 10),
       selectionLine: SELECTION_LINE,
+      meshVersion: 1,
       settings,
     };
   }
@@ -514,6 +580,7 @@ describe('ObjectView vertex fade', () => {
       isSelected: true,
       eye: vec3(0, 0, 10),
       selectionLine: SELECTION_LINE,
+      meshVersion: 1,
       settings,
     };
   }
