@@ -2,9 +2,11 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   MIN_OBJECT_SIZE,
+  type Edge,
   type Vec3,
   add,
   dot,
+  edgeLength,
   exportFBXAscii,
   exportOBJ,
   parseProject,
@@ -1612,5 +1614,110 @@ describe('history timeline', () => {
 
     store().setPreferences({ historySize: 50 });
     expect(store().historyUndo).toHaveLength(10);
+  });
+});
+
+describe('edge length', () => {
+  beforeEach(() => {
+    store().resetScene();
+    store().addPrimitive('box');
+    store().setMode('edit');
+  });
+
+  /** Selects two edges of the active mesh that share no vertex. */
+  function selectDisjointEdges(): Edge[] {
+    const mesh = activeObject().mesh;
+    const edges = [...mesh.edges.values()];
+    const ends = [edges[0].v0.id, edges[0].v1.id];
+    const apart = edges.find((edge) => !ends.includes(edge.v0.id) && !ends.includes(edge.v1.id));
+    if (!apart) throw new Error('No edge found that stands apart from the first');
+
+    mesh.deselectAll();
+    edges[0].selected = true;
+    apart.selected = true;
+    mesh.flushSelection('edge');
+    return [edges[0], apart];
+  }
+
+  /** Selects two edges that meet, which is what the operator refuses. */
+  function selectTouchingEdges(): Edge[] {
+    const mesh = activeObject().mesh;
+    const edges = [...mesh.edges.values()];
+    const touching = edges.find(
+      (edge) => edge !== edges[0] && [edges[0].v0.id, edges[0].v1.id].includes(edge.v0.id),
+    );
+    if (!touching) throw new Error('No edge found meeting the first');
+
+    mesh.deselectAll();
+    edges[0].selected = true;
+    touching.selected = true;
+    mesh.flushSelection('edge');
+    return [edges[0], touching];
+  }
+
+  it('sets the selected edges to a length measured out in the world', () => {
+    const object = activeObject();
+    store().setObjectTransform(object.id, { scale: vec3(2, 2, 2) });
+    const selected = selectDisjointEdges();
+
+    store().exec('setEdgeLength', { length: 1 }, 'Set edge length');
+
+    for (const edge of selected) expect(edgeLength(edge, vec3(2, 2, 2))).toBeCloseTo(1);
+    expect(store().status).toBe('Set 2 edge(s) to 1m');
+  });
+
+  it('refuses edges that meet, keeping both the mesh and the timeline as they were', () => {
+    selectTouchingEdges();
+    const before = [...activeObject().mesh.verts.values()].map((vert) => ({ ...vert.co }));
+    const steps = store().historyUndo.length;
+
+    store().exec('setEdgeLength', { length: 1 }, 'Set edge length');
+
+    const after = [...activeObject().mesh.verts.values()];
+    after.forEach((vert, index) => expect(vert.co).toEqual(before[index]));
+    expect(store().status).toContain('meet at a vertex');
+    expect(store().historyUndo).toHaveLength(steps);
+  });
+
+  it('records no step of its own for a tick of a continuous edit', () => {
+    const selected = selectDisjointEdges();
+    const steps = store().historyUndo.length;
+
+    // What a scrub of the LENGTH label sends: the step to undo back to was
+    // taken when the drag began, so the ticks record none of their own.
+    store().recordHistory('Set edge length');
+    for (const length of [0.9, 0.8, 0.7]) {
+      store().exec('setEdgeLength', { length }, 'Set edge length', { record: false });
+    }
+
+    expect(store().historyUndo).toHaveLength(steps + 1);
+    for (const edge of selected) expect(edgeLength(edge, vec3(1, 1, 1))).toBeCloseTo(0.7);
+
+    // Undo loads a document rather than editing the mesh in place, so the
+    // restored box is read back out of the store rather than through `selected`.
+    store().undo();
+    for (const edge of activeObject().mesh.edges.values()) {
+      expect(edgeLength(edge, vec3(1, 1, 1))).toBeCloseTo(1);
+    }
+  });
+
+  it('keeps the reserved step when a tick of a continuous edit is refused', () => {
+    selectTouchingEdges();
+    const steps = store().historyUndo.length;
+
+    store().recordHistory('Set edge length');
+    store().exec('setEdgeLength', { length: 1 }, 'Set edge length', { record: false });
+
+    // The refusal used to drop whatever step was on top, which here is the one
+    // the gesture reserved before it started rather than one of its own.
+    expect(store().historyUndo).toHaveLength(steps + 1);
+  });
+
+  it('refuses when nothing is selected', () => {
+    activeObject().mesh.deselectAll();
+
+    store().exec('setEdgeLength', { length: 1 }, 'Set edge length');
+
+    expect(store().status).toBe('Select the edge(s) to set a length for');
   });
 });

@@ -1,8 +1,11 @@
 import {
   type Vec3,
+  EPSILON,
   add,
   centroid,
   clamp,
+  length,
+  mul,
   mulVec,
   rotationMatrix,
   sub,
@@ -10,7 +13,7 @@ import {
   vec3,
 } from '../math';
 import type { BMesh } from '../mesh';
-import type { Vert } from '../mesh/types';
+import type { Edge, Vert } from '../mesh/types';
 import { MIN_OBJECT_SIZE } from '../primitives';
 
 export type PivotMode = 'origin' | 'median' | 'cursor';
@@ -181,6 +184,55 @@ export function scaleVerts(
 }
 
 /**
+ * How long an edge measures out in the world, in metres.
+ *
+ * The object's scale is applied, because that is the size on screen and the
+ * size an export writes out, while the mesh underneath is stored in the
+ * object's own space. Rotation is left out on purpose: it turns an edge
+ * without stretching it, so it cannot change the answer.
+ */
+export function edgeLength(edge: Edge, scale: Vec3): number {
+  return length(mulVec(sub(edge.v1.co, edge.v0.co), scale));
+}
+
+/**
+ * Stretches each edge to `target` metres, measured out in the world.
+ *
+ * Both ends travel, equally and in opposite directions, so an edge keeps its
+ * midpoint and its direction and only its length changes. Nothing else moves,
+ * which means the faces around each edge are reshaped to follow it.
+ *
+ * The caller is expected to have checked that no two of these edges share a
+ * vertex. Handed a pair that does, the second edge moves a vertex the first one
+ * had already placed, and neither ends up the length that was asked for.
+ *
+ * Returns how many edges were resized. An edge with no length at all is
+ * skipped: nothing about it says which way its ends would have to travel.
+ */
+export function setEdgeLengths(
+  mesh: BMesh,
+  edges: readonly Edge[],
+  target: number,
+  scale: Vec3,
+): number {
+  const moved: Vert[] = [];
+
+  for (const edge of edges) {
+    const current = edgeLength(edge, scale);
+    if (current < EPSILON) continue;
+
+    // Half the change to each end, which is what leaves the midpoint where it is.
+    const half = mul(sub(edge.v1.co, edge.v0.co), (target / current - 1) / 2);
+    edge.v0.co = sub(edge.v0.co, half);
+    edge.v1.co = add(edge.v1.co, half);
+    moved.push(edge.v0, edge.v1);
+  }
+
+  mesh.computeNormals(moved);
+  return moved.length / 2;
+}
+
+/**
  * `scale` held back so the object still measures `MIN_OBJECT_SIZE` or more
  * across its longest side.
  *
@@ -249,4 +301,3 @@ export function falloff(t: number, curve: FalloffCurve): number {
       return x > 0 ? 1 : 0;
   }
 }
-

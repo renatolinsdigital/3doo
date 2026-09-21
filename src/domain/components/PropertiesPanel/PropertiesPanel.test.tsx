@@ -1,7 +1,8 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 
+import type { Edge } from '@kernel/index';
 import { useEditorStore } from '@store/index';
 
 import { PropertiesPanel } from './PropertiesPanel';
@@ -215,5 +216,187 @@ describe('PropertiesPanel typed rotation pivot', () => {
     expect(rotation.y).toBeCloseTo(Math.PI / 2);
     expect(position.x).toBeCloseTo(0);
     expect(position.z).toBeCloseTo(5);
+  });
+});
+
+describe('PropertiesPanel selected edge(s)', () => {
+  /** A box in edit mode, with nothing picked out of it yet. */
+  function editableBox() {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    store.addPrimitive('box');
+    store.setMode('edit');
+    store.setSelectMode('edge');
+    useEditorStore.getState().objects[0].mesh.deselectAll();
+    store.touchMesh();
+  }
+
+  /** Selects `count` edges that share no vertex, the way separate clicks would. */
+  function selectApart(count: number) {
+    const mesh = useEditorStore.getState().objects[0].mesh;
+    mesh.deselectAll();
+
+    const ends = new Set<number>();
+    for (const edge of mesh.edges.values()) {
+      if (ends.size >= count * 2) break;
+      if (ends.has(edge.v0.id) || ends.has(edge.v1.id)) continue;
+      edge.selected = true;
+      ends.add(edge.v0.id);
+      ends.add(edge.v1.id);
+    }
+
+    mesh.flushSelection('edge');
+    useEditorStore.getState().touchMesh();
+  }
+
+  /** Selects two edges that meet, which is what the field refuses. */
+  function selectTouching() {
+    const mesh = useEditorStore.getState().objects[0].mesh;
+    mesh.deselectAll();
+
+    const [first] = [...mesh.edges.values()];
+    const touching = [...mesh.edges.values()].find(
+      (edge) => edge !== first && [first.v0.id, first.v1.id].includes(edge.v0.id),
+    );
+    first.selected = true;
+    if (touching) touching.selected = true;
+
+    mesh.flushSelection('edge');
+    useEditorStore.getState().touchMesh();
+  }
+
+  const lengthField = () => screen.getByLabelText('LENGTH') as HTMLInputElement;
+  /** The label cell beside the field, which is also its scrub handle. */
+  const lengthHandle = () => screen.getByText('LENGTH');
+
+  beforeEach(editableBox);
+
+  it('stays out of the way in object mode', () => {
+    useEditorStore.getState().setMode('object');
+
+    render(<PropertiesPanel />);
+
+    expect(screen.queryByLabelText('LENGTH')).not.toBeInTheDocument();
+  });
+
+  it('is disabled with nothing selected', () => {
+    render(<PropertiesPanel />);
+
+    expect(lengthField()).toBeDisabled();
+  });
+
+  it('is disabled for edges that meet at a vertex', () => {
+    selectTouching();
+
+    render(<PropertiesPanel />);
+
+    expect(lengthField()).toBeDisabled();
+  });
+
+  it('shows the length of what is selected', () => {
+    selectApart(2);
+
+    render(<PropertiesPanel />);
+
+    // A fresh box is one metre across, so each of its edges measures one.
+    expect(lengthField().value).toBe('1');
+  });
+
+  it('shows that length in world metres, with the object scale applied', () => {
+    const id = useEditorStore.getState().objects[0].id;
+    useEditorStore.getState().setObjectTransform(id, { scale: { x: 3, y: 3, z: 3 } });
+    selectApart(1);
+
+    render(<PropertiesPanel />);
+
+    expect(lengthField().value).toBe('3');
+  });
+
+  /** How long `edge` measures in the mesh itself. */
+  const measure = (edge: Edge) =>
+    Math.hypot(
+      edge.v1.co.x - edge.v0.co.x,
+      edge.v1.co.y - edge.v0.co.y,
+      edge.v1.co.z - edge.v0.co.z,
+    );
+
+  const selectedEdges = () =>
+    [...useEditorStore.getState().objects[0].mesh.edges.values()].filter((edge) => edge.selected);
+
+  it('sets every selected edge to the length typed into it, with no button to press', async () => {
+    selectApart(2);
+
+    render(<PropertiesPanel />);
+    await userEvent.clear(lengthField());
+    await userEvent.type(lengthField(), '0.5{Enter}');
+
+    expect(selectedEdges()).toHaveLength(2);
+    for (const edge of selectedEdges()) expect(measure(edge)).toBeCloseTo(0.5);
+  });
+
+  it('sets it on the way out of the field too, without an Enter', async () => {
+    selectApart(1);
+
+    render(<PropertiesPanel />);
+    await userEvent.clear(lengthField());
+    await userEvent.type(lengthField(), '0.25');
+    await userEvent.tab();
+
+    for (const edge of selectedEdges()) expect(measure(edge)).toBeCloseTo(0.25);
+  });
+
+  it('leaves the edge alone when the field is emptied and left', async () => {
+    selectApart(1);
+
+    render(<PropertiesPanel />);
+    await userEvent.clear(lengthField());
+    await userEvent.tab();
+
+    // An empty field is not a length of zero, and reading it as one would
+    // collapse the edge onto a point.
+    for (const edge of selectedEdges()) expect(measure(edge)).toBeCloseTo(1);
+    expect(lengthField().value).toBe('1');
+  });
+
+  /**
+   * Drags `handle` from x=0 through each x in `travel`, as a scrub does.
+   *
+   * Wrapped as one act: the store update each move causes reaches the panel
+   * through a subscription rather than through React's own event path, so
+   * without it every tick warns about an update outside act.
+   */
+  function scrub(handle: HTMLElement, travel: readonly number[]) {
+    act(() => {
+      fireEvent.pointerDown(handle, { pointerId: 1, clientX: 0 });
+      for (const clientX of travel) fireEvent.pointerMove(handle, { pointerId: 1, clientX });
+      fireEvent.pointerUp(handle, { pointerId: 1, clientX: travel[travel.length - 1] ?? 0 });
+    });
+  }
+
+  it('takes a whole scrub of the label back in one undo step', () => {
+    selectApart(1);
+    const steps = useEditorStore.getState().historyUndo.length;
+
+    render(<PropertiesPanel />);
+    scrub(lengthHandle(), [20, 40, 60]);
+
+    // Three pointer moves, one step: a snapshot per tick would bury the rest of
+    // the timeline under a single drag.
+    expect(useEditorStore.getState().historyUndo).toHaveLength(steps + 1);
+    expect(useEditorStore.getState().historyUndo[0]).toBe('Set edge length');
+    for (const edge of selectedEdges()) expect(measure(edge)).toBeGreaterThan(1);
+
+    useEditorStore.getState().undo();
+    for (const edge of selectedEdges()) expect(measure(edge)).toBeCloseTo(1);
+  });
+
+  it('leaves no step behind for a press of the label that never travelled', () => {
+    selectApart(1);
+    const steps = useEditorStore.getState().historyUndo.length;
+
+    render(<PropertiesPanel />);
+    scrub(lengthHandle(), []);
+
+    expect(useEditorStore.getState().historyUndo).toHaveLength(steps);
   });
 });

@@ -343,6 +343,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
+        text: 'SELECTED EDGE(S), in the PROPERTIES panel, is how the edge(s) you have picked are given an exact size. Select one or several and type the figure in metres: the field shows what they already measure, and what you type lands as soon as you leave the field or press Enter, with no button to reach for. Every selected edge is set to that one length, each stretched about its own midpoint, so it keeps where it sits and the direction it runs in while the faces around it follow. The figure is measured out in the world with the object scale applied, which is the size an export writes out. Drag the LENGTH label to stretch the edge(s) live, the way every field here scrubs: the whole drag is one step to undo back to rather than one per pixel. Two edges that meet at a vertex cannot both be sized, because the second would drag a vertex the first had just placed, so the field stays unavailable until nothing in the selection touches, and its hint says which of those is holding it.',
+      },
+      {
+        kind: 'note',
         text: 'Slide has no panel button of its own: Shift+G in edit mode is the whole of it, and it runs off the bare pointer with no button held. Nothing is added and nothing leaves the surface, which is what makes it the way to adjust where a loop sits without changing the shape it runs over. The rails each vertex may travel along are drawn while it runs, the status bar reads out how far along it has gone, and a click or Enter confirms while Esc puts everything back. Which edge a vertex takes is decided by where the pointer is when you press the key: the edge reaching toward the cursor is the one it slides down, so aim before you press. Run it all the way to either end and the selection lands exactly on the neighbouring vertices, which is the case auto merge is there to collapse. With auto merge off the two stay as they are, one sitting on the other: the hover mark is what says which of them a click has hold of.',
       },
       {

@@ -25,7 +25,27 @@ export interface NumberFieldProps {
    */
   hideLabel?: boolean;
   hint?: string;
+  /**
+   * The label was pressed and a scrub is about to run, so every `onChange`
+   * until `onScrubEnd` belongs to one gesture. A field whose edit is expensive
+   * or undoable uses the pair to treat the whole drag as a single change
+   * rather than one per pointer tick.
+   */
+  onScrubStart?: () => void;
+  onScrubEnd?: () => void;
 }
+
+/**
+ * What a number is allowed to look like part-way through being typed.
+ *
+ * A keystroke that would take the field somewhere no number can follow is
+ * refused outright, so letters never reach the field at all. Partial entries
+ * are not: "-", "1." and ".5" are all on their way to a number, and the field
+ * would be unusable if they were rejected as they were typed. Integer fields
+ * take a decimal point too, and round what was typed when it is committed: a
+ * refused point would quietly turn a pasted 10.286 into ten thousand.
+ */
+const NUMBER_DRAFT = /^-?\d*\.?\d*$/;
 
 function clamp(value: number, min?: number, max?: number): number {
   if (min !== undefined && value < min) return min;
@@ -52,6 +72,8 @@ export function NumberField({
   disabled = false,
   hideLabel = false,
   hint,
+  onScrubStart,
+  onScrubEnd,
 }: NumberFieldProps) {
   const id = useId();
   const [draft, setDraft] = useState(() => String(value));
@@ -73,14 +95,22 @@ export function NumberField({
 
   const commit = (raw: string) => {
     const parsed = Number(raw);
-    if (Number.isFinite(parsed)) onChange(quantize(parsed));
-    else setDraft(formatValue(value, resolvedPrecision));
+    // An empty field, or one left holding just "-" or ".", is a field on its
+    // way somewhere rather than a number anyone typed. The value goes back
+    // instead: read as written, an empty field means zero, and tabbing out of
+    // one the user had only cleared would flatten whatever it holds.
+    if (raw.trim() === '' || !Number.isFinite(parsed)) {
+      setDraft(formatValue(value, resolvedPrecision));
+      return;
+    }
+    onChange(quantize(parsed));
   };
 
   const handlePointerDown = (event: React.PointerEvent<HTMLLabelElement>) => {
     if (disabled) return;
     scrubbing.current = { startX: event.clientX, startValue: value };
     event.currentTarget.setPointerCapture(event.pointerId);
+    onScrubStart?.();
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLLabelElement>) => {
@@ -91,10 +121,12 @@ export function NumberField({
   };
 
   const handlePointerUp = (event: React.PointerEvent<HTMLLabelElement>) => {
+    const wasScrubbing = scrubbing.current !== null;
     scrubbing.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+    if (wasScrubbing) onScrubEnd?.();
   };
 
   return (
@@ -117,7 +149,10 @@ export function NumberField({
           value={draft}
           disabled={disabled}
           onFocus={() => setEditing(true)}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            const next = event.target.value;
+            if (NUMBER_DRAFT.test(next)) setDraft(next);
+          }}
           onBlur={(event) => {
             setEditing(false);
             commit(event.target.value);

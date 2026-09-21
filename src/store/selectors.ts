@@ -1,6 +1,12 @@
 import { useShallow } from 'zustand/react/shallow';
 
-import { type BMesh, canLoopCut, hasAdjacentFaces, hasConnectedEdges } from '@kernel/index';
+import {
+  type BMesh,
+  canLoopCut,
+  edgeLength,
+  hasAdjacentFaces,
+  hasConnectedEdges,
+} from '@kernel/index';
 
 import { activeObject } from './slices/scene';
 import type { SceneObject, SceneStats } from './types';
@@ -100,6 +106,49 @@ export function useLoopCutAvailable(): boolean {
     const [edge] = mesh.selectedEdges();
     return edge !== undefined && canLoopCut(mesh, edge);
   });
+}
+
+export interface EdgeLengthTarget {
+  /** How many edges are selected. */
+  edges: number;
+  /** Whether two of them meet at a vertex, which is what rules a length out. */
+  adjacent: boolean;
+  /**
+   * The world-space length the selection shares, or null when there is no one
+   * length to show: nothing selected, edges that touch, or edges of differing
+   * lengths. Those are told apart by `edges` and `adjacent`.
+   */
+  length: number | null;
+}
+
+/**
+ * The length the properties panel offers to set the selected edge(s) to, and
+ * whether it can offer it at all.
+ *
+ * Counts cannot answer this on their own: two edges sharing a vertex are still
+ * two edges, and setting both would have the second move a vertex the first had
+ * just placed. Adjacency is the part that decides, so it is what the field asks
+ * about, the same way the edge-loop button does.
+ */
+export function useEdgeLengthTarget(): EdgeLengthTarget {
+  return useEditorStore(
+    useShallow((state): EdgeLengthTarget => {
+      void state.meshVersion;
+
+      const object = state.mode === 'edit' ? activeObject(state) : null;
+      if (!object) return { edges: 0, adjacent: false, length: null };
+
+      const edges = object.mesh.selectedEdges();
+      if (edges.length === 0) return { edges: 0, adjacent: false, length: null };
+      if (hasConnectedEdges(edges)) return { edges: edges.length, adjacent: true, length: null };
+
+      const scale = object.transform.scale;
+      const first = edgeLength(edges[0], scale);
+      const shared = edges.every((edge) => Math.abs(edgeLength(edge, scale) - first) < 1e-6);
+
+      return { edges: edges.length, adjacent: false, length: shared ? first : null };
+    }),
+  );
 }
 
 export interface SelectionCounts {

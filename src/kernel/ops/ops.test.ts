@@ -56,9 +56,11 @@ import {
 } from './subdivide';
 import {
   clampObjectScale,
+  edgeLength,
   proportionalInfluence,
   rotateVerts,
   scaleVerts,
+  setEdgeLengths,
   translateVerts,
 } from './transform';
 import {
@@ -1591,6 +1593,83 @@ describe('transform', () => {
 
     const carried = [...mesh.verts.values()].filter((vert) => vert.co.y > 1e-9).length;
     expect(carried).toBe(influence.reached.length + 1);
+  });
+});
+
+describe('edge length', () => {
+  const UNIT = vec3(1, 1, 1);
+
+  /** An edge of `mesh`, paired with the first one that shares no vertex with it. */
+  function disjointPair(mesh: BMesh): [Edge, Edge] {
+    const edges = [...mesh.edges.values()];
+    const first = edges[0];
+    const ends = [first.v0.id, first.v1.id];
+    const apart = edges.find((edge) => !ends.includes(edge.v0.id) && !ends.includes(edge.v1.id));
+
+    if (!apart) throw new Error('No edge found that stands apart from the first');
+    return [first, apart];
+  }
+
+  it('stretches an edge to the length asked for', () => {
+    const cube = createBox(2);
+    const [edge] = disjointPair(cube);
+
+    expect(setEdgeLengths(cube, [edge], 5, UNIT)).toBe(1);
+    expect(edgeLength(edge, UNIT)).toBeCloseTo(5);
+  });
+
+  it('keeps the edge where it stood and pointing where it pointed', () => {
+    const cube = createBox(2);
+    const [edge] = disjointPair(cube);
+    const midpoint = lerp(edge.v0.co, edge.v1.co, 0.5);
+    const direction = normalize(sub(edge.v1.co, edge.v0.co));
+
+    setEdgeLengths(cube, [edge], 0.5, UNIT);
+
+    expect(distance(lerp(edge.v0.co, edge.v1.co, 0.5), midpoint)).toBeCloseTo(0);
+    expect(dot(normalize(sub(edge.v1.co, edge.v0.co)), direction)).toBeCloseTo(1);
+  });
+
+  it('measures and sets out in the world, so object scale counts', () => {
+    const cube = createBox(2);
+    const [edge] = disjointPair(cube);
+    const scale = vec3(2, 2, 2);
+
+    expect(edgeLength(edge, scale)).toBeCloseTo(4);
+
+    setEdgeLengths(cube, [edge], 1, scale);
+
+    expect(edgeLength(edge, scale)).toBeCloseTo(1);
+    // A metre out in the world is half of one in the mesh underneath.
+    expect(edgeLength(edge, UNIT)).toBeCloseTo(0.5);
+  });
+
+  it('leaves every other vertex where it was', () => {
+    const cube = createBox(2);
+    const [edge] = disjointPair(cube);
+    const others = [...cube.verts.values()].filter((vert) => vert !== edge.v0 && vert !== edge.v1);
+    const before = others.map((vert) => ({ ...vert.co }));
+
+    setEdgeLengths(cube, [edge], 6, UNIT);
+
+    others.forEach((vert, index) => expect(distance(vert.co, before[index])).toBeCloseTo(0));
+  });
+
+  it('sizes several edges at once so long as they do not touch', () => {
+    const cube = createBox(2);
+    const pair = disjointPair(cube);
+
+    expect(setEdgeLengths(cube, pair, 3, UNIT)).toBe(2);
+    for (const edge of pair) expect(edgeLength(edge, UNIT)).toBeCloseTo(3);
+  });
+
+  it('skips an edge with no length to say which way its ends would travel', () => {
+    const cube = createBox(2);
+    const [edge] = disjointPair(cube);
+    edge.v1.co = { ...edge.v0.co };
+
+    expect(setEdgeLengths(cube, [edge], 2, UNIT)).toBe(0);
+    expect(edge.v1.co).toEqual(edge.v0.co);
   });
 });
 

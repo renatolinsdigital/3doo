@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import {
@@ -25,7 +25,7 @@ import {
 } from '@shared/components';
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
 import { cx } from '@shared/utils/cx';
-import { useActiveObject, useEditorStore } from '@store/index';
+import { useActiveObject, useEdgeLengthTarget, useEditorStore } from '@store/index';
 
 import './PropertiesPanel.scss';
 
@@ -93,9 +93,27 @@ export function PropertiesPanel() {
   const assignMaterial = useEditorStore((state) => state.assignMaterialToSelection);
   const removeMaterial = useEditorStore((state) => state.removeMaterial);
   const exec = useEditorStore((state) => state.exec);
+  const recordHistory = useEditorStore((state) => state.recordHistory);
+  const discardHistory = useEditorStore((state) => state.discardHistory);
 
   const [editingSlot, setEditingSlot] = useState<number | null>(null);
   const [slotMenu, setSlotMenu] = useState<{ slot: number; x: number; y: number } | null>(null);
+
+  // The length field is seeded from whatever is selected, so it opens showing
+  // the size that is actually there rather than a number from a past selection.
+  // Edges of differing lengths report none, and the field keeps the last figure
+  // typed into it: there is no single size to put in its place.
+  const edgeTarget = useEdgeLengthTarget();
+  const [edgeLength, setEdgeLength] = useState(1);
+  useEffect(() => {
+    if (edgeTarget.length !== null) setEdgeLength(edgeTarget.length);
+  }, [edgeTarget.length]);
+
+  // Held while the LENGTH label is being dragged, with `applied` saying whether
+  // the drag ever got as far as changing anything. A scrub sends a new value on
+  // every pointer tick, and each one recording a step of its own would cost a
+  // whole-scene snapshot per pixel and bury everything else in the timeline.
+  const lengthScrub = useRef<{ applied: boolean } | null>(null);
 
   if (!object) {
     return (
@@ -115,6 +133,35 @@ export function PropertiesPanel() {
     radToDeg(transform.rotation.y),
     radToDeg(transform.rotation.z),
   );
+
+  // Edges that meet are what rules the length field out, not how many there
+  // are: see `useEdgeLengthTarget`.
+  const edgeLengthReady = !object.locked && edgeTarget.edges > 0 && !edgeTarget.adjacent;
+  const edgeLengthHint = object.locked
+    ? 'Unlock this object in the outliner to edit its geometry'
+    : edgeTarget.edges === 0
+      ? 'Select the edge(s) to give an exact length to'
+      : edgeTarget.adjacent
+        ? 'Two of the selected edges meet at a vertex: sizing one would drag the other out of shape, so pick edge(s) that do not touch'
+        : edgeTarget.length === null
+          ? 'The selected edges differ in length, and what you type here gives every one of them that size'
+          : 'Length the selected edge(s) are set to, in world metres. Both ends of each move, so an edge keeps its midpoint and its direction';
+
+  /**
+   * The typed or scrubbed length, straight onto the mesh.
+   *
+   * Mid-scrub the step to undo back to was taken when the drag began, so the
+   * ticks in between record none of their own and the whole drag undoes as the
+   * one change it reads as.
+   */
+  const applyEdgeLength = (length: number) => {
+    setEdgeLength(length);
+    if (!edgeLengthReady) return;
+
+    const scrub = lengthScrub.current;
+    exec('setEdgeLength', { length }, 'Set edge length', { record: scrub === null });
+    if (scrub) scrub.applied = true;
+  };
 
   const menuMaterial = slotMenu ? (object.materials[slotMenu.slot] ?? null) : null;
 
@@ -191,6 +238,33 @@ export function PropertiesPanel() {
         }
         onChange={(scale) => setObjectTransform(object.id, { scale })}
       />
+
+      {mode === 'edit' ? (
+        <FieldRow legend="SELECTED EDGE(S)" columns={1}>
+          <NumberField
+            label="LENGTH"
+            value={edgeLength}
+            step={0.05}
+            min={MIN_OBJECT_SIZE}
+            precision={4}
+            suffix="m"
+            disabled={!edgeLengthReady}
+            hint={edgeLengthHint}
+            onChange={applyEdgeLength}
+            onScrubStart={() => {
+              if (!edgeLengthReady) return;
+              recordHistory('Set edge length');
+              lengthScrub.current = { applied: false };
+            }}
+            onScrubEnd={() => {
+              // A press that never travelled changed nothing, so the step it
+              // reserved goes back rather than standing as an empty undo.
+              if (lengthScrub.current && !lengthScrub.current.applied) discardHistory();
+              lengthScrub.current = null;
+            }}
+          />
+        </FieldRow>
+      ) : null}
 
       {object.primitive ? (
         <FieldRow legend={`${object.primitive.kind.toUpperCase()} PARAMETERS`} columns={1}>

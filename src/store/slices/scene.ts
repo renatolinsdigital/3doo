@@ -287,7 +287,20 @@ export interface SceneSlice {
   moveModifier: (id: string, direction: -1 | 1) => void;
   applyModifierToMesh: (id: string) => void;
 
-  exec: (name: string, params?: Record<string, unknown>, label?: string) => void;
+  /**
+   * Runs a named operator, recording a step to undo back to.
+   *
+   * `record: false` runs it without one, for a tick of a continuous edit: a
+   * scrubbed field hands the operator a new value on every pointer move, and
+   * the gesture records its own step when the drag begins rather than one per
+   * tick. Whoever passes it owns that step.
+   */
+  exec: (
+    name: string,
+    params?: Record<string, unknown>,
+    label?: string,
+    options?: { record?: boolean },
+  ) => void;
   recordHistory: (label: string) => void;
   /**
    * Records a document captured earlier rather than the one on screen now.
@@ -1366,7 +1379,7 @@ export const createSceneSlice: StateCreator<
     );
   },
 
-  exec: (name, params = {}, label) => {
+  exec: (name, params = {}, label, options) => {
     const { selectMode, cursor, proportional } = get();
     const object = activeObject(get());
     if (!object) {
@@ -1382,18 +1395,28 @@ export const createSceneSlice: StateCreator<
     // away here as they do for a click in the viewport.
     if (SELECTION_OPERATORS.has(name)) get().stowTransformTool();
 
-    get().recordHistory(label ?? name);
+    const record = options?.record ?? true;
+    if (record) get().recordHistory(label ?? name);
 
     try {
       const result = execOperator(
-        { mesh: object.mesh, selectMode, cursor, proportional },
+        {
+          mesh: object.mesh,
+          selectMode,
+          cursor,
+          proportional,
+          objectScale: object.transform.scale,
+        },
         name,
         params,
       );
       // An operator that declined changed nothing, so there is nothing to
       // undo back to and nothing on screen to say what happened.
       if (result.refused) {
-        get().discardHistory();
+        // Only the step this call put there: a tick of a continuous edit
+        // recorded none, and dropping one anyway would take back the step the
+        // gesture reserved before it started.
+        if (record) get().discardHistory();
         set({ status: result.status });
         get().pushToast('warning', result.status);
         return;

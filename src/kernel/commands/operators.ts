@@ -36,6 +36,7 @@ import {
   scaleVerts,
   selectEdgeLoops,
   selectFaceLoop,
+  setEdgeLengths,
   setShading,
   shrinkFatten,
   shrinkSelection,
@@ -54,6 +55,12 @@ export interface OperatorContext {
   selectMode: SelectMode;
   cursor: Vec3;
   proportional?: { enabled: boolean; radius: number; falloff: FalloffCurve };
+  /**
+   * The scale of the object being edited, for the operators that work in
+   * metres. The mesh is stored in the object's own space, so this is what
+   * stands between a coordinate in it and a size out in the world.
+   */
+  objectScale?: Vec3;
 }
 
 export type OperatorParams = Record<string, unknown>;
@@ -495,6 +502,33 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     const verts = mesh.selectedVerts();
     shrinkFatten(mesh, verts, readNumber(params, 'distance', 0.1));
     return { status: `Offset ${verts.length} vertices along normals` };
+  },
+
+  setEdgeLength: ({ mesh, objectScale }, params) => {
+    const edges = mesh.selectedEdges();
+    if (edges.length === 0) {
+      return { status: 'Select the edge(s) to set a length for', refused: true };
+    }
+
+    // Two edges meeting at a vertex cannot both be set: the second would move a
+    // vertex the first had just placed, and neither would come out the length
+    // that was asked for. Refused rather than half-applied.
+    if (hasConnectedEdges(edges)) {
+      return {
+        status: 'Two of those edges meet at a vertex: pick edge(s) that do not touch',
+        refused: true,
+      };
+    }
+
+    const target = readNumber(params, 'length', 1);
+    if (target <= 0) return { status: 'An edge has to be longer than nothing', refused: true };
+
+    const resized = setEdgeLengths(mesh, edges, target, objectScale ?? vec3(1, 1, 1));
+    if (resized === 0) {
+      return { status: 'The selected edge(s) have no length to stretch', refused: true };
+    }
+
+    return { status: `Set ${resized} edge(s) to ${target}m` };
   },
 
   selectAll: ({ mesh }) => {
