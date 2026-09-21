@@ -77,9 +77,9 @@ export function AddPanel() {
   const addPrimitive = useEditorStore((state) => state.addPrimitive);
 
   return (
-    <Panel title={mode === 'object' ? 'ADD' : 'SELECT'}>
+    <Panel title={mode === 'object' ? 'PRIMITIVES' : 'SELECT'}>
       {mode === 'object' ? (
-        <FieldRow legend="PRIMITIVES" columns={2}>
+        <FieldRow columns={2}>
           {PRIMITIVE_ORDER.map((kind) => (
             <Button
               key={kind}
@@ -90,7 +90,7 @@ export function AddPanel() {
           ))}
         </FieldRow>
       ) : (
-        <FieldRow legend="SELECT MODE" columns={1}>
+        <FieldRow columns={1}>
           <SegmentedControl<SelectMode>
             label="Select mode"
             options={SELECT_MODE_OPTIONS}

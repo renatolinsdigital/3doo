@@ -127,6 +127,28 @@ describe('coercePreferences', () => {
       tooltipsEnabled: false,
     });
   });
+
+  it('shows every panel a stored set says nothing about', () => {
+    // A build that ships a new panel meets preferences written before it
+    // existed. The panel arrives on screen rather than missing.
+    expect(coercePreferences({ panels: { outliner: false } }).panels).toEqual({
+      ...DEFAULT_PREFERENCES.panels,
+      outliner: false,
+    });
+  });
+
+  it('drops a panel key that is no longer one, and a value that is not a switch', () => {
+    const panels = coercePreferences({
+      panels: { statusBar: 'off', sidebar: false },
+    }).panels;
+
+    expect(panels).toEqual(DEFAULT_PREFERENCES.panels);
+    expect('sidebar' in panels).toBe(false);
+  });
+
+  it('takes the whole set back when panels is not an object at all', () => {
+    expect(coercePreferences({ panels: 'none' }).panels).toEqual(DEFAULT_PREFERENCES.panels);
+  });
 });
 
 describe('importing a preferences file', () => {

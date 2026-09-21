@@ -76,6 +76,29 @@ export interface ProportionalSettings {
   falloff: FalloffCurve;
 }
 
+/**
+ * A surface the PANELS VISIBILITY preferences can hide.
+ *
+ * `primitives` is the panel at the head of the left column, titled PRIMITIVES
+ * in object mode and SELECT in edit mode: one panel wearing two titles, so one
+ * switch. The tool rail and the status bar sit in here with the panels because
+ * hiding them is the same act, whatever shape the thing is.
+ */
+export type PanelId =
+  | 'toolRail'
+  | 'primitives'
+  | 'object'
+  | 'boolean'
+  | 'operations'
+  | 'loopOperations'
+  | 'topology'
+  | 'outliner'
+  | 'properties'
+  | 'modifiers'
+  | 'statusBar';
+
+export type PanelVisibility = Record<PanelId, boolean>;
+
 export interface OverlaySettings {
   grid: boolean;
   axes: boolean;
@@ -143,6 +166,15 @@ export interface ViewportSettings {
  */
 export interface Preferences {
   tooltipsEnabled: boolean;
+  /**
+   * Which panels, the tool rail and the status bar are on screen.
+   *
+   * A preference rather than project state: what someone keeps out of their
+   * way is how they work, and it has no business travelling to whoever opens
+   * the file. What is folded shut, which `collapsedPanels` holds, does travel
+   * with the scene.
+   */
+  panels: PanelVisibility;
   /** Width of the object-mode selection outline, in screen pixels. */
   selectionLineWidth: number;
   /** `#rrggbb`. The active object wears it; the rest of the selection a darker mix. */

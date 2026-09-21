@@ -61,13 +61,19 @@
     width: 224px;
   }
 
+  // Hiding the rail hands the column the edge it was holding.
+  &__left--flush {
+    inset-inline-start: var(--panel-gap);
+  }
+
   &__right {
     inset-inline-end: var(--panel-gap);
     width: var(--right-column);
 
     // The outliner scrolls inside itself rather than pushing the panels below
-    // it out of reach as the scene grows.
-    > :first-child {
+    // it out of reach as the scene grows. Named rather than taken as the first
+    // child, which is PROPERTIES once the outliner is hidden.
+    > .outliner {
       max-height: 30%;
     }
   }
@@ -87,5 +93,12 @@
     &__right {
       display: none;
     }
+  }
+
+  // Every panel on the right hidden, which is the same thing as the column not
+  // being there. Last in the file on purpose: it carries no more weight than
+  // the widths above, so only source order puts it in front of them.
+  &--bare-right {
+    --right-column: 0px;
   }
 }

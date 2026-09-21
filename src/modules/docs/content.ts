@@ -62,7 +62,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         kind: 'steps',
         items: [
           'Open the MODELING module from the plate in the top-left corner.',
-          'In the ADD panel on the left, click a primitive. BOX is the usual place to start. It drops into the scene already selected.',
+          'In the PRIMITIVES panel on the left, click a primitive. BOX is the usual place to start. It drops into the scene already selected.',
           'While it is still freshly added, the PROPERTIES panel lets you change its parameters (size, segments, rings) and the mesh is rebuilt each time.',
           'Press Tab to enter edit mode. The left panels swap to SELECT, OPERATIONS, LOOP OPERATIONS and TOPOLOGY, and the tool rail switches to vertex, edge and face selection.',
           'Select some geometry and run an operation: E extrudes, I insets, Ctrl+R cuts a loop.',
@@ -98,11 +98,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Left panels',
-            'ADD, OBJECT and BOOLEAN in object mode. SELECT, OPERATIONS, LOOP OPERATIONS and TOPOLOGY replace them in edit mode.',
+            'PRIMITIVES, OBJECT and BOOLEAN in object mode. SELECT, OPERATIONS, LOOP OPERATIONS and TOPOLOGY replace them in edit mode.',
           ],
           [
             'Panel titles',
-            'Every panel folds away when its title is clicked. Which ones are folded is saved with the project.',
+            'Every panel folds away when its title is clicked. Which ones are folded is saved with the project. To take one off the screen altogether, use the PANELS VISIBILITY section of PREFS.',
           ],
           [
             'Viewport',
@@ -537,6 +537,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       {
         kind: 'prose',
         text: 'PREFS in the top bar holds the settings that belong to you rather than to a scene: whether hint tooltips appear, the viewport background, whether a vertical orbit stops at the poles, the scale, colour and opacity of the grid, and how thick and what colour the outline around selected objects is drawn. They are stored on this device and deliberately kept out of project files, so opening a scene someone sent you never repaints your viewport.',
+      },
+      {
+        kind: 'prose',
+        text: 'The PANELS VISIBILITY section is a switch per surface: the tool rail down the far left, each of the panels on either side, and the status bar along the foot. Turning one off only takes it off the screen. Everything it holds still runs from the keyboard, and nothing about the scene changes, so it is the way to clear room for the model without giving anything up. Folding a panel by its title is the lighter version of the same idea, and that one travels with the project rather than with you.',
       },
       {
         kind: 'note',

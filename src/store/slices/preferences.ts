@@ -1,12 +1,28 @@
 import type { StateCreator } from 'zustand';
 
 import type { EditorStore } from '../useEditorStore';
-import type { Preferences, SnapMode } from '../types';
+import type { PanelId, PanelVisibility, Preferences, SnapMode } from '../types';
 
 const STORAGE_KEY = '3doo:preferences';
 
+/** Everything on screen, which is what a fresh install shows. */
+const DEFAULT_PANELS: PanelVisibility = {
+  toolRail: true,
+  primitives: true,
+  object: true,
+  boolean: true,
+  operations: true,
+  loopOperations: true,
+  topology: true,
+  outliner: true,
+  properties: true,
+  modifiers: true,
+  statusBar: true,
+};
+
 export const DEFAULT_PREFERENCES: Preferences = {
   tooltipsEnabled: true,
+  panels: { ...DEFAULT_PANELS },
   selectionLineWidth: 2,
   selectionLineColor: '#e5342a',
   viewportBackground: '#1a1918',
@@ -80,6 +96,25 @@ function coerceColor(raw: unknown, fallback: string): string {
 }
 
 /**
+ * Every surface shown unless the stored blob says otherwise.
+ *
+ * Keyed off the defaults rather than off what was stored, so a panel added
+ * after someone last saved their preferences arrives visible instead of
+ * missing, and a key that is no longer a panel is dropped.
+ */
+function coercePanels(raw: unknown): PanelVisibility {
+  const source = (raw ?? {}) as Partial<Record<PanelId, unknown>>;
+  const panels = { ...DEFAULT_PANELS };
+
+  for (const id of Object.keys(panels) as PanelId[]) {
+    const stored = source[id];
+    if (typeof stored === 'boolean') panels[id] = stored;
+  }
+
+  return panels;
+}
+
+/**
  * Rebuilds a complete preference set from anything shaped roughly like one: a
  * storage blob, an imported file, a build that stored fewer keys.
  *
@@ -95,6 +130,7 @@ export function coercePreferences(raw: unknown): Preferences {
       typeof source.tooltipsEnabled === 'boolean'
         ? source.tooltipsEnabled
         : DEFAULT_PREFERENCES.tooltipsEnabled,
+    panels: coercePanels(source.panels),
     selectionLineWidth: coerceNumber(
       source.selectionLineWidth,
       MIN_SELECTION_LINE_WIDTH,
@@ -214,6 +250,7 @@ export const createPreferencesSlice: StateCreator<
     currentPreferences: () => {
       const {
         tooltipsEnabled,
+        panels,
         selectionLineWidth,
         selectionLineColor,
         viewportBackground,
@@ -231,6 +268,7 @@ export const createPreferencesSlice: StateCreator<
       } = get();
       return {
         tooltipsEnabled,
+        panels,
         selectionLineWidth,
         selectionLineColor,
         viewportBackground,

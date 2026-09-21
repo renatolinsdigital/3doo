@@ -2,6 +2,7 @@ import { useRef } from 'react';
 
 import { ModuleSwitcher } from '@app/ModuleSwitcher/ModuleSwitcher';
 import { ToastHost, TooltipHost } from '@shared/components';
+import { cx } from '@shared/utils/cx';
 import { useEditorStore } from '@store/index';
 
 import {
@@ -51,11 +52,17 @@ export function ModelingModule() {
   useAutosave();
 
   const mode = useEditorStore((state) => state.mode);
+  const panels = useEditorStore((state) => state.panels);
   const mainRef = useRef<HTMLDivElement>(null);
+
+  // The axis widget stands off the edge by the width of the right column, so
+  // emptying that column has to take the width with it or the widget is left
+  // hanging over nothing.
+  const rightColumn = panels.outliner || panels.properties || panels.modifiers;
 
   return (
     <div
-      className="modeling-shell"
+      className={cx('modeling-shell', !rightColumn && 'modeling-shell--bare-right')}
       // Right-clicking the editor is the application's gesture, not the
       // browser's: the viewport, the outliner and the material slots each
       // answer it with a menu of their own, and anywhere else it does nothing
@@ -69,20 +76,27 @@ export function ModelingModule() {
       <TopBar brand={<ModuleSwitcher />} />
 
       <div className="modeling-shell__main" ref={mainRef}>
-        <ToolRail />
+        {panels.toolRail ? <ToolRail /> : null}
 
-        <div className="modeling-shell__left">
-          <AddPanel />
+        <div
+          className={cx(
+            'modeling-shell__left',
+            // Nothing to keep clear of once the rail is hidden, so the column
+            // takes the edge the rail was holding.
+            !panels.toolRail && 'modeling-shell__left--flush',
+          )}
+        >
+          {panels.primitives ? <AddPanel /> : null}
           {mode === 'object' ? (
             <>
-              <ObjectPanel />
-              <BooleanPanel />
+              {panels.object ? <ObjectPanel /> : null}
+              {panels.boolean ? <BooleanPanel /> : null}
             </>
           ) : (
             <>
-              <OperationsPanel />
-              <LoopOperationsPanel />
-              <TopologyPanel />
+              {panels.operations ? <OperationsPanel /> : null}
+              {panels.loopOperations ? <LoopOperationsPanel /> : null}
+              {panels.topology ? <TopologyPanel /> : null}
             </>
           )}
         </div>
@@ -90,13 +104,13 @@ export function ModelingModule() {
         <ViewportCanvas />
 
         <div className="modeling-shell__right">
-          <Outliner />
-          <PropertiesPanel />
-          <ModifierStack />
+          {panels.outliner ? <Outliner /> : null}
+          {panels.properties ? <PropertiesPanel /> : null}
+          {panels.modifiers ? <ModifierStack /> : null}
         </div>
       </div>
 
-      <StatusBar />
+      {panels.statusBar ? <StatusBar /> : null}
 
       <ExportDialog />
       <HistoryDialog />

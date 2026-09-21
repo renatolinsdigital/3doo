@@ -21,7 +21,7 @@ import {
   MIN_SNAP_STEP,
   useEditorStore,
 } from '@store/index';
-import type { SnapMode } from '@store/types';
+import type { PanelId, SnapMode } from '@store/types';
 
 import {
   PREFERENCES_FILE,
@@ -38,10 +38,74 @@ const SNAP_OPTIONS: readonly { value: SnapMode; label: string }[] = [
   { value: 'custom', label: 'CUSTOM' },
 ];
 
+/**
+ * The switches under PANELS VISIBILITY, ordered the way the screen is: down the
+ * left, then down the right, then the bar along the foot. Each hint says where
+ * the thing stands, so finding one here is no harder than pointing at it.
+ */
+const PANEL_SWITCHES: readonly { id: PanelId; label: string; hint: string }[] = [
+  {
+    id: 'toolRail',
+    label: 'TOOL RAIL',
+    hint: 'The strip of tool buttons on the far left: select, move, rotate and scale. Every one of them keeps its keyboard shortcut with the rail hidden',
+  },
+  {
+    id: 'primitives',
+    label: 'PRIMITIVES',
+    hint: 'The shapes to add, at the head of the left column. The same panel is titled SELECT in edit mode, where it holds the vertex, edge and face switch',
+  },
+  {
+    id: 'object',
+    label: 'OBJECT',
+    hint: 'Duplicate, merge, separate, apply transform and recalculate normals, on the left in object mode',
+  },
+  {
+    id: 'boolean',
+    label: 'BOOLEAN',
+    hint: 'Union, difference and intersect between the selected objects, on the left in object mode',
+  },
+  {
+    id: 'operations',
+    label: 'OPERATIONS',
+    hint: 'Extrude, inset and bevel, each with the figure it runs on, on the left in edit mode',
+  },
+  {
+    id: 'loopOperations',
+    label: 'LOOP OPERATIONS',
+    hint: 'Loop cut, subdivide, relax, circle and space, on the left in edit mode',
+  },
+  {
+    id: 'topology',
+    label: 'TOPOLOGY',
+    hint: 'Build, merge and clean up, the selection grow and shrink, and the auto merge and proportional edit settings, on the left in edit mode',
+  },
+  {
+    id: 'outliner',
+    label: 'OUTLINER',
+    hint: 'The list of what is in the scene, at the head of the right column',
+  },
+  {
+    id: 'properties',
+    label: 'PROPERTIES',
+    hint: "The active object's transform, its materials and the parameters of a primitive still open to being re-cut, on the right",
+  },
+  {
+    id: 'modifiers',
+    label: 'MODIFIERS',
+    hint: "The active object's modifier stack, at the foot of the right column",
+  },
+  {
+    id: 'statusBar',
+    label: 'STATUS BAR',
+    hint: 'The strip under the viewport: the scene and selection counts, the last operation that ran, and the readout a move, a turn or a scale writes as it goes',
+  },
+];
+
 export function PreferencesDialog() {
   const open = useEditorStore((state) => state.dialog === 'preferences');
   const closeDialog = useEditorStore((state) => state.closeDialog);
   const tooltipsEnabled = useEditorStore((state) => state.tooltipsEnabled);
+  const panels = useEditorStore((state) => state.panels);
   const selectionLineWidth = useEditorStore((state) => state.selectionLineWidth);
   const selectionLineColor = useEditorStore((state) => state.selectionLineColor);
   const viewportBackground = useEditorStore((state) => state.viewportBackground);
@@ -58,6 +122,9 @@ export function PreferencesDialog() {
   const gridMajorOpacity = useEditorStore((state) => state.gridMajorOpacity);
   const setPreferences = useEditorStore((state) => state.setPreferences);
   const resetPreferences = useEditorStore((state) => state.resetPreferences);
+
+  const setPanel = (id: PanelId, visible: boolean) =>
+    setPreferences({ panels: { ...panels, [id]: visible } });
 
   const exportPreferences = async () => {
     const state = useEditorStore.getState();
@@ -124,6 +191,24 @@ export function PreferencesDialog() {
           hint="A short description appears after hovering a control for a moment. Turn this off if the popups get in the way"
           onChange={(enabled) => setPreferences({ tooltipsEnabled: enabled })}
         />
+      </Accordion>
+
+      <Accordion title="PANELS VISIBILITY">
+        {PANEL_SWITCHES.map((entry) => (
+          <Toggle
+            key={entry.id}
+            label={entry.label}
+            checked={panels[entry.id]}
+            hint={entry.hint}
+            onChange={(visible) => setPanel(entry.id, visible)}
+          />
+        ))}
+        <p className="preferences__hint">
+          Hiding one of these only takes it off the screen. Whatever it holds still runs from the
+          keyboard and nothing about the scene changes, so it costs you nothing but the room it was
+          taking. These are yours rather than the project's, and stay as you left them from one
+          scene to the next.
+        </p>
       </Accordion>
 
       <Accordion title="VIEWPORT">

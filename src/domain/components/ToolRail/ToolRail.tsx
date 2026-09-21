@@ -83,7 +83,7 @@ export function ToolRail() {
   }));
 
   return (
-    <nav className="tool-rail" aria-label="Tools">
+    <nav className="tool-rail" aria-label="Tool rail">
       {TOOLS.map((tool) => (
         <IconButton
           key={tool.id}
