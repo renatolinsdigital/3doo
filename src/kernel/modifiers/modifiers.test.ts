@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { BMesh } from '../mesh';
+import { BMesh, cloneMesh } from '../mesh';
 import { subdivideFaces } from '../ops/subdivide';
 import { createBox, createPlane, createUVSphere } from '../primitives';
 
-import { evaluateModifiers, createModifier } from './index';
+import { applyModifier, evaluateModifiers, createModifier } from './index';
 import type {
   ArrayModifier,
   MirrorModifier,
@@ -158,6 +158,241 @@ describe('mirror modifier', () => {
     expect(box.max.x).toBeCloseTo(1);
     expect(result.faces.size).toBe(2);
     expect(result.validate()).toEqual([]);
+  });
+
+  it('reflects the axis it is given and leaves the other two coordinates alone', () => {
+    const mesh = new BMesh();
+    const sources = [
+      { x: 1, y: 2, z: 3 },
+      { x: 4, y: -1, z: 0.5 },
+      { x: 2, y: 5, z: -2 },
+    ];
+    mesh.addFace(sources.map((co) => mesh.addVert(co)));
+
+    const result = evaluateModifiers(mesh, [mirror({ merge: false })]);
+    const images = [...result.verts.values()].filter((vert) => vert.co.x < 0);
+
+    expect(images).toHaveLength(3);
+    for (const source of sources) {
+      const image = images.find((vert) => Math.abs(vert.co.x + source.x) < 1e-9);
+      expect(image).toBeDefined();
+      expect(image?.co.y).toBeCloseTo(source.y);
+      expect(image?.co.z).toBeCloseTo(source.z);
+    }
+  });
+
+  it('mirrors about Y and about Z, not only about X', () => {
+    const acrossY = createPlane(2);
+    for (const vert of acrossY.verts.values()) vert.co = { ...vert.co, y: vert.co.y + 2 };
+    const y = evaluateModifiers(acrossY, [
+      mirror({ axes: { x: false, y: true, z: false }, merge: false }),
+    ]);
+
+    expect(y.verts.size).toBe(8);
+    expect(y.boundingBox().min.y).toBeCloseTo(-2);
+    expect(y.boundingBox().max.y).toBeCloseTo(2);
+    // The copy is the same width as the original: only Y was touched.
+    expect(y.boundingBox().min.x).toBeCloseTo(-1);
+    expect(y.boundingBox().max.x).toBeCloseTo(1);
+
+    const acrossZ = createPlane(2);
+    for (const vert of acrossZ.verts.values()) vert.co = { ...vert.co, z: vert.co.z + 2 };
+    const z = evaluateModifiers(acrossZ, [
+      mirror({ axes: { x: false, y: false, z: true }, merge: false }),
+    ]);
+
+    expect(z.verts.size).toBe(8);
+    expect(z.boundingBox().min.z).toBeCloseTo(-3);
+    expect(z.boundingBox().max.z).toBeCloseTo(3);
+    expect(z.boundingBox().min.x).toBeCloseTo(-1);
+    expect(z.validate()).toEqual([]);
+  });
+
+  it('builds all eight copies when every axis is on', () => {
+    const cube = createBox(1);
+    for (const vert of cube.verts.values()) {
+      vert.co = { x: vert.co.x + 2, y: vert.co.y + 2, z: vert.co.z + 2 };
+    }
+
+    const result = evaluateModifiers(cube, [
+      mirror({ axes: { x: true, y: true, z: true }, merge: false }),
+    ]);
+    const box = result.boundingBox();
+
+    expect(result.verts.size).toBe(64);
+    expect(result.faces.size).toBe(48);
+    for (const axis of ['x', 'y', 'z'] as const) {
+      expect(box.min[axis]).toBeCloseTo(-2.5);
+      expect(box.max[axis]).toBeCloseTo(2.5);
+    }
+    expect(result.validate()).toEqual([]);
+  });
+
+  it('keeps every copy of a three-axis mirror facing outward', () => {
+    const cube = createBox(1);
+    for (const vert of cube.verts.values()) {
+      vert.co = { x: vert.co.x + 2, y: vert.co.y + 2, z: vert.co.z + 2 };
+    }
+
+    const result = evaluateModifiers(cube, [
+      mirror({ axes: { x: true, y: true, z: true }, merge: false }),
+    ]);
+
+    // Each copy sits in its own octant, so a face points outward when it points
+    // away from that copy's centre rather than away from the origin.
+    for (const face of result.faces.values()) {
+      const center = result.faceCenter(face);
+      const origin = {
+        x: Math.sign(center.x) * 2,
+        y: Math.sign(center.y) * 2,
+        z: Math.sign(center.z) * 2,
+      };
+      const outward =
+        (center.x - origin.x) * face.normal.x +
+        (center.y - origin.y) * face.normal.y +
+        (center.z - origin.z) * face.normal.z;
+      expect(outward).toBeGreaterThan(0);
+    }
+  });
+
+  it('snaps vertices within the threshold onto the plane when clipping is on', () => {
+    // The near edge sits 0.0005 past the plane, well inside the threshold.
+    const offPlane = () => {
+      const plane = createPlane(2);
+      for (const vert of plane.verts.values()) vert.co = { ...vert.co, x: vert.co.x + 1.0005 };
+      return plane;
+    };
+
+    const clipped = evaluateModifiers(offPlane(), [
+      mirror({ clipping: true, merge: true, mergeThreshold: 0.01 }),
+    ]);
+    const loose = evaluateModifiers(offPlane(), [
+      mirror({ clipping: false, merge: true, mergeThreshold: 0.01 }),
+    ]);
+
+    // Merge welds the seam either way. Only clipping puts it on the plane.
+    expect(clipped.verts.size).toBe(6);
+    expect(loose.verts.size).toBe(6);
+    expect([...clipped.verts.values()].filter((vert) => vert.co.x === 0)).toHaveLength(2);
+    expect([...loose.verts.values()].filter((vert) => vert.co.x === 0)).toHaveLength(0);
+    expect(clipped.validate()).toEqual([]);
+  });
+
+  it('carries the material and the shading of each face onto its copy', () => {
+    const mesh = new BMesh();
+    const ring = [
+      mesh.addVert({ x: 1, y: 0, z: 0 }),
+      mesh.addVert({ x: 2, y: 1, z: 0 }),
+      mesh.addVert({ x: 2, y: 0, z: 1 }),
+    ];
+    mesh.addFace(ring, { materialIndex: 3, smooth: true });
+
+    const result = evaluateModifiers(mesh, [mirror({ merge: false })]);
+
+    expect(result.faces.size).toBe(2);
+    for (const face of result.faces.values()) {
+      expect(face.materialIndex).toBe(3);
+      expect(face.smooth).toBe(true);
+    }
+  });
+
+  it('follows the base mesh when its vertices move', () => {
+    const plane = createPlane(2);
+    for (const vert of plane.verts.values()) vert.co = { ...vert.co, x: vert.co.x + 2 };
+
+    const before = evaluateModifiers(plane, [mirror({ merge: false })]);
+    expect(before.boundingBox().max.x).toBeCloseTo(3);
+
+    // The stack never writes to the mesh it was handed, so a drag lands on the
+    // base geometry and the next evaluation is what carries the reflection.
+    for (const vert of plane.verts.values()) vert.co = { ...vert.co, x: vert.co.x + 3 };
+    expect(plane.verts.size).toBe(4);
+    expect(plane.faces.size).toBe(1);
+
+    const after = evaluateModifiers(plane, [mirror({ merge: false })]);
+
+    expect(after.verts.size).toBe(8);
+    expect(after.boundingBox().min.x).toBeCloseTo(-6);
+    expect(after.boundingBox().max.x).toBeCloseTo(6);
+  });
+
+  it('leaves nothing behind when bisect finds no positive half', () => {
+    const plane = createPlane(2);
+    for (const vert of plane.verts.values()) vert.co = { ...vert.co, x: vert.co.x - 3 };
+
+    const result = evaluateModifiers(plane, [mirror({ bisect: true })]);
+
+    expect(result.faces.size).toBe(0);
+    expect(result.edges.size).toBe(0);
+    expect(result.verts.size).toBe(0);
+  });
+
+  it('cuts a wire at the plane and mirrors the half it keeps', () => {
+    const mesh = new BMesh();
+    const a = mesh.addVert({ x: -1, y: 0, z: 0 });
+    const b = mesh.addVert({ x: 3, y: 0, z: 0 });
+    mesh.addEdge(a, b);
+
+    const result = evaluateModifiers(mesh, [mirror({ bisect: true, merge: true })]);
+
+    expect(result.verts.size).toBe(3);
+    expect(result.edges.size).toBe(2);
+    expect(result.boundingBox().min.x).toBeCloseTo(-3);
+    expect(result.boundingBox().max.x).toBeCloseTo(3);
+    expect(result.validate()).toEqual([]);
+  });
+
+  it('rebuilds a whole sphere from one octant with the seams closed', () => {
+    const sphere = createUVSphere(1, 16, 12);
+
+    const result = evaluateModifiers(sphere, [
+      mirror({ axes: { x: true, y: true, z: true }, bisect: true, merge: true }),
+    ]);
+    const box = result.boundingBox();
+
+    for (const axis of ['x', 'y', 'z'] as const) {
+      expect(box.min[axis]).toBeCloseTo(-1);
+      expect(box.max[axis]).toBeCloseTo(1);
+    }
+    // Every seam the three cuts opened is welded shut again, so no edge is left
+    // carrying a single face.
+    expect([...result.edges.values()].every((edge) => edge.loops.length === 2)).toBe(true);
+    for (const face of result.faces.values()) {
+      const center = result.faceCenter(face);
+      const outward =
+        center.x * face.normal.x + center.y * face.normal.y + center.z * face.normal.z;
+      expect(outward).toBeGreaterThan(0);
+    }
+    expect(result.validate()).toEqual([]);
+  });
+
+  it('does not double a face that lies in the mirror plane', () => {
+    const mesh = new BMesh();
+    mesh.addFace([
+      mesh.addVert({ x: 0, y: 0, z: 0 }),
+      mesh.addVert({ x: 0, y: 1, z: 0 }),
+      mesh.addVert({ x: 0, y: 0, z: 1 }),
+    ]);
+
+    const result = evaluateModifiers(mesh, [mirror({ merge: true })]);
+
+    expect(result.verts.size).toBe(3);
+    expect(result.faces.size).toBe(1);
+    expect(result.validate()).toEqual([]);
+  });
+
+  it('bakes through Apply exactly what the live stack draws', () => {
+    const cube = createBox(1);
+    for (const vert of cube.verts.values()) vert.co = { ...vert.co, x: vert.co.x + 2 };
+    const modifier = mirror({ merge: false });
+
+    const display = evaluateModifiers(cube, [modifier]);
+    const baked = applyModifier(cloneMesh(cube), modifier);
+
+    expect(baked.verts.size).toBe(display.verts.size);
+    expect(baked.faces.size).toBe(display.faces.size);
+    expect(baked.boundingBox()).toEqual(display.boundingBox());
+    expect(baked.validate()).toEqual([]);
   });
 });
 

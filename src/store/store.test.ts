@@ -1337,6 +1337,37 @@ describe('editor store', () => {
     expect(display.boundingBox().max.x).toBeCloseTo(10.5);
   });
 
+  it('measures the cursor plane in the frame the object itself uses', () => {
+    store().addPrimitive('box');
+    const id = activeObject().id;
+    store().setObjectTransforms([{ id, transform: { scale: { x: 2, y: 2, z: 2 } } }]);
+    store().setCursor({ x: 4, y: 0, z: 0 });
+    store().addModifier('mirror');
+    const modifier = activeObject().modifiers[0];
+    store().updateModifier(modifier.id, { origin: 'cursor' });
+
+    // The object is drawn at twice size, so the cursor at world x = 4 is x = 2
+    // in the local space the modifier works in, and the copy lands at 3.5..4.5.
+    const display = evaluatedMesh(activeObject(), store().cursor);
+    expect(display.boundingBox().max.x).toBeCloseTo(4.5);
+  });
+
+  it('keeps the mirrored half in step with the vertices it copies', () => {
+    store().addPrimitive('box');
+    store().addModifier('mirror');
+
+    const before = evaluatedMesh(activeObject(), store().cursor, store().meshVersion);
+    expect(before.boundingBox().max.x).toBeCloseTo(0.5);
+
+    driftMesh({ x: 3, y: 0, z: 0 });
+
+    // The stack result is memoised on the mesh version, so an edit that moves
+    // vertices has to bump it or the copy would sit where they used to be.
+    const after = evaluatedMesh(activeObject(), store().cursor, store().meshVersion);
+    expect(after.boundingBox().min.x).toBeCloseTo(-3.5);
+    expect(after.boundingBox().max.x).toBeCloseTo(3.5);
+  });
+
   it('bakes a modifier into the mesh on apply', () => {
     store().addPrimitive('box');
     store().addModifier('array');
