@@ -103,6 +103,19 @@ fan have no far side to be on. Skipped in x-ray and wireframe shading, where
 seeing through the model is the point, and never applied to the selected edges,
 since a selection has to read wherever the user made it.
 
+The whole pass rests on the mesh's own surface standing between a face turned
+away and the camera, so it runs only where that much is true: the mesh is
+closed, meaning every one of its edges has exactly two faces, and the camera is
+outside its bounding box. Both are recorded by `buildEdgeCull` and cost one
+comparison each to read. Neither holds for a box cut in half, where the opening
+shows the inside of the far walls, nor for a camera standing in a room modelled
+as a cube, and in both the faces being looked at are the ones turned away:
+culling their edges took the wireframe off the surfaces the user can see. Those
+views hand back every edge and let depth decide, contour rounding and all,
+which is what it did everywhere before this pass existed. The bounding box is a
+coarse stand in for being inside the surface, and it errs towards drawing an
+edge, which is the safe way to be wrong.
+
 Which edges those are depends on where the camera stands, so this runs on every
 frame of an orbit, and that is what decides how it is written. It reads flat
 typed arrays that `buildEdgeCull` flattens out of the half-edge graph: face

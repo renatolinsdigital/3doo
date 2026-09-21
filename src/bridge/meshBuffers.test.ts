@@ -83,6 +83,25 @@ describe('front edges', () => {
     expect(frontEdges(mesh, vec3(0, 0, 5))).toBe(1);
   });
 
+  it('keeps every edge of a box with a face taken out, from either side', () => {
+    // What the user sees through the opening is the inside of the far walls,
+    // and those faces are turned away: culling their edges left the cut with
+    // no lines on the side you can look into.
+    const mesh = createBox(1);
+    mesh.removeFace([...mesh.faces.values()][0]);
+
+    expect(frontEdges(mesh, vec3(0, 0, 10))).toBe(mesh.edges.size);
+    expect(frontEdges(mesh, vec3(0, 0, -10))).toBe(mesh.edges.size);
+  });
+
+  it('keeps every edge of a closed box from a camera standing inside it', () => {
+    // A room modelled as a cube. Every face is turned away from in here, so
+    // the cull would have taken the wireframe off the walls being looked at.
+    const mesh = createBox(4);
+
+    expect(frontEdges(mesh, vec3(0, 0, 0))).toBe(mesh.edges.size);
+  });
+
   it('reads the same tables from any camera, since only the mesh sets them', () => {
     // The tables are what make this cheap enough to run on a moving camera:
     // they are flattened once and then only read.

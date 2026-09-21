@@ -269,6 +269,16 @@ export interface EdgeCull {
   centres: Float32Array;
   /** Which faces are turned towards the camera, rewritten by each pass. */
   facing: Uint8Array;
+  /**
+   * Whether every edge of the mesh has exactly two faces.
+   *
+   * What hides a face turned away is the rest of the mesh standing between it
+   * and the camera, and only a closed surface promises that much. Cut a box in
+   * half and the inside of its walls is what the user is looking at.
+   */
+  closed: boolean;
+  /** The mesh's extent in its own space, as `[minX, minY, minZ, maxX, maxY, maxZ]`. */
+  bounds: Float32Array;
 }
 
 export function buildEdgeCull(mesh: BMesh): EdgeCull {
@@ -305,6 +315,8 @@ export function buildEdgeCull(mesh: BMesh): EdgeCull {
 
   const ends = new Float32Array(mesh.edges.size * 6);
   const sides = new Int32Array(mesh.edges.size * 2).fill(-1);
+  const bounds = new Float32Array([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
+  let closed = mesh.faces.size > 0;
 
   let e = 0;
   for (const edge of mesh.edges.values()) {
@@ -315,14 +327,44 @@ export function buildEdgeCull(mesh: BMesh): EdgeCull {
     ends[e * 6 + 4] = edge.v1.co.y;
     ends[e * 6 + 5] = edge.v1.co.z;
 
+    for (let axis = 0; axis < 3; axis++) {
+      const a = ends[e * 6 + axis];
+      const b = ends[e * 6 + 3 + axis];
+      bounds[axis] = Math.min(bounds[axis], a, b);
+      bounds[axis + 3] = Math.max(bounds[axis + 3], a, b);
+    }
+
     if (edge.loops.length === 2) {
       sides[e * 2] = indexOfFace.get(edge.loops[0].face.id) ?? -1;
       sides[e * 2 + 1] = indexOfFace.get(edge.loops[1].face.id) ?? -1;
+    } else {
+      closed = false;
     }
     e++;
   }
 
-  return { ends, sides, normals, centres, facing: new Uint8Array(mesh.faces.size) };
+  return { ends, sides, normals, centres, facing: new Uint8Array(mesh.faces.size), closed, bounds };
+}
+
+/**
+ * Whether the camera stands inside the mesh's extent.
+ *
+ * A camera outside the box around a closed mesh is outside the mesh itself,
+ * which is the whole of what the far-side cull needs to know. Inside the box
+ * it may well be inside the surface, where every face it can see is turned
+ * away: standing in a room modelled as a cube, the cull would have taken the
+ * wireframe off the walls the user is looking at. The box is cheap and errs
+ * towards drawing an edge, which is the safe way to be wrong.
+ */
+function withinBounds(bounds: Float32Array, eye: Vec3): boolean {
+  return (
+    eye.x >= bounds[0] &&
+    eye.y >= bounds[1] &&
+    eye.z >= bounds[2] &&
+    eye.x <= bounds[3] &&
+    eye.y <= bounds[4] &&
+    eye.z <= bounds[5]
+  );
 }
 
 /**
@@ -336,12 +378,21 @@ export function buildEdgeCull(mesh: BMesh): EdgeCull {
  * as a stub hanging off a corner. Answering it from the topology instead is
  * exact at any zoom.
  *
+ * That answer holds only while the mesh's own surface is what stands in the
+ * way, so an open mesh, or a camera in among the geometry, keeps every edge.
+ * A box cut in half shows the inside of its walls, and the faces you are
+ * looking at there are turned away: culling them left the cut with no lines
+ * on the side you can see into. Depth decides in those views, contour rounding
+ * and all, which is what it did everywhere before this pass existed.
+ *
  * `eye` is the camera in the mesh's own space, for the reason `cameraFacing`
  * gives. Skipped in x-ray and wireframe shading, where seeing through the model
  * is the point (see `ObjectView`).
  */
 export function frontEdgePositions(cull: EdgeCull, eye: Vec3): Float32Array {
-  const { ends, sides, normals, centres, facing } = cull;
+  const { ends, sides, normals, centres, facing, closed, bounds } = cull;
+
+  if (!closed || withinBounds(bounds, eye)) return ends;
 
   for (let f = 0; f < facing.length; f++) {
     const towards =
