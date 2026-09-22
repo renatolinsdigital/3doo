@@ -75,6 +75,16 @@ export interface SceneGroup {
 }
 
 /**
+ * Where a moved object lands in the outliner.
+ *
+ * `group` is that folder's own list, at the end of it. `object` is next to
+ * that row, in whatever folder the row itself sits in, which is how an object
+ * leaves a folder: it lands beside a row that is not in one.
+ */
+export type MoveTarget =
+  { kind: 'group'; groupId: string } | { kind: 'object'; objectId: string; after: boolean };
+
+/**
  * Auto merge: vertices that a transform leaves on top of each other are welded
  * into one, the way Blender's does.
  *

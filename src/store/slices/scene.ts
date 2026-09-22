@@ -48,6 +48,7 @@ import type {
   CursorSnapTargets,
   LastOperator,
   Material,
+  MoveTarget,
   SceneGroup,
   SceneObject,
 } from '../types';
@@ -400,6 +401,12 @@ export interface SceneSlice {
   ungroup: (id: string) => void;
   /** Takes one object out of its folder, leaving the rest of the folder alone. */
   removeFromGroup: (id: string) => void;
+  /**
+   * Moves one object to another place in the outliner, which is what dragging
+   * a row does: it reorders the list and sets the folder in one act, since
+   * where a row lands says both.
+   */
+  moveObject: (id: string, target: MoveTarget) => void;
   /** Hides the whole folder, or shows it again once all of it is hidden. */
   toggleGroupVisibility: (id: string) => void;
   /** Locks the whole folder, or unlocks it again once all of it is locked. */
@@ -973,6 +980,62 @@ export const createSceneSlice: StateCreator<
         status: `Removed ${object.name} from ${group.name}`,
       };
     });
+  },
+
+  moveObject: (id, target) => {
+    const state = get();
+    const object = state.objects.find((candidate) => candidate.id === id);
+    if (!object) return;
+
+    const anchor =
+      target.kind === 'object'
+        ? state.objects.find((candidate) => candidate.id === target.objectId)
+        : null;
+    if (target.kind === 'object' && (!anchor || anchor.id === id)) return;
+    if (target.kind === 'group' && !state.groups.some((group) => group.id === target.groupId)) {
+      return;
+    }
+
+    const groupId = target.kind === 'group' ? target.groupId : (anchor?.groupId ?? null);
+
+    // The list is one array, and both the loose rows and a folder's members
+    // read their order off it, so the move is a single splice either way.
+    const rest = state.objects.filter((candidate) => candidate.id !== id);
+    let at: number;
+    if (target.kind === 'object') {
+      at = rest.findIndex((candidate) => candidate.id === target.objectId) + (target.after ? 1 : 0);
+    } else {
+      // Behind the folder's last member, or at the end of the list when the
+      // moved object was the only thing in there.
+      const last = rest.map((candidate) => candidate.groupId).lastIndexOf(groupId);
+      at = last === -1 ? rest.length : last + 1;
+    }
+    const next = [...rest.slice(0, at), { ...object, groupId }, ...rest.slice(at)];
+
+    const settled = next.every(
+      (candidate, position) =>
+        candidate.id === state.objects[position].id &&
+        candidate.groupId === state.objects[position].groupId,
+    );
+    if (settled) return;
+
+    const from = state.groups.find((group) => group.id === object.groupId);
+    const into = state.groups.find((group) => group.id === groupId);
+    const status =
+      groupId === object.groupId
+        ? `Reordered ${object.name}`
+        : into
+          ? `Moved ${object.name} into ${into.name}`
+          : `Moved ${object.name} out of ${from?.name ?? 'its folder'}`;
+
+    get().recordHistory(groupId === object.groupId ? 'Reorder' : 'Move object');
+
+    set((state) => ({
+      objects: next,
+      // The folder it left may have held nothing else.
+      groups: pruneGroups(state.groups, next),
+      status,
+    }));
   },
 
   toggleGroupVisibility: (id) => {

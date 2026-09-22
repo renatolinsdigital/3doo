@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -61,6 +61,20 @@ describe('Outliner', () => {
     const state = useEditorStore.getState();
     const box = state.objects.find((object) => object.name === 'BOX');
     expect(state.activeObjectId).toBe(box?.id);
+  });
+
+  it('leaves no focus ring on a row picked with the pointer, and keeps it for the keyboard', async () => {
+    useEditorStore.getState().addPrimitive('box');
+    render(<Outliner />);
+    const row = screen.getByRole('button', { name: 'BOX' });
+
+    await userEvent.click(row);
+    expect(row).not.toHaveFocus();
+
+    // Selecting from the keyboard is the case the ring is there for.
+    row.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(row).toHaveFocus();
   });
 
   it('toggles visibility from the row', async () => {
@@ -427,6 +441,93 @@ describe('Outliner', () => {
       await openMenuOn('UV SPHERE');
 
       expect(screen.queryByRole('menuitem', { name: 'REMOVE FROM GROUP' })).not.toBeInTheDocument();
+    });
+
+    const rowOf = (name: string) =>
+      screen.getByRole('button', { name }).parentElement as HTMLElement;
+
+    /**
+     * Drags one row onto another and lets go of it.
+     *
+     * The first move clears the distance a press has to travel to count as a
+     * drag. `clientY` then picks the half of the row the pointer ends in:
+     * every box jsdom measures is empty, so 0 lands above the row and 1 below.
+     */
+    function dragOnto(from: string, to: HTMLElement, clientY = 0) {
+      fireEvent.pointerDown(rowOf(from), { button: 0, clientX: 0, clientY: 0 });
+      fireEvent.pointerMove(to, { clientX: 0, clientY: 20 });
+      fireEvent.pointerMove(to, { clientX: 0, clientY });
+      fireEvent.pointerUp(to, { clientX: 0, clientY });
+    }
+
+    it('puts a loose object in the folder its title is dropped on', () => {
+      const { group } = grouped();
+
+      dragOnto('UV SPHERE', rowOf('GROUP'));
+
+      const objects = useEditorStore.getState().objects;
+      expect(objects.map((object) => object.name)).toEqual(['BOX', 'CYLINDER', 'UV SPHERE']);
+      expect(objects.every((object) => object.groupId === group.id)).toBe(true);
+    });
+
+    it('opens a folded folder that takes a row, so it lands in sight', () => {
+      const { group } = grouped();
+      act(() => useEditorStore.getState().toggleGroupCollapsed(group.id));
+
+      dragOnto('UV SPHERE', rowOf('GROUP'));
+
+      expect(useEditorStore.getState().groups[0].collapsed).toBe(false);
+      expect(screen.getByRole('button', { name: 'UV SPHERE' })).toBeInTheDocument();
+    });
+
+    it('sorts the rows by dropping one above another', () => {
+      grouped();
+
+      dragOnto('CYLINDER', rowOf('BOX'));
+
+      expect(useEditorStore.getState().objects.map((object) => object.name)).toEqual([
+        'CYLINDER',
+        'BOX',
+        'UV SPHERE',
+      ]);
+    });
+
+    it('takes an object out of its folder when it lands beside a loose row', () => {
+      const { group } = grouped();
+
+      dragOnto('BOX', rowOf('UV SPHERE'), 1);
+
+      const objects = useEditorStore.getState().objects;
+      expect(objects.map((object) => object.name)).toEqual(['CYLINDER', 'UV SPHERE', 'BOX']);
+      expect(objects[2].groupId).toBeNull();
+      expect(useEditorStore.getState().groups.map((entry) => entry.id)).toEqual([group.id]);
+    });
+
+    it('leaves the row where it was when it is let go over nothing', () => {
+      grouped();
+
+      fireEvent.pointerDown(rowOf('BOX'), { button: 0, clientX: 0, clientY: 0 });
+      fireEvent.pointerMove(document.body, { clientX: 300, clientY: 300 });
+      fireEvent.pointerUp(document.body, { clientX: 300, clientY: 300 });
+
+      expect(useEditorStore.getState().objects.map((object) => object.name)).toEqual([
+        'BOX',
+        'CYLINDER',
+        'UV SPHERE',
+      ]);
+    });
+
+    it('leaves the list alone when a press never travels', () => {
+      grouped();
+
+      fireEvent.pointerDown(rowOf('CYLINDER'), { button: 0, clientX: 0, clientY: 0 });
+      fireEvent.pointerUp(rowOf('BOX'), { clientX: 0, clientY: 0 });
+
+      expect(useEditorStore.getState().objects.map((object) => object.name)).toEqual([
+        'BOX',
+        'CYLINDER',
+        'UV SPHERE',
+      ]);
     });
 
     it('will not join a folder that is locked', async () => {

@@ -1,11 +1,16 @@
-import { useEffect, useState } from 'react';
+import {
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 
 import { type ContextMenuEntry, ContextMenu, Panel, TextField } from '@shared/components';
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
 import { cx } from '@shared/utils/cx';
 import { useEditorStore } from '@store/index';
-import type { SceneGroup, SceneObject } from '@store/types';
+import type { MoveTarget, SceneGroup, SceneObject } from '@store/types';
 
 import './Outliner.scss';
 
@@ -14,6 +19,44 @@ const TREMBLE_MS = 1000;
 
 /** Which kind of row a menu or a rename was opened on. */
 type RowRef = { kind: 'object' | 'group'; id: string };
+
+/** How far the pointer travels before a press on a row counts as a drag. */
+const DRAG_SLOP = 4;
+
+/**
+ * Keeps a press of the pointer from taking focus, and with it the focus ring.
+ *
+ * Shift+click is how a selection of several is built, and holding a modifier
+ * key puts the browser in keyboard mode: the row it lands on then rings itself
+ * as though the keyboard had reached it, and the ring blinks away again as the
+ * row turns selected. Tab goes through no press, so keyboard focus still rings.
+ */
+function keepFocusOffPointer(event: ReactMouseEvent<HTMLElement>) {
+  event.preventDefault();
+}
+
+/**
+ * Where the row under the pointer would put what is being dragged.
+ *
+ * Read off the element the pointer is over rather than off React state: a drag
+ * is tracked on the window, so the row it is over is whatever the event came
+ * through. Null means the pointer is nowhere that takes the row, and the drag
+ * leaves it where it was.
+ */
+function targetUnder(event: PointerEvent, dragged: string): MoveTarget | null {
+  const under = event.target instanceof Element ? event.target : null;
+
+  const row = under?.closest<HTMLElement>('[data-object-row]');
+  if (row) {
+    const objectId = row.dataset.objectRow;
+    if (!objectId || objectId === dragged) return null;
+    const rect = row.getBoundingClientRect();
+    return { kind: 'object', objectId, after: event.clientY > rect.top + rect.height / 2 };
+  }
+
+  const groupId = under?.closest<HTMLElement>('[data-group-row]')?.dataset.groupRow;
+  return groupId ? { kind: 'group', groupId } : null;
+}
 
 export function Outliner() {
   const objects = useEditorStore((state) => state.objects);
@@ -38,9 +81,58 @@ export function Outliner() {
   const toggleGroupVisibility = useEditorStore((state) => state.toggleGroupVisibility);
   const toggleGroupLock = useEditorStore((state) => state.toggleGroupLock);
   const toggleGroupCollapsed = useEditorStore((state) => state.toggleGroupCollapsed);
+  const moveObject = useEditorStore((state) => state.moveObject);
 
   const [editing, setEditing] = useState<RowRef | null>(null);
   const [menu, setMenu] = useState<(RowRef & { x: number; y: number }) | null>(null);
+  /** The object being dragged, and where it would land if it were dropped now. */
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [landing, setLanding] = useState<MoveTarget | null>(null);
+
+  // Rows are dragged with the pointer rather than with the browser's own drag
+  // and drop, which paints a stop sign over everything that takes no drop. The
+  // move is the outliner's to make or to leave alone, and it says so with the
+  // marks on the rows themselves.
+  const startDrag = (id: string, event: ReactPointerEvent<HTMLElement>) => {
+    const origin = { x: event.clientX, y: event.clientY };
+    let dragged = false;
+
+    const track = (event: PointerEvent) => {
+      // A press that never travels is a click on the row, not a drag of it.
+      if (!dragged) {
+        if (Math.hypot(event.clientX - origin.x, event.clientY - origin.y) < DRAG_SLOP) return;
+        dragged = true;
+        setDragging(id);
+      }
+      setLanding(targetUnder(event, id));
+    };
+
+    const stop = () => {
+      window.removeEventListener('pointermove', track);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', stop);
+      setDragging(null);
+      setLanding(null);
+    };
+
+    const finish = (event: PointerEvent) => {
+      const target = dragged ? targetUnder(event, id) : null;
+      stop();
+      if (!target) return;
+
+      moveObject(id, target);
+      if (target.kind === 'group') {
+        // A folded folder would swallow the row on its way in, leaving the
+        // move nothing to show for itself.
+        const folder = groups.find((entry) => entry.id === target.groupId);
+        if (folder?.collapsed) toggleGroupCollapsed(folder.id);
+      }
+    };
+
+    window.addEventListener('pointermove', track);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', stop);
+  };
 
   const members = (group: SceneGroup) => objects.filter((object) => object.groupId === group.id);
   const loose = objects.filter((object) => !groups.some((group) => group.id === object.groupId));
@@ -178,6 +270,15 @@ export function Outliner() {
       isActive={object.id === activeObjectId}
       isSelected={selectedObjectIds.includes(object.id)}
       isEditing={editing?.kind === 'object' && editing.id === object.id}
+      isDragging={dragging === object.id}
+      landingEdge={
+        landing?.kind === 'object' && landing.objectId === object.id
+          ? landing.after
+            ? 'after'
+            : 'before'
+          : null
+      }
+      onDragStart={(event) => startDrag(object.id, event)}
       lockAttemptToken={lockedAttempt?.objectId === object.id ? lockedAttempt.token : null}
       onSelect={(additive) => setActiveObject(object.id, additive)}
       onStartRename={() => setEditing({ kind: 'object', id: object.id })}
@@ -213,6 +314,7 @@ export function Outliner() {
                   members={held}
                   isSelected={held.every((object) => selectedObjectIds.includes(object.id))}
                   isEditing={editing?.kind === 'group' && editing.id === group.id}
+                  isLanding={landing?.kind === 'group' && landing.groupId === group.id}
                   onSelect={() => selectGroup(group.id)}
                   onToggleCollapsed={() => toggleGroupCollapsed(group.id)}
                   onStartRename={() => setEditing({ kind: 'group', id: group.id })}
@@ -260,6 +362,8 @@ interface OutlinerGroupRowProps {
   /** Every object in the folder is selected, so the folder reads as selected too. */
   isSelected: boolean;
   isEditing: boolean;
+  /** The dragged row would land in this folder if it were let go now. */
+  isLanding: boolean;
   onSelect: () => void;
   onToggleCollapsed: () => void;
   onStartRename: () => void;
@@ -276,6 +380,7 @@ function OutlinerGroupRow({
   members,
   isSelected,
   isEditing,
+  isLanding,
   onSelect,
   onToggleCollapsed,
   onStartRename,
@@ -292,7 +397,7 @@ function OutlinerGroupRow({
   const locked = members.every((object) => object.locked);
 
   const nameTooltip = useTooltipTrigger(
-    `Click to select the ${members.length} object(s) in here, double-click to rename, right-click for more`,
+    `Click to select the ${members.length} object(s) in here, double-click to rename, drop an object on this title to put it in here, right-click for more`,
   );
   const foldTooltip = useTooltipTrigger(
     group.collapsed ? 'Show what is in this folder' : 'Fold this folder shut',
@@ -310,7 +415,9 @@ function OutlinerGroupRow({
         'outliner__row',
         'outliner__row--group',
         isSelected && 'outliner__row--selected',
+        isLanding && 'outliner__row--landing',
       )}
+      data-group-row={group.id}
       onContextMenu={(event) => {
         event.preventDefault();
         onOpenMenu(event.clientX, event.clientY);
@@ -321,6 +428,7 @@ function OutlinerGroupRow({
         className="outliner__fold"
         aria-label={`${group.collapsed ? 'Expand' : 'Collapse'} ${group.name}`}
         aria-expanded={!group.collapsed}
+        onMouseDown={keepFocusOffPointer}
         onClick={onToggleCollapsed}
         {...foldTooltip}
       >
@@ -342,6 +450,7 @@ function OutlinerGroupRow({
         <button
           type="button"
           className="outliner__name"
+          onMouseDown={keepFocusOffPointer}
           onClick={onSelect}
           onDoubleClick={onStartRename}
           {...nameTooltip}
@@ -355,6 +464,7 @@ function OutlinerGroupRow({
         className={cx('outliner__icon', hidden && 'outliner__icon--on')}
         aria-label={`${hidden ? 'Show' : 'Hide'} ${group.name}`}
         aria-pressed={hidden}
+        onMouseDown={keepFocusOffPointer}
         onClick={onToggleVisibility}
         {...visibilityTooltip}
       >
@@ -365,6 +475,7 @@ function OutlinerGroupRow({
         className={cx('outliner__icon', locked && 'outliner__icon--on')}
         aria-label={`${locked ? 'Unlock' : 'Lock'} ${group.name}`}
         aria-pressed={locked}
+        onMouseDown={keepFocusOffPointer}
         onClick={onToggleLock}
         {...lockTooltip}
       >
@@ -381,6 +492,12 @@ interface OutlinerRowProps {
   isActive: boolean;
   isSelected: boolean;
   isEditing: boolean;
+  /** This row is the one being dragged. */
+  isDragging: boolean;
+  /** The edge the dragged row would land on, or null when it would land elsewhere. */
+  landingEdge: 'before' | 'after' | null;
+  /** Takes the press that may turn into a drag of this row. */
+  onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
   /** Changes each time an edit is denied because this object is locked; drives the lock icon's tremble. */
   lockAttemptToken: number | null;
   onSelect: (additive: boolean) => void;
@@ -399,6 +516,9 @@ function OutlinerRow({
   isActive,
   isSelected,
   isEditing,
+  isDragging,
+  landingEdge,
+  onDragStart,
   lockAttemptToken,
   onSelect,
   onStartRename,
@@ -409,7 +529,7 @@ function OutlinerRow({
   onOpenMenu,
 }: OutlinerRowProps) {
   const nameTooltip = useTooltipTrigger(
-    'Click to select, Shift+click to add to selection, double-click to rename, right-click for more',
+    'Click to select, Shift+click to add to selection, double-click to rename, drag to reorder or to drop into a folder, right-click for more',
   );
   const visibilityTooltip = useTooltipTrigger(
     object.visible ? 'Hide this object in the viewport' : 'Show this object in the viewport',
@@ -440,7 +560,17 @@ function OutlinerRow({
         'outliner__row',
         isSelected && 'outliner__row--selected',
         isActive && 'outliner__row--active',
+        isDragging && 'outliner__row--dragging',
+        landingEdge && `outliner__row--landing-${landingEdge}`,
       )}
+      data-object-row={object.id}
+      onPointerDown={(event) => {
+        // The left button only, and never while the row holds a text field.
+        // The toggles at its end are controls of their own, not a grip.
+        if (event.button !== 0 || isEditing) return;
+        if (event.target instanceof Element && event.target.closest('.outliner__icon')) return;
+        onDragStart(event);
+      }}
       onContextMenu={(event) => {
         event.preventDefault();
         onOpenMenu(event.clientX, event.clientY);
@@ -462,6 +592,7 @@ function OutlinerRow({
           type="button"
           className="outliner__name"
           aria-current={isActive ? 'true' : undefined}
+          onMouseDown={keepFocusOffPointer}
           onClick={(event) => onSelect(event.shiftKey)}
           onDoubleClick={onStartRename}
           {...nameTooltip}
@@ -486,6 +617,7 @@ function OutlinerRow({
         className={cx('outliner__icon', !object.visible && 'outliner__icon--on')}
         aria-label={`${object.visible ? 'Hide' : 'Show'} ${object.name}`}
         aria-pressed={!object.visible}
+        onMouseDown={keepFocusOffPointer}
         onClick={onToggleVisibility}
         {...visibilityTooltip}
       >
@@ -503,6 +635,7 @@ function OutlinerRow({
         )}
         aria-label={`${object.locked ? 'Unlock' : 'Lock'} ${object.name}`}
         aria-pressed={object.locked}
+        onMouseDown={keepFocusOffPointer}
         onClick={onToggleLock}
         {...lockTooltip}
       >

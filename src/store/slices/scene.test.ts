@@ -578,4 +578,103 @@ describe('outliner groups', () => {
 
     expect(group().collapsed).toBe(true);
   });
+
+  describe('moving a row', () => {
+    const names = () => useEditorStore.getState().objects.map((object) => object.name);
+
+    it('puts a loose object in the folder it lands on, last of its rows', () => {
+      const [box, cylinder, sphere] = threeObjects();
+      const folder = groupOf(box.id, cylinder.id);
+
+      useEditorStore.getState().moveObject(sphere.id, { kind: 'group', groupId: folder.id });
+
+      expect(names()).toEqual(['BOX', 'CYLINDER', 'UV SPHERE']);
+      expect(useEditorStore.getState().objects.map((object) => object.groupId)).toEqual([
+        folder.id,
+        folder.id,
+        folder.id,
+      ]);
+    });
+
+    it('sorts the loose rows', () => {
+      const [box, , sphere] = threeObjects();
+
+      useEditorStore.getState().moveObject(sphere.id, {
+        kind: 'object',
+        objectId: box.id,
+        after: false,
+      });
+
+      expect(names()).toEqual(['UV SPHERE', 'BOX', 'CYLINDER']);
+    });
+
+    it('takes the object into the folder of the row it lands beside', () => {
+      const [box, cylinder, sphere] = threeObjects();
+      const folder = groupOf(box.id, cylinder.id);
+
+      useEditorStore.getState().moveObject(sphere.id, {
+        kind: 'object',
+        objectId: box.id,
+        after: true,
+      });
+
+      expect(names()).toEqual(['BOX', 'UV SPHERE', 'CYLINDER']);
+      expect(useEditorStore.getState().objects[1].groupId).toBe(folder.id);
+    });
+
+    it('leaves the object loose when it lands beside a row that is in no folder', () => {
+      const [box, cylinder, sphere] = threeObjects();
+      const folder = groupOf(box.id, cylinder.id);
+
+      useEditorStore.getState().moveObject(box.id, {
+        kind: 'object',
+        objectId: sphere.id,
+        after: true,
+      });
+
+      expect(names()).toEqual(['CYLINDER', 'UV SPHERE', 'BOX']);
+      expect(useEditorStore.getState().objects[2].groupId).toBeNull();
+      expect(useEditorStore.getState().groups.map((entry) => entry.id)).toEqual([folder.id]);
+    });
+
+    it('drops the folder its last object is dragged out of', () => {
+      const [box, cylinder] = threeObjects();
+      groupOf(box.id);
+
+      useEditorStore.getState().moveObject(box.id, {
+        kind: 'object',
+        objectId: cylinder.id,
+        after: false,
+      });
+
+      expect(useEditorStore.getState().groups).toEqual([]);
+    });
+
+    it('records nothing when the row lands where it already was', () => {
+      const [box, cylinder] = threeObjects();
+      const before = useEditorStore.getState().historyUndo.length;
+
+      useEditorStore.getState().moveObject(box.id, {
+        kind: 'object',
+        objectId: cylinder.id,
+        after: false,
+      });
+
+      expect(names()).toEqual(['BOX', 'CYLINDER', 'UV SPHERE']);
+      expect(useEditorStore.getState().historyUndo).toHaveLength(before);
+    });
+
+    it('puts the order back on undo', () => {
+      const [box, , sphere] = threeObjects();
+
+      useEditorStore.getState().moveObject(sphere.id, {
+        kind: 'object',
+        objectId: box.id,
+        after: false,
+      });
+      useEditorStore.getState().undo();
+
+      expect(names()).toEqual(['BOX', 'CYLINDER', 'UV SPHERE']);
+    });
+  });
 });
