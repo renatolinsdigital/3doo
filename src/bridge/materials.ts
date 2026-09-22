@@ -88,9 +88,8 @@ function getMatcap(): THREE.Texture {
  * far enough for the geometry behind it to climb through: edges from the far
  * side drew as a second line beside the near one, and the back face won a band
  * of pixels along the contour and painted it in its own shading. What a line
- * needs at those angles is a slope-scaled bias of its own, and that now lives
- * on the line (see `WIRE_DEPTH_OFFSET`) instead of being paid for by sinking
- * everything else.
+ * needs at those angles is a lift of its own, and that now lives on the line
+ * (see `liftWire`) instead of being paid for by sinking everything else.
  */
 const SURFACE_DEPTH_OFFSET = {
   polygonOffset: true,
@@ -99,22 +98,69 @@ const SURFACE_DEPTH_OFFSET = {
 } as const;
 
 /**
- * Lifts the wireframe off the surface it runs along.
+ * The steepest a surface may be turned away from the camera and still have the
+ * wire crossing it drawn whole, as a slope. Eight is a face at about 83
+ * degrees.
  *
- * Slope-scaled, and the wire is only able to ask for that because it is drawn
- * as quads: WebGL offsets polygons and nothing else, with no
- * POLYGON_OFFSET_LINE, so a plain line takes whatever depth the rasteriser
- * hands it. Through `LineMaterial` the wire becomes polygons, and the factor
- * then buys exactly what a line lying along a fold needs, a bias that grows
- * with the surface's own steepness. That is where the fill used to eat the last
- * few pixels of an edge as it ran into a junction, which read as a line
- * stopping short of the corner it belongs to.
+ * Past that a face is edge-on enough to be a contour, and what runs across it
+ * is a pixel or two of a surface nobody can read anyway.
  */
-const WIRE_DEPTH_OFFSET = {
-  polygonOffset: true,
-  polygonOffsetFactor: -4,
-  polygonOffsetUnits: -4,
-} as const;
+const WIRE_LIFT_SLOPE = 8;
+
+/** Where the lift is spliced into `LineMaterial`'s vertex shader. */
+const WIRE_LIFT_ANCHOR = 'vec4 end = modelViewMatrix * vec4( instanceEnd, 1.0 );';
+
+const WIRE_LIFT_GLSL = /* glsl */ `
+			// A pixel's width in view units: per unit of depth under perspective,
+			// outright under an orthographic camera, which is what lets one
+			// expression serve both.
+			float wireSpan = 2.0 / ( resolution.y * projectionMatrix[ 1 ][ 1 ] );
+			float wireLift = 0.5 * linewidth * ${WIRE_LIFT_SLOPE.toFixed(1)} * wireSpan;
+
+			if ( projectionMatrix[ 2 ][ 3 ] == - 1.0 ) {
+
+				// Along the view ray, by scaling all three components. Taking it
+				// off the depth alone would slide the line across the screen, by
+				// a pixel and more out towards the corners.
+				start.xyz *= 1.0 - wireLift;
+				end.xyz *= 1.0 - wireLift;
+
+			} else {
+
+				start.z += wireLift;
+				end.z += wireLift;
+
+			}
+`;
+
+/**
+ * Floats a wire towards the camera by what the surface under it gains in depth
+ * across half the line's own width.
+ *
+ * Polygon offset cannot do this job, which is why it no longer tries. Its
+ * slope term is scaled by the polygon's own steepest depth gradient, and a
+ * wire quad is flat across its width: all four corners take the depth of the
+ * edge they stand on, so the only gradient it has runs along the line. An edge
+ * receding from the camera was lifted hard by that and drew whole, while an
+ * edge lying across the same face got almost nothing, though the surface
+ * beside it climbs just as fast. Half of that second wire, the half on the
+ * side where the surface comes forward, lost the depth test and was never
+ * drawn: measured off a screenshot of a subdivided cylinder, those edges
+ * carried 0.34 of a pixel of ink against 0.74 for the ones running away from
+ * the camera. Which edges went faint changed as the camera moved, since what
+ * decides it is the angle a face is seen at.
+ *
+ * So the lift owes nothing to the line's own direction, and a quad is what
+ * lets it: the width is already the vertex shader's to choose, and this puts
+ * the depth there too.
+ */
+function liftWire<T extends LineMaterial>(material: T): T {
+  material.vertexShader = material.vertexShader.replace(
+    WIRE_LIFT_ANCHOR,
+    WIRE_LIFT_ANCHOR + WIRE_LIFT_GLSL,
+  );
+  return material;
+}
 
 /**
  * The stencil value a selected object's fill stamps on the pixels it covers.
@@ -209,38 +255,38 @@ export function createFaceOrientationMaterial(): THREE.Material {
 /**
  * The wireframe, and the red one drawn over it for the selected edges.
  *
- * `LineMaterial` rather than `LineBasicMaterial`, for the depth offset above
- * rather than for width: a plain line cannot be offset at all, so the wire used
- * to depend on the fill being sunk under it, and at a junction between faces
- * running nearly edge-on that was not enough. The last few pixels of an edge
- * lost the depth test and the line stopped short of the corner. As quads the
- * wire carries its own bias and meets the corner. The cost is `resolution`,
- * which the shader needs to turn a pixel width into clip space (see
- * `ObjectView.setResolution`).
+ * `LineMaterial` rather than `LineBasicMaterial`, for the lift above rather
+ * than for width: a plain line takes whatever depth the rasteriser hands it,
+ * which is the fill's own, so the wire depended on the fill being sunk under
+ * it and that is not enough on a face seen at an angle. As quads the wire is
+ * drawn at a depth of its own choosing (see `liftWire`). The cost is
+ * `resolution`, which the shader needs to turn a pixel width into clip space
+ * (see `ObjectView.setResolution`).
  *
  * Both depth-tested, selected or not, for the reason the vertex dots are: a
  * solid or matcap surface is opaque, and a selected edge round the back showing
  * through it reads as running across the face in front.
  *
  * Writing no depth, because every mark on the geometry is drawn after this one
- * and has to come through: a wire that wrote depth while sitting a slope ahead
- * of the surface would hide the vertex-mode fade and the normals drawn on the
- * same edges.
+ * and has to come through: a wire that wrote depth while sitting ahead of the
+ * surface would hide the vertex-mode fade and the normals drawn on the same
+ * edges.
  *
  * Nothing is hidden in x-ray or wireframe shading even so: the first writes no
  * depth and the second draws no fill, so there is nothing for this to test
  * against, which is how a user asks to see through the model.
  */
 export function createWireMaterial(selected: boolean): LineMaterial {
-  return new LineMaterial({
-    color: selected ? VIEWPORT_COLORS.red : VIEWPORT_COLORS.void,
-    linewidth: 1,
-    transparent: true,
-    opacity: selected ? 1 : 0.55,
-    depthTest: true,
-    depthWrite: false,
-    ...WIRE_DEPTH_OFFSET,
-  });
+  return liftWire(
+    new LineMaterial({
+      color: selected ? VIEWPORT_COLORS.red : VIEWPORT_COLORS.void,
+      linewidth: 1,
+      transparent: true,
+      opacity: selected ? 1 : 0.55,
+      depthTest: true,
+      depthWrite: false,
+    }),
+  );
 }
 
 /**
@@ -251,20 +297,21 @@ export function createWireMaterial(selected: boolean): LineMaterial {
  * subdivision that only cuts faces, moving nothing, leaves edit mode looking
  * exactly as it did before the modifier was added.
  *
- * Quads and the same depth offset as the cage above it, for the same reason:
- * these lines lie on the shape the stack built and would be eaten at its folds
+ * Quads and the same lift as the cage above it, for the same reason: these
+ * lines lie on the shape the stack built and would be eaten at its folds
  * otherwise.
  */
 export function createPreviewWireMaterial(): LineMaterial {
-  return new LineMaterial({
-    color: VIEWPORT_COLORS.void,
-    linewidth: 1,
-    transparent: true,
-    opacity: 0.3,
-    depthTest: true,
-    depthWrite: false,
-    ...WIRE_DEPTH_OFFSET,
-  });
+  return liftWire(
+    new LineMaterial({
+      color: VIEWPORT_COLORS.void,
+      linewidth: 1,
+      transparent: true,
+      opacity: 0.3,
+      depthTest: true,
+      depthWrite: false,
+    }),
+  );
 }
 
 /**

@@ -76,21 +76,40 @@ pixel wide at whatever depth the rasteriser hands it, which is the same depth as
 the surface it runs along, since both are built from the same vertices. The
 wireframe, the selected edges, the modifier preview and the selection outline
 are all `LineSegments2` with a `LineMaterial` instead: that pair expands each
-segment into a quad in the vertex shader, and a quad can be offset.
+segment into a quad in the vertex shader, so both the width and the depth a
+line is drawn at are the shader's to decide.
 
-The wire rises towards the camera by four units of the depth buffer's own
-resolution **scaled by the surface's slope**, and the fill is sunk by a constant
-four with no slope term at all. Both halves matter. The slope-scaled part is
-what a line running into a junction between faces seen nearly edge-on needs, and
-without it the fill ate the last few pixels of the edge, so the line stopped
-short of its corner. Putting that slope term on the fill instead, which is where
-it used to live, sank the surface so far at those same angles that the far side
-of the model climbed through it: back edges drew as a second line beside the near
-one, and the back face won a band of pixels along the contour and shaded it.
+The fill is sunk by a constant four units of the depth buffer's own resolution,
+and the wire is floated towards the camera in the vertex shader, by what the
+surface under it gains in depth across half the line's own width. `liftWire`
+splices that into `LineMaterial`'s shader: under perspective both ends move
+along the view ray, which is all three components scaled, since taking it off
+the depth alone would slide the line across the screen; an orthographic camera
+has no ray to move along and takes the distance straight off the depth.
+
+Polygon offset used to do this and cannot. It scales its slope term by the
+polygon's own steepest depth gradient, and a wire quad is flat across its
+width: all four corners take the depth of the edge they stand on, so the only
+gradient it has runs along the line. An edge receding from the camera was
+lifted hard and drew whole, while an edge lying across the same face got
+almost nothing, though the surface beside it climbs just as fast. Half of that
+second wire lost the depth test, the half on the side where the surface comes
+forward, and which edges went faint changed as the camera moved. Measured off
+a screenshot of a subdivided cylinder, they carried 0.34 of a pixel of ink
+against 0.74 for the edges running away from the camera.
+
+`WIRE_LIFT_SLOPE` says how steeply a surface may be turned before the lift
+stops being enough: eight, a face at about 83 degrees, past which a face is
+edge-on enough to be a contour. Sinking the fill by its own slope instead,
+which is where the term used to live, sank the surface so far at those angles
+that the far side of the model climbed through it: back edges drew as a second
+line beside the near one, and the back face won a band of pixels along the
+contour and shaded it.
 
 The fill keeps its constant offset because the marks that are not drawn as quads
 (the vertex dots, the vertex-mode fade, the normals) still need the depth tie
-between them and the surface broken.
+between them and the surface broken. Those are drawn on the edge's own pixels
+rather than spread across a quad, so the constant is all they need.
 
 ### Edges on the far side are not drawn at all
 

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 import type { ShadingMode } from '@store/types';
@@ -6,6 +7,7 @@ import type { ShadingMode } from '@store/types';
 import {
   createOutlineMaterial,
   createPointMaterial,
+  createPreviewWireMaterial,
   createRecentPointMaterial,
   createSelectionOverlayMaterial,
   createSurfaceMaterial,
@@ -164,14 +166,28 @@ describe('wireframe material', () => {
     expect(createWireMaterial(true).depthTest).toBe(true);
   });
 
-  it('rises off the surface by its slope, which a plain line cannot ask for', () => {
-    // The whole reason the wire is drawn as quads. WebGL offsets polygons and
-    // nothing else, and without this the fill ate the last pixels of an edge
-    // wherever it ran into a junction between faces seen nearly edge-on.
+  it('floats towards the camera in the vertex shader, whatever way the edge runs', () => {
+    // The whole reason the wire is drawn as quads. Polygon offset scales its
+    // slope term by the quad's own gradient, and a wire quad has none across
+    // its width, so an edge lying across a face seen at an angle lost half its
+    // width to the fill while an edge receding from the camera kept all of it.
     const wire = createWireMaterial(false);
+    const stock = new LineMaterial();
 
-    expect(wire.polygonOffset).toBe(true);
-    expect(wire.polygonOffsetFactor).toBeLessThanOrEqual(-1);
+    expect(wire.vertexShader).not.toBe(stock.vertexShader);
+    expect(wire.vertexShader).toContain('wireLift');
+    expect(wire.polygonOffset).toBe(false);
+  });
+
+  it('lifts the modifier preview the same way, its lines lying on a surface too', () => {
+    expect(createPreviewWireMaterial().vertexShader).toContain('wireLift');
+  });
+
+  it('takes the lift off the view ray, so an edge does not slide across the screen', () => {
+    // Under perspective the ends move towards the camera along the ray they
+    // are seen on, which is all three components scaled. Dropping the depth on
+    // its own moves the projected point as well.
+    expect(createWireMaterial(false).vertexShader).toContain('start.xyz *= 1.0 - wireLift');
   });
 
   it('writes no depth, so the marks drawn after it still come through', () => {
