@@ -192,3 +192,55 @@ describe('modal pivot warning', () => {
     expect(useEditorStore.getState().status).not.toContain('cursor');
   });
 });
+
+describe('toast queue', () => {
+  beforeEach(() => {
+    useEditorStore.setState({ toasts: [] });
+  });
+
+  it('renews a message already queued instead of stacking a copy', () => {
+    const { pushToast } = useEditorStore.getState();
+    pushToast('warning', 'Select an object before entering edit mode');
+    const [first] = useEditorStore.getState().toasts;
+
+    pushToast('warning', 'Select an object before entering edit mode');
+    pushToast('warning', 'Select an object before entering edit mode');
+
+    const toasts = useEditorStore.getState().toasts;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].id).toBe(first.id);
+    expect(toasts[0].issued).toBe(3);
+  });
+
+  it('keeps a renewed toast where it already is in the stack', () => {
+    const { pushToast } = useEditorStore.getState();
+    pushToast('info', 'First');
+    pushToast('info', 'Second');
+    pushToast('info', 'First');
+
+    expect(useEditorStore.getState().toasts.map((toast) => toast.message)).toEqual([
+      'First',
+      'Second',
+    ]);
+  });
+
+  it('stacks messages that differ, and the same words under another variant', () => {
+    const { pushToast } = useEditorStore.getState();
+    pushToast('warning', 'Select an object');
+    pushToast('warning', 'Nothing to extrude');
+    pushToast('error', 'Select an object');
+
+    expect(useEditorStore.getState().toasts).toHaveLength(3);
+  });
+
+  it('starts a fresh toast once the earlier one has been dismissed', () => {
+    const { pushToast, dismissToast } = useEditorStore.getState();
+    pushToast('info', 'Saved');
+    dismissToast(useEditorStore.getState().toasts[0].id);
+    pushToast('info', 'Saved');
+
+    const toasts = useEditorStore.getState().toasts;
+    expect(toasts).toHaveLength(1);
+    expect(toasts[0].issued).toBe(1);
+  });
+});

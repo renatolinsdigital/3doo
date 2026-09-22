@@ -97,9 +97,25 @@ export const createUiSlice: StateCreator<
   busy: false,
 
   pushToast: (variant, message) => {
-    toastCounter += 1;
-    const toast: Toast = { id: `toast-${toastCounter}`, variant, message };
-    set((state) => ({ toasts: [...state.toasts, toast] }));
+    set((state) => {
+      // The same message raised again renews the one already queued. A key
+      // that refuses the same way on every press would otherwise bury the
+      // viewport under copies of one warning.
+      const queued = state.toasts.find(
+        (toast) => toast.variant === variant && toast.message === message,
+      );
+      if (queued) {
+        return {
+          toasts: state.toasts.map((toast) =>
+            toast.id === queued.id ? { ...toast, issued: toast.issued + 1 } : toast,
+          ),
+        };
+      }
+
+      toastCounter += 1;
+      const toast: Toast = { id: `toast-${toastCounter}`, variant, message, issued: 1 };
+      return { toasts: [...state.toasts, toast] };
+    });
   },
 
   dismissToast: (id) =>

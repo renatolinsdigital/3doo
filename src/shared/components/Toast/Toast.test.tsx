@@ -31,4 +31,37 @@ describe('Toast', () => {
 
     expect(onDismiss).toHaveBeenCalledOnce();
   });
+
+  it('keeps its countdown across a rerender with a fresh callback', () => {
+    const onDismiss = vi.fn();
+    const { rerender } = render(
+      <Toast variant="info" message="Saved" duration={3000} onDismiss={() => onDismiss()} />,
+    );
+
+    vi.advanceTimersByTime(2000);
+    rerender(
+      <Toast variant="info" message="Saved" duration={3000} onDismiss={() => onDismiss()} />,
+    );
+    vi.advanceTimersByTime(1000);
+
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
+
+  it('starts the countdown over when the message is raised again', () => {
+    const onDismiss = vi.fn();
+    const { rerender } = render(
+      <Toast variant="info" message="Saved" duration={3000} issued={1} onDismiss={onDismiss} />,
+    );
+
+    vi.advanceTimersByTime(2000);
+    rerender(
+      <Toast variant="info" message="Saved" duration={3000} issued={2} onDismiss={onDismiss} />,
+    );
+
+    vi.advanceTimersByTime(2000);
+    expect(onDismiss).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1000);
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
 });

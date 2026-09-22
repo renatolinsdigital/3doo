@@ -1004,7 +1004,9 @@ describe('editor store', () => {
     store().setObjectTransform(id, { scale: { x: 1, y: 1, z: 1 } });
     store().setObjectTransform(id, { scale: { x: 1e-9, y: 1e-9, z: 1e-9 } });
 
-    expect(store().toasts).toHaveLength(2);
+    // Same wording both times, so it renews the toast instead of stacking one.
+    expect(store().toasts).toHaveLength(1);
+    expect(store().toasts[0].issued).toBe(2);
   });
 
   it('says nothing when a scale the floor never touched goes through', () => {

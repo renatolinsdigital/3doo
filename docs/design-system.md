@@ -84,6 +84,9 @@ Brutalism has to stay usable. These are requirements, not preferences:
   component hides its input for styling, so the focus ring is moved onto the
   visible box.
 - **A persistent hint line** in the status strip during modal operations.
+- **One toast per message.** The same message raised again renews the toast
+  already on screen instead of stacking a copy, and at most four are drawn at
+  once, so a key that refuses on every press cannot bury the viewport.
 - **No animation that obscures a state change.** Motion is limited to toast and
   modal entrances, and `prefers-reduced-motion` disables even those.
 

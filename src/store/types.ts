@@ -251,6 +251,11 @@ export interface Toast {
   id: string;
   variant: 'success' | 'error' | 'warning' | 'info';
   message: string;
+  /**
+   * How many times this exact message has been raised while it was queued.
+   * Raising it again renews the toast rather than stacking a second copy.
+   */
+  issued: number;
 }
 
 export type DialogId = 'export' | 'shortcuts' | 'merge' | 'preferences' | 'history' | null;
