@@ -595,22 +595,6 @@ export const OPERATORS: Record<string, OperatorHandler> = {
 export type OperatorName = keyof typeof OPERATORS;
 
 /**
- * The operators that only move the selection around, touching no geometry.
- *
- * The editor stows its transform handles for these, the same as it does for a
- * click in the viewport: none of them is a request to move anything.
- */
-export const SELECTION_OPERATORS: ReadonlySet<string> = new Set([
-  'selectAll',
-  'deselectAll',
-  'invertSelection',
-  'selectEdgeLoop',
-  'selectFaceLoop',
-  'growSelection',
-  'shrinkSelection',
-]);
-
-/**
  * Runs a named operator. This is the surface the spec's `app.exec(...)`
  * scripting API is built on.
  */

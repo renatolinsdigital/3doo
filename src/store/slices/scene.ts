@@ -15,7 +15,6 @@ import {
   MIN_OBJECT_SIZE,
   PRIMITIVE_DEFAULT_OVERRIDES,
   PRIMITIVE_LABELS,
-  SELECTION_OPERATORS,
   add,
   applyModifier,
   booleanMeshStaged,
@@ -539,12 +538,11 @@ export const createSceneSlice: StateCreator<
   },
 
   /**
-   * Empties the selection in whichever mode is live, and stands the gizmo down.
+   * Empties the selection in whichever mode is live.
    *
-   * Falling back to the select tool is what removes the handles: the viewport
-   * attaches its gizmo to whatever the active tool asks for, so clearing the
-   * selection alone would leave a move or rotate tool armed and the handles
-   * back the moment anything was picked again.
+   * The handles go with it, since the viewport has nothing left to seat them
+   * on, but the tool stays as it was: it is the user's own choice, and picking
+   * something else is not a request to change it.
    *
    * No history entry, unlike Alt+A: Escape is the way out of a state, and
    * filling undo with the times someone reached for it would bury the edits
@@ -561,7 +559,7 @@ export const createSceneSlice: StateCreator<
       set({ selectedObjectIds: [], activeObjectId: null });
     }
 
-    set({ activeTool: 'select', status: 'Deselected all' });
+    set({ status: 'Deselected all' });
   },
 
   /** The object-mode equivalent of "select all" in edit mode. */
@@ -1390,10 +1388,6 @@ export const createSceneSlice: StateCreator<
       get().noteLockedAttempt(object.id);
       return;
     }
-
-    // Nothing about picking more geometry asks for the handles, so they go
-    // away here as they do for a click in the viewport.
-    if (SELECTION_OPERATORS.has(name)) get().stowTransformTool();
 
     const record = options?.record ?? true;
     if (record) get().recordHistory(label ?? name);

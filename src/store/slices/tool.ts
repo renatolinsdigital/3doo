@@ -71,7 +71,6 @@ export interface ToolSlice {
   setSelectShape: (shape: SelectShape) => void;
   cycleSelectShape: () => void;
   setPivot: (pivot: PivotMode) => void;
-  stowTransformTool: () => void;
   setProportional: (patch: Partial<ProportionalSettings>) => void;
   setAutoMerge: (patch: Partial<AutoMergeSettings>) => void;
   beginSlide: () => void;
@@ -141,19 +140,6 @@ export const createToolSlice: StateCreator<
   },
 
   setActiveTool: (activeTool) => set({ activeTool, status: activeTool.toUpperCase() }),
-
-  /**
-   * Puts the handles away, leaving a fresh selection bare.
-   *
-   * Picking geometry is not asking to move it: the gizmo used to land on
-   * whatever was clicked, covering the very vertex being aimed at and taking
-   * the next click for a drag. G, R and S bring it straight back.
-   *
-   * No status of its own: the selection that triggered it has something more
-   * useful to say.
-   */
-  stowTransformTool: () =>
-    set((state) => (state.activeTool === 'select' ? {} : { activeTool: 'select' })),
 
   // Picking a shape is picking up the select tool: the shape only means
   // anything to a selection drag.

@@ -67,16 +67,16 @@ describe('editor store', () => {
     expect(store().status).toBe('Added BOX');
   });
 
-  it('stows the handles when an operator only moves the selection around', () => {
+  it('keeps the active tool when an operator only moves the selection around', () => {
     store().addPrimitive('box');
     store().setMode('edit');
     expect(store().activeTool).toBe('move');
 
     store().exec('selectAll', {}, 'Select all');
 
-    // Picking geometry is not asking to move it: the gizmo would land on the
-    // very thing being aimed at. G, R and S bring it straight back.
-    expect(store().activeTool).toBe('select');
+    // The tool is the user's own choice, and picking more geometry is not a
+    // request to change it. The gizmo simply reseats on the new selection.
+    expect(store().activeTool).toBe('move');
     expect(store().status).toBe('Selected all');
   });
 
@@ -695,7 +695,7 @@ describe('editor store', () => {
     expect(store().activeObjectId).toBeNull();
   });
 
-  it('clears the object selection and stands the gizmo down', () => {
+  it('clears the object selection, leaving the tool picked up', () => {
     store().addPrimitive('box');
     store().addPrimitive('cylinder');
     store().selectAllObjects();
@@ -705,9 +705,9 @@ describe('editor store', () => {
 
     expect(store().selectedObjectIds).toEqual([]);
     expect(store().activeObjectId).toBeNull();
-    // The viewport hangs its gizmo off the active tool, so the tool is what
-    // has to go back for the handles to.
-    expect(store().activeTool).toBe('select');
+    // The handles go away because there is nothing left to hang them off, not
+    // because the tool changed: the next object picked gets them straight back.
+    expect(store().activeTool).toBe('move');
   });
 
   it('clears the mesh selection in edit mode, keeping the object', () => {
@@ -721,7 +721,7 @@ describe('editor store', () => {
 
     expect(object.mesh.selectedVerts()).toEqual([]);
     expect(store().activeObjectId).toBe(object.id);
-    expect(store().activeTool).toBe('select');
+    expect(store().activeTool).toBe('rotate');
   });
 
   it('leaves undo alone when a selection is cleared', () => {

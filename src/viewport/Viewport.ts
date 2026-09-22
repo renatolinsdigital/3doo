@@ -3072,7 +3072,6 @@ export class Viewport {
     if (!result) {
       if (!additive) {
         object.mesh.deselectAll();
-        state.stowTransformTool();
         state.touchMesh(this.previewOnlyNote(view));
       }
       return;
@@ -3084,7 +3083,6 @@ export class Viewport {
       point: result.point,
     });
     object.mesh.flushSelection(state.selectMode);
-    state.stowTransformTool();
     state.touchMesh();
   }
 
@@ -3188,7 +3186,6 @@ export class Viewport {
     if (!additive) object.mesh.deselectAll();
     applySelection(object, state.selectMode, hits, { additive: true, loopSelect: false });
     object.mesh.flushSelection(state.selectMode);
-    state.stowTransformTool();
     state.touchMesh();
   }
 
