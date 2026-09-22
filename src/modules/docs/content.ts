@@ -165,7 +165,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Select from the outliner',
-            'Click a row. Shift+click adds it to the selection and Shift+Ctrl+click drops it out again, the same pair the viewport answers to, so a selection can be built from either side.',
+            'Click a row. Shift+click works the whole run from the active row to the one clicked, the way a list of files does: a row outside the selection takes its run in, a row already in it drops the run back out. Ctrl+click works the one row clicked, the same way round, so a selection can be built from rows that are nowhere near each other. Rows inside a folded folder are not on screen, so a run steps over them.',
           ],
           [
             'The row menu',

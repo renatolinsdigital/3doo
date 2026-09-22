@@ -26,10 +26,11 @@ const DRAG_SLOP = 4;
 /**
  * Keeps a press of the pointer from taking focus, and with it the focus ring.
  *
- * Shift+click is how a selection of several is built, and holding a modifier
- * key puts the browser in keyboard mode: the row it lands on then rings itself
- * as though the keyboard had reached it, and the ring blinks away again as the
- * row turns selected. Tab goes through no press, so keyboard focus still rings.
+ * Shift+click and Ctrl+click are how a selection of several is built, and
+ * holding a modifier key puts the browser in keyboard mode: the row it lands
+ * on then rings itself as though the keyboard had reached it, and the ring
+ * blinks away again as the row turns selected. Tab goes through no press, so
+ * keyboard focus still rings.
  */
 function keepFocusOffPointer(event: ReactMouseEvent<HTMLElement>) {
   event.preventDefault();
@@ -69,6 +70,7 @@ export function Outliner() {
   const toggleVisibility = useEditorStore((state) => state.toggleObjectVisibility);
   const toggleLock = useEditorStore((state) => state.toggleObjectLock);
   const deselectObject = useEditorStore((state) => state.deselectObject);
+  const selectObjects = useEditorStore((state) => state.selectObjects);
   const deleteObjects = useEditorStore((state) => state.deleteSelected);
   const applyTransform = useEditorStore((state) => state.applyTransformToSelected);
   const renameGroup = useEditorStore((state) => state.renameGroup);
@@ -136,6 +138,39 @@ export function Outliner() {
 
   const members = (group: SceneGroup) => objects.filter((object) => object.groupId === group.id);
   const loose = objects.filter((object) => !groups.some((group) => group.id === object.groupId));
+
+  /**
+   * The order the rows read down the panel: each folder's objects under its
+   * title, then the loose ones. A folded folder keeps its objects out of it,
+   * since a run of rows cannot span rows that are not on screen.
+   */
+  const rowOrder = [
+    ...groups.flatMap((group) =>
+      group.collapsed ? [] : members(group).map((object) => object.id),
+    ),
+    ...loose.map((object) => object.id),
+  ];
+
+  /**
+   * Answers a click on an object row.
+   *
+   * A ranged click is Shift's, and works the whole run from the active row to
+   * this one, the way a list of files does: in if the row clicked was outside
+   * the selection, out if it was in it. Ctrl works the one row clicked and the
+   * same way round. The run is named from the active row outwards, so the row
+   * clicked is the last one named and the one left active.
+   */
+  const selectRow = (id: string, intent: SelectIntent, ranged: boolean) => {
+    const from = ranged && activeObjectId ? rowOrder.indexOf(activeObjectId) : -1;
+    const to = rowOrder.indexOf(id);
+    if (from === -1 || to === -1) {
+      setActiveObject(id, intent);
+      return;
+    }
+
+    const run = rowOrder.slice(Math.min(from, to), Math.max(from, to) + 1);
+    selectObjects(from <= to ? run : run.reverse(), intent);
+  };
 
   const menuObject =
     menu?.kind === 'object' ? (objects.find((object) => object.id === menu.id) ?? null) : null;
@@ -280,7 +315,7 @@ export function Outliner() {
       }
       onDragStart={(event) => startDrag(object.id, event)}
       lockAttemptToken={lockedAttempt?.objectId === object.id ? lockedAttempt.token : null}
-      onSelect={(intent) => setActiveObject(object.id, intent)}
+      onSelect={(intent, ranged) => selectRow(object.id, intent, ranged)}
       onStartRename={() => setEditing({ kind: 'object', id: object.id })}
       onFinishRename={(name) => {
         renameObject(object.id, name);
@@ -500,7 +535,8 @@ interface OutlinerRowProps {
   onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
   /** Changes each time an edit is denied because this object is locked; drives the lock icon's tremble. */
   lockAttemptToken: number | null;
-  onSelect: (intent: SelectIntent) => void;
+  /** Ranged asks for the run from the active row to this one, rather than this row alone. */
+  onSelect: (intent: SelectIntent, ranged: boolean) => void;
   onStartRename: () => void;
   onFinishRename: (name: string) => void;
   onCancelRename: () => void;
@@ -529,7 +565,7 @@ function OutlinerRow({
   onOpenMenu,
 }: OutlinerRowProps) {
   const nameTooltip = useTooltipTrigger(
-    'Click to select, Shift+click to add, Shift+Ctrl+click to drop from the selection, double-click to rename, drag to reorder or to drop into a folder, right-click for more',
+    'Click to select, Shift+click to take the whole run from the active row to this one in or out of the selection, Ctrl+click for this row alone, double-click to rename, drag to reorder or to drop into a folder, right-click for more',
   );
   const visibilityTooltip = useTooltipTrigger(
     object.visible ? 'Hide this object in the viewport' : 'Show this object in the viewport',
@@ -593,11 +629,15 @@ function OutlinerRow({
           className="outliner__name"
           aria-current={isActive ? 'true' : undefined}
           onMouseDown={keepFocusOffPointer}
-          onClick={(event) =>
-            onSelect(
-              event.shiftKey ? (event.ctrlKey || event.metaKey ? 'subtract' : 'add') : 'replace',
-            )
-          }
+          onClick={(event) => {
+            // Which way a modified click pulls is the row's own state: a row
+            // outside the selection takes its run in, one already in it drops
+            // the run back out.
+            const intent = isSelected ? 'subtract' : 'add';
+            if (event.ctrlKey || event.metaKey) onSelect(intent, false);
+            else if (event.shiftKey) onSelect(intent, true);
+            else onSelect('replace', false);
+          }}
           onDoubleClick={onStartRename}
           {...nameTooltip}
         >

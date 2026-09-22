@@ -63,6 +63,122 @@ describe('Outliner', () => {
     expect(state.activeObjectId).toBe(box?.id);
   });
 
+  describe('building a selection from the rows', () => {
+    /** Four loose rows, in the order the outliner reads them down the panel. */
+    function rows() {
+      const store = useEditorStore.getState();
+      for (const kind of ['cube', 'cylinder', 'uvSphere', 'cone'] as const)
+        store.addPrimitive(kind);
+      render(<Outliner />);
+      return useEditorStore.getState().objects;
+    }
+
+    const shiftClick = (name: string) =>
+      fireEvent.click(screen.getByRole('button', { name }), { shiftKey: true });
+
+    const ctrlClick = (name: string) =>
+      fireEvent.click(screen.getByRole('button', { name }), { ctrlKey: true });
+
+    it('takes in every row between the active one and the one clicked', async () => {
+      const [box, cylinder, sphere] = rows();
+
+      await userEvent.click(screen.getByRole('button', { name: 'CUBE' }));
+      shiftClick('UV SPHERE');
+
+      const state = useEditorStore.getState();
+      expect(state.selectedObjectIds).toEqual([box.id, cylinder.id, sphere.id]);
+      expect(state.activeObjectId).toBe(sphere.id);
+    });
+
+    it('runs the same way upwards, and leaves the row clicked active', async () => {
+      const [box, cylinder, sphere] = rows();
+
+      await userEvent.click(screen.getByRole('button', { name: 'UV SPHERE' }));
+      shiftClick('CUBE');
+
+      const state = useEditorStore.getState();
+      expect([...state.selectedObjectIds].sort()).toEqual([box.id, cylinder.id, sphere.id].sort());
+      expect(state.activeObjectId).toBe(box.id);
+    });
+
+    it('keeps what was already selected', async () => {
+      const [box, cylinder, sphere, cone] = rows();
+
+      await userEvent.click(screen.getByRole('button', { name: 'CUBE' }));
+      shiftClick('CYLINDER');
+      shiftClick('CONE');
+
+      expect([...useEditorStore.getState().selectedObjectIds].sort()).toEqual(
+        [box.id, cylinder.id, sphere.id, cone.id].sort(),
+      );
+    });
+
+    it('drops the whole run when the row clicked is already selected', async () => {
+      const [box] = rows();
+
+      await userEvent.click(screen.getByRole('button', { name: 'CUBE' }));
+      shiftClick('CONE');
+      // The cylinder is in the selection, so the run back to it comes out
+      // again, the cone and the sphere between them included.
+      shiftClick('CYLINDER');
+
+      const state = useEditorStore.getState();
+      expect(state.selectedObjectIds).toEqual([box.id]);
+      expect(state.activeObjectId).toBe(box.id);
+    });
+
+    it('adds one row at a time on Ctrl, leaving the rows between alone', async () => {
+      const [box, , , cone] = rows();
+
+      await userEvent.click(screen.getByRole('button', { name: 'CUBE' }));
+      ctrlClick('CONE');
+
+      const state = useEditorStore.getState();
+      expect(state.selectedObjectIds).toEqual([box.id, cone.id]);
+      expect(state.activeObjectId).toBe(cone.id);
+    });
+
+    it('drops one row at a time on Ctrl', async () => {
+      const [, cylinder, sphere] = rows();
+
+      await userEvent.click(screen.getByRole('button', { name: 'CUBE' }));
+      shiftClick('UV SPHERE');
+      ctrlClick('CUBE');
+
+      const state = useEditorStore.getState();
+      expect(state.selectedObjectIds).toEqual([cylinder.id, sphere.id]);
+      expect(state.activeObjectId).toBe(sphere.id);
+    });
+
+    it('leaves a survivor active when the run drops the active row', async () => {
+      const [box] = rows();
+
+      await userEvent.click(screen.getByRole('button', { name: 'CUBE' }));
+      shiftClick('CYLINDER');
+      shiftClick('CYLINDER');
+
+      const state = useEditorStore.getState();
+      expect(state.selectedObjectIds).toEqual([box.id]);
+      expect(state.activeObjectId).toBe(box.id);
+    });
+
+    it('steps over the rows a folded folder is hiding', async () => {
+      const [box, cylinder, sphere, cone] = rows();
+      act(() => {
+        useEditorStore.getState().selectObjects([cylinder.id, sphere.id]);
+        useEditorStore.getState().groupSelected();
+      });
+
+      // The folder holds the two middle rows and is folded shut, so the run
+      // from the box to the cone has nothing between them to take in.
+      await userEvent.click(screen.getByRole('button', { name: 'Collapse GROUP' }));
+      await userEvent.click(screen.getByRole('button', { name: 'CUBE' }));
+      shiftClick('CONE');
+
+      expect(useEditorStore.getState().selectedObjectIds).toEqual([box.id, cone.id]);
+    });
+  });
+
   it('leaves no focus ring on a row picked with the pointer, and keeps it for the keyboard', async () => {
     useEditorStore.getState().addPrimitive('cube');
     render(<Outliner />);
