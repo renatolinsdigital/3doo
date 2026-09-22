@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { activeObject, useEditorStore } from '@store/index';
 import type { PivotMode, SelectMode, ShadingMode } from '@store/types';
 
-import { matchBinding } from '../keymap/keymap';
+import { matchBinding, reloadShortcut } from '../keymap/keymap';
 
 import { useProjectFiles } from './useProjectFiles';
 
@@ -49,6 +49,25 @@ export function useKeymap(): void {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
+      const state = useEditorStore.getState();
+
+      // Checked ahead of the typing guard, and ahead of everything else: a
+      // refresh takes the scene back to the last autosave tick whatever the
+      // keyboard focus was on at the time.
+      const reload = reloadShortcut(event);
+      if (reload) {
+        event.preventDefault();
+        if (reload === 'ask') {
+          state.openDialog('reload');
+          return;
+        }
+        // Ctrl+R is the loop cut, which edit mode runs from the keymap below.
+        // Object mode has no loop to cut, so the key stops here rather than
+        // asking about a reload nobody meant: this is the browser shortcut
+        // the editor has taken, not a request to leave.
+        if (state.mode === 'object') return;
+      }
+
       // Never steal keys from a field the user is typing in.
       if (isTypingTarget(event.target as HTMLElement | null)) return;
 
@@ -60,7 +79,6 @@ export function useKeymap(): void {
         event.preventDefault();
       }
 
-      const state = useEditorStore.getState();
       // A live modal transform owns the keyboard: the viewport listens for its
       // own confirm, cancel and axis keys, and the ordinary bindings would fire
       // operations in the middle of it.

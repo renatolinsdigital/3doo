@@ -9,8 +9,9 @@ export interface NewProjectDialogProps {
 }
 
 /**
- * The one confirmation in the editor, because it is the one action undo cannot
- * take back.
+ * One of the two confirmations in the editor, because this is the one action
+ * undo cannot take back. The other is the reload prompt, which is about losing
+ * the work since the last autosave rather than the autosave itself.
  *
  * The autosave keeps a single project, the one being worked on, so starting a
  * new one is also what discards the old one from this browser. Anyone who

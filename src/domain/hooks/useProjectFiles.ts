@@ -20,6 +20,7 @@ import {
   writeAsset,
 } from '../services/assets';
 import {
+  type SaveResult,
   IMAGE_FILE,
   MESH_FILE,
   PROJECT_FILE,
@@ -54,7 +55,10 @@ export function useProjectFiles() {
     state.pushToast('info', 'Started a new project');
   }, []);
 
-  const saveProject = useCallback(async () => {
+  // Reports where the save got to rather than only announcing it, because the
+  // reload prompt has to know whether the file was actually written before it
+  // throws the tab away.
+  const saveProject = useCallback(async (): Promise<SaveResult> => {
     const state = useEditorStore.getState();
     const filename = `${state.projectName || 'untitled'}${PROJECT_FILE.extension}`;
 
@@ -68,6 +72,7 @@ export function useProjectFiles() {
 
     const toast = saveResultToast(result);
     if (toast) state.pushToast(toast.variant, toast.message);
+    return result;
   }, []);
 
   const openProject = useCallback(async () => {

@@ -13,6 +13,7 @@ export { LoopOperationsPanel } from './LoopOperationsPanel/LoopOperationsPanel';
 export { TopologyPanel } from './TopologyPanel/TopologyPanel';
 export { MergeDialog } from './MergeDialog/MergeDialog';
 export { NewProjectDialog } from './NewProjectDialog/NewProjectDialog';
+export { ReloadDialog } from './ReloadDialog/ReloadDialog';
 export { ExportDialog } from './ExportDialog/ExportDialog';
 export { HistoryDialog } from './HistoryDialog/HistoryDialog';
 export { PreferencesDialog } from './PreferencesDialog/PreferencesDialog';

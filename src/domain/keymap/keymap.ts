@@ -476,3 +476,26 @@ export function matchBinding(
 
   return candidates[0] ?? null;
 }
+
+/**
+ * Which of the browser's reload keys a keystroke is, or null when it is none.
+ *
+ * Every browser reloads on F5 and on Ctrl+R, takes Shift or Ctrl in front of
+ * either one as the reload that skips the cache, and reads Cmd for Ctrl on a
+ * Mac. None of them may reach the browser: a reload puts the scene back to
+ * whatever the last autosave tick wrote, and the work since then is gone.
+ *
+ * `ask` is a reload the user meant, so it is worth offering the save first.
+ * `loopCut` is Ctrl+R, which the keymap has taken for the loop cut, so it is
+ * only a reload as far as the browser is concerned.
+ *
+ * The physical key counts alongside the character for the Ctrl+R pair: a
+ * layout that puts something other than `r` there, Cyrillic among them, still
+ * reloads on that key because the browser reads the position.
+ */
+export function reloadShortcut(event: KeyboardEvent): 'ask' | 'loopCut' | null {
+  if (event.key === 'F5') return 'ask';
+  if (!(event.ctrlKey || event.metaKey)) return null;
+  if (event.key.toLowerCase() !== 'r' && event.code !== 'KeyR') return null;
+  return event.shiftKey ? 'ask' : 'loopCut';
+}

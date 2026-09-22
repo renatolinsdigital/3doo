@@ -348,6 +348,64 @@ describe('App shell', () => {
     expect(useEditorStore.getState().objects[0].mesh.selectedFaces()).toHaveLength(6);
   });
 
+  describe('the browser reload keys', () => {
+    const addCube = async () => {
+      const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
+      await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
+    };
+
+    it('answers F5 with the save offer rather than letting the tab go', async () => {
+      render(<App />);
+      await addCube();
+
+      // false means preventDefault() ran, so the browser never saw the key.
+      expect(fireEvent.keyDown(window, { key: 'F5' })).toBe(false);
+      expect(screen.getByRole('dialog', { name: 'RELOAD THE PAGE' })).toBeInTheDocument();
+    });
+
+    it('catches the hard reload too, and F5 from inside a text field', async () => {
+      render(<App />);
+      await addCube();
+
+      expect(fireEvent.keyDown(window, { key: 'r', ctrlKey: true, shiftKey: true })).toBe(false);
+      expect(useEditorStore.getState().dialog).toBe('reload');
+
+      act(() => useEditorStore.getState().closeDialog());
+
+      // A refresh is a refresh whatever had focus: the guard that keeps
+      // shortcuts out of typing fields must not hand this one to the browser.
+      const field = screen.getByLabelText('Project name');
+      expect(fireEvent.keyDown(field, { key: 'F5' })).toBe(false);
+      expect(useEditorStore.getState().dialog).toBe('reload');
+    });
+
+    it('swallows Ctrl+R in object mode, where there is no loop to cut', async () => {
+      render(<App />);
+      await addCube();
+      const before = useEditorStore.getState().objects[0].mesh.verts.size;
+
+      expect(fireEvent.keyDown(window, { key: 'r', ctrlKey: true })).toBe(false);
+
+      // Nothing happened, and nothing was asked: the editor has taken the key
+      // from the browser, and object mode has nothing to spend it on.
+      expect(useEditorStore.getState().dialog).toBeNull();
+      expect(useEditorStore.getState().objects[0].mesh.verts.size).toBe(before);
+    });
+
+    it('still cuts a loop with Ctrl+R in edit mode', async () => {
+      render(<App />);
+      await addCube();
+      await userEvent.click(screen.getByRole('button', { name: 'EDIT' }));
+      act(() => useEditorStore.getState().exec('selectAll', {}, 'Select all'));
+      const before = useEditorStore.getState().objects[0].mesh.verts.size;
+
+      fireEvent.keyDown(window, { key: 'r', ctrlKey: true });
+
+      expect(useEditorStore.getState().objects[0].mesh.verts.size).toBeGreaterThan(before);
+      expect(useEditorStore.getState().dialog).toBeNull();
+    });
+  });
+
   it('treats Ctrl+A as a no-op that only suppresses the browser default', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });

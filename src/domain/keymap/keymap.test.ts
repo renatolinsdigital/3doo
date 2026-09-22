@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_KEYMAP, formatBinding, matchBinding } from './keymap';
+import { DEFAULT_KEYMAP, formatBinding, matchBinding, reloadShortcut } from './keymap';
 
 function keyEvent(key: string, modifiers: Partial<KeyboardEventInit> = {}): KeyboardEvent {
   return new KeyboardEvent('keydown', { key, ...modifiers });
@@ -348,5 +348,42 @@ describe('the camera on the keyboard', () => {
     // That is the keyboard doing it rather than the keymap, and it is the
     // reason the camera sits behind Shift rather than on the bare numpad.
     expect(plain(7)?.id).toBe('frameAll');
+  });
+});
+
+describe('reload shortcuts', () => {
+  function press(key: string, modifiers: Partial<KeyboardEventInit> = {}) {
+    return reloadShortcut(new KeyboardEvent('keydown', { key, ...modifiers }));
+  }
+
+  it('catches F5 whatever is held down with it', () => {
+    // Chrome hard-reloads on Ctrl+F5 and on Ctrl+Shift+F5, Firefox on Ctrl+F5,
+    // Safari on Shift+F5. Every one of them is the same key and the same want.
+    expect(press('F5')).toBe('ask');
+    expect(press('F5', { ctrlKey: true })).toBe('ask');
+    expect(press('F5', { shiftKey: true })).toBe('ask');
+    expect(press('F5', { ctrlKey: true, shiftKey: true })).toBe('ask');
+  });
+
+  it('reads the cache-skipping reload as a reload the user meant', () => {
+    expect(press('r', { ctrlKey: true, shiftKey: true })).toBe('ask');
+    // Cmd is what a Mac holds for it.
+    expect(press('r', { metaKey: true, shiftKey: true })).toBe('ask');
+  });
+
+  it('keeps Ctrl+R apart, since the loop cut has it', () => {
+    expect(press('r', { ctrlKey: true })).toBe('loopCut');
+    expect(press('r', { metaKey: true })).toBe('loopCut');
+    // Held on the physical key too, so a layout with another letter printed
+    // there still hands the browser no reload.
+    const cyrillic = new KeyboardEvent('keydown', { key: 'к', code: 'KeyR', ctrlKey: true });
+    expect(reloadShortcut(cyrillic)).toBe('loopCut');
+  });
+
+  it('leaves every other keystroke alone', () => {
+    expect(press('r')).toBeNull();
+    expect(press('s', { ctrlKey: true })).toBeNull();
+    expect(press('F4')).toBeNull();
+    expect(press('F5'.toLowerCase())).toBeNull();
   });
 });

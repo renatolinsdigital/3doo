@@ -19,6 +19,7 @@ import {
   Outliner,
   PreferencesDialog,
   PropertiesPanel,
+  ReloadDialog,
   ShortcutOverlay,
   StatusBar,
   ToolRail,
@@ -52,7 +53,7 @@ function isTextEntry(target: EventTarget | null): boolean {
 export function ModelingModule() {
   useKeymap();
   useAutosave();
-  const { newProject } = useProjectFiles();
+  const { newProject, saveProject } = useProjectFiles();
 
   const mode = useEditorStore((state) => state.mode);
   const panels = useEditorStore((state) => state.panels);
@@ -120,6 +121,7 @@ export function ModelingModule() {
       <MergeDialog />
       <NewProjectDialog onConfirm={newProject} />
       <PreferencesDialog />
+      <ReloadDialog onSave={saveProject} />
       <ShortcutOverlay />
       <ToastHost />
       <TooltipHost bounds={mainRef} />

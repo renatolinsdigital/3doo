@@ -166,16 +166,48 @@ in a second `set`, as `resetScene` does.
 The autosave holds the project being worked on, and only that one. There is no
 list of past sessions and no way back to one.
 
-That is why FILE > NEW asks before it runs, which is the only confirmation in
-the editor. Undo cannot reach back past a reset, and the reset also clears the
-browser's copy of the old project along with its images. The dialog names the
-project and its object count, says whether autosave is even on, and points at
-Ctrl+S for anyone who wanted to keep it.
+That is why FILE > NEW asks before it runs, one of the two confirmations in the
+editor, the reload prompt below being the other. Undo cannot reach back past a
+reset, and the reset also clears the browser's copy of the old project along
+with its images. The dialog names the project and its object count, says whether
+autosave is even on, and points at Ctrl+S for anyone who wanted to keep it.
 
 It only asks when there is an answer worth giving. On a scene nobody has
 touched, nothing is stored for a new project to throw away, so NEW simply runs.
 A confirmation about losing nothing is one people learn to click straight past,
 which is how a real warning gets missed later.
+
+## Reloading the page
+
+A browser reload throws the tab away and builds it again from the autosave, so
+everything since the last tick goes with it. The browser does not ask, and
+`beforeunload` can only offer its own wording, so the keyboard routes into it
+are caught instead: `reloadShortcut` in the keymap names them, and `useKeymap`
+answers them before anything else in the handler, including the guard that
+keeps shortcuts out of text fields. A refresh is a refresh whatever had focus.
+
+There are two answers, because there are two kinds of key.
+
+**F5, and the hard reloads,** meaning F5 with anything held down with it and
+Ctrl+Shift+R, are a reload the user asked for. They open the RELOAD THE PAGE
+dialog, which offers the `.3doo` first. Saving and reloading waits for the file
+to be written before it reloads, so a dismissed picker leaves the dialog
+standing rather than reloading over a save that never happened. Reloading
+without saving goes straight to `location.reload()`, which comes back on the
+autosave.
+
+**Ctrl+R is the loop cut**, so it never reaches the browser at all. In edit mode
+it falls through to the keymap and cuts a loop. In object mode there is no loop
+to cut and nothing happens: it is a key the editor has taken, not a request to
+leave, and answering it with a dialog about reloading would be answering a
+question nobody asked.
+
+The physical key counts alongside the character for the Ctrl+R pair. A layout
+with another letter printed on that key still reloads on it, because the browser
+reads the position.
+
+None of this covers the reload button, Ctrl+W, or the address bar. No page can
+intercept those, which is what the autosave is for.
 
 ## What to reach for
 

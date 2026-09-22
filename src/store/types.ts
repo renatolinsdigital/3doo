@@ -359,7 +359,14 @@ export interface Toast {
 }
 
 export type DialogId =
-  'export' | 'shortcuts' | 'merge' | 'preferences' | 'history' | 'newProject' | null;
+  | 'export'
+  | 'shortcuts'
+  | 'merge'
+  | 'preferences'
+  | 'history'
+  | 'newProject'
+  | 'reload'
+  | null;
 
 export interface HintState {
   text: string;
