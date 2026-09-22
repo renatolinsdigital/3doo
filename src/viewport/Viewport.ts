@@ -44,7 +44,13 @@ import {
   snapStepFor,
   useEditorStore,
 } from '@store/index';
-import type { CursorSnapKind, CursorSnapTargets, SceneObject, ViewLostReason } from '@store/types';
+import type {
+  CursorSnapKind,
+  CursorSnapTargets,
+  SceneObject,
+  SelectIntent,
+  ViewLostReason,
+} from '@store/types';
 
 import { CameraController, viewLostReason } from './CameraController';
 import { type SnapAmounts, ViewportGrid, snapAmounts, snapTo } from './grid';
@@ -485,10 +491,12 @@ export class Viewport {
   private dragCurrent: THREE.Vector2 | null = null;
   /** Every point a lasso drag has passed through, in canvas pixels. */
   private dragPath: THREE.Vector2[] = [];
-  /** Whether Shift was down when the gesture began: what it takes is added, not swapped in. */
-  private dragAdditive = false;
+  /** What the running gesture does with what it picks, from the keys held as it began. */
+  private dragIntent: SelectIntent = 'replace';
   /** Whether Shift is down now, which is what holds a region drag's oval round. */
   private dragUniform = false;
+  /** Shift, Ctrl and Alt as they stand, which is what the pointer is drawn from. */
+  private readonly heldModifiers = { shift: false, ctrl: false, alt: false };
   /** The overlay's SVG shapes, built on first use. */
   private shapeLayer: MarqueeLayer | null = null;
   private slideDrag: SlideDrag | null = null;
@@ -790,6 +798,9 @@ export class Viewport {
     this.canvas.addEventListener('contextmenu', this.handleContextMenu);
     this.canvas.addEventListener('pointerleave', this.handlePointerLeave);
     this.canvas.addEventListener('lostpointercapture', this.handleLostPointerCapture);
+    window.addEventListener('keydown', this.handleModifierKey);
+    window.addEventListener('keyup', this.handleModifierKey);
+    window.addEventListener('blur', this.handleWindowBlur);
 
     this.gizmo.addEventListener('dragging-changed', this.handleGizmoDragging);
     this.gizmo.addEventListener('objectChange', this.handleGizmoChange);
@@ -2597,6 +2608,7 @@ export class Viewport {
   private handlePointerDown = (event: PointerEvent): void => {
     this.pointerPixels = this.pointerPosition(event);
     this.pointerInside = true;
+    this.readModifiers(event);
     if (this.gizmo.dragging) return;
     if (this.controls.onPointerDown(event)) return;
     if (event.button !== 0) return;
@@ -2605,18 +2617,19 @@ export class Viewport {
     this.dragCurrent = this.dragStart.clone();
     this.dragPath = [this.dragStart.clone()];
     // Shift means two things at once, so they are read at two different
-    // moments: whether it was down when the gesture began decides whether what
-    // the gesture takes is added to the selection, and whether it is down as
-    // the pointer moves decides whether an oval is held round. Holding it
+    // moments: the keys down when the gesture began decide whether what it
+    // takes joins the selection or leaves it, and whether Shift is down as the
+    // pointer moves decides whether an oval is held round. Holding it
     // throughout asks for both, and letting go mid-drag frees the shape without
     // turning the addition back into a replacement.
-    this.dragAdditive = event.shiftKey;
+    this.dragIntent = selectIntent(event);
     this.dragUniform = event.shiftKey;
   };
 
   private handlePointerMove = (event: PointerEvent): void => {
     this.pointerPixels = this.pointerPosition(event);
     this.pointerInside = true;
+    this.readModifiers(event);
     // A scale drag is measured from the pointer itself, so it is driven here
     // rather than from three's change event: that fires before this handler
     // for the same move, and would always be working off the previous position.
@@ -2672,7 +2685,7 @@ export class Viewport {
     const start = this.dragStart;
     const end = this.dragCurrent;
     const path = this.dragPath;
-    const additive = this.dragAdditive;
+    const intent = this.dragIntent;
     const uniform = event.shiftKey;
     // Cleared before either way out below: a drag the camera took over halfway
     // through never reaches the selection, and used to leave its marquee on
@@ -2698,14 +2711,16 @@ export class Viewport {
       const marquee = marqueeShape(shape, start, end, points, uniform);
 
       if (useEditorStore.getState().mode === 'object') {
-        this.objectRegionSelect(region, marquee, additive);
+        this.objectRegionSelect(region, marquee, intent);
       } else {
-        this.regionSelect(region, marquee, additive);
+        this.regionSelect(region, marquee, intent);
       }
       return;
     }
 
-    this.clickSelect(end, additive, event.altKey);
+    // Alt names a loop whichever way the pick is pulling, so Shift+Alt stacks
+    // one onto the selection and Shift+Ctrl+Alt takes a whole one back out.
+    this.clickSelect(end, intent, event.altKey);
   };
 
   /**
@@ -2943,6 +2958,31 @@ export class Viewport {
     this.clearHoverVert();
   };
 
+  /**
+   * Keeps Shift and Ctrl current, so the pointer can say what a click would do
+   * before it is made.
+   *
+   * Read from the keyboard as well as from the mouse because the keys are
+   * usually pressed with the pointer already resting on what is being aimed
+   * at, and a press on its own fires no pointer event to read them from.
+   */
+  private handleModifierKey = (event: KeyboardEvent): void => {
+    this.readModifiers(event);
+  };
+
+  /** A window that loses focus never sees the keyup, and the marks would stick. */
+  private handleWindowBlur = (): void => {
+    this.heldModifiers.shift = false;
+    this.heldModifiers.ctrl = false;
+    this.heldModifiers.alt = false;
+  };
+
+  private readModifiers(event: SelectModifiers & { altKey: boolean }): void {
+    this.heldModifiers.shift = event.shiftKey;
+    this.heldModifiers.ctrl = event.ctrlKey || event.metaKey;
+    this.heldModifiers.alt = event.altKey;
+  }
+
   private pointerPosition(event: PointerEvent): THREE.Vector2 {
     const rect = this.canvas.getBoundingClientRect();
     return new THREE.Vector2(event.clientX - rect.left, event.clientY - rect.top);
@@ -3068,7 +3108,7 @@ export class Viewport {
     this.raycaster.setFromCamera(this.ndcPosition(pointer), this.camera);
   }
 
-  private clickSelect(pointer: THREE.Vector2, additive: boolean, loopSelect: boolean): void {
+  private clickSelect(pointer: THREE.Vector2, intent: SelectIntent, loopSelect: boolean): void {
     const state = useEditorStore.getState();
     this.updateRaycaster(pointer);
 
@@ -3080,7 +3120,15 @@ export class Viewport {
 
       const hit = this.raycaster.intersectObjects(targets, false)[0];
       const objectId = hit?.object.userData.objectId;
-      state.setActiveObject(typeof objectId === 'string' ? objectId : null, additive);
+      if (typeof objectId !== 'string') {
+        // A plain click on empty space clears the selection. One that was
+        // asking to add or take away found nothing to work on, so it leaves
+        // what is selected alone rather than emptying it by accident.
+        if (intent === 'replace') state.setActiveObject(null);
+        return;
+      }
+
+      state.setActiveObject(objectId, intent);
       return;
     }
 
@@ -3100,7 +3148,7 @@ export class Viewport {
     );
 
     if (!result) {
-      if (!additive) {
+      if (intent === 'replace') {
         object.mesh.deselectAll();
         state.touchMesh(this.previewOnlyNote(view));
       }
@@ -3108,7 +3156,7 @@ export class Viewport {
     }
 
     applySelection(object, state.selectMode, [result.elementId], {
-      additive,
+      intent,
       loopSelect,
       point: result.point,
     });
@@ -3140,7 +3188,7 @@ export class Viewport {
    * The ray covers the one case that geometry cannot: a region small enough to
    * sit inside a single face, touching an object without reaching an edge of it.
    */
-  private objectRegionSelect(region: Region, marquee: Marquee, additive: boolean): void {
+  private objectRegionSelect(region: Region, marquee: Marquee, intent: SelectIntent): void {
     const state = useEditorStore.getState();
     const entries = state.objects
       .filter((object) => object.visible)
@@ -3162,7 +3210,7 @@ export class Viewport {
       if (typeof objectId === 'string' && !hits.includes(objectId)) hits.push(objectId);
     }
 
-    state.selectObjects(hits, additive);
+    state.selectObjects(hits, intent);
   }
 
   /**
@@ -3173,7 +3221,7 @@ export class Viewport {
    * cannot, a region small enough to sit inside a single face without reaching
    * any side of it.
    */
-  private regionSelect(region: Region, marquee: Marquee, additive: boolean): void {
+  private regionSelect(region: Region, marquee: Marquee, intent: SelectIntent): void {
     const state = useEditorStore.getState();
     const object = activeObject(state);
     const view = object ? this.views.get(object.id) : undefined;
@@ -3213,8 +3261,7 @@ export class Viewport {
       }
     }
 
-    if (!additive) object.mesh.deselectAll();
-    applySelection(object, state.selectMode, hits, { additive: true, loopSelect: false });
+    applySelection(object, state.selectMode, hits, { intent, loopSelect: false });
     object.mesh.flushSelection(state.selectMode);
     state.touchMesh();
   }
@@ -3357,11 +3404,59 @@ export class Viewport {
     // A crosshair reads as "measuring", which is what the scale line is doing:
     // the ordinary arrow gives no hint that dragging now changes size rather
     // than orbiting or picking something.
-    const cursor = rotating ? ROTATE_CURSOR : this.modalGuideUp() ? 'crosshair' : '';
+    const cursor = rotating
+      ? ROTATE_CURSOR
+      : this.modalGuideUp()
+        ? 'crosshair'
+        : this.selectionCursor();
     if (cursor === this.appliedCursor) return;
 
     this.appliedCursor = cursor;
     this.canvas.style.cursor = cursor;
+  }
+
+  /**
+   * The marks the pointer wears for the pick the held keys would make.
+   *
+   * What a click is about to do is settled before it is made, and nothing else
+   * on screen says what: the same click adds or takes away, and takes one
+   * element or a whole loop, depending on which keys are down. So the answer
+   * belongs on the pointer. Worn under every tool, not the select one alone,
+   * because a click picks things up whichever tool is in hand: move, rotate
+   * and scale all leave Shift+click building a selection for the gizmo to work
+   * on, and that is the moment the marks are most needed.
+   */
+  private selectionCursor(): string {
+    // Mid-drag the gizmo is moving something rather than picking it, and Shift
+    // is being held for what it means there instead.
+    if (this.gizmoDragging) return '';
+
+    const { shift, ctrl, alt } = this.heldModifiers;
+    const loop = alt && this.loopUnderAlt();
+
+    if (!shift) return loop ? SELECT_LOOP_CURSOR : '';
+    if (ctrl) return loop ? SELECT_SUBTRACT_LOOP_CURSOR : SELECT_SUBTRACT_CURSOR;
+    return loop ? SELECT_ADD_LOOP_CURSOR : SELECT_ADD_CURSOR;
+  }
+
+  /**
+   * Whether Alt would name a loop where the pointer is standing.
+   *
+   * Only edge and face select have loops to name: a vertex click reads Alt as
+   * nothing at all, and object mode has no elements to run one through. Under
+   * the Maya preset Alt+drag is the orbit, so the click never reaches the
+   * selection and the ring would be promising something that cannot happen.
+   *
+   * What the mesh holds is not asked. A ring that came and went as the pointer
+   * crossed a triangle would cost a pick every frame to draw, and would read
+   * as flicker rather than as an answer; where there is no loop to take, the
+   * click falls back to the one element under it, which is no worse than a
+   * plain click would have been.
+   */
+  private loopUnderAlt(): boolean {
+    if (this.controls.preset === 'maya') return false;
+    const state = useEditorStore.getState();
+    return state.mode === 'edit' && state.selectMode !== 'vertex';
   }
 
   /**
@@ -3475,6 +3570,9 @@ export class Viewport {
     this.canvas.removeEventListener('contextmenu', this.handleContextMenu);
     this.canvas.removeEventListener('pointerleave', this.handlePointerLeave);
     this.canvas.removeEventListener('lostpointercapture', this.handleLostPointerCapture);
+    window.removeEventListener('keydown', this.handleModifierKey);
+    window.removeEventListener('keyup', this.handleModifierKey);
+    window.removeEventListener('blur', this.handleWindowBlur);
 
     for (const view of this.views.values()) view.dispose();
     this.views.clear();
@@ -3520,41 +3618,34 @@ function applySelection(
   object: SceneObject,
   mode: SelectMode,
   ids: readonly number[],
-  options: { additive: boolean; loopSelect: boolean; point?: Vec3 },
+  options: { intent: SelectIntent; loopSelect: boolean; point?: Vec3 },
 ): void {
   const mesh = object.mesh;
-  // Alt alone replaces the selection with the loop, Shift adds to it: Blender's
-  // reading, and what keeps repeated Shift+Alt clicks stacking loops up.
-  if (!options.additive) mesh.deselectAll();
+  // A replacing pick starts from an empty selection; ADD and SUBTRACT both
+  // work on whatever is already there.
+  if (options.intent === 'replace') mesh.deselectAll();
+  const selected = options.intent !== 'subtract';
 
   for (const id of ids) {
     if (mode === 'vertex') {
       const vert = mesh.verts.get(id);
       if (!vert) continue;
-      if (options.additive && vert.selected) {
-        vert.selected = false;
-      } else {
-        mesh.selectVert(vert);
-      }
+      // Selecting stamps the click order, which is what the operators that
+      // care about the order a selection was made in read.
+      if (selected) mesh.selectVert(vert);
+      else vert.selected = false;
     } else if (mode === 'edge') {
       const edge = mesh.edges.get(id);
       if (!edge) continue;
-      if (options.loopSelect) {
-        for (const member of selectEdgeLoop(mesh, edge)) member.selected = true;
-      } else {
-        edge.selected = options.additive ? !edge.selected : true;
-      }
+      const members = options.loopSelect ? selectEdgeLoop(mesh, edge) : [edge];
+      for (const member of members) member.selected = selected;
     } else {
       const face = mesh.faces.get(id);
       if (!face) continue;
       const loop = options.loopSelect ? faceLoopAtClick(mesh, face, options.point) : [];
       // Empty at a triangle or an n-gon: nothing to run a loop along, so the
-      // click falls back to picking the one face.
-      if (loop.length > 0) {
-        for (const member of loop) member.selected = true;
-      } else {
-        face.selected = options.additive ? !face.selected : true;
-      }
+      // click falls back to the one face.
+      for (const member of loop.length > 0 ? loop : [face]) member.selected = selected;
     }
   }
 }
@@ -3695,6 +3786,75 @@ const ROTATE_CURSOR_SVG = [
 export const ROTATE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
   ROTATE_CURSOR_SVG,
 )}") 12 12, crosshair`;
+
+/** The ordinary arrow, drawn so badges can be hung off its tail. */
+const POINTER_ARROW =
+  `<path d='M3.5 2 L3.5 16.8 L7.2 13.4 L9.6 18.6 L12.2 17.4 L9.9 12.4 L14.8 12 Z' ` +
+  `fill='#f4f1ea' stroke='#0b0b0b' stroke-width='1.4' stroke-linejoin='round'/>`;
+
+/** A ring, for the whole loop an Alt+click takes rather than the one element. */
+const LOOP_RING = `<ellipse cx='23' cy='7.5' rx='5' ry='3.4'/>`;
+
+const PLUS_SIGN = `<path d='M23 19v8'/><path d='M19 23h8'/>`;
+const MINUS_SIGN = `<path d='M19 23h8'/>`;
+
+/**
+ * The arrow with its marks beside it, for the selection gestures.
+ *
+ * The two marks answer different questions and so keep to their own halves of
+ * the column beside the arrow: the ring on top says how much a click takes,
+ * one element or the loop through it, and the sign below says which way that
+ * goes, onto the selection or out of it. Stacked rather than side by side so
+ * neither moves when the other comes and goes.
+ *
+ * Every mark is drawn twice, a heavy dark stroke under a thin light one, for
+ * the same reason the rotate cursor is: it has to stay legible over the dark
+ * viewport and over a lit surface both, and no single colour manages that.
+ */
+function badgedPointer(marks: string): string {
+  return [
+    `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'>`,
+    POINTER_ARROW,
+    `<g fill='none' stroke='#0b0b0b' stroke-width='4.4' stroke-linecap='round'>${marks}</g>`,
+    `<g fill='none' stroke='#f4f1ea' stroke-width='2.2' stroke-linecap='round'>${marks}</g>`,
+    `</svg>`,
+  ].join('');
+}
+
+// Hotspot on the arrow's tip, where a pick is aimed. The keyword fallbacks
+// cover a browser that refuses an SVG cursor: `copy` already wears a plus,
+// and nothing in the standard set means "take away" or "take the loop".
+const badgedCursor = (marks: string, fallback = 'default') =>
+  `url("data:image/svg+xml,${encodeURIComponent(badgedPointer(marks))}") 3 2, ${fallback}`;
+
+export const SELECT_ADD_CURSOR = badgedCursor(PLUS_SIGN, 'copy');
+export const SELECT_SUBTRACT_CURSOR = badgedCursor(MINUS_SIGN);
+export const SELECT_LOOP_CURSOR = badgedCursor(LOOP_RING);
+export const SELECT_ADD_LOOP_CURSOR = badgedCursor(PLUS_SIGN + LOOP_RING, 'copy');
+export const SELECT_SUBTRACT_LOOP_CURSOR = badgedCursor(MINUS_SIGN + LOOP_RING);
+
+/** The keys a pick reads, from a pointer event or from a keyboard one. */
+export interface SelectModifiers {
+  shiftKey: boolean;
+  ctrlKey: boolean;
+  metaKey: boolean;
+}
+
+/**
+ * What the keys held during a gesture ask the selection to do.
+ *
+ * Shift adds and Shift+Ctrl takes away, which is the pair the pointer draws.
+ * Command counts as Ctrl, as it does everywhere else in the bindings, and on a
+ * Mac it is the only one of the two that reaches here: Ctrl+click is a
+ * right-click there and opens the cursor menu instead.
+ *
+ * Alt is not part of this. It names an edge or face loop, and whatever it
+ * names is added, removed or swapped in by the same rule as a single element.
+ */
+export function selectIntent(event: SelectModifiers): SelectIntent {
+  if (!event.shiftKey) return 'replace';
+  return event.ctrlKey || event.metaKey ? 'subtract' : 'add';
+}
 
 /**
  * Cuts the gizmo's drag narration back to the parts that mean something.

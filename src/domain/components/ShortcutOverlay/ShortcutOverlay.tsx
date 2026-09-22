@@ -62,12 +62,28 @@ export function ShortcutOverlay() {
               </dd>
             </div>
             <div className="shortcuts__row">
+              <dt className="shortcuts__keys">Shift + Click</dt>
+              <dd className="shortcuts__action">Add to the selection (the pointer wears a plus)</dd>
+            </div>
+            <div className="shortcuts__row">
+              <dt className="shortcuts__keys">Shift + Ctrl + Click</dt>
+              <dd className="shortcuts__action">
+                Drop from the selection, leaving the rest (the pointer wears a minus)
+              </dd>
+            </div>
+            <div className="shortcuts__row">
               <dt className="shortcuts__keys">Alt + Click</dt>
-              <dd className="shortcuts__action">Loop select (edge / face mode)</dd>
+              <dd className="shortcuts__action">
+                Loop select, edge and face mode (the pointer wears a ring)
+              </dd>
             </div>
             <div className="shortcuts__row">
               <dt className="shortcuts__keys">Shift + Alt + Click</dt>
               <dd className="shortcuts__action">Add a loop to the selection</dd>
+            </div>
+            <div className="shortcuts__row">
+              <dt className="shortcuts__keys">Shift + Ctrl + Alt + Click</dt>
+              <dd className="shortcuts__action">Drop a whole loop from the selection</dd>
             </div>
             <div className="shortcuts__row">
               <dt className="shortcuts__keys">Drag</dt>

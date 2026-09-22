@@ -679,9 +679,61 @@ describe('editor store', () => {
     const [box, cylinder] = store().objects;
     store().selectObjects([box.id]);
 
-    store().selectObjects([cylinder.id], true);
+    store().selectObjects([cylinder.id], 'add');
 
     expect(store().selectedObjectIds).toEqual([box.id, cylinder.id]);
+  });
+
+  it('drops what a region drag caught when it holds shift and ctrl', () => {
+    store().addPrimitive('cube');
+    store().addPrimitive('cylinder');
+    store().addPrimitive('uvSphere');
+    const [box, cylinder, sphere] = store().objects;
+    store().selectObjects([box.id, cylinder.id, sphere.id]);
+
+    store().selectObjects([cylinder.id], 'subtract');
+
+    expect(store().selectedObjectIds).toEqual([box.id, sphere.id]);
+  });
+
+  it('hands the active slot to a survivor when the drag drops the one holding it', () => {
+    store().addPrimitive('cube');
+    store().addPrimitive('cylinder');
+    const [box, cylinder] = store().objects;
+    store().selectObjects([box.id, cylinder.id]);
+    expect(store().activeObjectId).toBe(cylinder.id);
+
+    store().selectObjects([cylinder.id], 'subtract');
+
+    // An outliner drawing a deselected row as the active one is the bug this
+    // stops: whatever is left standing takes it.
+    expect(store().activeObjectId).toBe(box.id);
+  });
+
+  it('adds a clicked object without turning an already selected one off', () => {
+    store().addPrimitive('cube');
+    store().addPrimitive('cylinder');
+    const [box, cylinder] = store().objects;
+    store().selectObjects([box.id, cylinder.id]);
+
+    store().setActiveObject(cylinder.id, 'add');
+
+    // Shift used to toggle, so shift-clicking a selection to make it active
+    // deselected it instead. Subtract is Shift+Ctrl's job now.
+    expect(store().selectedObjectIds).toEqual([box.id, cylinder.id]);
+    expect(store().activeObjectId).toBe(cylinder.id);
+  });
+
+  it('drops one clicked object on shift and ctrl, leaving the rest', () => {
+    store().addPrimitive('cube');
+    store().addPrimitive('cylinder');
+    const [box, cylinder] = store().objects;
+    store().selectObjects([box.id, cylinder.id]);
+
+    store().setActiveObject(cylinder.id, 'subtract');
+
+    expect(store().selectedObjectIds).toEqual([box.id]);
+    expect(store().activeObjectId).toBe(box.id);
   });
 
   it('clears the selection when a region drag touched nothing', () => {

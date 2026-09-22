@@ -207,7 +207,7 @@ describe('booleans against an unapplied modifier stack', () => {
 
     const [box, sphere] = useEditorStore.getState().objects;
     useEditorStore.getState().setActiveObject(sphere.id);
-    useEditorStore.getState().setActiveObject(box.id, true);
+    useEditorStore.getState().setActiveObject(box.id, 'add');
     return { box, sphere };
   }
 
@@ -215,7 +215,7 @@ describe('booleans against an unapplied modifier stack', () => {
 
   it('refuses while the active object still has a live stack', async () => {
     const { box } = pair();
-    useEditorStore.getState().setActiveObject(box.id, true);
+    useEditorStore.getState().setActiveObject(box.id, 'add');
     useEditorStore.getState().addModifier('subdivide');
 
     await useEditorStore.getState().booleanWithSelected('union');
@@ -230,7 +230,7 @@ describe('booleans against an unapplied modifier stack', () => {
     useEditorStore.getState().setActiveObject(sphere.id);
     useEditorStore.getState().addModifier('subdivide');
     useEditorStore.getState().setActiveObject(box.id);
-    useEditorStore.getState().setActiveObject(sphere.id, true);
+    useEditorStore.getState().setActiveObject(sphere.id, 'add');
 
     await useEditorStore.getState().booleanWithSelected('difference');
 
@@ -239,7 +239,7 @@ describe('booleans against an unapplied modifier stack', () => {
 
   it('says which object is holding it up, and says it as a toast', async () => {
     const { box } = pair();
-    useEditorStore.getState().setActiveObject(box.id, true);
+    useEditorStore.getState().setActiveObject(box.id, 'add');
     useEditorStore.getState().addModifier('subdivide');
 
     await useEditorStore.getState().booleanWithSelected('union');
@@ -253,7 +253,7 @@ describe('booleans against an unapplied modifier stack', () => {
 
   it('lets a disabled modifier through, since it changes nothing on screen', async () => {
     const { box } = pair();
-    useEditorStore.getState().setActiveObject(box.id, true);
+    useEditorStore.getState().setActiveObject(box.id, 'add');
     useEditorStore.getState().addModifier('subdivide');
 
     const modifier = useEditorStore.getState().objects[0].modifiers[0];
@@ -267,7 +267,7 @@ describe('booleans against an unapplied modifier stack', () => {
 
   it('goes ahead once the stack has been applied', async () => {
     const { box } = pair();
-    useEditorStore.getState().setActiveObject(box.id, true);
+    useEditorStore.getState().setActiveObject(box.id, 'add');
     useEditorStore.getState().addModifier('subdivide');
 
     const modifier = useEditorStore.getState().objects[0].modifiers[0];
@@ -546,7 +546,7 @@ describe('outliner groups', () => {
     // The sphere is loose and keeps the result, so the folder loses both of its
     // objects to it.
     useEditorStore.getState().selectObjects([box.id, cylinder.id, sphere.id]);
-    useEditorStore.getState().setActiveObject(sphere.id, true);
+    useEditorStore.getState().setActiveObject(sphere.id, 'add');
     useEditorStore.getState().mergeSelected();
 
     expect(useEditorStore.getState().objects.map((object) => object.id)).toEqual([sphere.id]);

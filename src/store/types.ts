@@ -17,6 +17,16 @@ export type ShadingMode = 'solid' | 'wireframe' | 'solidWire' | 'xray' | 'matcap
 /** What a selection drag draws: the region it sweeps is what gets picked. */
 export type SelectShape = 'box' | 'circle' | 'lasso';
 
+/**
+ * What a click or a region drag does with what it picked.
+ *
+ * Shift asks for ADD and Shift+Ctrl for SUBTRACT, in the viewport and in the
+ * outliner alike. Nothing toggles: a pick either joins the selection or leaves
+ * it, so holding the same keys down across a run of clicks always pulls the
+ * same way.
+ */
+export type SelectIntent = 'replace' | 'add' | 'subtract';
+
 export type ToolId = 'select' | 'move' | 'rotate' | 'scale' | 'extrude' | 'inset' | 'loopcut';
 
 /** What snapping measures against: the grid square itself, or a step you set. */

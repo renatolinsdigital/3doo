@@ -51,6 +51,7 @@ import type {
   MoveTarget,
   SceneGroup,
   SceneObject,
+  SelectIntent,
 } from '../types';
 import { DEFAULT_PREFERENCES } from './preferences';
 
@@ -370,9 +371,9 @@ export interface SceneSlice {
     patch: Partial<SceneObject> | ((object: SceneObject) => Partial<SceneObject> | null),
     options?: { touchGeometry?: boolean; status?: string },
   ) => void;
-  setActiveObject: (id: string | null, additive?: boolean) => void;
+  setActiveObject: (id: string | null, intent?: SelectIntent) => void;
   deselectObject: (id: string) => void;
-  selectObjects: (ids: readonly string[], additive?: boolean) => void;
+  selectObjects: (ids: readonly string[], intent?: SelectIntent) => void;
   clearSelection: () => void;
   selectAllObjects: () => void;
   renameObject: (id: string, name: string) => void;
@@ -646,18 +647,24 @@ export const createSceneSlice: StateCreator<
     if (warning) get().pushToast('warning', warning);
   },
 
-  setActiveObject: (id, additive = false) => {
+  setActiveObject: (id, intent = 'replace') => {
     if (id === null) {
       set({ activeObjectId: null, selectedObjectIds: [] });
       return;
     }
 
+    if (intent === 'subtract') {
+      get().deselectObject(id);
+      return;
+    }
+
     set((state) => {
-      const selected = additive
-        ? state.selectedObjectIds.includes(id)
-          ? state.selectedObjectIds.filter((candidate) => candidate !== id)
-          : [...state.selectedObjectIds, id]
-        : [id];
+      const selected =
+        intent === 'add'
+          ? state.selectedObjectIds.includes(id)
+            ? state.selectedObjectIds
+            : [...state.selectedObjectIds, id]
+          : [id];
       return { activeObjectId: id, selectedObjectIds: selected };
     });
 
@@ -671,12 +678,27 @@ export const createSceneSlice: StateCreator<
    * Selects a set of objects at once, for a region drag in object mode.
    *
    * The last one named becomes active, the way the last one clicked would.
-   * Additive keeps what was already selected and adds to it, and a drag that
-   * caught nothing clears the selection rather than leaving the last one
-   * standing, the same as clicking empty space.
+   * ADD keeps what was already selected and joins the drag's catch to it,
+   * SUBTRACT drops that catch and leaves the rest standing, and a replacing
+   * drag that caught nothing clears the selection rather than leaving the last
+   * one behind, the same as clicking empty space.
    */
-  selectObjects: (ids, additive = false) => {
+  selectObjects: (ids, intent = 'replace') => {
     set((state) => {
+      if (intent === 'subtract') {
+        const selected = state.selectedObjectIds.filter((id) => !ids.includes(id));
+        return {
+          selectedObjectIds: selected,
+          // The active object has to be one of the survivors, or the outliner
+          // draws a deselected row as the active one.
+          activeObjectId:
+            state.activeObjectId && selected.includes(state.activeObjectId)
+              ? state.activeObjectId
+              : (selected[selected.length - 1] ?? null),
+        };
+      }
+
+      const additive = intent === 'add';
       const selected = additive
         ? [...state.selectedObjectIds, ...ids.filter((id) => !state.selectedObjectIds.includes(id))]
         : [...ids];
@@ -691,10 +713,9 @@ export const createSceneSlice: StateCreator<
   /**
    * Drops one object from the selection.
    *
-   * `setActiveObject` with `additive` toggles the same way, but leaves what it
-   * turned off as the active object, and the outliner would go on drawing a
-   * deselected row as the active one. Whatever is left selected takes over
-   * instead.
+   * Whatever is left selected takes the active slot when the object dropped
+   * was holding it, since the outliner would otherwise go on drawing a
+   * deselected row as the active one.
    */
   deselectObject: (id) => {
     set((state) => {

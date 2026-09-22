@@ -10,7 +10,7 @@ import { type ContextMenuEntry, ContextMenu, Panel, TextField } from '@shared/co
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
 import { cx } from '@shared/utils/cx';
 import { useEditorStore } from '@store/index';
-import type { MoveTarget, SceneGroup, SceneObject } from '@store/types';
+import type { MoveTarget, SceneGroup, SceneObject, SelectIntent } from '@store/types';
 
 import './Outliner.scss';
 
@@ -167,7 +167,7 @@ export function Outliner() {
             id: 'select',
             label: 'SELECT',
             hint: 'Make this the active object, dropping anything else selected',
-            onSelect: () => setActiveObject(object.id, false),
+            onSelect: () => setActiveObject(object.id),
           },
       {
         id: 'rename',
@@ -280,7 +280,7 @@ export function Outliner() {
       }
       onDragStart={(event) => startDrag(object.id, event)}
       lockAttemptToken={lockedAttempt?.objectId === object.id ? lockedAttempt.token : null}
-      onSelect={(additive) => setActiveObject(object.id, additive)}
+      onSelect={(intent) => setActiveObject(object.id, intent)}
       onStartRename={() => setEditing({ kind: 'object', id: object.id })}
       onFinishRename={(name) => {
         renameObject(object.id, name);
@@ -500,7 +500,7 @@ interface OutlinerRowProps {
   onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
   /** Changes each time an edit is denied because this object is locked; drives the lock icon's tremble. */
   lockAttemptToken: number | null;
-  onSelect: (additive: boolean) => void;
+  onSelect: (intent: SelectIntent) => void;
   onStartRename: () => void;
   onFinishRename: (name: string) => void;
   onCancelRename: () => void;
@@ -529,7 +529,7 @@ function OutlinerRow({
   onOpenMenu,
 }: OutlinerRowProps) {
   const nameTooltip = useTooltipTrigger(
-    'Click to select, Shift+click to add to selection, double-click to rename, drag to reorder or to drop into a folder, right-click for more',
+    'Click to select, Shift+click to add, Shift+Ctrl+click to drop from the selection, double-click to rename, drag to reorder or to drop into a folder, right-click for more',
   );
   const visibilityTooltip = useTooltipTrigger(
     object.visible ? 'Hide this object in the viewport' : 'Show this object in the viewport',
@@ -593,7 +593,11 @@ function OutlinerRow({
           className="outliner__name"
           aria-current={isActive ? 'true' : undefined}
           onMouseDown={keepFocusOffPointer}
-          onClick={(event) => onSelect(event.shiftKey)}
+          onClick={(event) =>
+            onSelect(
+              event.shiftKey ? (event.ctrlKey || event.metaKey ? 'subtract' : 'add') : 'replace',
+            )
+          }
           onDoubleClick={onStartRename}
           {...nameTooltip}
         >
