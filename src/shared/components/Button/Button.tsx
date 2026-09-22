@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, MouseEvent, ReactNode } from 'react';
 
 import { useTooltipTrigger } from '../../hooks/useTooltipTrigger';
 import { cx } from '../../utils/cx';
@@ -31,6 +31,20 @@ export function Button({
   ...rest
 }: ButtonProps) {
   const tooltip = useTooltipTrigger(hint);
+
+  /**
+   * Runs the click, then drops the focus if a pointer brought it.
+   *
+   * A clicked button keeps the focus, and Enter on a focused button is a
+   * second click: press BOX and then Enter, and the scene gets two boxes. A
+   * keyboard activation reports no click count, and that one keeps its focus,
+   * because a hand on the keyboard has nowhere else to put it and pressing
+   * Enter twice there is a deliberate second press.
+   */
+  const handleClick = (event: MouseEvent<HTMLButtonElement>) => {
+    if (event.detail > 0) event.currentTarget.blur();
+    onClick?.(event);
+  };
   const classes = cx(
     'button',
     `button--${variant}`,
@@ -49,7 +63,7 @@ export function Button({
       // unreachable, and the hint is the one thing that says why the button
       // is unavailable, so that is exactly when it is needed most.
       aria-disabled={disabled || undefined}
-      onClick={disabled ? undefined : onClick}
+      onClick={disabled ? undefined : handleClick}
       {...rest}
       {...tooltip}
     >

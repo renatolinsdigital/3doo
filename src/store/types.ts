@@ -273,6 +273,16 @@ export interface Preferences {
  */
 export type ViewLostReason = 'far' | 'stuck';
 
+/**
+ * One press of the keyboard orbit, from Blender's numpad.
+ *
+ * The four directions turn the camera by a fixed step, which is what makes
+ * them worth having beside the mouse: a drag cannot land on a round angle.
+ * 'opposite' is Blender's numpad 9, which walks round to the far side in one
+ * go and is the only one that is not a small nudge.
+ */
+export type OrbitStep = 'left' | 'right' | 'up' | 'down' | 'opposite';
+
 export interface Toast {
   id: string;
   variant: 'success' | 'error' | 'warning' | 'info';

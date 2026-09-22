@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef } from 'react';
 
 import type { Axis } from '@kernel/index';
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
-import { useEditorStore } from '@store/index';
+import { axisViewName, useEditorStore } from '@store/index';
 import { type AxisMark, projectViewAxes, subscribeViewAxes } from '@viewport/index';
 
 import './ViewAxes.scss';
@@ -31,18 +31,16 @@ const UNPINNED_OPACITY = 0.16;
 interface Ball {
   axis: Axis;
   negative: boolean;
-  /** The view clicking it takes, named the way the shortcut list names it. */
-  view: string;
 }
 
 /** Both ends of all three axes. Paint order is decided per frame, not here. */
 const BALLS: readonly Ball[] = [
-  { axis: 'x', negative: false, view: 'RIGHT' },
-  { axis: 'x', negative: true, view: 'LEFT' },
-  { axis: 'y', negative: false, view: 'TOP' },
-  { axis: 'y', negative: true, view: 'BOTTOM' },
-  { axis: 'z', negative: false, view: 'FRONT' },
-  { axis: 'z', negative: true, view: 'BACK' },
+  { axis: 'x', negative: false },
+  { axis: 'x', negative: true },
+  { axis: 'y', negative: false },
+  { axis: 'y', negative: true },
+  { axis: 'z', negative: false },
+  { axis: 'z', negative: true },
 ];
 
 const keyOf = (axis: Axis, negative: boolean) => `${negative ? '-' : ''}${axis}`;
@@ -54,7 +52,8 @@ const keyOf = (axis: Axis, negative: boolean) => `${negative ? '-' : ''}${axis}`
  * the near ones drawn over the far ones, turning with the camera so the corner
  * always says which way the world is facing. The lettered ends are the positive
  * directions and the hollow ones the negative, and clicking any of them looks
- * from that side, the same jump Ctrl+1, Ctrl+3 and 7 make.
+ * from that side, the same jump Shift and 1, 3 or 7 make, or Ctrl and Shift
+ * over the same three for the far side of each.
  *
  * It also says what a transform is about to move: pin a drag to an axis and the
  * other two fade back, so a Y pressed for an X shows in the corner rather than
@@ -149,9 +148,10 @@ interface AxisBallProps {
  */
 function AxisBall({ ball, register }: AxisBallProps) {
   const setAxisView = useEditorStore((state) => state.setAxisView);
+  const view = axisViewName(ball.axis, ball.negative).toUpperCase();
   const sign = ball.negative ? '-' : '+';
   const tooltip = useTooltipTrigger(
-    `${ball.view} view: look at the scene from ${sign}${ball.axis.toUpperCase()}`,
+    `${view} view: look at the scene from ${sign}${ball.axis.toUpperCase()}`,
   );
 
   return (
@@ -159,10 +159,10 @@ function AxisBall({ ball, register }: AxisBallProps) {
       className={`view-axes__ball view-axes__ball--${ball.axis}${
         ball.negative ? ' view-axes__ball--negative' : ''
       }`}
-      // Named rather than focusable: the same views are on Ctrl+1, Ctrl+3 and
-      // 7, and six tab stops in front of the viewport would be in the way.
+      // Named rather than focusable: the same six views are on the keyboard
+      // already, and six tab stops in front of the viewport would be in the way.
       role="button"
-      aria-label={`${ball.view} view`}
+      aria-label={`${view} view`}
       onClick={() => setAxisView(ball.axis, ball.negative)}
       ref={register}
       {...tooltip}

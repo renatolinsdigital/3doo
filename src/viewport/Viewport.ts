@@ -991,6 +991,14 @@ export class Viewport {
         },
       ),
       store.subscribe(
+        (state) => state.orbitRequest,
+        (request) => {
+          if (!request) return;
+          if (request.step === 'opposite') this.controls.orbitOpposite();
+          else this.controls.orbitStep(request.step);
+        },
+      ),
+      store.subscribe(
         (state) => state.cursorSnapRequest,
         (request) => {
           if (request) this.snapCursorUnderPointer(request.kind);
@@ -3266,6 +3274,10 @@ export class Viewport {
   private renderLoop = (): void => {
     if (this.disposed) return;
     this.frameHandle = requestAnimationFrame(this.renderLoop);
+
+    // Before anything reads the camera: a keyboard view is turning under its
+    // own steam, and the frame it draws has to be the one it has got to.
+    this.controls.update();
 
     const distance = this.controls.distance;
     this.grid.update(distance);

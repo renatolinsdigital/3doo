@@ -140,7 +140,7 @@ describe('keymap', () => {
     const seen = new Set<string>();
     for (const binding of DEFAULT_KEYMAP) {
       const signature = [
-        binding.key,
+        binding.codes?.join(' ') ?? binding.key,
         binding.ctrl ? 'c' : '',
         binding.shift ? 's' : '',
         binding.alt ? 'a' : '',
@@ -198,10 +198,155 @@ describe('3D cursor bindings', () => {
     expect(press('.')?.id).toBe('frameSelected');
   });
 
-  it('binds nothing to a shifted punctuation key, which never arrives as itself', () => {
+  it('binds nothing to a shifted key that never arrives as itself', () => {
+    // Shift over a letter reports the upper case of that same letter, which
+    // lower-casing puts back. Over a digit or a punctuation key it reports a
+    // different character entirely, so those have to match on `codes`. The one
+    // exception is the overlay, bound to the shifted character itself.
     const unreachable = DEFAULT_KEYMAP.filter(
-      (binding) => binding.shift && binding.key.length === 1 && !/[a-z0-9]/.test(binding.key),
+      (binding) =>
+        binding.shift && !binding.codes && binding.key.length === 1 && !/[a-z]/.test(binding.key),
     );
     expect(unreachable.map((binding) => binding.id)).toEqual(['shortcuts']);
+  });
+});
+describe('the camera on the keyboard', () => {
+  /** What a US layout sends for Shift over the number row. */
+  const SHIFTED: Record<number, string> = {
+    1: '!',
+    2: '@',
+    3: '#',
+    4: '$',
+    5: '%',
+    6: '^',
+    7: '&',
+    8: '*',
+    9: '(',
+  };
+
+  /**
+   * What a numpad key sends with NumLock off, which is also what Shift over it
+   * sends with NumLock on, since the modifier suppresses the digit.
+   */
+  const NAVIGATION: Record<number, string> = {
+    1: 'End',
+    2: 'ArrowDown',
+    3: 'PageDown',
+    4: 'ArrowLeft',
+    5: 'Clear',
+    6: 'ArrowRight',
+    7: 'Home',
+    8: 'ArrowUp',
+    9: 'PageUp',
+  };
+
+  const DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9] as const;
+
+  function row(digit: number, ctrl = false, mode: 'object' | 'edit' = 'object') {
+    return matchBinding(
+      keyEvent(SHIFTED[digit], { code: `Digit${digit}`, shiftKey: true, ctrlKey: ctrl }),
+      mode,
+    );
+  }
+
+  function numpad(digit: number, ctrl = false, mode: 'object' | 'edit' = 'object') {
+    return matchBinding(
+      keyEvent(NAVIGATION[digit], { code: `Numpad${digit}`, shiftKey: true, ctrlKey: ctrl }),
+      mode,
+    );
+  }
+
+  it('lays the numbers out the way Blender does: odd jumps, even orbits', () => {
+    expect([row(1)?.id, row(3)?.id, row(7)?.id]).toEqual(['viewFront', 'viewRight', 'viewTop']);
+    expect([row(4)?.id, row(6)?.id, row(8)?.id, row(2)?.id]).toEqual([
+      'orbitLeft',
+      'orbitRight',
+      'orbitUp',
+      'orbitDown',
+    ]);
+    expect(row(9)?.id).toBe('orbitOpposite');
+    expect(row(5)?.id).toBe('toggleOrtho');
+  });
+
+  it('reaches the opposite of each view with Ctrl, as Blender does', () => {
+    expect([row(1, true)?.id, row(3, true)?.id, row(7, true)?.id]).toEqual([
+      'viewBack',
+      'viewLeft',
+      'viewBottom',
+    ]);
+  });
+
+  it('answers the same on the number row and the numpad', () => {
+    // One arrangement on both blocks: a laptop has no numpad, and a hand
+    // already resting on one should not have to travel to the row.
+    for (const ctrl of [false, true]) {
+      expect(DIGITS.map((digit) => numpad(digit, ctrl)?.id ?? null)).toEqual(
+        DIGITS.map((digit) => row(digit, ctrl)?.id ?? null),
+      );
+    }
+  });
+
+  it('reads the physical key rather than the character the layout sends', () => {
+    // A Swedish keyboard sends + for Shift and 1, and still looks at the front.
+    expect(matchBinding(keyEvent('+', { code: 'Digit1', shiftKey: true }), 'object')?.id).toBe(
+      'viewFront',
+    );
+  });
+
+  it('answers whichever way NumLock is set', () => {
+    // NumLock on sends the digit, off sends the navigation key it doubles as.
+    // Both carry the same code, which is the whole reason these match on it.
+    for (const key of ['4', 'ArrowLeft']) {
+      expect(matchBinding(keyEvent(key, { code: 'Numpad4', shiftKey: true }), 'object')?.id).toBe(
+        'orbitLeft',
+      );
+    }
+  });
+
+  it('works in edit mode too, where the plain digits are taken', () => {
+    expect(row(1, false, 'edit')?.id).toBe('viewFront');
+    expect(row(4, false, 'edit')?.id).toBe('orbitLeft');
+    expect(row(7, true, 'edit')?.id).toBe('viewBottom');
+  });
+
+  it('leaves the unshifted digits to the select modes', () => {
+    expect(matchBinding(keyEvent('1', { code: 'Digit1' }), 'edit')?.id).toBe('selectVertex');
+    expect(matchBinding(keyEvent('2', { code: 'Digit2' }), 'edit')?.id).toBe('selectEdge');
+    expect(matchBinding(keyEvent('3', { code: 'Digit3' }), 'edit')?.id).toBe('selectFace');
+  });
+
+  it('gives every camera key both blocks, and nothing only one of them', () => {
+    // A key that reached only one block would be the gap nobody notices until
+    // they are on the other keyboard.
+    const camera = DEFAULT_KEYMAP.filter(
+      (binding) => binding.id.startsWith('view') || binding.id.startsWith('orbit'),
+    );
+    expect(camera).toHaveLength(6 + 5);
+    for (const binding of camera) {
+      expect(binding.codes).toEqual([`Digit${binding.key}`, `Numpad${binding.key}`]);
+    }
+  });
+
+  it('prints the digit, not the character Shift makes of it', () => {
+    const top = DEFAULT_KEYMAP.find((binding) => binding.id === 'viewTop');
+    expect(top && formatBinding(top)).toBe('Shift + 7');
+
+    const bottom = DEFAULT_KEYMAP.find((binding) => binding.id === 'viewBottom');
+    expect(bottom && formatBinding(bottom)).toBe('Ctrl + Shift + 7');
+  });
+
+  it('keeps the whole block behind Shift, so the plain keys stay free', () => {
+    // Except 5, which toggles orthographic either way: that one is Blender's
+    // own and costs nothing to leave reachable without the modifier.
+    const plain = (digit: number) =>
+      matchBinding(keyEvent(NAVIGATION[digit], { code: `Numpad${digit}` }), 'object');
+
+    expect(plain(4)).toBeNull();
+    expect(plain(8)).toBeNull();
+    expect(plain(5)?.id).toBe('toggleOrtho');
+    // 7 with NumLock off is the Home key, which already frames the scene.
+    // That is the keyboard doing it rather than the keymap, and it is the
+    // reason the camera sits behind Shift rather than on the bare numpad.
+    expect(plain(7)?.id).toBe('frameAll');
   });
 });

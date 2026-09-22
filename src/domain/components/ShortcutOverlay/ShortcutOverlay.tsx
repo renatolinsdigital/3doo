@@ -26,7 +26,7 @@ export function ShortcutOverlay() {
             <dl className="shortcuts__list">
               {bindings.map((binding) => (
                 <div
-                  key={`${binding.id}-${binding.key}-${binding.mode ?? 'both'}`}
+                  key={`${binding.id}-${formatBinding(binding)}-${binding.mode ?? 'both'}`}
                   className="shortcuts__row"
                 >
                   <dt className="shortcuts__keys">{formatBinding(binding)}</dt>
@@ -54,6 +54,12 @@ export function ShortcutOverlay() {
             <div className="shortcuts__row">
               <dt className="shortcuts__keys">Wheel</dt>
               <dd className="shortcuts__action">Zoom</dd>
+            </div>
+            <div className="shortcuts__row">
+              <dt className="shortcuts__keys">Shift + number</dt>
+              <dd className="shortcuts__action">
+                The camera keys under VIEW answer from the number row and the numpad alike
+              </dd>
             </div>
             <div className="shortcuts__row">
               <dt className="shortcuts__keys">Alt + Click</dt>

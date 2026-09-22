@@ -487,7 +487,27 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Axis views',
-            '7 for top, Ctrl+1 for front, Ctrl+3 for side. 5 toggles orthographic and perspective.',
+            "Shift and an odd number jumps the camera to a straight-on view: Shift+1, Shift+3 and Shift+7 are front, right and top, and Ctrl on top of that reaches their opposites, back, left and bottom. Blender's arrangement, so the numbers mean what they already mean in your hands.",
+          ],
+          [
+            'Orbiting from the keyboard',
+            'Shift and an even number turns the camera by a step: Shift+4 and Shift+6 orbit left and right, Shift+8 and Shift+2 orbit up and down. Shift+9 looks from the opposite side, and Shift+5 toggles orthographic, as plain 5 also does.',
+          ],
+          [
+            'Either block of numbers',
+            'Every one of those answers from the number row and from the numpad, because neither block is always there: a laptop has no numpad, and a hand already resting on one should not have to travel up to the row. Shift is what keeps the whole arrangement clear of the select modes on 1, 2 and 3.',
+          ],
+          [
+            'The step the orbit keys take',
+            "Fifteen degrees a press, which is Blender's, and chosen so a run of presses lands squarely rather than near the mark: six of them make a quarter turn, so orbiting up from the front view arrives at the top view. The four are named for where the camera goes, not for which way the scene appears to turn. A run aimed at straight up stops there instead of tipping past it, and the press after that carries on over, unless LOCK VERTICAL ORBIT is on.",
+          ],
+          [
+            'The camera turns, it does not snap',
+            'A view or a step takes about two tenths of a second to arrive, easing off at both ends. Blender does the same thing for the same reason: a view that snaps tells you where the camera ended up, while a view that turns tells you how the model you were looking at relates to the one you are looking at now. Going from the right side to the left is the case that makes the point, since the two pictures are mirror images and the turn between them is the only thing that says which way round the model went. Grab the camera with the mouse mid-turn and it comes away from wherever it has got to, and a second press of an orbit key stacks onto where the first was heading rather than being swallowed.',
+          ],
+          [
+            'What a view or a step keeps',
+            'Only the direction changes. The pivot the camera orbits and the distance it stands at are both left alone, so a view or a step turns the scene around without moving you nearer or further, and a mouse orbit afterwards carries on from where the keyboard left off. The status bar names what you pressed.',
           ],
           [
             'The axis widget',
@@ -576,6 +596,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       {
         kind: 'prose',
         text: 'The bindings follow Blender defaults, because that is the muscle memory most people arrive with. The same table is available inside the editor at any time with Shift+?.',
+      },
+      {
+        kind: 'note',
+        text: "Where Blender needs the numpad, 3DOO takes either block. The camera keys under VIEW are Blender's numpad arrangement with Shift in front of it, and each one answers from the number row and the numpad alike, so a laptop reaches everything a full keyboard does. Grow and shrink selection are on the bracket keys rather than on numpad plus and minus. All of these match the physical key rather than the character it makes, so a shifted digit on a non-US layout and a numpad with NumLock off both land where they should.",
       },
       ...shortcutTables(),
     ],

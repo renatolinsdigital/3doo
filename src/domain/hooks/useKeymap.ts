@@ -264,14 +264,38 @@ export function useKeymap(): void {
         case 'toggleOrtho':
           state.setViewportSetting({ orthographic: !state.orthographic });
           break;
+        case 'viewTop':
+          state.setAxisView('y');
+          break;
+        case 'viewBottom':
+          state.setAxisView('y', true);
+          break;
+        case 'viewLeft':
+          state.setAxisView('x', true);
+          break;
+        case 'viewRight':
+          state.setAxisView('x');
+          break;
         case 'viewFront':
           state.setAxisView('z');
           break;
-        case 'viewSide':
-          state.setAxisView('x');
+        case 'viewBack':
+          state.setAxisView('z', true);
           break;
-        case 'viewTop':
-          state.setAxisView('y');
+        case 'orbitUp':
+          state.orbitView('up');
+          break;
+        case 'orbitDown':
+          state.orbitView('down');
+          break;
+        case 'orbitLeft':
+          state.orbitView('left');
+          break;
+        case 'orbitRight':
+          state.orbitView('right');
+          break;
+        case 'orbitOpposite':
+          state.orbitView('opposite');
           break;
         case 'toggleWireframe': {
           const next =

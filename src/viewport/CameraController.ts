@@ -72,6 +72,58 @@ export function zoomSpent(radius: number, gap: number): boolean {
 }
 
 /**
+ * How long a keyboard move of the camera takes, in milliseconds.
+ *
+ * Blender's smooth view, and the reason it is there: a view that snaps tells
+ * you where the camera ended up, and a view that turns tells you how the model
+ * you were looking at relates to the one you are looking at now. Going from
+ * the right side to the left is the case that makes the point, since the two
+ * pictures are mirror images and the turn between them is the only thing that
+ * says which way round the model went.
+ *
+ * Short enough not to be a wait. Two tenths of a second is about the length of
+ * a blink, which is long enough to read as motion and too short to sit through.
+ */
+export const VIEW_TWEEN_MS = 200;
+
+/** Slow off the mark and slow into the stop, quick through the middle. */
+function ease(t: number): number {
+  return t * t * (3 - 2 * t);
+}
+
+/** The shorter way round to an angle, in -π to π. */
+function shortestTurn(delta: number): number {
+  return (((delta % TWO_PI) + TWO_PI + Math.PI) % TWO_PI) - Math.PI;
+}
+
+/** A camera move in flight, from where it started to where it is going. */
+interface CameraMove {
+  fromPhi: number;
+  toPhi: number;
+  fromTheta: number;
+  toTheta: number;
+  /**
+   * When the move began, on the same clock `update` is given, or null until
+   * the first frame picks it up.
+   *
+   * The turn starts on the frame that draws it rather than on the keypress:
+   * whatever the keypress was waiting behind, a frame the browser never drew
+   * is not a frame the user watched go by, and counting it against the turn
+   * would eat the beginning of the only part of this anyone sees.
+   */
+  start: number | null;
+}
+
+/**
+ * How far one press of the keyboard orbit turns the camera.
+ *
+ * Blender's fifteen degrees, which divides the turn into twenty-four and the
+ * quarter turn into six, so a run of presses lands squarely on the straight-on
+ * views rather than somewhere near them.
+ */
+export const ORBIT_STEP = Math.PI / 12;
+
+/**
  * How near the pole the camera may stand.
  *
  * Straight up is where the polar angle stops meaning anything: the view
@@ -104,6 +156,24 @@ export function orbitPhi(phi: number, delta: number, locked: boolean): number {
   return wrapAngle(wrapped + (delta < 0 ? -POLE_EPSILON : POLE_EPSILON));
 }
 
+/**
+ * Where one step of the keyboard orbit leaves the polar angle.
+ *
+ * A drag that lands on a pole is carried across it, because the hand was still
+ * moving and stopping dead would read as a snag. A step is a different
+ * gesture: it was asked for once, and the pole is where it was aimed. Crossing
+ * would leave the camera a thousandth of a radian past straight up, looking
+ * down at a scene rolled half a turn from the one the Top view gives, which is
+ * not what the key was asking for. So a step that lands on a pole stops just
+ * short of it, on the side it came from, and the press after that crosses.
+ */
+export function orbitStepPhi(phi: number, delta: number, locked: boolean): number {
+  const next = wrapAngle(phi + delta);
+  const toPole = Math.min(next, Math.abs(next - Math.PI), TWO_PI - next);
+  if (toPole >= POLE_EPSILON) return orbitPhi(phi, delta, locked);
+  return wrapAngle(next - (delta < 0 ? -POLE_EPSILON : POLE_EPSILON));
+}
+
 /** An angle brought back into 0 to 2π, whichever way round it went. */
 function wrapAngle(angle: number): number {
   return ((angle % TWO_PI) + TWO_PI) % TWO_PI;
@@ -134,6 +204,7 @@ export class CameraController {
   private readonly pointers = new Map<number, THREE.Vector2>();
 
   private action: 'orbit' | 'pan' | null = null;
+  private move: CameraMove | null = null;
   private lastPosition = new THREE.Vector2();
   private moved = false;
 
@@ -143,6 +214,11 @@ export class CameraController {
   preset: NavigationPreset = 'blender';
   /** Whether a vertical orbit stops at the poles instead of rolling over them. */
   lockVerticalOrbit = false;
+  /**
+   * How long a keyboard move takes. Zero puts the camera there on the spot,
+   * which is what a test wants and what a motion setting would turn off.
+   */
+  viewTweenMs = VIEW_TWEEN_MS;
 
   constructor(
     private camera: THREE.PerspectiveCamera | THREE.OrthographicCamera,
@@ -174,17 +250,24 @@ export class CameraController {
     return this.target.clone();
   }
 
-  /** Where the camera is standing, in a form that survives being stored. */
+  /**
+   * Where the camera is standing, in a form that survives being stored.
+   *
+   * Where it is heading, rather, while a move is in flight: walking out of the
+   * module mid-turn should leave you at the view you asked for, not at the
+   * frame the teardown happened to catch.
+   */
   pose(): CameraPose {
     return {
       target: { x: this.target.x, y: this.target.y, z: this.target.z },
       radius: this.spherical.radius,
-      phi: this.spherical.phi,
-      theta: this.spherical.theta,
+      phi: this.pendingPhi,
+      theta: this.pendingTheta,
     };
   }
 
   setPose(pose: CameraPose): void {
+    this.move = null;
     this.target.set(pose.target.x, pose.target.y, pose.target.z);
     this.spherical.radius = pose.radius;
     this.spherical.phi = pose.phi;
@@ -197,6 +280,9 @@ export class CameraController {
     const action = this.resolveAction(event);
     if (!action) return false;
 
+    // The hand wins: a drag that starts mid-turn takes the camera from where
+    // it has got to rather than fighting the move for it.
+    this.move = null;
     this.action = action;
     this.moved = false;
     this.lastPosition.set(event.clientX, event.clientY);
@@ -280,20 +366,139 @@ export class CameraController {
     this.apply();
   }
 
-  /** Numpad-style axis views. */
+  /** Where the camera is heading: the end of a move, or where it stands. */
+  private get pendingPhi(): number {
+    return this.move?.toPhi ?? this.spherical.phi;
+  }
+
+  private get pendingTheta(): number {
+    return this.move?.toTheta ?? this.spherical.theta;
+  }
+
+  /** True while the camera is turning under its own steam. */
+  get isMoving(): boolean {
+    return this.move !== null;
+  }
+
+  /**
+   * Advances a move in flight, and says whether it moved anything.
+   *
+   * Driven off wall time rather than counted in frames so the turn takes the
+   * same two tenths of a second on a machine dropping them as on one that is
+   * not. The viewport calls this once a frame; a test passes its own clock.
+   */
+  update(now: number = performance.now()): boolean {
+    const move = this.move;
+    if (!move) return false;
+
+    move.start ??= now;
+    const t = Math.min(1, (now - move.start) / this.viewTweenMs);
+    const at = ease(t);
+    this.spherical.phi = move.fromPhi + (move.toPhi - move.fromPhi) * at;
+    this.spherical.theta = move.fromTheta + (move.toTheta - move.fromTheta) * at;
+    if (t >= 1) {
+      // Landed: take the target exactly rather than whatever the last
+      // multiply left, so a view is the view and not a hair off it.
+      this.spherical.phi = move.toPhi;
+      this.spherical.theta = move.toTheta;
+      this.move = null;
+    }
+
+    this.apply();
+    return true;
+  }
+
+  /**
+   * Sends the camera to an orientation, turning rather than jumping.
+   *
+   * Both angles are given as a change rather than a destination, because every
+   * caller has one: a step is a change by its nature, and a view works out its
+   * own from wherever the camera is heading. Measuring from there rather than
+   * from where it stands is what lets a held key stack up steps instead of
+   * losing the ones that land mid-turn.
+   */
+  private moveBy(deltaPhi: number, deltaTheta: number): void {
+    const toPhi = this.pendingPhi + deltaPhi;
+    const toTheta = this.pendingTheta + deltaTheta;
+
+    if (this.viewTweenMs <= 0) {
+      this.move = null;
+      this.spherical.phi = toPhi;
+      this.spherical.theta = toTheta;
+      this.apply();
+      return;
+    }
+
+    this.move = {
+      fromPhi: this.spherical.phi,
+      fromTheta: this.spherical.theta,
+      toPhi,
+      toTheta,
+      start: null,
+    };
+  }
+
+  /**
+   * One step of the keyboard orbit, from Blender's numpad 4, 6, 8 and 2.
+   *
+   * Named for where the camera goes rather than for which way the scene
+   * appears to turn, the same way the views are: orbiting up from the front
+   * view arrives at the top view, and orbiting left arrives at the left one.
+   * The vertical pair goes through `orbitStepPhi`, which lands on the pole
+   * a run of presses is aimed at and crosses it on the press after.
+   */
+  orbitStep(direction: 'left' | 'right' | 'up' | 'down'): void {
+    if (direction === 'left') this.moveBy(0, -ORBIT_STEP);
+    else if (direction === 'right') this.moveBy(0, ORBIT_STEP);
+    else {
+      const from = this.pendingPhi;
+      const to = orbitStepPhi(
+        from,
+        direction === 'up' ? -ORBIT_STEP : ORBIT_STEP,
+        this.lockVerticalOrbit,
+      );
+      this.moveBy(to - from, 0);
+    }
+  }
+
+  /**
+   * Blender's numpad 9: the same scene from the far side.
+   *
+   * The antipode of where the camera stands, which is half a turn round and
+   * the polar angle reflected. Reflecting it leaves its sine alone, so the
+   * picture stays the same way up and the jump reads as walking round the
+   * model rather than as the view turning over.
+   */
+  orbitOpposite(): void {
+    const from = this.pendingPhi;
+    this.moveBy(wrapAngle(Math.PI - from) - from, Math.PI);
+  }
+
+  /**
+   * The six straight-on views, bound to Shift and a number on either block.
+   *
+   * Blender's numpad views, opened up to the number row so a laptop can reach
+   * them too. Each one drops the camera on one end of one axis looking back at
+   * the pivot, and leaves the orbit radius and the pivot itself where they
+   * were, so the jump changes which side you are on without changing how near
+   * you are standing.
+   */
   setAxisView(axis: 'x' | 'y' | 'z', negative: boolean): void {
     const sign = negative ? -1 : 1;
+    let phi = Math.PI / 2;
+    let theta = 0;
     if (axis === 'y') {
-      this.spherical.phi = negative ? Math.PI - 0.001 : 0.001;
-      this.spherical.theta = 0;
+      phi = negative ? Math.PI - 0.001 : 0.001;
     } else if (axis === 'x') {
-      this.spherical.phi = Math.PI / 2;
-      this.spherical.theta = sign * (Math.PI / 2);
+      theta = sign * (Math.PI / 2);
     } else {
-      this.spherical.phi = Math.PI / 2;
-      this.spherical.theta = negative ? Math.PI : 0;
+      theta = negative ? Math.PI : 0;
     }
-    this.apply();
+
+    // The shorter way round, measured from where the camera is heading: the
+    // half turn from the right side to the left is the same either way, but
+    // three quarters of a turn the wrong way round is not.
+    this.moveBy(phi - this.pendingPhi, shortestTurn(theta - this.pendingTheta));
   }
 
   private apply(): void {

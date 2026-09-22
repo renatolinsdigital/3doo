@@ -5,6 +5,7 @@ import type {
   CameraPose,
   CursorSnapKind,
   NavigationPreset,
+  OrbitStep,
   OverlaySettings,
   ShadingMode,
   ViewLostReason,
@@ -15,6 +16,8 @@ export interface ViewportSlice extends ViewportSettings {
   /** Incremented to ask the viewport to frame geometry; it is not camera state. */
   frameRequest: { target: 'selected' | 'all'; nonce: number } | null;
   axisViewRequest: { axis: 'x' | 'y' | 'z'; negative: boolean; nonce: number } | null;
+  /** Asks the viewport to turn the camera by a step, or round to the far side. */
+  orbitRequest: { step: OrbitStep; nonce: number } | null;
   /**
    * Incremented to ask the viewport for a snap at the pointer.
    *
@@ -42,12 +45,34 @@ export interface ViewportSlice extends ViewportSettings {
   frameSelected: () => void;
   frameAll: () => void;
   setAxisView: (axis: 'x' | 'y' | 'z', negative?: boolean) => void;
+  orbitView: (step: OrbitStep) => void;
   snapCursorUnderPointer: (kind: CursorSnapKind) => void;
   setViewLost: (lost: ViewLostReason | null) => void;
   setCameraPose: (pose: CameraPose) => void;
 }
 
 let nonce = 0;
+
+/**
+ * What each end of each axis is called on screen.
+ *
+ * One table for the status line, the corner widget and anything else that has
+ * to name a view, so the six names cannot drift apart between them.
+ */
+export function axisViewName(axis: 'x' | 'y' | 'z', negative: boolean): string {
+  if (axis === 'y') return negative ? 'Bottom' : 'Top';
+  if (axis === 'x') return negative ? 'Left' : 'Right';
+  return negative ? 'Back' : 'Front';
+}
+
+/** What the status bar says when the keyboard turns the camera. */
+const ORBIT_STATUS: Record<OrbitStep, string> = {
+  left: 'Orbit left',
+  right: 'Orbit right',
+  up: 'Orbit up',
+  down: 'Orbit down',
+  opposite: 'Opposite side',
+};
 
 export const createViewportSlice: StateCreator<
   EditorStore,
@@ -73,6 +98,7 @@ export const createViewportSlice: StateCreator<
   navigation: 'blender',
   frameRequest: null,
   axisViewRequest: null,
+  orbitRequest: null,
   cursorSnapRequest: null,
   viewLost: null,
   cameraPose: null,
@@ -90,7 +116,12 @@ export const createViewportSlice: StateCreator<
   frameAll: () => set({ frameRequest: { target: 'all', nonce: ++nonce } }),
 
   setAxisView: (axis, negative = false) =>
-    set({ axisViewRequest: { axis, negative, nonce: ++nonce } }),
+    set({
+      axisViewRequest: { axis, negative, nonce: ++nonce },
+      status: `${axisViewName(axis, negative)} view`,
+    }),
+
+  orbitView: (step) => set({ orbitRequest: { step, nonce: ++nonce }, status: ORBIT_STATUS[step] }),
 
   snapCursorUnderPointer: (kind) => set({ cursorSnapRequest: { kind, nonce: ++nonce } }),
 

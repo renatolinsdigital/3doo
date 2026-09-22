@@ -1,7 +1,19 @@
 export interface KeyBinding {
   id: string;
-  /** `KeyboardEvent.key`, lower-cased for letters. */
+  /** `KeyboardEvent.key`, lower-cased for letters. Always what the overlay prints. */
   key: string;
+  /**
+   * The physical keys to match on in place of `key`. Any one of them fires it.
+   *
+   * Two separate things stop the axis views matching on the character. Shift
+   * over the number row changes what the browser reports, and changes it
+   * differently on every layout: Shift and 1 arrives as `!` on a US keyboard
+   * and as `+` on a Swedish one. The numpad changes it again depending on
+   * NumLock, where one key sends `1` or `End` according to a light on the
+   * keyboard. The physical key is all that stays put through both, so these
+   * match on that and keep `key` for what the overlay prints.
+   */
+  codes?: readonly string[];
   ctrl?: boolean;
   shift?: boolean;
   alt?: boolean;
@@ -293,10 +305,125 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
 
   { id: 'frameSelected', key: '.', label: 'Frame selected', group: 'View' },
   { id: 'frameAll', key: 'home', label: 'Frame all', group: 'View' },
-  { id: 'toggleOrtho', key: '5', label: 'Orthographic / perspective', group: 'View' },
-  { id: 'viewFront', key: '1', ctrl: true, label: 'Front view', group: 'View' },
-  { id: 'viewSide', key: '3', ctrl: true, label: 'Side view', group: 'View' },
-  { id: 'viewTop', key: '7', label: 'Top view', group: 'View' },
+  // Blender's numpad 5, and the number row's 5 beside it. On `codes` like the
+  // camera keys below, so that the numpad answers with NumLock off as well.
+  {
+    id: 'toggleOrtho',
+    key: '5',
+    codes: ['Digit5', 'Numpad5'],
+    label: 'Orthographic / perspective',
+    group: 'View',
+  },
+
+  // The camera on the keyboard: Blender's numpad arrangement, with Shift in
+  // front of it, on the number row and the numpad alike.
+  //
+  // Both blocks carry it because neither one is always there: a laptop has no
+  // numpad, and a hand already resting on one should not have to travel. The
+  // numbers mean what they mean in Blender, since that is the muscle memory
+  // the arrangement exists to serve. Odd keys jump to a view, even keys turn
+  // the camera by a step, 9 walks round to the far side, and Ctrl reaches the
+  // opposite of each view. Shift is what keeps all of it clear of the vertex,
+  // edge and face select modes sitting on 1, 2 and 3.
+  {
+    id: 'viewFront',
+    key: '1',
+    codes: ['Digit1', 'Numpad1'],
+    shift: true,
+    label: 'Front view',
+    group: 'View',
+  },
+  {
+    id: 'viewBack',
+    key: '1',
+    codes: ['Digit1', 'Numpad1'],
+    ctrl: true,
+    shift: true,
+    label: 'Back view',
+    group: 'View',
+  },
+  {
+    id: 'viewRight',
+    key: '3',
+    codes: ['Digit3', 'Numpad3'],
+    shift: true,
+    label: 'Right view',
+    group: 'View',
+  },
+  {
+    id: 'viewLeft',
+    key: '3',
+    codes: ['Digit3', 'Numpad3'],
+    ctrl: true,
+    shift: true,
+    label: 'Left view',
+    group: 'View',
+  },
+  {
+    id: 'viewTop',
+    key: '7',
+    codes: ['Digit7', 'Numpad7'],
+    shift: true,
+    label: 'Top view',
+    group: 'View',
+  },
+  {
+    id: 'viewBottom',
+    key: '7',
+    codes: ['Digit7', 'Numpad7'],
+    ctrl: true,
+    shift: true,
+    label: 'Bottom view',
+    group: 'View',
+  },
+  {
+    id: 'orbitLeft',
+    key: '4',
+    codes: ['Digit4', 'Numpad4'],
+    shift: true,
+    label: 'Orbit left a step, fifteen degrees',
+    group: 'View',
+  },
+  {
+    id: 'orbitRight',
+    key: '6',
+    codes: ['Digit6', 'Numpad6'],
+    shift: true,
+    label: 'Orbit right a step, fifteen degrees',
+    group: 'View',
+  },
+  {
+    id: 'orbitUp',
+    key: '8',
+    codes: ['Digit8', 'Numpad8'],
+    shift: true,
+    label: 'Orbit up a step, fifteen degrees',
+    group: 'View',
+  },
+  {
+    id: 'orbitDown',
+    key: '2',
+    codes: ['Digit2', 'Numpad2'],
+    shift: true,
+    label: 'Orbit down a step, fifteen degrees',
+    group: 'View',
+  },
+  {
+    id: 'orbitOpposite',
+    key: '9',
+    codes: ['Digit9', 'Numpad9'],
+    shift: true,
+    label: 'Look from the opposite side, the same distance out',
+    group: 'View',
+  },
+  {
+    id: 'toggleOrtho',
+    key: '5',
+    codes: ['Digit5', 'Numpad5'],
+    shift: true,
+    label: 'Orthographic / perspective',
+    group: 'View',
+  },
   { id: 'toggleWireframe', key: 'z', shift: true, label: 'Cycle shading', group: 'View' },
 
   { id: 'save', key: 's', ctrl: true, label: 'Save project', group: 'File' },
@@ -332,7 +459,7 @@ export function matchBinding(
   const candidates = keymap
     .filter((binding) => {
       if (binding.mode && binding.mode !== mode) return false;
-      if (binding.key !== key) return false;
+      if (binding.codes ? !binding.codes.includes(event.code) : binding.key !== key) return false;
       return (
         Boolean(binding.ctrl) === (event.ctrlKey || event.metaKey) &&
         Boolean(binding.shift) === event.shiftKey &&

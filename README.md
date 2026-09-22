@@ -180,7 +180,9 @@ their lists from. What follows is that table, in full.
 | --- | --- |
 | `.` / `Home` | Frame selected / frame all |
 | `5` | Orthographic / perspective |
-| `Ctrl+1` / `Ctrl+3` / `7` | Front / side / top view |
+| `Shift+1` / `3` / `7` | Front / right / top view, with `Ctrl` for the opposite three |
+| `Shift+4` / `6` / `8` / `2` | Orbit left / right / up / down, fifteen degrees a press |
+| `Shift+9` | Look from the opposite side |
 | `Shift+Z` | Cycle shading: solid, solid + wireframe, wireframe, x-ray, matcap |
 | `Shift+C` | 3D cursor to the world origin |
 | `Ctrl+Shift+C` | 3D cursor to the selection |
@@ -190,6 +192,60 @@ their lists from. What follows is that table, in full.
 The mouse carries a few of its own: <kbd>Alt</kbd>+click selects an edge loop,
 right-click opens the 3D cursor menu, and <kbd>Ctrl</kbd>+scroll resizes the
 proportional-editing falloff, which plain scroll also does mid-transform.
+
+### Moving the camera from the keyboard
+
+Blender's numpad arrangement, with <kbd>Shift</kbd> in front of it, on the
+number row and the numpad alike. Odd keys jump to a view, even keys turn the
+camera by a step:
+
+| Key | Does |
+| --- | --- |
+| `Shift+1` / `3` / `7` | Front / right / top view |
+| `Ctrl+Shift+1` / `3` / `7` | The opposite of each: back / left / bottom |
+| `Shift+4` / `6` | Orbit left / right, fifteen degrees a press |
+| `Shift+8` / `2` | Orbit up / down, fifteen degrees a press |
+| `Shift+9` | Look from the opposite side, the same distance out |
+| `Shift+5` | Orthographic / perspective, as plain `5` also does |
+
+Every one of them answers from either block, because neither block is always
+there: a laptop has no numpad, and a hand already resting on one should not
+have to travel up to the row. <kbd>Shift</kbd> is what keeps the whole
+arrangement clear of <kbd>1</kbd>, <kbd>2</kbd> and <kbd>3</kbd>, which pick
+the vertex, edge and face select modes in edit mode.
+
+Fifteen degrees a press is Blender's step, and it is chosen so a run of presses
+lands squarely: six of them make a quarter turn, so orbiting up from the front
+view arrives at the top view rather than near it. The four directions are named
+for where the camera goes, not for which way the scene appears to turn. A run
+aimed at straight up stops there rather than tipping over it, and the press
+after that carries on across, upside down, unless LOCK VERTICAL ORBIT under
+PREFS is on.
+
+The bindings match the physical key rather than the character it produces,
+which each block needs for its own reason. A shifted digit arrives as `!` on a
+US keyboard and as something else again on every other layout. A numpad digit
+arrives as `1` or as `End` depending on NumLock, a light on the keyboard that has
+no business deciding whether a camera moves. The code of the key itself is the
+one thing that stays put through both.
+
+None of these snap. The camera turns to the view over about two tenths of a
+second, easing off at both ends, which is Blender's smooth view and is there
+for a reason: a view that snaps tells you where the camera ended up, and a view
+that turns tells you how the model you were looking at relates to the one you
+are looking at now. Going from the right side to the left is the case that
+makes the point, since the two pictures are mirror images and the turn between
+them is the only thing that says which way round the model went. Grabbing the
+camera with the mouse mid-turn takes it from wherever it has got to, and a
+second press of an orbit key stacks onto where the first one was heading rather
+than being swallowed.
+
+A view changes the direction only. The point the camera orbits and the distance
+it stands at are both left where they were, so a view or a step turns the scene
+around without moving you nearer or further, and a mouse orbit afterwards picks
+up from where the keyboard left off. The status bar names what you pressed. The
+six coloured ends of the axis widget in the corner reach the same six views
+with the mouse, and turn to them the same way.
 
 ### Extrude, inset and bevel run off the pointer
 
