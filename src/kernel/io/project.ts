@@ -4,6 +4,17 @@ import type { Modifier } from '../modifiers';
 
 import type { Material } from './types';
 
+/**
+ * A named folder in the outliner, holding the objects that point at it.
+ *
+ * Whether it is folded shut is left out deliberately: that is how the panel
+ * looks, not what the scene is, and a document is replayed on every undo.
+ */
+export interface SceneGroupData {
+  id: string;
+  name: string;
+}
+
 export interface SceneObjectData {
   id: string;
   name: string;
@@ -11,6 +22,8 @@ export interface SceneObjectData {
   visible: boolean;
   locked: boolean;
   parentId: string | null;
+  /** The group this object belongs to, or null when it is loose. */
+  groupId?: string | null;
   materials: Material[];
   modifiers: Modifier[];
   activeMaterial: number;
@@ -36,6 +49,11 @@ export interface ProjectDocument {
   activeObjectId: string | null;
   objects: SceneObjectData[];
   /**
+   * The outliner's folders. Absent in files written before grouping, which
+   * load with every object loose.
+   */
+  groups?: SceneGroupData[];
+  /**
    * Which panels were folded away, keyed by title.
    *
    * Layout rather than scene, so it is filled in and read back by the store,
@@ -52,6 +70,7 @@ export interface SceneObjectSnapshot {
   visible: boolean;
   locked: boolean;
   parentId: string | null;
+  groupId: string | null;
   materials: Material[];
   modifiers: Modifier[];
   activeMaterial: number;
@@ -63,6 +82,7 @@ export function serializeProject(
   objects: readonly SceneObjectSnapshot[],
   cursor: Vec3,
   activeObjectId: string | null,
+  groups: readonly SceneGroupData[] = [],
 ): ProjectDocument {
   const owners = new Map<BMesh, string>();
 
@@ -72,6 +92,7 @@ export function serializeProject(
     savedAt: new Date().toISOString(),
     cursor: { ...cursor },
     activeObjectId,
+    groups: groups.map((group) => ({ id: group.id, name: group.name })),
     objects: objects.map((object) => {
       const owner = owners.get(object.mesh);
       if (owner === undefined) owners.set(object.mesh, object.id);
@@ -83,6 +104,7 @@ export function serializeProject(
         visible: object.visible,
         locked: object.locked,
         parentId: object.parentId,
+        groupId: object.groupId,
         materials: structuredClone(object.materials),
         modifiers: structuredClone(object.modifiers),
         activeMaterial: object.activeMaterial,
@@ -98,13 +120,17 @@ export function deserializeProject(document: ProjectDocument): {
   cursor: Vec3;
   activeObjectId: string | null;
   objects: SceneObjectSnapshot[];
+  groups: SceneGroupData[];
 } {
   const meshes = new Map<string, BMesh>();
+  const groups = (document.groups ?? []).map((group) => ({ id: group.id, name: group.name }));
+  const known = new Set(groups.map((group) => group.id));
 
   return {
     name: document.name,
     cursor: document.cursor ?? vec3(),
     activeObjectId: document.activeObjectId ?? null,
+    groups,
     objects: (document.objects ?? []).map((data) => {
       // A link to an object that is missing, or that has not been read yet,
       // falls back to this object's own copy rather than failing the load.
@@ -119,6 +145,9 @@ export function deserializeProject(document: ProjectDocument): {
         visible: data.visible ?? true,
         locked: data.locked ?? false,
         parentId: data.parentId ?? null,
+        // A membership whose folder went missing reads as loose, rather than
+        // hiding the object behind a folder the outliner cannot draw.
+        groupId: data.groupId && known.has(data.groupId) ? data.groupId : null,
         materials: data.materials ?? [],
         modifiers: data.modifiers ?? [],
         activeMaterial: data.activeMaterial ?? 0,

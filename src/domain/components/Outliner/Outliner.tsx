@@ -5,15 +5,19 @@ import { type ContextMenuEntry, ContextMenu, Panel, TextField } from '@shared/co
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
 import { cx } from '@shared/utils/cx';
 import { useEditorStore } from '@store/index';
-import type { SceneObject } from '@store/types';
+import type { SceneGroup, SceneObject } from '@store/types';
 
 import './Outliner.scss';
 
 /** Must match the total run time of `.outliner__icon--tremble` in the stylesheet. */
 const TREMBLE_MS = 1000;
 
+/** Which kind of row a menu or a rename was opened on. */
+type RowRef = { kind: 'object' | 'group'; id: string };
+
 export function Outliner() {
   const objects = useEditorStore((state) => state.objects);
+  const groups = useEditorStore((state) => state.groups);
   const activeObjectId = useEditorStore((state) => state.activeObjectId);
   const selectedObjectIds = useEditorStore((state) => state.selectedObjectIds);
   const lockedAttempt = useEditorStore((state) => state.lockedAttempt);
@@ -24,16 +28,30 @@ export function Outliner() {
   const deselectObject = useEditorStore((state) => state.deselectObject);
   const deleteObjects = useEditorStore((state) => state.deleteSelected);
   const applyTransform = useEditorStore((state) => state.applyTransformToSelected);
+  const renameGroup = useEditorStore((state) => state.renameGroup);
+  const selectGroup = useEditorStore((state) => state.selectGroup);
+  const deleteGroup = useEditorStore((state) => state.deleteGroup);
+  const joinGroup = useEditorStore((state) => state.joinGroup);
+  const ungroup = useEditorStore((state) => state.ungroup);
+  const toggleGroupVisibility = useEditorStore((state) => state.toggleGroupVisibility);
+  const toggleGroupLock = useEditorStore((state) => state.toggleGroupLock);
+  const toggleGroupCollapsed = useEditorStore((state) => state.toggleGroupCollapsed);
 
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [menu, setMenu] = useState<{ objectId: string; x: number; y: number } | null>(null);
+  const [editing, setEditing] = useState<RowRef | null>(null);
+  const [menu, setMenu] = useState<(RowRef & { x: number; y: number }) | null>(null);
 
-  const menuObject = menu ? (objects.find((object) => object.id === menu.objectId) ?? null) : null;
+  const members = (group: SceneGroup) => objects.filter((object) => object.groupId === group.id);
+  const loose = objects.filter((object) => !groups.some((group) => group.id === object.groupId));
+
+  const menuObject =
+    menu?.kind === 'object' ? (objects.find((object) => object.id === menu.id) ?? null) : null;
+  const menuGroup =
+    menu?.kind === 'group' ? (groups.find((group) => group.id === menu.id) ?? null) : null;
 
   // Every entry names the row the menu was opened on rather than the selection,
   // which is what the menu's header says and what right-clicking one row of
   // several selected ones reads as.
-  const menuEntries = (object: SceneObject): ContextMenuEntry[] => [
+  const objectEntries = (object: SceneObject): ContextMenuEntry[] => [
     // One entry either way: what a selected row offers is the way back out of
     // the selection, which is the only thing selecting it again could mean.
     selectedObjectIds.includes(object.id)
@@ -53,7 +71,7 @@ export function Outliner() {
       id: 'rename',
       label: 'RENAME',
       hint: 'Edit the name in place (double-click it)',
-      onSelect: () => setEditingId(object.id),
+      onSelect: () => setEditing({ kind: 'object', id: object.id }),
     },
     { id: 'rule', separator: true },
     {
@@ -73,10 +91,80 @@ export function Outliner() {
     },
   ];
 
+  const groupEntries = (group: SceneGroup): ContextMenuEntry[] => {
+    const held = members(group);
+    const joinable = held.filter((object) => !object.locked).length >= 2;
+
+    return [
+      {
+        id: 'rename',
+        label: 'RENAME',
+        hint: 'Edit the folder name in place (double-click it)',
+        onSelect: () => setEditing({ kind: 'group', id: group.id }),
+      },
+      {
+        id: 'select',
+        label: 'SELECT ALL',
+        hint: 'Select every object in this folder, dropping anything else selected',
+        onSelect: () => selectGroup(group.id),
+      },
+      { id: 'rule', separator: true },
+      {
+        id: 'join',
+        label: 'JOIN',
+        disabled: !joinable,
+        hint: joinable
+          ? 'Fold every object in here into one, sharing a single mesh'
+          : 'Joining needs two unlocked objects at least, so unlock them first',
+        onSelect: () => joinGroup(group.id),
+      },
+      {
+        id: 'ungroup',
+        label: 'UNGROUP',
+        hint: 'Drop the folder and leave its objects loose in the scene',
+        onSelect: () => ungroup(group.id),
+      },
+      {
+        id: 'delete',
+        label: 'DELETE',
+        hint: `Remove the folder and all ${held.length} of its objects from the scene`,
+        onSelect: () => deleteGroup(group.id),
+      },
+    ];
+  };
+
   // Linked objects are one mesh behind several rows, which is otherwise
   // indistinguishable from a plain copy: the count is what says so.
   const meshUsers = new Map<SceneObject['mesh'], number>();
   for (const object of objects) meshUsers.set(object.mesh, (meshUsers.get(object.mesh) ?? 0) + 1);
+
+  const renderObject = (object: SceneObject) => (
+    <OutlinerRow
+      key={object.id}
+      object={object}
+      meshUsers={meshUsers.get(object.mesh) ?? 1}
+      isActive={object.id === activeObjectId}
+      isSelected={selectedObjectIds.includes(object.id)}
+      isEditing={editing?.kind === 'object' && editing.id === object.id}
+      lockAttemptToken={lockedAttempt?.objectId === object.id ? lockedAttempt.token : null}
+      onSelect={(additive) => setActiveObject(object.id, additive)}
+      onStartRename={() => setEditing({ kind: 'object', id: object.id })}
+      onFinishRename={(name) => {
+        renameObject(object.id, name);
+        setEditing(null);
+      }}
+      onCancelRename={() => setEditing(null)}
+      onToggleVisibility={() => toggleVisibility(object.id)}
+      onToggleLock={() => toggleLock(object.id)}
+      onOpenMenu={(x, y) => setMenu({ kind: 'object', id: object.id, x, y })}
+    />
+  );
+
+  const openMenu = menuObject
+    ? { label: menuObject.name, entries: objectEntries(menuObject) }
+    : menuGroup
+      ? { label: menuGroup.name, entries: groupEntries(menuGroup) }
+      : null;
 
   return (
     <Panel title="OUTLINER" className="outliner" scrollable>
@@ -84,44 +172,173 @@ export function Outliner() {
         <p className="outliner__empty">No objects. Add a primitive to begin.</p>
       ) : (
         <ul className="outliner__list">
-          {objects.map((object) => (
-            <OutlinerRow
-              key={object.id}
-              object={object}
-              meshUsers={meshUsers.get(object.mesh) ?? 1}
-              isActive={object.id === activeObjectId}
-              isSelected={selectedObjectIds.includes(object.id)}
-              isEditing={editingId === object.id}
-              lockAttemptToken={lockedAttempt?.objectId === object.id ? lockedAttempt.token : null}
-              onSelect={(additive) => setActiveObject(object.id, additive)}
-              onStartRename={() => setEditingId(object.id)}
-              onFinishRename={(name) => {
-                renameObject(object.id, name);
-                setEditingId(null);
-              }}
-              onCancelRename={() => setEditingId(null)}
-              onToggleVisibility={() => toggleVisibility(object.id)}
-              onToggleLock={() => toggleLock(object.id)}
-              onOpenMenu={(x, y) => setMenu({ objectId: object.id, x, y })}
-            />
-          ))}
+          {groups.map((group) => {
+            const held = members(group);
+            return (
+              <li key={group.id} className="outliner__branch">
+                <OutlinerGroupRow
+                  group={group}
+                  members={held}
+                  isSelected={held.every((object) => selectedObjectIds.includes(object.id))}
+                  isEditing={editing?.kind === 'group' && editing.id === group.id}
+                  onSelect={() => selectGroup(group.id)}
+                  onToggleCollapsed={() => toggleGroupCollapsed(group.id)}
+                  onStartRename={() => setEditing({ kind: 'group', id: group.id })}
+                  onFinishRename={(name) => {
+                    renameGroup(group.id, name);
+                    setEditing(null);
+                  }}
+                  onCancelRename={() => setEditing(null)}
+                  onToggleVisibility={() => toggleGroupVisibility(group.id)}
+                  onToggleLock={() => toggleGroupLock(group.id)}
+                  onOpenMenu={(x, y) => setMenu({ kind: 'group', id: group.id, x, y })}
+                />
+                {group.collapsed ? null : (
+                  <ul className="outliner__list outliner__list--nested">
+                    {held.map(renderObject)}
+                  </ul>
+                )}
+              </li>
+            );
+          })}
+          {loose.map(renderObject)}
         </ul>
       )}
-      {menu && menuObject
+      {menu && openMenu
         ? // Portalled out of the panel: its body scrolls and clips, so a menu
           // drawn inside it would be cut off at the first row near an edge.
           createPortal(
             <ContextMenu
               x={menu.x}
               y={menu.y}
-              label={menuObject.name}
-              entries={menuEntries(menuObject)}
+              label={openMenu.label}
+              entries={openMenu.entries}
               onClose={() => setMenu(null)}
             />,
             document.body,
           )
         : null}
     </Panel>
+  );
+}
+
+interface OutlinerGroupRowProps {
+  group: SceneGroup;
+  members: readonly SceneObject[];
+  /** Every object in the folder is selected, so the folder reads as selected too. */
+  isSelected: boolean;
+  isEditing: boolean;
+  onSelect: () => void;
+  onToggleCollapsed: () => void;
+  onStartRename: () => void;
+  onFinishRename: (name: string) => void;
+  onCancelRename: () => void;
+  onToggleVisibility: () => void;
+  onToggleLock: () => void;
+  /** Opens the folder's menu at the pointer, in client coordinates. */
+  onOpenMenu: (x: number, y: number) => void;
+}
+
+function OutlinerGroupRow({
+  group,
+  members,
+  isSelected,
+  isEditing,
+  onSelect,
+  onToggleCollapsed,
+  onStartRename,
+  onFinishRename,
+  onCancelRename,
+  onToggleVisibility,
+  onToggleLock,
+  onOpenMenu,
+}: OutlinerGroupRowProps) {
+  // A folder holding one visible object still has something to hide, and one
+  // holding a single unlocked object still has something to lock: the toggles
+  // only read as on once every row underneath them is.
+  const hidden = members.every((object) => !object.visible);
+  const locked = members.every((object) => object.locked);
+
+  const nameTooltip = useTooltipTrigger(
+    `Click to select the ${members.length} object(s) in here, double-click to rename, right-click for more`,
+  );
+  const foldTooltip = useTooltipTrigger(
+    group.collapsed ? 'Show what is in this folder' : 'Fold this folder shut',
+  );
+  const visibilityTooltip = useTooltipTrigger(
+    hidden ? 'Show every object in this folder' : 'Hide every object in this folder',
+  );
+  const lockTooltip = useTooltipTrigger(
+    locked ? 'Unlock every object in this folder' : 'Lock every object in this folder',
+  );
+
+  return (
+    <div
+      className={cx(
+        'outliner__row',
+        'outliner__row--group',
+        isSelected && 'outliner__row--selected',
+      )}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        onOpenMenu(event.clientX, event.clientY);
+      }}
+    >
+      <button
+        type="button"
+        className="outliner__fold"
+        aria-label={`${group.collapsed ? 'Expand' : 'Collapse'} ${group.name}`}
+        aria-expanded={!group.collapsed}
+        onClick={onToggleCollapsed}
+        {...foldTooltip}
+      >
+        <ChevronIcon collapsed={group.collapsed} />
+      </button>
+
+      {isEditing ? (
+        <TextField
+          label={`Rename ${group.name}`}
+          defaultValue={group.name}
+          autoFocus
+          onBlur={(event) => onFinishRename(event.target.value.trim() || group.name)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') event.currentTarget.blur();
+            if (event.key === 'Escape') onCancelRename();
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          className="outliner__name"
+          onClick={onSelect}
+          onDoubleClick={onStartRename}
+          {...nameTooltip}
+        >
+          {group.name}
+        </button>
+      )}
+
+      <button
+        type="button"
+        className={cx('outliner__icon', hidden && 'outliner__icon--on')}
+        aria-label={`${hidden ? 'Show' : 'Hide'} ${group.name}`}
+        aria-pressed={hidden}
+        onClick={onToggleVisibility}
+        {...visibilityTooltip}
+      >
+        {hidden ? <EyeOffIcon /> : <EyeIcon />}
+      </button>
+      <button
+        type="button"
+        className={cx('outliner__icon', locked && 'outliner__icon--on')}
+        aria-label={`${locked ? 'Unlock' : 'Lock'} ${group.name}`}
+        aria-pressed={locked}
+        onClick={onToggleLock}
+        {...lockTooltip}
+      >
+        {locked ? <LockIcon /> : <UnlockIcon />}
+      </button>
+    </div>
   );
 }
 
@@ -260,6 +477,23 @@ function OutlinerRow({
         {object.locked ? <LockIcon /> : <UnlockIcon />}
       </button>
     </li>
+  );
+}
+
+function ChevronIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg
+      className="outliner__glyph"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {collapsed ? <path d="M6 3 11 8 6 13" /> : <path d="M3 6 8 11 13 6" />}
+    </svg>
   );
 }
 

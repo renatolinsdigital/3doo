@@ -245,4 +245,141 @@ describe('Outliner', () => {
       );
     });
   });
+  describe('groups', () => {
+    /** Adds a box and a cylinder, puts them in a folder and renders the panel. */
+    function grouped() {
+      const store = useEditorStore.getState();
+      store.addPrimitive('box');
+      store.addPrimitive('cylinder');
+      store.addPrimitive('uvSphere');
+      const [box, cylinder] = useEditorStore.getState().objects;
+      act(() => {
+        useEditorStore.getState().selectObjects([box.id, cylinder.id]);
+        useEditorStore.getState().groupSelected();
+      });
+      render(<Outliner />);
+      return { box, cylinder, group: useEditorStore.getState().groups[0] };
+    }
+
+    const openMenuOn = async (name: string) => {
+      const row = screen.getByRole('button', { name }).parentElement as HTMLElement;
+      await userEvent.pointer({ keys: '[MouseRight]', target: row });
+    };
+
+    it('draws the folder with its objects under it, and the rest loose', () => {
+      grouped();
+
+      expect(screen.getByRole('button', { name: 'GROUP' })).toBeInTheDocument();
+      for (const name of ['BOX', 'CYLINDER', 'UV SPHERE']) {
+        expect(screen.getByRole('button', { name })).toBeInTheDocument();
+      }
+    });
+
+    it('folds the rows away and brings them back', async () => {
+      grouped();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Collapse GROUP' }));
+
+      expect(screen.queryByRole('button', { name: 'BOX' })).not.toBeInTheDocument();
+      // The loose object is not in the folder, so it stays on screen.
+      expect(screen.getByRole('button', { name: 'UV SPHERE' })).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Expand GROUP' }));
+      expect(screen.getByRole('button', { name: 'BOX' })).toBeInTheDocument();
+    });
+
+    it('selects what is in the folder when its title is clicked', async () => {
+      const { box, cylinder } = grouped();
+
+      await userEvent.click(screen.getByRole('button', { name: 'GROUP' }));
+
+      expect(useEditorStore.getState().selectedObjectIds).toEqual([box.id, cylinder.id]);
+    });
+
+    it('hides and shows the whole folder from its row', async () => {
+      grouped();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Hide GROUP' }));
+
+      const visible = useEditorStore.getState().objects.map((object) => object.visible);
+      expect(visible).toEqual([false, false, true]);
+      expect(screen.getByRole('button', { name: 'Show GROUP' })).toBeInTheDocument();
+    });
+
+    it('locks and unlocks the whole folder from its row', async () => {
+      grouped();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Lock GROUP' }));
+
+      expect(useEditorStore.getState().objects.map((object) => object.locked)).toEqual([
+        true,
+        true,
+        false,
+      ]);
+      expect(screen.getByRole('button', { name: 'Unlock GROUP' })).toBeInTheDocument();
+    });
+
+    it('opens the folder menu on right-click', async () => {
+      grouped();
+
+      await openMenuOn('GROUP');
+
+      const menu = screen.getByRole('menu', { name: 'GROUP' });
+      for (const entry of ['RENAME', 'SELECT ALL', 'JOIN', 'UNGROUP', 'DELETE']) {
+        expect(within(menu).getByRole('menuitem', { name: entry })).toBeInTheDocument();
+      }
+    });
+
+    it('renames the folder in place', async () => {
+      grouped();
+
+      await userEvent.dblClick(screen.getByRole('button', { name: 'GROUP' }));
+      const input = screen.getByDisplayValue('GROUP');
+      await userEvent.clear(input);
+      await userEvent.type(input, 'CHASSIS{Enter}');
+
+      expect(useEditorStore.getState().groups[0].name).toBe('CHASSIS');
+    });
+
+    it('deletes the folder and its objects, leaving the loose one', async () => {
+      grouped();
+
+      await openMenuOn('GROUP');
+      await userEvent.click(screen.getByRole('menuitem', { name: 'DELETE' }));
+
+      expect(useEditorStore.getState().objects.map((object) => object.name)).toEqual(['UV SPHERE']);
+      expect(useEditorStore.getState().groups).toEqual([]);
+    });
+
+    it('ungroups without touching the objects', async () => {
+      grouped();
+
+      await openMenuOn('GROUP');
+      await userEvent.click(screen.getByRole('menuitem', { name: 'UNGROUP' }));
+
+      expect(useEditorStore.getState().objects).toHaveLength(3);
+      expect(screen.queryByRole('button', { name: 'GROUP' })).not.toBeInTheDocument();
+    });
+
+    it('joins the folder into one object', async () => {
+      grouped();
+
+      await openMenuOn('GROUP');
+      await userEvent.click(screen.getByRole('menuitem', { name: 'JOIN' }));
+
+      expect(useEditorStore.getState().objects).toHaveLength(2);
+    });
+
+    it('will not join a folder that is locked', async () => {
+      const { group } = grouped();
+      act(() => useEditorStore.getState().toggleGroupLock(group.id));
+
+      await openMenuOn('GROUP');
+
+      expect(screen.getByRole('menuitem', { name: 'JOIN' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+    });
+  });
 });

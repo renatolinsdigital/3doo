@@ -205,6 +205,7 @@ describe('project files', () => {
       visible: true,
       locked: false,
       parentId: null,
+      groupId: null,
       materials: [{ id: 'm1', name: 'Base', color: { r: 1, g: 1, b: 1 } }],
       modifiers: [],
       activeMaterial: 0,
@@ -251,6 +252,51 @@ describe('project files', () => {
     const restored = deserializeProject(parseProject(stringifyProject(document)));
 
     expect(restored.objects[0].mesh.faces.size).toBe(6);
+  });
+
+  it('round-trips the folders and what sits in them', () => {
+    const [cube] = snapshot();
+    const document = serializeProject(
+      'Grouped',
+      [
+        { ...cube, groupId: 'group-1' },
+        { ...cube, id: 'obj-2', name: 'Cube.COPY', mesh: createBox(2), groupId: 'group-1' },
+      ],
+      vec3(),
+      'obj-1',
+      [{ id: 'group-1', name: 'GROUP' }],
+    );
+    const restored = deserializeProject(parseProject(stringifyProject(document)));
+
+    expect(restored.groups).toEqual([{ id: 'group-1', name: 'GROUP' }]);
+    expect(restored.objects.map((object) => object.groupId)).toEqual(['group-1', 'group-1']);
+  });
+
+  it('loosens an object whose folder is gone', () => {
+    const [cube] = snapshot();
+    const document = serializeProject(
+      'Grouped',
+      [{ ...cube, groupId: 'group-gone' }],
+      vec3(),
+      null,
+    );
+
+    const restored = deserializeProject(parseProject(stringifyProject(document)));
+
+    expect(restored.groups).toEqual([]);
+    expect(restored.objects[0].groupId).toBeNull();
+  });
+
+  it('loads a file written before grouping with every object loose', () => {
+    const [cube] = snapshot();
+    const document = serializeProject('Old', [cube], vec3(), null);
+    delete (document as { groups?: unknown }).groups;
+    delete document.objects[0].groupId;
+
+    const restored = deserializeProject(parseProject(stringifyProject(document)));
+
+    expect(restored.groups).toEqual([]);
+    expect(restored.objects[0].groupId).toBeNull();
   });
 
   it('rejects malformed files with a readable message', () => {

@@ -160,10 +160,22 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'All in the OUTLINER, per row, alongside the visibility and lock toggles.',
           ],
           [
+            'Group',
+            'Ctrl+G puts the selected objects in a folder in the OUTLINER. Objects that were in another folder move across: each object belongs to one folder at a time.',
+          ],
+          [
             'The row menu',
             'Right-click a row in the OUTLINER for SELECT, RENAME, APPLY TRANSFORMS and DELETE. The first entry reads DESELECT on a row that is already selected, and drops just that row from the selection. Every entry acts on the row it was opened on (the name in the header) and not on whatever else happens to be selected.',
           ],
+          [
+            'The folder menu',
+            'Right-click a folder title for RENAME, SELECT ALL, JOIN (fold everything in the folder into one object), UNGROUP (drop the folder and leave its objects loose) and DELETE (the folder and everything in it).',
+          ],
         ],
+      },
+      {
+        kind: 'prose',
+        text: 'A folder is its objects: its own row carries a visibility and a lock toggle that set every object under it at once, and it folds shut on the chevron to get a finished assembly out of the way. Clicking the title selects everything inside, which is how a group of parts is moved, turned or scaled as one. Take the last object out of a folder, or delete them all, and the folder goes with them, since there is nothing left to put back in it.',
       },
       {
         kind: 'prose',

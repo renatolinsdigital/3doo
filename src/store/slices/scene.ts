@@ -48,6 +48,7 @@ import type {
   CursorSnapTargets,
   LastOperator,
   Material,
+  SceneGroup,
   SceneObject,
 } from '../types';
 import { DEFAULT_PREFERENCES } from './preferences';
@@ -95,6 +96,7 @@ function historyState() {
 }
 
 let objectCounter = 0;
+let groupCounter = 0;
 let materialCounter = 0;
 let lockAttemptCounter = 0;
 let recentVertsCounter = 0;
@@ -116,6 +118,37 @@ const heldAtSizeFloor = new Set<string>();
 function nextObjectId(): string {
   objectCounter += 1;
   return `object-${objectCounter}`;
+}
+
+function nextGroupId(): string {
+  groupCounter += 1;
+  return `group-${groupCounter}`;
+}
+
+/** The first GROUP name no folder is wearing yet. */
+function groupName(groups: readonly SceneGroup[]): string {
+  const taken = new Set(groups.map((group) => group.name));
+  if (!taken.has('GROUP')) return 'GROUP';
+
+  let index = 2;
+  while (taken.has(`GROUP.${index}`)) index += 1;
+  return `GROUP.${index}`;
+}
+
+/**
+ * Drops the folders nothing points at any more.
+ *
+ * A group is its objects: there is no way to put something into an empty one,
+ * so one left behind by a delete or a regroup would sit there for good.
+ */
+function pruneGroups(groups: readonly SceneGroup[], objects: readonly SceneObject[]): SceneGroup[] {
+  const used = new Set(objects.map((object) => object.groupId));
+  return groups.filter((group) => used.has(group.id));
+}
+
+/** The objects a folder holds, in the order the scene lists them. */
+function groupMembers(objects: readonly SceneObject[], groupId: string): SceneObject[] {
+  return objects.filter((object) => object.groupId === groupId);
 }
 
 function defaultMaterial(): Material {
@@ -217,6 +250,81 @@ function moveOrigin(object: SceneObject, position: Vec3): SceneObject {
   };
 }
 
+/**
+ * The scene with `sources` folded into `target`: one object where there were
+ * several, and everything else left where it was.
+ *
+ * Geometry travels through world space rather than being copied raw: every
+ * source sits somewhere of its own, and dropping its vertices straight into
+ * the target's local space would pile them all onto the target's origin.
+ * Modifiers on the sources are dropped with them; the target keeps its own.
+ */
+function foldInto(
+  objects: readonly SceneObject[],
+  target: SceneObject,
+  sources: readonly SceneObject[],
+): SceneObject[] {
+  const absorbed = new Set(sources.map((object) => object.id));
+
+  // Merging into a mesh that an object outside the merge also uses would
+  // reshape that object too, so the target takes a copy of its own first.
+  const shared = objects.some(
+    (object) => object.mesh === target.mesh && object.id !== target.id && !absorbed.has(object.id),
+  );
+  const merged = shared ? cloneMesh(target.mesh) : target.mesh;
+  const materials = [...target.materials];
+
+  for (const source of sources) {
+    // Read the source out before anything is added: merging a linked
+    // duplicate into its own original walks the very mesh being written to.
+    const verts = [...source.mesh.verts.values()];
+    const rings = [...source.mesh.faces.values()].map((face) => ({
+      vertIds: source.mesh.faceVerts(face).map((vert) => vert.id),
+      materialIndex: face.materialIndex,
+      smooth: face.smooth,
+    }));
+
+    // Slots are merged by identity, so merging a duplicate does not leave two
+    // slots pointing at one material.
+    const slots = source.materials.map((material) => {
+      const existing = materials.findIndex((candidate) => candidate.id === material.id);
+      if (existing !== -1) return existing;
+      materials.push(structuredClone(material));
+      return materials.length - 1;
+    });
+
+    const matrix = composeMatrix(source.transform);
+    const map = new Map<number, ReturnType<typeof merged.addVert>>();
+    for (const vert of verts) {
+      const world = transformPoint(matrix, vert.co);
+      map.set(vert.id, merged.addVert(inverseTransformPoint(target.transform, world)));
+    }
+
+    for (const ring of rings) {
+      const face = ring.vertIds.map((id) => map.get(id));
+      if (face.every(Boolean)) {
+        merged.addFace(face as NonNullable<(typeof face)[number]>[], {
+          materialIndex: slots[ring.materialIndex] ?? 0,
+          smooth: ring.smooth,
+        });
+      }
+    }
+  }
+
+  merged.computeNormals();
+
+  return objects
+    .filter((object) => !absorbed.has(object.id))
+    .map((object) =>
+      object.id === target.id
+        ? // The parameters described the target's own shape, not the merge. The
+          // result spans everything that came in, so the target's old origin can
+          // now sit anywhere in it, or outside it altogether.
+          recenterOrigin({ ...object, mesh: merged, materials, primitive: null })
+        : object,
+    );
+}
+
 /** Puts one object's origin back on the middle of its own mesh. */
 function recenterOrigin(object: SceneObject): SceneObject {
   const offset = originOffset(object);
@@ -227,6 +335,8 @@ function recenterOrigin(object: SceneObject): SceneObject {
 
 export interface SceneSlice {
   objects: SceneObject[];
+  /** The outliner's folders, in the order they are drawn. */
+  groups: SceneGroup[];
   activeObjectId: string | null;
   selectedObjectIds: string[];
   cursor: Vec3;
@@ -271,6 +381,28 @@ export interface SceneSlice {
   clearRecentVerts: () => void;
   duplicateSelected: (linked?: boolean) => void;
   mergeSelected: () => void;
+
+  /**
+   * Puts the selected objects in a folder of their own.
+   *
+   * Objects already in another folder move across, which is the only way to
+   * regroup them: a folder holds each object once, and nothing can be in two.
+   */
+  groupSelected: () => void;
+  renameGroup: (id: string, name: string) => void;
+  /** Selects everything in the folder, dropping whatever else was selected. */
+  selectGroup: (id: string) => void;
+  /** Deletes the folder and every object in it. */
+  deleteGroup: (id: string) => void;
+  /** Merges the folder's objects into one, the way M merges a selection. */
+  joinGroup: (id: string) => void;
+  /** Drops the folder, leaving its objects loose in the scene. */
+  ungroup: (id: string) => void;
+  /** Hides the whole folder, or shows it again once all of it is hidden. */
+  toggleGroupVisibility: (id: string) => void;
+  /** Locks the whole folder, or unlocks it again once all of it is locked. */
+  toggleGroupLock: (id: string) => void;
+  toggleGroupCollapsed: (id: string) => void;
   /**
    * Cuts the selected objects against the active one, which keeps the result.
    *
@@ -362,6 +494,7 @@ export const createSceneSlice: StateCreator<
   SceneSlice
 > = (set, get) => ({
   objects: [],
+  groups: [],
   activeObjectId: null,
   selectedObjectIds: [],
   cursor: vec3(),
@@ -383,9 +516,15 @@ export const createSceneSlice: StateCreator<
     })),
 
   snapshotDocument: () => {
-    const { projectName, objects, cursor, activeObjectId, collapsedPanels } = get();
+    const { projectName, objects, groups, cursor, activeObjectId, collapsedPanels } = get();
     return {
-      ...serializeProject(projectName, objects as SceneObjectSnapshot[], cursor, activeObjectId),
+      ...serializeProject(
+        projectName,
+        objects as SceneObjectSnapshot[],
+        cursor,
+        activeObjectId,
+        groups,
+      ),
       panels: { ...collapsedPanels },
     };
   },
@@ -417,6 +556,7 @@ export const createSceneSlice: StateCreator<
       visible: true,
       locked: false,
       parentId: null,
+      groupId: null,
       materials: [defaultMaterial()],
       modifiers: [],
       activeMaterial: 0,
@@ -660,14 +800,7 @@ export const createSceneSlice: StateCreator<
     }));
   },
 
-  /**
-   * Merges the selected objects into the active one, leaving a single object.
-   *
-   * Geometry travels through world space rather than being copied raw: every
-   * source sits somewhere of its own, and dropping its vertices straight into
-   * the target's local space would pile them all onto the target's origin.
-   * Modifiers on the sources are dropped with them; the target keeps its own.
-   */
+  /** Merges the selected objects into the active one, leaving a single object. */
   mergeSelected: () => {
     const state = get();
     const { objects, selectedObjectIds } = state;
@@ -689,70 +822,171 @@ export const createSceneSlice: StateCreator<
 
     get().recordHistory('Merge');
 
-    // Merging into a mesh that an object outside the merge also uses would
-    // reshape that object too, so the target takes a copy of its own first.
-    const shared = objects.some(
-      (object) =>
-        object.mesh === target.mesh && object.id !== target.id && !sources.includes(object),
-    );
-    const merged = shared ? cloneMesh(target.mesh) : target.mesh;
-    const materials = [...target.materials];
+    set((state) => {
+      const objects = foldInto(state.objects, target, sources);
+      return {
+        objects,
+        // A merge can swallow every object a folder held, and a folder with
+        // nothing in it is not a folder.
+        groups: pruneGroups(state.groups, objects),
+        selectedObjectIds: [target.id],
+        activeObjectId: target.id,
+        meshVersion: state.meshVersion + 1,
+        status: `Merged ${sources.length + 1} objects`,
+      };
+    });
+  },
 
-    for (const source of sources) {
-      // Read the source out before anything is added: merging a linked
-      // duplicate into its own original walks the very mesh being written to.
-      const verts = [...source.mesh.verts.values()];
-      const rings = [...source.mesh.faces.values()].map((face) => ({
-        vertIds: source.mesh.faceVerts(face).map((vert) => vert.id),
-        materialIndex: face.materialIndex,
-        smooth: face.smooth,
-      }));
-
-      // Slots are merged by identity, so merging a duplicate does not leave two
-      // slots pointing at one material.
-      const slots = source.materials.map((material) => {
-        const existing = materials.findIndex((candidate) => candidate.id === material.id);
-        if (existing !== -1) return existing;
-        materials.push(structuredClone(material));
-        return materials.length - 1;
-      });
-
-      const matrix = composeMatrix(source.transform);
-      const map = new Map<number, ReturnType<typeof merged.addVert>>();
-      for (const vert of verts) {
-        const world = transformPoint(matrix, vert.co);
-        map.set(vert.id, merged.addVert(inverseTransformPoint(target.transform, world)));
-      }
-
-      for (const ring of rings) {
-        const face = ring.vertIds.map((id) => map.get(id));
-        if (face.every(Boolean)) {
-          merged.addFace(face as NonNullable<(typeof face)[number]>[], {
-            materialIndex: slots[ring.materialIndex] ?? 0,
-            smooth: ring.smooth,
-          });
-        }
-      }
+  groupSelected: () => {
+    const { objects, selectedObjectIds, groups } = get();
+    const members = objects.filter((object) => selectedObjectIds.includes(object.id));
+    if (members.length === 0) {
+      set({ status: 'Select the objects to group first' });
+      return;
     }
 
-    merged.computeNormals();
+    get().recordHistory('Group');
 
-    const absorbed = new Set(sources.map((object) => object.id));
+    const group: SceneGroup = { id: nextGroupId(), name: groupName(groups), collapsed: false };
+    const moving = new Set(members.map((object) => object.id));
+
+    set((state) => {
+      const next = state.objects.map((object) =>
+        moving.has(object.id) ? { ...object, groupId: group.id } : object,
+      );
+      return {
+        objects: next,
+        // Prune before the new one goes in: the objects it took may have been
+        // the last of another folder.
+        groups: [...pruneGroups(state.groups, next), group],
+        status: `Grouped ${members.length} object(s) into ${group.name}`,
+      };
+    });
+  },
+
+  renameGroup: (id, name) => {
     set((state) => ({
-      objects: state.objects
-        .filter((object) => !absorbed.has(object.id))
-        .map((object) =>
-          object.id === target.id
-            ? // The parameters described the target's own shape, not the merge.
-              // The result spans everything that came in, so the target's old
-              // origin can now sit anywhere in it, or outside it altogether.
-              recenterOrigin({ ...object, mesh: merged, materials, primitive: null })
-            : object,
-        ),
+      groups: state.groups.map((group) => (group.id === id ? { ...group, name } : group)),
+    }));
+  },
+
+  selectGroup: (id) => {
+    const { objects, groups } = get();
+    const group = groups.find((candidate) => candidate.id === id);
+    if (!group) return;
+
+    const members = groupMembers(objects, id);
+    get().selectObjects(members.map((object) => object.id));
+    set({ status: `Selected ${members.length} object(s) in ${group.name}` });
+  },
+
+  deleteGroup: (id) => {
+    const { objects, groups } = get();
+    const group = groups.find((candidate) => candidate.id === id);
+    if (!group) return;
+
+    const doomed = new Set(groupMembers(objects, id).map((object) => object.id));
+    get().recordHistory('Delete group');
+
+    set((state) => {
+      const remaining = state.objects.filter((object) => !doomed.has(object.id));
+      return {
+        objects: remaining,
+        groups: state.groups.filter((candidate) => candidate.id !== id),
+        selectedObjectIds: state.selectedObjectIds.filter((objectId) => !doomed.has(objectId)),
+        activeObjectId: doomed.has(state.activeObjectId ?? '')
+          ? (remaining[remaining.length - 1]?.id ?? null)
+          : state.activeObjectId,
+        meshVersion: state.meshVersion + 1,
+        status: `Deleted ${group.name} and its ${doomed.size} object(s)`,
+      };
+    });
+  },
+
+  joinGroup: (id) => {
+    const state = get();
+    const group = state.groups.find((candidate) => candidate.id === id);
+    if (!group) return;
+
+    const members = groupMembers(state.objects, id);
+    const unlocked = members.filter((object) => !object.locked);
+    if (unlocked.length === 0) {
+      if (members[0]) get().noteLockedAttempt(members[0].id);
+      return;
+    }
+
+    // The active object keeps the result when it is one of them, so joining
+    // from the folder menu lands where joining by hand would.
+    const target = unlocked.find((object) => object.id === state.activeObjectId) ?? unlocked[0];
+    const sources = unlocked.filter((object) => object.id !== target.id);
+    if (sources.length === 0) {
+      set({ status: `Nothing to join: ${group.name} holds one unlocked object` });
+      return;
+    }
+
+    get().recordHistory('Join group');
+
+    set((state) => ({
+      objects: foldInto(state.objects, target, sources),
       selectedObjectIds: [target.id],
       activeObjectId: target.id,
       meshVersion: state.meshVersion + 1,
-      status: `Merged ${sources.length + 1} objects`,
+      // The target is a member, so the folder keeps it and survives.
+      status: `Joined ${sources.length + 1} objects of ${group.name}`,
+    }));
+  },
+
+  ungroup: (id) => {
+    const group = get().groups.find((candidate) => candidate.id === id);
+    if (!group) return;
+
+    get().recordHistory('Ungroup');
+
+    set((state) => ({
+      objects: state.objects.map((object) =>
+        object.groupId === id ? { ...object, groupId: null } : object,
+      ),
+      groups: state.groups.filter((candidate) => candidate.id !== id),
+      status: `Ungrouped ${group.name}`,
+    }));
+  },
+
+  toggleGroupVisibility: (id) => {
+    set((state) => {
+      const members = groupMembers(state.objects, id);
+      if (members.length === 0) return {};
+
+      // Hidden only once every member is: a folder holding one visible object
+      // still has something to hide.
+      const visible = members.every((object) => !object.visible);
+      return {
+        objects: state.objects.map((object) =>
+          object.groupId === id ? { ...object, visible } : object,
+        ),
+        meshVersion: state.meshVersion + 1,
+      };
+    });
+  },
+
+  toggleGroupLock: (id) => {
+    set((state) => {
+      const members = groupMembers(state.objects, id);
+      if (members.length === 0) return {};
+
+      const locked = !members.every((object) => object.locked);
+      return {
+        objects: state.objects.map((object) =>
+          object.groupId === id ? { ...object, locked } : object,
+        ),
+      };
+    });
+  },
+
+  toggleGroupCollapsed: (id) => {
+    set((state) => ({
+      groups: state.groups.map((group) =>
+        group.id === id ? { ...group, collapsed: !group.collapsed } : group,
+      ),
     }));
   },
 
@@ -860,8 +1094,8 @@ export const createSceneSlice: StateCreator<
     }
 
     const consumed = new Set(tools.map((object) => object.id));
-    set((state) => ({
-      objects: state.objects
+    set((state) => {
+      const objects = state.objects
         .filter((object) => !consumed.has(object.id))
         .map((object) =>
           object.id === target.id
@@ -870,15 +1104,21 @@ export const createSceneSlice: StateCreator<
               // the origin goes back on what the boolean left behind.
               recenterOrigin({ ...object, mesh, materials, primitive: null })
             : object,
-        ),
-      selectedObjectIds: [target.id],
-      activeObjectId: target.id,
-      meshVersion: state.meshVersion + 1,
-      status:
-        mesh.faces.size === 0
-          ? `${BOOLEAN_LABELS[op]} left nothing behind`
-          : `${BOOLEAN_LABELS[op]} with ${tools.length} object(s)`,
-    }));
+        );
+
+      return {
+        objects,
+        // The cutters are gone, and a folder that held nothing else goes too.
+        groups: pruneGroups(state.groups, objects),
+        selectedObjectIds: [target.id],
+        activeObjectId: target.id,
+        meshVersion: state.meshVersion + 1,
+        status:
+          mesh.faces.size === 0
+            ? `${BOOLEAN_LABELS[op]} left nothing behind`
+            : `${BOOLEAN_LABELS[op]} with ${tools.length} object(s)`,
+      };
+    });
   },
 
   /**
@@ -960,6 +1200,7 @@ export const createSceneSlice: StateCreator<
       const remaining = state.objects.filter((object) => !targetIds.includes(object.id));
       return {
         objects: remaining,
+        groups: pruneGroups(state.groups, remaining),
         // What survived the delete keeps its place in the selection: naming one
         // object from the outliner leaves the rest of a selection alone.
         selectedObjectIds: state.selectedObjectIds.filter((id) => !targetIds.includes(id)),
@@ -1534,9 +1775,18 @@ export const createSceneSlice: StateCreator<
       ...object,
       primitive: null,
     }));
+    // Which folders are folded shut is how the panel looks rather than what the
+    // scene is, so it survives the replay an undo runs: a step taken three
+    // operations ago has no business folding a group open again.
+    const folded = new Map(get().groups.map((group) => [group.id, group.collapsed]));
+    const groups: SceneGroup[] = restored.groups.map((group) => ({
+      ...group,
+      collapsed: folded.get(group.id) ?? false,
+    }));
 
     set((state) => ({
       objects,
+      groups,
       projectName: restored.name,
       cursor: restored.cursor,
       activeObjectId: restored.activeObjectId,
@@ -1552,6 +1802,7 @@ export const createSceneSlice: StateCreator<
     heldAtSizeFloor.clear();
     set({
       objects: [],
+      groups: [],
       activeObjectId: null,
       selectedObjectIds: [],
       cursor: vec3(),

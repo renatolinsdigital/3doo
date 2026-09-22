@@ -12,6 +12,23 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
+
+    // The rows inside a folder, stepped in and hung off a rule that runs the
+    // height of the folder: indentation alone is too slight to read at this
+    // row height.
+    &--nested {
+      margin-left: var(--space-3);
+      padding-left: var(--space-2);
+      border-left: var(--border-thin) solid var(--void);
+    }
+  }
+
+  // A folder and the rows it holds: one block, so the list's gap falls between
+  // folders rather than between a folder and its own contents.
+  &__branch {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
   }
 
   &__row {
@@ -20,6 +37,15 @@
     align-items: stretch;
     border: var(--border-thin) solid var(--void);
     background: var(--bone);
+
+    // A folder title is not an object: the chevron takes the first column, and
+    // the darker plate separates the folder from the rows underneath it.
+    // Declared before the selected and active states so they still win, since
+    // all three carry the same weight.
+    &--group {
+      grid-template-columns: auto 1fr auto auto;
+      background: var(--bone-dim);
+    }
 
     &--selected {
       background: var(--bone-shade);
@@ -60,6 +86,22 @@
     color: inherit;
     border-left: var(--border-thin) solid var(--void);
     cursor: default;
+  }
+
+  &__fold {
+    @include brutal-focus;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--field-height);
+    color: inherit;
+    border-right: var(--border-thin) solid var(--void);
+
+    &:hover {
+      background: var(--amber);
+      color: var(--void);
+    }
   }
 
   &__icon {

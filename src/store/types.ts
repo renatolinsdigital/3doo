@@ -51,11 +51,27 @@ export interface SceneObject {
   visible: boolean;
   locked: boolean;
   parentId: string | null;
+  /** The outliner folder this object sits in, or null when it is loose. */
+  groupId: string | null;
   materials: Material[];
   modifiers: Modifier[];
   activeMaterial: number;
   /** Set while a freshly added primitive can still be re-parameterised. */
   primitive: { kind: PrimitiveKind; params: PrimitiveParams } | null;
+}
+
+/**
+ * A folder in the outliner: a name and the objects that point at it.
+ *
+ * Visibility and the lock stay on the objects rather than being mirrored here,
+ * so everything that draws or edits the scene keeps reading one flag. The
+ * folder's own toggles set every member at once.
+ */
+export interface SceneGroup {
+  id: string;
+  name: string;
+  /** Folded shut, hiding its members' rows. */
+  collapsed: boolean;
 }
 
 /**

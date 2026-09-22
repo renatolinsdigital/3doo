@@ -318,3 +318,241 @@ describe('cursor snaps', () => {
     expect(useEditorStore.getState().status).toContain('pointer into the viewport');
   });
 });
+
+describe('outliner groups', () => {
+  /** A fresh scene holding a box, a cylinder and a sphere, in that order. */
+  function threeObjects() {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    store.addPrimitive('box');
+    store.addPrimitive('cylinder');
+    store.addPrimitive('uvSphere');
+    return useEditorStore.getState().objects;
+  }
+
+  function group(index = 0) {
+    return useEditorStore.getState().groups[index];
+  }
+
+  /** Puts the named objects in a folder and hands it back. */
+  function groupOf(...ids: string[]) {
+    useEditorStore.getState().selectObjects(ids);
+    useEditorStore.getState().groupSelected();
+    return useEditorStore.getState().groups[useEditorStore.getState().groups.length - 1];
+  }
+
+  it('folds the selected objects into a folder of their own', () => {
+    const [box, cylinder] = threeObjects();
+
+    const folder = groupOf(box.id, cylinder.id);
+
+    expect(folder.name).toBe('GROUP');
+    expect(useEditorStore.getState().objects.map((object) => object.groupId)).toEqual([
+      folder.id,
+      folder.id,
+      null,
+    ]);
+  });
+
+  it('names each new folder apart from the ones already there', () => {
+    const [box, cylinder, sphere] = threeObjects();
+
+    groupOf(box.id);
+    groupOf(cylinder.id);
+    groupOf(sphere.id);
+
+    expect(useEditorStore.getState().groups.map((entry) => entry.name)).toEqual([
+      'GROUP',
+      'GROUP.2',
+      'GROUP.3',
+    ]);
+  });
+
+  it('says so rather than making an empty folder', () => {
+    threeObjects();
+    useEditorStore.getState().clearSelection();
+
+    useEditorStore.getState().groupSelected();
+
+    expect(useEditorStore.getState().groups).toEqual([]);
+    expect(useEditorStore.getState().status).toMatch(/select the objects to group/i);
+  });
+
+  it('moves objects across when they are grouped again, dropping the folder they empty', () => {
+    const [box, cylinder] = threeObjects();
+    groupOf(box.id, cylinder.id);
+
+    // The first folder still holds the cylinder, so both survive.
+    groupOf(box.id);
+    expect(useEditorStore.getState().groups).toHaveLength(2);
+
+    // Now it holds nothing, and nothing can ever be put back into it.
+    groupOf(cylinder.id);
+    expect(useEditorStore.getState().groups.map((entry) => entry.name)).toEqual([
+      'GROUP.2',
+      'GROUP.3',
+    ]);
+  });
+
+  it('selects everything in the folder and nothing else', () => {
+    const [box, cylinder, sphere] = threeObjects();
+    const folder = groupOf(box.id, cylinder.id);
+    useEditorStore.getState().selectObjects([sphere.id]);
+
+    useEditorStore.getState().selectGroup(folder.id);
+
+    expect(useEditorStore.getState().selectedObjectIds).toEqual([box.id, cylinder.id]);
+  });
+
+  it('hides the whole folder, then shows it again', () => {
+    const [box, cylinder] = threeObjects();
+    const folder = groupOf(box.id, cylinder.id);
+
+    useEditorStore.getState().toggleGroupVisibility(folder.id);
+    expect(useEditorStore.getState().objects.map((object) => object.visible)).toEqual([
+      false,
+      false,
+      true,
+    ]);
+
+    useEditorStore.getState().toggleGroupVisibility(folder.id);
+    expect(useEditorStore.getState().objects.every((object) => object.visible)).toBe(true);
+  });
+
+  it('hides the rest of a folder one row of which is already hidden', () => {
+    const [box, cylinder] = threeObjects();
+    const folder = groupOf(box.id, cylinder.id);
+    useEditorStore.getState().toggleObjectVisibility(box.id);
+
+    useEditorStore.getState().toggleGroupVisibility(folder.id);
+
+    // Something was still showing, so the folder had something left to hide.
+    expect(useEditorStore.getState().objects.map((object) => object.visible)).toEqual([
+      false,
+      false,
+      true,
+    ]);
+  });
+
+  it('locks the whole folder, then unlocks it', () => {
+    const [box, cylinder] = threeObjects();
+    const folder = groupOf(box.id, cylinder.id);
+
+    useEditorStore.getState().toggleGroupLock(folder.id);
+    expect(useEditorStore.getState().objects.map((object) => object.locked)).toEqual([
+      true,
+      true,
+      false,
+    ]);
+
+    useEditorStore.getState().toggleGroupLock(folder.id);
+    expect(useEditorStore.getState().objects.some((object) => object.locked)).toBe(false);
+  });
+
+  it('deletes the folder and everything in it', () => {
+    const [box, cylinder, sphere] = threeObjects();
+    const folder = groupOf(box.id, cylinder.id);
+
+    useEditorStore.getState().deleteGroup(folder.id);
+
+    expect(useEditorStore.getState().objects.map((object) => object.id)).toEqual([sphere.id]);
+    expect(useEditorStore.getState().groups).toEqual([]);
+  });
+
+  it('leaves the objects loose when the folder is dropped', () => {
+    const [box, cylinder] = threeObjects();
+    const folder = groupOf(box.id, cylinder.id);
+
+    useEditorStore.getState().ungroup(folder.id);
+
+    expect(useEditorStore.getState().objects).toHaveLength(3);
+    expect(useEditorStore.getState().objects.every((object) => object.groupId === null)).toBe(true);
+    expect(useEditorStore.getState().groups).toEqual([]);
+  });
+
+  it('joins the folder into the active object, which stays in the folder', () => {
+    const [box, cylinder] = threeObjects();
+    const folder = groupOf(box.id, cylinder.id);
+    useEditorStore.getState().setActiveObject(box.id);
+
+    useEditorStore.getState().joinGroup(folder.id);
+
+    const objects = useEditorStore.getState().objects;
+    expect(objects).toHaveLength(2);
+    expect(objects[0].id).toBe(box.id);
+    // A box and a cylinder folded into one mesh: more than the box's six faces.
+    expect(objects[0].mesh.faces.size).toBeGreaterThan(6);
+    expect(objects[0].groupId).toBe(folder.id);
+  });
+
+  it('will not join a folder down to one unlocked object', () => {
+    const [box, cylinder] = threeObjects();
+    const folder = groupOf(box.id, cylinder.id);
+    useEditorStore.getState().toggleObjectLock(cylinder.id);
+
+    useEditorStore.getState().joinGroup(folder.id);
+
+    expect(useEditorStore.getState().objects).toHaveLength(3);
+    expect(useEditorStore.getState().status).toMatch(/nothing to join/i);
+  });
+
+  it('trembles the lock rather than joining a folder that is locked outright', () => {
+    const [box, cylinder] = threeObjects();
+    const folder = groupOf(box.id, cylinder.id);
+    useEditorStore.getState().toggleGroupLock(folder.id);
+
+    useEditorStore.getState().joinGroup(folder.id);
+
+    expect(useEditorStore.getState().objects).toHaveLength(3);
+    expect(useEditorStore.getState().lockedAttempt?.objectId).toBe(box.id);
+  });
+
+  it('drops the folder a delete empties', () => {
+    const [box, cylinder] = threeObjects();
+    groupOf(box.id, cylinder.id);
+
+    useEditorStore.getState().deleteSelected([box.id, cylinder.id]);
+
+    expect(useEditorStore.getState().groups).toEqual([]);
+  });
+
+  it('drops the folder a merge into an outside object empties', () => {
+    const [box, cylinder, sphere] = threeObjects();
+    groupOf(box.id, cylinder.id);
+
+    // The sphere is loose and keeps the result, so the folder loses both of its
+    // objects to it.
+    useEditorStore.getState().selectObjects([box.id, cylinder.id, sphere.id]);
+    useEditorStore.getState().setActiveObject(sphere.id, true);
+    useEditorStore.getState().mergeSelected();
+
+    expect(useEditorStore.getState().objects.map((object) => object.id)).toEqual([sphere.id]);
+    expect(useEditorStore.getState().groups).toEqual([]);
+  });
+
+  it('puts the folders back on undo', () => {
+    const [box, cylinder] = threeObjects();
+    const folder = groupOf(box.id, cylinder.id);
+
+    useEditorStore.getState().ungroup(folder.id);
+    expect(useEditorStore.getState().groups).toEqual([]);
+
+    useEditorStore.getState().undo();
+
+    expect(useEditorStore.getState().groups.map((entry) => entry.name)).toEqual(['GROUP']);
+    expect(
+      useEditorStore.getState().objects.filter((object) => object.groupId === group().id),
+    ).toHaveLength(2);
+  });
+
+  it('keeps a folded folder folded through an undo', () => {
+    const [box, cylinder] = threeObjects();
+    const folder = groupOf(box.id, cylinder.id);
+    useEditorStore.getState().toggleGroupCollapsed(folder.id);
+
+    useEditorStore.getState().addPrimitive('cone');
+    useEditorStore.getState().undo();
+
+    expect(group().collapsed).toBe(true);
+  });
+});

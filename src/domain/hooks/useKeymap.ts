@@ -177,6 +177,9 @@ export function useKeymap(): void {
         case 'separate':
           if (state.mode === 'object') state.separateLooseParts();
           break;
+        case 'group':
+          if (state.mode === 'object') state.groupSelected();
+          break;
         case 'applyTransform':
           if (state.mode === 'object') state.applyTransformToSelected();
           break;

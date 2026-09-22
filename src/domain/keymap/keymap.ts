@@ -164,6 +164,14 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
     group: 'Edit',
   },
   {
+    id: 'group',
+    key: 'g',
+    ctrl: true,
+    mode: 'object',
+    label: 'Group the selected objects into a folder in the outliner',
+    group: 'Edit',
+  },
+  {
     id: 'applyTransform',
     key: 'a',
     ctrl: true,
