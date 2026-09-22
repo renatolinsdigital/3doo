@@ -61,8 +61,8 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       {
         kind: 'steps',
         items: [
-          'Open the MODELING module from the plate in the top-left corner.',
-          'In the PRIMITIVES panel on the left, click a primitive. BOX is the usual place to start. It drops into the scene already selected.',
+          'Open the MODELING module from the plate in the top-left corner. A cube is already waiting in the scene.',
+          'In the PRIMITIVES panel on the left, click a primitive. It drops into the scene already selected, at the 3D cursor. A fresh tab already has a CUBE waiting, so there is something to try the tools on before you add anything.',
           'While it is still freshly added, the PROPERTIES panel lets you change its parameters (size, segments, rings) and the mesh is rebuilt each time.',
           'Press Tab to enter edit mode. The left panels swap to SELECT, OPERATIONS, LOOP OPERATIONS and TOPOLOGY, and the tool rail switches to vertex, edge and face selection.',
           'Select some geometry and run an operation: E extrudes, I insets, Ctrl+R cuts a loop.',
@@ -71,7 +71,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'Work is autosaved to IndexedDB as you go, so a closed or crashed tab does not cost you the scene. Undo holds the last 50 steps, or however many the UNDO STEPS slider in preferences allows, and the ▤ button in the top bar opens the list to click straight back to one of them.',
+        text: 'A fresh tab opens on a cube, the way Blender does, so there is something to press keys at before you have added anything. It is an ordinary object: one Ctrl+Z takes it away if you would rather start empty, and a tab with a session to come back to loads that instead. Work is autosaved to IndexedDB as you go, so a closed or crashed tab does not cost you the scene. Undo holds the last 50 steps, or however many the UNDO STEPS slider in preferences allows, and the ▤ button in the top bar opens the list to click straight back to one of them.',
       },
     ],
   },
@@ -131,7 +131,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'Object mode treats each mesh as a single thing you place in the scene. Ten primitives are available (box, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule and torus), and each stays parametric until you touch its geometry, so segments and radius can still be adjusted after adding it.',
+        text: 'Object mode treats each mesh as a single thing you place in the scene. Ten primitives are available (cube, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule and torus), and each stays parametric until you touch its geometry, so segments and radius can still be adjusted after adding it.',
       },
       {
         kind: 'table',

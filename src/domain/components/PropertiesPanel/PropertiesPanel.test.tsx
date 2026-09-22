@@ -16,7 +16,7 @@ import { PropertiesPanel } from './PropertiesPanel';
 function twoSlotBox() {
   const store = useEditorStore.getState();
   store.resetScene();
-  store.addPrimitive('box');
+  store.addPrimitive('cube');
   store.addMaterial();
   store.updateMaterial(0, { name: 'BODY' });
   store.updateMaterial(1, { name: 'TRIM' });
@@ -109,7 +109,7 @@ describe('PropertiesPanel transform precision', () => {
   beforeEach(() => {
     const store = useEditorStore.getState();
     store.resetScene();
-    store.addPrimitive('box');
+    store.addPrimitive('cube');
   });
 
   // LOCATION, ROTATION and SCALE each label their axes X, Y and Z, and the
@@ -161,7 +161,7 @@ describe('PropertiesPanel typed rotation pivot', () => {
   const boxFiveMetresOut = () => {
     const store = useEditorStore.getState();
     store.resetScene();
-    store.addPrimitive('box');
+    store.addPrimitive('cube');
     const id = useEditorStore.getState().objects[0].id;
     store.setObjectTransforms([{ id, transform: { position: { x: -5, y: 0, z: 0 } } }]);
     store.setCursor({ x: 0, y: 0, z: 0 });
@@ -224,7 +224,7 @@ describe('PropertiesPanel selected edge(s)', () => {
   function editableBox() {
     const store = useEditorStore.getState();
     store.resetScene();
-    store.addPrimitive('box');
+    store.addPrimitive('cube');
     store.setMode('edit');
     store.setSelectMode('edge');
     useEditorStore.getState().objects[0].mesh.deselectAll();

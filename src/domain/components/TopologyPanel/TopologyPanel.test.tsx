@@ -16,7 +16,7 @@ function activeMesh() {
 function editBox() {
   const store = useEditorStore.getState();
   store.resetScene();
-  store.addPrimitive('box');
+  store.addPrimitive('cube');
   store.setMode('edit');
 }
 

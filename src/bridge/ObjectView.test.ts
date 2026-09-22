@@ -19,7 +19,7 @@ const SELECTION_LINE = {
 function scene(): { object: SceneObject; settings: ViewportSettings } {
   const store = useEditorStore.getState();
   store.resetScene();
-  store.addPrimitive('box');
+  store.addPrimitive('cube');
   const state = useEditorStore.getState();
   const object = state.objects[0];
   return {
@@ -357,7 +357,7 @@ describe('ObjectView under a modifier', () => {
   function subdividedBox(): { object: SceneObject; settings: ViewportSettings } {
     const store = useEditorStore.getState();
     store.resetScene();
-    store.addPrimitive('box');
+    store.addPrimitive('cube');
     store.addModifier('subdivide');
 
     const state = useEditorStore.getState();
@@ -479,7 +479,7 @@ describe('ObjectView under a modifier', () => {
   it('draws one wireframe with nothing on the stack', () => {
     const store = useEditorStore.getState();
     store.resetScene();
-    store.addPrimitive('box');
+    store.addPrimitive('cube');
     const state = useEditorStore.getState();
     const object = state.objects[0];
     const settings: ViewportSettings = {

@@ -11,7 +11,7 @@ import { useEditorStore } from '@store/index';
 import type { SelectMode } from '@store/types';
 
 const PRIMITIVE_ORDER: PrimitiveKind[] = [
-  'box',
+  'cube',
   'plane',
   'circle',
   'grid',
@@ -47,7 +47,7 @@ function measures(kind: PrimitiveKind): string {
 }
 
 const PRIMITIVE_HINTS: Record<PrimitiveKind, string> = {
-  box: `Adds a six-sided cube at the 3D cursor (${measures('box')})`,
+  cube: `Adds a six-sided cube at the 3D cursor (${measures('cube')})`,
   plane: `Adds a single flat quad at the 3D cursor (${measures('plane')})`,
   circle: `Adds a flat n-gon or an open ring of edges (${measures('circle')})`,
   grid: `Adds a subdivided flat plane, useful as a base mesh (${measures('grid')})`,

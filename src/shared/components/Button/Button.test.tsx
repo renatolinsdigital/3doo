@@ -54,10 +54,10 @@ describe('Button', () => {
 
   it('does not fire again when Enter follows a click', async () => {
     // A clicked button keeps the focus, and Enter on a focused button is a
-    // second click: press BOX and then Enter, and the scene gets two boxes.
+    // second click: press CUBE and then Enter, and the scene gets two boxes.
     const onClick = vi.fn();
-    render(<Button label="BOX" onClick={onClick} />);
-    const button = screen.getByRole('button', { name: 'BOX' });
+    render(<Button label="CUBE" onClick={onClick} />);
+    const button = screen.getByRole('button', { name: 'CUBE' });
 
     await userEvent.click(button);
     expect(button).not.toHaveFocus();
@@ -70,8 +70,8 @@ describe('Button', () => {
     // A hand on the keyboard has nowhere else to put the focus, and a second
     // Enter there is a deliberate second press rather than a stray one.
     const onClick = vi.fn();
-    render(<Button label="BOX" onClick={onClick} />);
-    const button = screen.getByRole('button', { name: 'BOX' });
+    render(<Button label="CUBE" onClick={onClick} />);
+    const button = screen.getByRole('button', { name: 'CUBE' });
 
     button.focus();
     await userEvent.keyboard('{Enter}');

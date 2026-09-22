@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { setOpeningSceneDone } from '@domain/hooks/useAutosave';
 import { DEFAULT_PREFERENCES, useEditorStore } from '@store/index';
 
 import { App } from './App';
@@ -23,6 +24,10 @@ describe('App shell', () => {
     // The editor is a module now, not the whole app, so the tests below have to
     // be standing on its route for it to render at all.
     window.history.pushState(null, '', '/modeling');
+    // Every test below builds the scene it needs. The cube a fresh tab opens
+    // on would arrive a microtask after the render and land in the middle of
+    // one of them; `useAutosave.test.tsx` is where that is tested instead.
+    setOpeningSceneDone(true);
     useEditorStore.getState().resetScene();
     useEditorStore.setState({
       tooltipsEnabled: true,
@@ -74,12 +79,12 @@ describe('App shell', () => {
     render(<App />);
 
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
 
     expect(useEditorStore.getState().objects).toHaveLength(1);
     const outliner = screen.getByRole('region', { name: 'OUTLINER' });
-    expect(within(outliner).getByRole('button', { name: 'BOX' })).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Added BOX');
+    expect(within(outliner).getByRole('button', { name: 'CUBE' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('Added CUBE');
   });
 
   it('arms the move tool on the rail when a primitive is added', async () => {
@@ -89,7 +94,7 @@ describe('App shell', () => {
     expect(within(rail).getByRole('button', { name: 'Move' })).not.toHaveAttribute('aria-pressed');
 
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
 
     // The gizmo only draws for a transform tool, so this is what puts handles
     // on the thing that was just added.
@@ -102,7 +107,7 @@ describe('App shell', () => {
   it('swaps the left panel when entering edit mode', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
 
     expect(screen.queryByRole('region', { name: 'OPERATIONS' })).not.toBeInTheDocument();
 
@@ -115,7 +120,7 @@ describe('App shell', () => {
   it('runs a modelling operation end to end through the UI', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
     await userEvent.click(screen.getByRole('button', { name: 'EDIT' }));
 
     // Select everything, then subdivide from the loop operations panel.
@@ -141,8 +146,8 @@ describe('App shell', () => {
       'true',
     );
 
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
     act(() =>
       useEditorStore.setState((state) => ({
         // The second box overlaps the first by half, and the first is active,
@@ -172,7 +177,7 @@ describe('App shell', () => {
   it('undoes from the keyboard', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
     expect(useEditorStore.getState().objects).toHaveLength(1);
 
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
@@ -218,7 +223,7 @@ describe('App shell', () => {
   it('adds a modifier and renders it in the stack', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
 
     const modifiers = screen.getByRole('region', { name: 'MODIFIERS' });
     expect(within(modifiers).getByText(/Stack is empty/i)).toBeInTheDocument();
@@ -240,7 +245,7 @@ describe('App shell', () => {
   it('removes a modifier from the stack', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
 
     const modifiers = screen.getByRole('region', { name: 'MODIFIERS' });
     await userEvent.selectOptions(within(modifiers).getByLabelText('Add modifier'), 'array');
@@ -253,7 +258,7 @@ describe('App shell', () => {
   it('starts a modal rotation on R, the way Blender does', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
 
     fireEvent.keyDown(window, { key: 'r' });
 
@@ -276,7 +281,7 @@ describe('App shell', () => {
   it('selects all objects when pressing A in object mode', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
     await userEvent.click(within(addPanel).getByRole('button', { name: 'PLANE' }));
     act(() => useEditorStore.getState().setActiveObject(null));
     expect(useEditorStore.getState().selectedObjectIds).toHaveLength(0);
@@ -290,7 +295,7 @@ describe('App shell', () => {
   it('selects all geometry when pressing A in edit mode', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
     await userEvent.click(screen.getByRole('button', { name: 'EDIT' }));
 
     fireEvent.keyDown(window, { key: 'a' });
@@ -301,7 +306,7 @@ describe('App shell', () => {
   it('treats Ctrl+A as a no-op that only suppresses the browser default', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
     act(() => useEditorStore.getState().setActiveObject(null));
     expect(useEditorStore.getState().selectedObjectIds).toHaveLength(0);
 
@@ -315,7 +320,7 @@ describe('App shell', () => {
   it('keeps shortcuts alive while a toggle holds focus, but not in a text field', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
     await userEvent.click(screen.getByRole('button', { name: 'EDIT' }));
 
     // Clicking a toggle leaves its hidden checkbox focused. Read as a field
@@ -337,7 +342,7 @@ describe('App shell', () => {
   it('flips proportional editing from the top bar, and only in edit mode', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
 
     const prop = screen.getByRole('button', { name: 'PROP' });
     expect(prop).toHaveAttribute('aria-disabled', 'true');
@@ -463,7 +468,7 @@ describe('App shell', () => {
   it('flips auto merge from the top bar, and only in edit mode', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
 
     const merge = screen.getByRole('button', { name: 'AUTO MERGE' });
     expect(merge).toHaveAttribute('aria-disabled', 'true');
@@ -483,7 +488,7 @@ describe('App shell', () => {
   it('sets the auto merge distance from the topology panel', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
     await userEvent.click(screen.getByRole('button', { name: 'EDIT' }));
     // Switched on through the store rather than the button: `resetScene` leaves
     // the flag as the previous test set it, so clicking would toggle it off.
@@ -529,7 +534,7 @@ describe('App shell', () => {
 
   it('moves the cursor and the selection with the keys the menu names', () => {
     const store = useEditorStore.getState();
-    store.addPrimitive('box');
+    store.addPrimitive('cube');
     store.setObjectTransform(useEditorStore.getState().objects[0].id, {
       position: { x: 0, y: 5, z: 0 },
     });
@@ -629,7 +634,7 @@ describe('App shell', () => {
     expect(smooth).toHaveAttribute('aria-pressed', 'false');
 
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
 
     const faces = () => [...useEditorStore.getState().objects[0].mesh.faces.values()];
     expect(faces().every((face) => face.smooth)).toBe(false);
@@ -737,12 +742,12 @@ describe('App shell', () => {
   it('opens the history from the top bar and travels back through it', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
-    await userEvent.click(within(addPanel).getByRole('button', { name: 'BOX' }));
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
     await userEvent.click(within(addPanel).getByRole('button', { name: 'CYLINDER' }));
 
     await userEvent.click(screen.getByRole('button', { name: 'HISTORY' }));
     const dialog = screen.getByRole('dialog', { name: 'HISTORY' });
-    await userEvent.click(within(dialog).getByRole('button', { name: /Add BOX/ }));
+    await userEvent.click(within(dialog).getByRole('button', { name: /Add CUBE/ }));
 
     // Two steps in one click, and the scene is back to where the box arrived.
     expect(useEditorStore.getState().objects).toHaveLength(0);

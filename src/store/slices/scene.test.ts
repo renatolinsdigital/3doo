@@ -11,7 +11,7 @@ import { evaluatedMesh } from './scene';
 function boxScene() {
   const store = useEditorStore.getState();
   store.resetScene();
-  store.addPrimitive('box');
+  store.addPrimitive('cube');
   return useEditorStore.getState().objects[0];
 }
 
@@ -113,7 +113,7 @@ describe('material slots', () => {
   function threeSlotBox() {
     const store = useEditorStore.getState();
     store.resetScene();
-    store.addPrimitive('box');
+    store.addPrimitive('cube');
     store.addMaterial();
     store.addMaterial();
 
@@ -170,7 +170,7 @@ describe('material slots', () => {
   it('takes the last slot, leaving an object with none', () => {
     const store = useEditorStore.getState();
     store.resetScene();
-    store.addPrimitive('box');
+    store.addPrimitive('cube');
     store.removeMaterial(0);
 
     const object = useEditorStore.getState().objects[0];
@@ -202,7 +202,7 @@ describe('booleans against an unapplied modifier stack', () => {
     store.resetScene();
     // Toasts outlive a scene reset, and these tests are counting them.
     useEditorStore.setState({ toasts: [] });
-    store.addPrimitive('box');
+    store.addPrimitive('cube');
     store.addPrimitive('uvSphere');
 
     const [box, sphere] = useEditorStore.getState().objects;
@@ -221,7 +221,7 @@ describe('booleans against an unapplied modifier stack', () => {
     await useEditorStore.getState().booleanWithSelected('union');
 
     // Nothing consumed, and the mesh it would have cut is untouched.
-    expect(names()).toEqual(['BOX', 'UV SPHERE']);
+    expect(names()).toEqual(['CUBE', 'UV SPHERE']);
     expect(useEditorStore.getState().objects[0].mesh.faces.size).toBe(box.mesh.faces.size);
   });
 
@@ -234,7 +234,7 @@ describe('booleans against an unapplied modifier stack', () => {
 
     await useEditorStore.getState().booleanWithSelected('difference');
 
-    expect(names()).toEqual(['BOX', 'UV SPHERE']);
+    expect(names()).toEqual(['CUBE', 'UV SPHERE']);
   });
 
   it('says which object is holding it up, and says it as a toast', async () => {
@@ -247,7 +247,7 @@ describe('booleans against an unapplied modifier stack', () => {
     const toasts = useEditorStore.getState().toasts;
     expect(toasts).toHaveLength(1);
     expect(toasts[0].variant).toBe('error');
-    expect(toasts[0].message).toMatch(/BOX/);
+    expect(toasts[0].message).toMatch(/CUBE/);
     expect(toasts[0].message).toMatch(/modifiers/i);
   });
 
@@ -261,7 +261,7 @@ describe('booleans against an unapplied modifier stack', () => {
 
     await useEditorStore.getState().booleanWithSelected('union');
 
-    expect(names()).toEqual(['BOX']);
+    expect(names()).toEqual(['CUBE']);
     expect(useEditorStore.getState().toasts).toHaveLength(0);
   });
 
@@ -275,7 +275,7 @@ describe('booleans against an unapplied modifier stack', () => {
     await useEditorStore.getState().booleanWithSelected('union');
 
     // The cutter is consumed, so one object is left holding the result.
-    expect(names()).toEqual(['BOX']);
+    expect(names()).toEqual(['CUBE']);
     expect(useEditorStore.getState().toasts).toHaveLength(0);
   });
 });
@@ -324,7 +324,7 @@ describe('outliner groups', () => {
   function threeObjects() {
     const store = useEditorStore.getState();
     store.resetScene();
-    store.addPrimitive('box');
+    store.addPrimitive('cube');
     store.addPrimitive('cylinder');
     store.addPrimitive('uvSphere');
     return useEditorStore.getState().objects;
@@ -588,7 +588,7 @@ describe('outliner groups', () => {
 
       useEditorStore.getState().moveObject(sphere.id, { kind: 'group', groupId: folder.id });
 
-      expect(names()).toEqual(['BOX', 'CYLINDER', 'UV SPHERE']);
+      expect(names()).toEqual(['CUBE', 'CYLINDER', 'UV SPHERE']);
       expect(useEditorStore.getState().objects.map((object) => object.groupId)).toEqual([
         folder.id,
         folder.id,
@@ -605,7 +605,7 @@ describe('outliner groups', () => {
         after: false,
       });
 
-      expect(names()).toEqual(['UV SPHERE', 'BOX', 'CYLINDER']);
+      expect(names()).toEqual(['UV SPHERE', 'CUBE', 'CYLINDER']);
     });
 
     it('takes the object into the folder of the row it lands beside', () => {
@@ -618,7 +618,7 @@ describe('outliner groups', () => {
         after: true,
       });
 
-      expect(names()).toEqual(['BOX', 'UV SPHERE', 'CYLINDER']);
+      expect(names()).toEqual(['CUBE', 'UV SPHERE', 'CYLINDER']);
       expect(useEditorStore.getState().objects[1].groupId).toBe(folder.id);
     });
 
@@ -632,7 +632,7 @@ describe('outliner groups', () => {
         after: true,
       });
 
-      expect(names()).toEqual(['CYLINDER', 'UV SPHERE', 'BOX']);
+      expect(names()).toEqual(['CYLINDER', 'UV SPHERE', 'CUBE']);
       expect(useEditorStore.getState().objects[2].groupId).toBeNull();
       expect(useEditorStore.getState().groups.map((entry) => entry.id)).toEqual([folder.id]);
     });
@@ -660,7 +660,7 @@ describe('outliner groups', () => {
         after: false,
       });
 
-      expect(names()).toEqual(['BOX', 'CYLINDER', 'UV SPHERE']);
+      expect(names()).toEqual(['CUBE', 'CYLINDER', 'UV SPHERE']);
       expect(useEditorStore.getState().historyUndo).toHaveLength(before);
     });
 
@@ -674,7 +674,7 @@ describe('outliner groups', () => {
       });
       useEditorStore.getState().undo();
 
-      expect(names()).toEqual(['BOX', 'CYLINDER', 'UV SPHERE']);
+      expect(names()).toEqual(['CUBE', 'CYLINDER', 'UV SPHERE']);
     });
   });
 });

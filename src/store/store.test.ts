@@ -49,7 +49,7 @@ describe('editor store', () => {
   });
 
   it('adds a primitive and makes it active', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
 
     const state = store();
     expect(state.objects).toHaveLength(1);
@@ -60,15 +60,15 @@ describe('editor store', () => {
   it('reaches for the move tool, so the new primitive has a gizmo to grab', () => {
     store().setActiveTool('select');
 
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
 
     expect(store().activeTool).toBe('move');
     // The add is what the status line says; switching tool must not bury it.
-    expect(store().status).toBe('Added BOX');
+    expect(store().status).toBe('Added CUBE');
   });
 
   it('keeps the active tool when an operator only moves the selection around', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     expect(store().activeTool).toBe('move');
 
@@ -81,7 +81,7 @@ describe('editor store', () => {
   });
 
   it('leaves the handles up for an operator that edits geometry', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     store().exec('selectAll', {}, 'Select all');
     store().setActiveTool('move');
@@ -107,7 +107,7 @@ describe('editor store', () => {
   });
 
   it('ends live parameters when a material is assigned to faces', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     selectTopFace();
 
@@ -119,7 +119,7 @@ describe('editor store', () => {
   });
 
   it('keeps parameters live through anything that leaves the mesh alone', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
 
     store().setObjectTransform(id, { position: { x: 2, y: 0, z: 0 } });
@@ -128,7 +128,7 @@ describe('editor store', () => {
 
     // Moving the object, stacking a modifier and renaming all leave the mesh
     // exactly as the parameters describe it.
-    expect(activeObject().primitive?.kind).toBe('box');
+    expect(activeObject().primitive?.kind).toBe('cube');
   });
 
   it('refuses edit mode with nothing selected', () => {
@@ -140,7 +140,7 @@ describe('editor store', () => {
   });
 
   it('opens edit mode on a mesh with nothing selected', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     store().exec('selectAll', {}, 'Select all');
     expect(activeObject().mesh.selectedFaces()).toHaveLength(6);
@@ -157,7 +157,7 @@ describe('editor store', () => {
   });
 
   it('runs an operator and reports it in the status bar', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     selectTopFace();
 
@@ -169,7 +169,7 @@ describe('editor store', () => {
   });
 
   it('undoes and redoes a modelling operation', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     selectTopFace();
     store().exec('extrude', { offset: 1 }, 'Extrude');
@@ -184,7 +184,7 @@ describe('editor store', () => {
   });
 
   it('still knows the first-selected vertex after an undo', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
 
     const mesh = activeObject().mesh;
@@ -210,7 +210,7 @@ describe('editor store', () => {
   });
 
   it('undoes across several operations in order', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     selectTopFace();
     store().exec('extrude', { offset: 1 }, 'Extrude');
@@ -227,7 +227,7 @@ describe('editor store', () => {
   });
 
   it('will not edit a locked object', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
     store().toggleObjectLock(id);
     store().setMode('edit');
@@ -241,7 +241,7 @@ describe('editor store', () => {
   });
 
   it('will not move a locked object via setObjectTransform', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
     const originalPosition = activeObject().transform.position;
     store().toggleObjectLock(id);
@@ -254,7 +254,7 @@ describe('editor store', () => {
   });
 
   it('bumps the lockedAttempt token on every repeated denial, even for the same object', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
     store().toggleObjectLock(id);
 
@@ -268,7 +268,7 @@ describe('editor store', () => {
   });
 
   it('skips locked objects in a batched setObjectTransforms call', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const locked = store().objects[0].id;
     const lockedPosition = store().objects[0].transform.position;
     store().toggleObjectLock(locked);
@@ -290,7 +290,7 @@ describe('editor store', () => {
   });
 
   it('refuses to "dissolve" a lone face instead of claiming a no-op succeeded', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     selectTopFace();
 
@@ -301,7 +301,7 @@ describe('editor store', () => {
   });
 
   it('dissolves two adjacent faces into one and says how many went in', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
 
     const mesh = activeObject().mesh;
@@ -318,7 +318,7 @@ describe('editor store', () => {
   });
 
   it('does not claim a delete happened with an empty selection', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     activeObject().mesh.deselectAll();
 
@@ -329,7 +329,7 @@ describe('editor store', () => {
   });
 
   it('starts a slide on whichever element the select mode is showing', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     store().setSelectMode('edge');
     store().exec('selectAll', {}, 'Select all');
@@ -340,7 +340,7 @@ describe('editor store', () => {
   });
 
   it('turns a slide away in face mode, where there is no one rail to run along', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     store().setSelectMode('face');
     store().exec('selectAll', {}, 'Select all');
@@ -352,7 +352,7 @@ describe('editor store', () => {
   });
 
   it('turns a slide away with nothing selected, and says so', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     store().setSelectMode('vertex');
     activeObject().mesh.deselectAll();
@@ -364,7 +364,7 @@ describe('editor store', () => {
   });
 
   it('starts a bevel off the keyboard when there are edges to chamfer', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     store().setSelectMode('edge');
     store().exec('selectAll', {}, 'Select all');
@@ -377,7 +377,7 @@ describe('editor store', () => {
   });
 
   it('turns a bevel away with no edges selected, and says so', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     store().setSelectMode('edge');
     activeObject().mesh.deselectAll();
@@ -389,7 +389,7 @@ describe('editor store', () => {
   });
 
   it('turns an inset away with no faces selected, and says so', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     activeObject().mesh.deselectAll();
 
@@ -400,7 +400,7 @@ describe('editor store', () => {
   });
 
   it('turns an inset away in object mode, where there is no face to shrink', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
 
     store().beginOffset('inset');
 
@@ -409,7 +409,7 @@ describe('editor store', () => {
   });
 
   it('starts an extrude off the keyboard, adding nothing until the pointer moves', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     store().setSelectMode('face');
     store().exec('selectAll', {}, 'Select all');
@@ -421,7 +421,7 @@ describe('editor store', () => {
   });
 
   it('turns an extrude away with nothing selected, and says so', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     activeObject().mesh.deselectAll();
 
@@ -432,7 +432,7 @@ describe('editor store', () => {
   });
 
   it('turns a slide away in object mode, where there is no mesh element to move', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
 
     store().beginSlide();
 
@@ -441,7 +441,7 @@ describe('editor store', () => {
   });
 
   it('refuses to fold a face when dissolving a sharp cube edge', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     store().setSelectMode('edge');
 
@@ -483,7 +483,7 @@ describe('editor store', () => {
   });
 
   it('refuses to fold a face when dissolving a cube corner vertex', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     store().setSelectMode('vertex');
 
@@ -518,7 +518,7 @@ describe('editor store', () => {
   });
 
   it('subdivides the selected edge in edge mode, where it used to refuse', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     store().setSelectMode('edge');
 
@@ -535,7 +535,7 @@ describe('editor store', () => {
   });
 
   it('still subdivides faces in face mode', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     // Explicit: resetScene leaves selectMode as the previous test left it.
     store().setSelectMode('face');
@@ -550,7 +550,7 @@ describe('editor store', () => {
   });
 
   it('dissolves a vertex sitting in the middle of an edge', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     store().setSelectMode('edge');
 
@@ -577,7 +577,7 @@ describe('editor store', () => {
   });
 
   it('flags the vertices an edge subdivide just created', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     store().setSelectMode('edge');
 
@@ -600,7 +600,7 @@ describe('editor store', () => {
   });
 
   it('leaves the flag empty for operators that create no vertices', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     store().setSelectMode('face');
     selectTopFace();
@@ -611,7 +611,7 @@ describe('editor store', () => {
   });
 
   it('reports a failed operator without corrupting the scene', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().exec('doesNotExist', {}, 'Bogus');
 
     expect(store().status).toMatch(/Unknown operator/);
@@ -619,7 +619,7 @@ describe('editor store', () => {
   });
 
   it('duplicates as an independent copy and as a linked one', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const original = activeObject();
 
     store().duplicateSelected(false);
@@ -660,7 +660,7 @@ describe('editor store', () => {
   });
 
   it('selects every object a region drag touched', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addPrimitive('cylinder');
     store().addPrimitive('uvSphere');
     const [box, cylinder, sphere] = store().objects;
@@ -674,7 +674,7 @@ describe('editor store', () => {
   });
 
   it('adds to the selection when a region drag holds shift', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addPrimitive('cylinder');
     const [box, cylinder] = store().objects;
     store().selectObjects([box.id]);
@@ -685,7 +685,7 @@ describe('editor store', () => {
   });
 
   it('clears the selection when a region drag touched nothing', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().selectAllObjects();
 
     store().selectObjects([]);
@@ -696,7 +696,7 @@ describe('editor store', () => {
   });
 
   it('clears the object selection, leaving the tool picked up', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addPrimitive('cylinder');
     store().selectAllObjects();
     store().setActiveTool('move');
@@ -711,7 +711,7 @@ describe('editor store', () => {
   });
 
   it('clears the mesh selection in edit mode, keeping the object', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const object = activeObject();
     store().setMode('edit');
     store().exec('selectAll', {}, 'Select all');
@@ -725,7 +725,7 @@ describe('editor store', () => {
   });
 
   it('leaves undo alone when a selection is cleared', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const before = store().objects.length;
 
     store().clearSelection();
@@ -737,7 +737,7 @@ describe('editor store', () => {
   });
 
   it('hands the active object on when it is deselected', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addPrimitive('cylinder');
     store().selectAllObjects();
     const [box, cylinder] = store().objects;
@@ -752,7 +752,7 @@ describe('editor store', () => {
   });
 
   it('leaves the rest of the selection alone when one object is deselected', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addPrimitive('cylinder');
     store().selectAllObjects();
     const [box] = store().objects;
@@ -764,7 +764,7 @@ describe('editor store', () => {
   });
 
   it('holds a linked duplicate on one mesh through an undo', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setActiveObject(activeObject().id);
     store().duplicateSelected(true);
 
@@ -780,9 +780,9 @@ describe('editor store', () => {
   });
 
   it('merges the selection into one object, each part where it stood', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const first = activeObject().id;
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const second = activeObject().id;
     store().setObjectTransform(second, { position: { x: 3, y: 0, z: 0 } });
     useEditorStore.setState({ selectedObjectIds: [first, second], activeObjectId: first });
@@ -803,7 +803,7 @@ describe('editor store', () => {
   });
 
   it('merges a linked duplicate into its own original', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const original = activeObject().id;
     store().setActiveObject(original);
     store().duplicateSelected(true);
@@ -821,9 +821,9 @@ describe('editor store', () => {
   });
 
   it('separates a merged mesh back into one object per loose part', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const first = activeObject().id;
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const second = activeObject().id;
     store().setObjectTransform(second, { position: { x: 3, y: 0, z: 0 } });
     useEditorStore.setState({ selectedObjectIds: [first, second], activeObjectId: first });
@@ -847,9 +847,9 @@ describe('editor store', () => {
   });
 
   it('puts the origin on the middle of what a boolean left behind', async () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const target = activeObject().id;
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const cutter = activeObject().id;
     store().setObjectTransform(cutter, { position: { x: 0.5, y: 0, z: 0 } });
     useEditorStore.setState({ selectedObjectIds: [target, cutter], activeObjectId: target });
@@ -867,7 +867,7 @@ describe('editor store', () => {
   });
 
   it('says so rather than acting when the mesh is one piece', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const before = store().objects.length;
 
     store().separateLooseParts();
@@ -877,7 +877,7 @@ describe('editor store', () => {
   });
 
   it('refuses to separate a mesh another object shares', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setActiveObject(activeObject().id);
     store().duplicateSelected(true);
 
@@ -888,12 +888,12 @@ describe('editor store', () => {
   });
 
   it('leaves objects outside the merge unchanged when they share the mesh', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const original = activeObject().id;
     store().setActiveObject(original);
     store().duplicateSelected(true);
     const linked = activeObject().id;
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const loner = activeObject().id;
     store().setObjectTransform(loner, { position: { x: 3, y: 0, z: 0 } });
 
@@ -907,7 +907,7 @@ describe('editor store', () => {
   });
 
   it('carries linked objects along when a primitive is rebuilt', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setActiveObject(activeObject().id);
     store().duplicateSelected(true);
     store().setActiveObject(store().objects[0].id);
@@ -920,7 +920,7 @@ describe('editor store', () => {
   });
 
   it('leaves the copy selected and under the move gizmo', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const original = activeObject().id;
 
     store().duplicateSelected(false);
@@ -933,7 +933,7 @@ describe('editor store', () => {
   });
 
   it('bakes rotation and scale into the mesh, leaving the object where it sits', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
     store().setObjectTransform(id, { scale: { x: 2, y: 2, z: 2 }, position: { x: 3, y: 0, z: 0 } });
     useEditorStore.setState({ selectedObjectIds: [id] });
@@ -949,7 +949,7 @@ describe('editor store', () => {
   });
 
   it('holds a shrinking object at the size floor', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
 
     store().setObjectTransform(id, { scale: { x: 1e-9, y: 1e-9, z: 1e-9 } });
@@ -959,7 +959,7 @@ describe('editor store', () => {
   });
 
   it('holds the floor in a batched setObjectTransforms call too', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
 
     store().setObjectTransforms([{ id, transform: { scale: { x: 0, y: 0, z: 0 } } }]);
@@ -968,7 +968,7 @@ describe('editor store', () => {
   });
 
   it('says so the first time the floor catches a shrinking object', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
     useEditorStore.setState({ toasts: [] });
 
@@ -982,7 +982,7 @@ describe('editor store', () => {
   });
 
   it('stays quiet for the rest of a drag that is already at the floor', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
     useEditorStore.setState({ toasts: [] });
 
@@ -996,7 +996,7 @@ describe('editor store', () => {
   });
 
   it('warns again once the object has been scaled back off the floor', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
     useEditorStore.setState({ toasts: [] });
 
@@ -1010,7 +1010,7 @@ describe('editor store', () => {
   });
 
   it('says nothing when a scale the floor never touched goes through', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
     useEditorStore.setState({ toasts: [] });
 
@@ -1020,9 +1020,9 @@ describe('editor store', () => {
   });
 
   it('reports a whole batch held at the floor as one warning', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const first = activeObject().id;
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const second = activeObject().id;
     useEditorStore.setState({ toasts: [] });
 
@@ -1037,7 +1037,7 @@ describe('editor store', () => {
   });
 
   it('will not build a primitive finer than the size floor', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
 
     store().updatePrimitiveParams({ size: 0 });
 
@@ -1045,7 +1045,7 @@ describe('editor store', () => {
   });
 
   it('says so when a primitive length is dialled past the floor', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     useEditorStore.setState({ toasts: [] });
 
     store().updatePrimitiveParams({ size: 0 });
@@ -1057,7 +1057,7 @@ describe('editor store', () => {
   });
 
   it('counts the scale and the length dials apart', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
     useEditorStore.setState({ toasts: [] });
 
@@ -1070,7 +1070,7 @@ describe('editor store', () => {
   });
 
   it('flips the winding when a mirrored scale is baked in', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
     store().setObjectTransform(id, { scale: { x: -1, y: 1, z: 1 } });
     useEditorStore.setState({ selectedObjectIds: [id] });
@@ -1088,7 +1088,7 @@ describe('editor store', () => {
   });
 
   it('refuses to bake into a mesh that two objects share', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setActiveObject(activeObject().id);
     store().duplicateSelected(true);
 
@@ -1103,7 +1103,7 @@ describe('editor store', () => {
   });
 
   it('evaluates modifiers without touching the base mesh', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addModifier('array');
 
     const object = activeObject();
@@ -1112,7 +1112,7 @@ describe('editor store', () => {
   });
 
   it('centres on the whole array, not the first copy', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const before = displayCenter(activeObject(), evaluatedMesh(activeObject()));
     expect(before.x).toBeCloseTo(0);
 
@@ -1128,7 +1128,7 @@ describe('editor store', () => {
   });
 
   it('carries the centre through the object transform', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addModifier('array');
     const object = activeObject();
     store().setObjectTransforms([
@@ -1140,7 +1140,7 @@ describe('editor store', () => {
   });
 
   it('puts the origin back on the geometry an edit walked away from', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
     store().setObjectTransforms([{ id, transform: { position: { x: 4, y: 0, z: 0 } } }]);
     driftMesh(vec3(0, 3, 0));
@@ -1156,7 +1156,7 @@ describe('editor store', () => {
   });
 
   it('carries the origin through the object rotation and scale', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
     store().setObjectTransforms([{ id, transform: { scale: { x: 2, y: 2, z: 2 } } }]);
     driftMesh(vec3(1, 0, 0));
@@ -1168,7 +1168,7 @@ describe('editor store', () => {
   });
 
   it('leaves a centred origin alone and says so', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().originToGeometry();
 
     expect(activeObject().transform.position.x).toBeCloseTo(0);
@@ -1179,7 +1179,7 @@ describe('editor store', () => {
   });
 
   it('refuses to move the origin of a linked mesh', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     driftMesh(vec3(0, 3, 0));
     store().duplicateSelected(true);
     store().selectAllObjects();
@@ -1191,7 +1191,7 @@ describe('editor store', () => {
   });
 
   it('steps back from an origin move', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     driftMesh(vec3(0, 3, 0));
 
     store().originToGeometry();
@@ -1203,10 +1203,10 @@ describe('editor store', () => {
   });
 
   it('moves every selected origin onto the cursor and leaves the geometry where it stands', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const first = activeObject().id;
     store().setObjectTransforms([{ id: first, transform: { position: { x: 2, y: 0, z: 0 } } }]);
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const second = activeObject().id;
     store().setObjectTransforms([{ id: second, transform: { position: { x: 6, y: 0, z: 0 } } }]);
     store().selectAllObjects();
@@ -1225,7 +1225,7 @@ describe('editor store', () => {
   });
 
   it('reads the cursor through the object scale when it moves the origin', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
     store().setObjectTransforms([{ id, transform: { scale: { x: 2, y: 2, z: 2 } } }]);
     store().setCursor({ x: 4, y: 0, z: 0 });
@@ -1238,7 +1238,7 @@ describe('editor store', () => {
   });
 
   it('leaves an origin already on the cursor alone and says so', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
 
     store().originToCursor();
 
@@ -1249,7 +1249,7 @@ describe('editor store', () => {
   });
 
   it('refuses to move the origin of a linked mesh onto the cursor', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().duplicateSelected(true);
     store().selectAllObjects();
     store().setCursor({ x: 3, y: 0, z: 0 });
@@ -1261,7 +1261,7 @@ describe('editor store', () => {
   });
 
   it('moves the cursor onto the selection and the selection back onto it', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
     store().setObjectTransforms([{ id, transform: { position: { x: 4, y: 1, z: -2 } } }]);
 
@@ -1277,7 +1277,7 @@ describe('editor store', () => {
   });
 
   it('separates the selection origin from the middle of its geometry', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     driftMesh(vec3(0, 3, 0));
 
     store().cursorToSelection();
@@ -1290,10 +1290,10 @@ describe('editor store', () => {
   });
 
   it('takes the median of the origins across a multi-object selection', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const first = activeObject().id;
     store().setObjectTransforms([{ id: first, transform: { position: { x: 2, y: 0, z: 0 } } }]);
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const second = activeObject().id;
     store().setObjectTransforms([{ id: second, transform: { position: { x: 6, y: 0, z: 0 } } }]);
     store().selectAllObjects();
@@ -1304,7 +1304,7 @@ describe('editor store', () => {
   });
 
   it('reads the edited object off its own origin, not off the picked vertices', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
     store().setObjectTransforms([{ id, transform: { position: { x: 0, y: 7, z: 0 } } }]);
     store().setMode('edit');
@@ -1318,7 +1318,7 @@ describe('editor store', () => {
   });
 
   it('says so rather than snapping to the origin when nothing is selected', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setActiveObject(null);
 
     store().cursorToSelection();
@@ -1328,7 +1328,7 @@ describe('editor store', () => {
   });
 
   it('mirrors about the cursor once the modifier is pointed at it', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setCursor({ x: 5, y: 0, z: 0 });
     store().addModifier('mirror');
     const modifier = activeObject().modifiers[0];
@@ -1340,7 +1340,7 @@ describe('editor store', () => {
   });
 
   it('measures the cursor plane in the frame the object itself uses', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = activeObject().id;
     store().setObjectTransforms([{ id, transform: { scale: { x: 2, y: 2, z: 2 } } }]);
     store().setCursor({ x: 4, y: 0, z: 0 });
@@ -1355,7 +1355,7 @@ describe('editor store', () => {
   });
 
   it('keeps the mirrored half in step with the vertices it copies', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addModifier('mirror');
 
     const before = evaluatedMesh(activeObject(), store().cursor, store().meshVersion);
@@ -1371,7 +1371,7 @@ describe('editor store', () => {
   });
 
   it('bakes a modifier into the mesh on apply', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addModifier('array');
     const modifierId = activeObject().modifiers[0].id;
 
@@ -1382,7 +1382,7 @@ describe('editor store', () => {
   });
 
   it('round-trips the scene through a project file', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addModifier('mirror');
     store().setProjectName('demo');
 
@@ -1399,7 +1399,7 @@ describe('editor store', () => {
   });
 
   it('exports the evaluated mesh so modifiers reach the file', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addModifier('array');
 
     const object = activeObject();
@@ -1420,7 +1420,7 @@ describe('editor store', () => {
   });
 
   it('carries the selection across select-mode changes', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     selectTopFace();
     expect(activeObject().mesh.selectedVerts()).toHaveLength(4);
@@ -1455,7 +1455,7 @@ describe('editor store', () => {
   });
 
   it('keeps vertices that never closed a face when face mode comes and goes', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
     store().setSelectMode('vertex');
 
@@ -1473,7 +1473,7 @@ describe('editor store', () => {
 
   it('bumps the mesh version so the viewport resyncs', () => {
     const before = store().meshVersion;
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     expect(store().meshVersion).toBeGreaterThan(before);
 
     const afterAdd = store().meshVersion;
@@ -1484,7 +1484,7 @@ describe('editor store', () => {
   });
 
   it('selects every object in the scene, the object-mode equivalent of edit-mode select all', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addPrimitive('cylinder');
     store().setActiveObject(null);
     expect(store().selectedObjectIds).toHaveLength(0);
@@ -1503,7 +1503,7 @@ describe('editor store', () => {
   });
 
   it('patches several objects in a single call, for a multi-object gizmo drag', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const first = store().objects[0].id;
     store().addPrimitive('cylinder');
     const second = store().objects[1].id;
@@ -1526,7 +1526,7 @@ describe('editor store', () => {
   });
 
   it('ignores a patch for an object that is not in the scene', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = store().objects[0].id;
     const originalPosition = store().objects[0].transform.position;
 
@@ -1538,7 +1538,7 @@ describe('editor store', () => {
   });
 
   it('does nothing on an empty patch list', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const versionBefore = store().meshVersion;
 
     store().setObjectTransforms([]);
@@ -1553,7 +1553,7 @@ describe('the 3D cursor as an edit of its own', () => {
   });
 
   it('undoes the cursor move and leaves the model where it stands', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const id = store().objects[0].id;
     store().setObjectTransform(id, { position: vec3(-5, 0, 0) });
     store().recordHistory('Move object');
@@ -1571,7 +1571,7 @@ describe('the 3D cursor as an edit of its own', () => {
   });
 
   it('names the placement it undoes, however the cursor got there', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setObjectTransform(store().objects[0].id, { position: vec3(4, 0, 0) });
 
     store().cursorToSelection();
@@ -1581,7 +1581,7 @@ describe('the 3D cursor as an edit of its own', () => {
   });
 
   it('records nothing for a placement that lands where the cursor already is', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     const steps = store().historyUndo.length;
 
     store().setCursor(vec3(0, 0, 0), 'Cursor to world origin');
@@ -1600,43 +1600,43 @@ describe('history timeline', () => {
   });
 
   it('lists what each step would take back, newest first', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addPrimitive('cylinder');
 
-    expect(store().historyUndo).toEqual(['Add CYLINDER', 'Add BOX']);
+    expect(store().historyUndo).toEqual(['Add CYLINDER', 'Add CUBE']);
     expect(store().historyRedo).toEqual([]);
   });
 
   it('travels several steps in one move and can come back', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addPrimitive('cylinder');
     store().addPrimitive('cone');
 
     store().undoTimes(3);
 
     expect(store().objects).toHaveLength(0);
-    expect(store().status).toBe('Undo 3 steps, back to: Add BOX');
-    expect(store().historyRedo).toEqual(['Add BOX', 'Add CYLINDER', 'Add CONE']);
+    expect(store().status).toBe('Undo 3 steps, back to: Add CUBE');
+    expect(store().historyRedo).toEqual(['Add CUBE', 'Add CYLINDER', 'Add CONE']);
 
     store().redoTimes(2);
 
     expect(store().objects).toHaveLength(2);
     expect(store().status).toBe('Redo 2 steps, up to: Add CYLINDER');
-    expect(store().historyUndo).toEqual(['Add CYLINDER', 'Add BOX']);
+    expect(store().historyUndo).toEqual(['Add CYLINDER', 'Add CUBE']);
   });
 
   it('stops at the end of the timeline rather than running off it', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
 
     store().undoTimes(10);
 
     expect(store().objects).toHaveLength(0);
     expect(store().canUndo).toBe(false);
-    expect(store().status).toBe('Undo: Add BOX');
+    expect(store().status).toBe('Undo: Add CUBE');
   });
 
   it('drops the oldest steps when the size is lowered', () => {
-    for (let step = 0; step < 12; step++) store().addPrimitive('box');
+    for (let step = 0; step < 12; step++) store().addPrimitive('cube');
     expect(store().historyUndo).toHaveLength(12);
 
     store().setPreferences({ historySize: 10 });
@@ -1653,7 +1653,7 @@ describe('history timeline', () => {
 describe('edge length', () => {
   beforeEach(() => {
     store().resetScene();
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().setMode('edit');
   });
 

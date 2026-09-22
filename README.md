@@ -37,7 +37,7 @@ Sculpting is the next module planned. See
 
 | Area | Included |
 | --- | --- |
-| Primitives | Box, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule, torus, with live parameters |
+| Primitives | Cube, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule, torus, with live parameters |
 | Object mode | Transform gizmo, duplicate, linked duplicate, merge, apply transform, delete, outliner with rename / visibility / lock and Ctrl+G groups that rename, select, join, ungroup or delete as one |
 | Selection | Vertex, edge and face modes; click, box select, Alt+click edge loops, grow / shrink / invert |
 | Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, subdivide (Catmull-Clark), merge by distance, delete, dissolve, fill, bridge, triangulate, tris-to-quads |
@@ -48,6 +48,7 @@ Sculpting is the next module planned. See
 | Proportional editing | Six falloff curves, with a viewport ring showing how far the falloff reaches. Scroll to resize it mid-transform, or Ctrl+scroll any time |
 | Viewport | Orbit / pan / zoom (Blender and Maya presets), solid / wireframe / x-ray / matcap, adaptive grid, normals overlay |
 | Files | Save and load JSON projects, autosave to IndexedDB with crash recovery, OBJ import |
+| Opening scene | A fresh tab starts on a cube, as Blender does; a tab with a session to come back to loads that instead |
 | Preferences | Tooltips, selection outline thickness and colour, kept in localStorage per device, with import / export |
 | Export | OBJ + MTL, **ASCII FBX 7.4**, with Unity / Unreal / Blender / Maya axis and unit presets |
 | Undo | Snapshot history capped at 64 steps |

@@ -111,7 +111,7 @@ describe('project actions announce themselves', () => {
     act(() => {
       const state = useEditorStore.getState();
       state.setProjectName('CRATE');
-      state.addPrimitive('box');
+      state.addPrimitive('cube');
     });
 
     act(() => project.current.exportModel('obj'));
@@ -130,7 +130,7 @@ describe('project actions announce themselves', () => {
     expect(lastToast().message).toMatch(/empty or every object is hidden/);
 
     act(() => {
-      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cube');
       useEditorStore.setState({ selectedObjectIds: [] });
     });
 
@@ -140,7 +140,7 @@ describe('project actions announce themselves', () => {
 
   it('reports a new project instead of clearing the scene in silence', () => {
     const project = files();
-    act(() => useEditorStore.getState().addPrimitive('box'));
+    act(() => useEditorStore.getState().addPrimitive('cube'));
 
     act(() => project.current.newProject());
 

@@ -3,7 +3,7 @@ import { BMesh } from '../mesh';
 import type { Vert } from '../mesh/types';
 
 export type PrimitiveKind =
-  | 'box'
+  | 'cube'
   | 'plane'
   | 'circle'
   | 'grid'
@@ -100,7 +100,7 @@ export function normalizePrimitiveParams(params: PrimitiveParams): PrimitivePara
 
 /** Parameters each primitive actually consumes, used to drive the live panel. */
 export const PRIMITIVE_FIELDS: Record<PrimitiveKind, (keyof PrimitiveParams)[]> = {
-  box: ['size'],
+  cube: ['size'],
   plane: ['size'],
   circle: ['radius', 'segments', 'capFill'],
   grid: ['size', 'segments'],
@@ -113,7 +113,7 @@ export const PRIMITIVE_FIELDS: Record<PrimitiveKind, (keyof PrimitiveParams)[]> 
 };
 
 export const PRIMITIVE_LABELS: Record<PrimitiveKind, string> = {
-  box: 'BOX',
+  cube: 'CUBE',
   plane: 'PLANE',
   circle: 'CIRCLE',
   grid: 'GRID',
@@ -127,7 +127,10 @@ export const PRIMITIVE_LABELS: Record<PrimitiveKind, string> = {
 
 export function createPrimitive(kind: PrimitiveKind, params: PrimitiveParams): BMesh {
   switch (kind) {
-    case 'box':
+    case 'cube':
+      // `createBox` takes one size for all three axes, so the box it builds is
+      // a cube. The panel calls it what it is; the mesh factory keeps the
+      // general name because nothing else about it is cube-specific.
       return createBox(params.size);
     case 'plane':
       return createPlane(params.size);

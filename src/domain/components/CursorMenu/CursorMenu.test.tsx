@@ -36,7 +36,7 @@ describe('CursorMenu', () => {
 
   it('sends the cursor to the origin and to the geometry from two entries', async () => {
     const store = useEditorStore.getState();
-    store.addPrimitive('box');
+    store.addPrimitive('cube');
     // An edit-mode move: the mesh travels, the origin stays where it was.
     for (const vert of useEditorStore.getState().objects[0].mesh.verts.values()) {
       vert.co = { ...vert.co, y: vert.co.y + 3 };
@@ -55,7 +55,7 @@ describe('CursorMenu', () => {
 
   it('brings the origin of the selection to the cursor without moving the shape', async () => {
     const store = useEditorStore.getState();
-    store.addPrimitive('box');
+    store.addPrimitive('cube');
     store.setCursor({ x: 0, y: 4, z: 0 });
 
     openMenu();
@@ -69,7 +69,7 @@ describe('CursorMenu', () => {
 
   it('names the keys the editor actually answers to', () => {
     // With a selection, so the entries that need one carry their real hint.
-    act(() => useEditorStore.getState().addPrimitive('box'));
+    act(() => useEditorStore.getState().addPrimitive('cube'));
     openMenu();
     render(<CursorMenu />);
 
@@ -86,7 +86,7 @@ describe('CursorMenu', () => {
     // The snaps under the pointer are the ones this is really about: they were
     // reachable by right-click alone, and a menu that lists a key for six of
     // its ten entries reads as if the rest cannot be typed at all.
-    act(() => useEditorStore.getState().addPrimitive('box'));
+    act(() => useEditorStore.getState().addPrimitive('cube'));
     openMenu();
     render(<CursorMenu />);
 
@@ -110,7 +110,7 @@ describe('CursorMenu', () => {
   });
 
   it('enables them once something is selected', () => {
-    act(() => useEditorStore.getState().addPrimitive('box'));
+    act(() => useEditorStore.getState().addPrimitive('cube'));
 
     openMenu();
     render(<CursorMenu />);
@@ -123,7 +123,7 @@ describe('CursorMenu', () => {
   it('keeps the origin entry in edit mode, where the vertices have none', () => {
     const store = useEditorStore.getState();
     act(() => {
-      store.addPrimitive('box');
+      store.addPrimitive('cube');
       // Entering edit mode drops the vertex selection, so there is geometry to
       // take an origin from and none to take a median from.
       store.setMode('edit');
@@ -144,7 +144,7 @@ describe('CursorMenu', () => {
   it('refuses to move a locked object and says how to unlock it', () => {
     const store = useEditorStore.getState();
     act(() => {
-      store.addPrimitive('box');
+      store.addPrimitive('cube');
       store.toggleObjectLock(useEditorStore.getState().objects[0].id);
     });
 
@@ -165,7 +165,7 @@ describe('CursorMenu', () => {
   it('refuses to move the origin of a linked copy', () => {
     const store = useEditorStore.getState();
     act(() => {
-      store.addPrimitive('box');
+      store.addPrimitive('cube');
       store.duplicateSelected(true);
     });
 

@@ -580,7 +580,7 @@ export const createSceneSlice: StateCreator<
       // Placing is what you do next with something you just added, and the
       // gizmo only draws for a transform tool: under the default 'select' a
       // new primitive arrives with nothing to grab. Set here rather than
-      // through `setActiveTool`, whose status would bury "Added BOX".
+      // through `setActiveTool`, whose status would bury "Added CUBE".
       activeTool: 'move',
       status: `Added ${PRIMITIVE_LABELS[kind]}`,
     }));

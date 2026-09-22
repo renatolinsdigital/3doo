@@ -56,7 +56,7 @@ describe('ToolRail', () => {
 
   it('recentres the origin without taking the active tool', async () => {
     const store = useEditorStore.getState();
-    store.addPrimitive('box');
+    store.addPrimitive('cube');
     const object = useEditorStore.getState().objects[0];
     for (const vert of object.mesh.verts.values()) vert.co = { ...vert.co, y: vert.co.y + 3 };
     store.touchMesh();

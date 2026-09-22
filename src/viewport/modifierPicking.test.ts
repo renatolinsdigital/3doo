@@ -39,7 +39,7 @@ function pixel(point: Vec3, view: THREE.Camera): THREE.Vector2 {
 function subdividedBox(): { object: SceneObject; view: ObjectView } {
   const store = useEditorStore.getState();
   store.resetScene();
-  store.addPrimitive('box');
+  store.addPrimitive('cube');
   store.addModifier('subdivide');
   const added = useEditorStore.getState().objects[0].modifiers[0];
   store.updateModifier(added.id, { levels: 2, smooth: 1 });

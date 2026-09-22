@@ -19,17 +19,17 @@ describe('Outliner', () => {
   });
 
   it('lists the objects in the scene', () => {
-    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().addPrimitive('cube');
     useEditorStore.getState().addPrimitive('uvSphere');
 
     render(<Outliner />);
 
-    expect(screen.getByRole('button', { name: 'BOX' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'CUBE' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'UV SPHERE' })).toBeInTheDocument();
   });
 
   it('marks the rows that share one mesh, and only those', () => {
-    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().addPrimitive('cube');
     useEditorStore.getState().setActiveObject(useEditorStore.getState().objects[0].id);
     useEditorStore.getState().duplicateSelected(true);
     useEditorStore.getState().addPrimitive('uvSphere');
@@ -42,7 +42,7 @@ describe('Outliner', () => {
   });
 
   it('leaves plain copies unmarked', () => {
-    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().addPrimitive('cube');
     useEditorStore.getState().setActiveObject(useEditorStore.getState().objects[0].id);
     useEditorStore.getState().duplicateSelected(false);
 
@@ -52,21 +52,21 @@ describe('Outliner', () => {
   });
 
   it('makes a clicked object active', async () => {
-    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().addPrimitive('cube');
     useEditorStore.getState().addPrimitive('cylinder');
     render(<Outliner />);
 
-    await userEvent.click(screen.getByRole('button', { name: 'BOX' }));
+    await userEvent.click(screen.getByRole('button', { name: 'CUBE' }));
 
     const state = useEditorStore.getState();
-    const box = state.objects.find((object) => object.name === 'BOX');
+    const box = state.objects.find((object) => object.name === 'CUBE');
     expect(state.activeObjectId).toBe(box?.id);
   });
 
   it('leaves no focus ring on a row picked with the pointer, and keeps it for the keyboard', async () => {
-    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().addPrimitive('cube');
     render(<Outliner />);
-    const row = screen.getByRole('button', { name: 'BOX' });
+    const row = screen.getByRole('button', { name: 'CUBE' });
 
     await userEvent.click(row);
     expect(row).not.toHaveFocus();
@@ -78,29 +78,29 @@ describe('Outliner', () => {
   });
 
   it('toggles visibility from the row', async () => {
-    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().addPrimitive('cube');
     render(<Outliner />);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Hide BOX' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Hide CUBE' }));
 
     expect(useEditorStore.getState().objects[0].visible).toBe(false);
   });
 
   it('toggles the lock from the row', async () => {
-    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().addPrimitive('cube');
     render(<Outliner />);
 
-    await userEvent.click(screen.getByRole('button', { name: 'Lock BOX' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Lock CUBE' }));
 
     expect(useEditorStore.getState().objects[0].locked).toBe(true);
   });
 
   it('renames on double click', async () => {
-    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().addPrimitive('cube');
     render(<Outliner />);
 
-    await userEvent.dblClick(screen.getByRole('button', { name: 'BOX' }));
-    const input = screen.getByDisplayValue('BOX');
+    await userEvent.dblClick(screen.getByRole('button', { name: 'CUBE' }));
+    const input = screen.getByDisplayValue('CUBE');
     await userEvent.clear(input);
     await userEvent.type(input, 'CHASSIS{Enter}');
 
@@ -111,49 +111,49 @@ describe('Outliner', () => {
     afterEach(() => vi.useRealTimers());
 
     it('trembles the lock icon for 1s once a lockedAttempt reports this object, then settles', () => {
-      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cube');
       const id = useEditorStore.getState().objects[0].id;
       render(<Outliner />);
 
-      expect(screen.getByRole('button', { name: 'Lock BOX' }).className).not.toMatch(/tremble/);
+      expect(screen.getByRole('button', { name: 'Lock CUBE' }).className).not.toMatch(/tremble/);
 
       vi.useFakeTimers();
       act(() => useEditorStore.setState({ lockedAttempt: { objectId: id, token: 1 } }));
-      expect(screen.getByRole('button', { name: 'Lock BOX' }).className).toMatch(/tremble/);
+      expect(screen.getByRole('button', { name: 'Lock CUBE' }).className).toMatch(/tremble/);
 
       // Still shaking most of the way through the 1s run.
       act(() => vi.advanceTimersByTime(900));
-      expect(screen.getByRole('button', { name: 'Lock BOX' }).className).toMatch(/tremble/);
+      expect(screen.getByRole('button', { name: 'Lock CUBE' }).className).toMatch(/tremble/);
 
       act(() => vi.advanceTimersByTime(100));
-      expect(screen.getByRole('button', { name: 'Lock BOX' }).className).not.toMatch(/tremble/);
+      expect(screen.getByRole('button', { name: 'Lock CUBE' }).className).not.toMatch(/tremble/);
     });
 
     it('trembles when a locked object is clicked in the outliner', async () => {
-      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cube');
       useEditorStore.getState().toggleObjectLock(useEditorStore.getState().objects[0].id);
       render(<Outliner />);
 
-      await userEvent.click(screen.getByRole('button', { name: 'BOX' }));
+      await userEvent.click(screen.getByRole('button', { name: 'CUBE' }));
 
-      expect(screen.getByRole('button', { name: 'Unlock BOX' }).className).toMatch(/tremble/);
+      expect(screen.getByRole('button', { name: 'Unlock CUBE' }).className).toMatch(/tremble/);
       expect(useEditorStore.getState().status).toBe('Object is locked');
     });
 
     it('leaves an unlocked object alone when it is clicked', async () => {
-      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cube');
       render(<Outliner />);
 
-      await userEvent.click(screen.getByRole('button', { name: 'BOX' }));
+      await userEvent.click(screen.getByRole('button', { name: 'CUBE' }));
 
-      expect(screen.getByRole('button', { name: 'Lock BOX' }).className).not.toMatch(/tremble/);
+      expect(screen.getByRole('button', { name: 'Lock CUBE' }).className).not.toMatch(/tremble/);
     });
 
     it('does not tremble for a lockedAttempt on a different object', () => {
-      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cube');
       render(<Outliner />);
 
-      const lockBtn = screen.getByRole('button', { name: 'Lock BOX' });
+      const lockBtn = screen.getByRole('button', { name: 'Lock CUBE' });
       act(() => useEditorStore.setState({ lockedAttempt: { objectId: 'someone-else', token: 1 } }));
 
       expect(lockBtn.className).not.toMatch(/tremble/);
@@ -167,7 +167,7 @@ describe('Outliner', () => {
     };
 
     it('opens on right-click, naming the row it was opened on', async () => {
-      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cube');
       useEditorStore.getState().addPrimitive('cylinder');
       render(<Outliner />);
 
@@ -181,12 +181,12 @@ describe('Outliner', () => {
     });
 
     it('selects the object it was opened on', async () => {
-      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cube');
       useEditorStore.getState().addPrimitive('cylinder');
       render(<Outliner />);
       const box = useEditorStore.getState().objects[0];
 
-      await openMenuOn('BOX');
+      await openMenuOn('CUBE');
       await userEvent.click(screen.getByRole('menuitem', { name: 'SELECT' }));
 
       expect(useEditorStore.getState().activeObjectId).toBe(box.id);
@@ -194,13 +194,13 @@ describe('Outliner', () => {
     });
 
     it('offers the way out of the selection instead, once selected', async () => {
-      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cube');
       useEditorStore.getState().addPrimitive('cylinder');
       act(() => useEditorStore.getState().selectAllObjects());
       render(<Outliner />);
       const [box, cylinder] = useEditorStore.getState().objects;
 
-      await openMenuOn('BOX');
+      await openMenuOn('CUBE');
       await userEvent.click(screen.getByRole('menuitem', { name: 'DESELECT' }));
 
       // Only the row the menu was opened on leaves the selection.
@@ -209,22 +209,22 @@ describe('Outliner', () => {
     });
 
     it('starts a rename in place', async () => {
-      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cube');
       render(<Outliner />);
 
-      await openMenuOn('BOX');
+      await openMenuOn('CUBE');
       await userEvent.click(screen.getByRole('menuitem', { name: 'RENAME' }));
 
-      expect(screen.getByDisplayValue('BOX')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('CUBE')).toBeInTheDocument();
     });
 
     it('deletes only the row it was opened on', async () => {
-      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cube');
       useEditorStore.getState().addPrimitive('cylinder');
       act(() => useEditorStore.getState().selectAllObjects());
       render(<Outliner />);
 
-      await openMenuOn('BOX');
+      await openMenuOn('CUBE');
       await userEvent.click(screen.getByRole('menuitem', { name: 'DELETE' }));
 
       // The whole scene was selected: the menu names one row, not the selection.
@@ -232,26 +232,26 @@ describe('Outliner', () => {
     });
 
     it('bakes the transform of the row it was opened on', async () => {
-      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cube');
       render(<Outliner />);
       const box = useEditorStore.getState().objects[0];
       act(() =>
         useEditorStore.getState().setObjectTransform(box.id, { scale: { x: 2, y: 2, z: 2 } }),
       );
 
-      await openMenuOn('BOX');
+      await openMenuOn('CUBE');
       await userEvent.click(screen.getByRole('menuitem', { name: 'APPLY TRANSFORMS' }));
 
       expect(useEditorStore.getState().objects[0].transform.scale).toEqual({ x: 1, y: 1, z: 1 });
     });
 
     it('will not bake a locked object', async () => {
-      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cube');
       render(<Outliner />);
       const box = useEditorStore.getState().objects[0];
       act(() => useEditorStore.getState().toggleObjectLock(box.id));
 
-      await openMenuOn('BOX');
+      await openMenuOn('CUBE');
 
       expect(screen.getByRole('menuitem', { name: 'APPLY TRANSFORMS' })).toHaveAttribute(
         'aria-disabled',
@@ -260,12 +260,12 @@ describe('Outliner', () => {
     });
 
     it('puts the selection in a folder', async () => {
-      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cube');
       useEditorStore.getState().addPrimitive('cylinder');
       act(() => useEditorStore.getState().selectAllObjects());
       render(<Outliner />);
 
-      await openMenuOn('BOX');
+      await openMenuOn('CUBE');
       await userEvent.click(screen.getByRole('menuitem', { name: 'GROUP' }));
 
       const folder = useEditorStore.getState().groups[0];
@@ -276,10 +276,10 @@ describe('Outliner', () => {
     });
 
     it('will not make a folder of one object', async () => {
-      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cube');
       render(<Outliner />);
 
-      await openMenuOn('BOX');
+      await openMenuOn('CUBE');
 
       expect(screen.getByRole('menuitem', { name: 'GROUP' })).toHaveAttribute(
         'aria-disabled',
@@ -291,7 +291,7 @@ describe('Outliner', () => {
     /** Adds a box and a cylinder, puts them in a folder and renders the panel. */
     function grouped() {
       const store = useEditorStore.getState();
-      store.addPrimitive('box');
+      store.addPrimitive('cube');
       store.addPrimitive('cylinder');
       store.addPrimitive('uvSphere');
       const [box, cylinder] = useEditorStore.getState().objects;
@@ -312,7 +312,7 @@ describe('Outliner', () => {
       grouped();
 
       expect(screen.getByRole('button', { name: 'GROUP' })).toBeInTheDocument();
-      for (const name of ['BOX', 'CYLINDER', 'UV SPHERE']) {
+      for (const name of ['CUBE', 'CYLINDER', 'UV SPHERE']) {
         expect(screen.getByRole('button', { name })).toBeInTheDocument();
       }
     });
@@ -322,12 +322,12 @@ describe('Outliner', () => {
 
       await userEvent.click(screen.getByRole('button', { name: 'Collapse GROUP' }));
 
-      expect(screen.queryByRole('button', { name: 'BOX' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'CUBE' })).not.toBeInTheDocument();
       // The loose object is not in the folder, so it stays on screen.
       expect(screen.getByRole('button', { name: 'UV SPHERE' })).toBeInTheDocument();
 
       await userEvent.click(screen.getByRole('button', { name: 'Expand GROUP' }));
-      expect(screen.getByRole('button', { name: 'BOX' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'CUBE' })).toBeInTheDocument();
     });
 
     it('selects what is in the folder when its title is clicked', async () => {
@@ -415,7 +415,7 @@ describe('Outliner', () => {
     it('takes one object out of the folder from its own menu', async () => {
       const { group } = grouped();
 
-      await openMenuOn('BOX');
+      await openMenuOn('CUBE');
       await userEvent.click(screen.getByRole('menuitem', { name: 'REMOVE FROM GROUP' }));
 
       expect(useEditorStore.getState().objects[0].groupId).toBeNull();
@@ -427,7 +427,7 @@ describe('Outliner', () => {
       const { box, cylinder } = grouped();
       act(() => useEditorStore.getState().selectObjects([box.id, cylinder.id]));
 
-      await openMenuOn('BOX');
+      await openMenuOn('CUBE');
 
       expect(screen.getByRole('menuitem', { name: 'GROUP' })).toHaveAttribute(
         'aria-disabled',
@@ -466,7 +466,7 @@ describe('Outliner', () => {
       dragOnto('UV SPHERE', rowOf('GROUP'));
 
       const objects = useEditorStore.getState().objects;
-      expect(objects.map((object) => object.name)).toEqual(['BOX', 'CYLINDER', 'UV SPHERE']);
+      expect(objects.map((object) => object.name)).toEqual(['CUBE', 'CYLINDER', 'UV SPHERE']);
       expect(objects.every((object) => object.groupId === group.id)).toBe(true);
     });
 
@@ -483,11 +483,11 @@ describe('Outliner', () => {
     it('sorts the rows by dropping one above another', () => {
       grouped();
 
-      dragOnto('CYLINDER', rowOf('BOX'));
+      dragOnto('CYLINDER', rowOf('CUBE'));
 
       expect(useEditorStore.getState().objects.map((object) => object.name)).toEqual([
         'CYLINDER',
-        'BOX',
+        'CUBE',
         'UV SPHERE',
       ]);
     });
@@ -495,10 +495,10 @@ describe('Outliner', () => {
     it('takes an object out of its folder when it lands beside a loose row', () => {
       const { group } = grouped();
 
-      dragOnto('BOX', rowOf('UV SPHERE'), 1);
+      dragOnto('CUBE', rowOf('UV SPHERE'), 1);
 
       const objects = useEditorStore.getState().objects;
-      expect(objects.map((object) => object.name)).toEqual(['CYLINDER', 'UV SPHERE', 'BOX']);
+      expect(objects.map((object) => object.name)).toEqual(['CYLINDER', 'UV SPHERE', 'CUBE']);
       expect(objects[2].groupId).toBeNull();
       expect(useEditorStore.getState().groups.map((entry) => entry.id)).toEqual([group.id]);
     });
@@ -506,12 +506,12 @@ describe('Outliner', () => {
     it('leaves the row where it was when it is let go over nothing', () => {
       grouped();
 
-      fireEvent.pointerDown(rowOf('BOX'), { button: 0, clientX: 0, clientY: 0 });
+      fireEvent.pointerDown(rowOf('CUBE'), { button: 0, clientX: 0, clientY: 0 });
       fireEvent.pointerMove(document.body, { clientX: 300, clientY: 300 });
       fireEvent.pointerUp(document.body, { clientX: 300, clientY: 300 });
 
       expect(useEditorStore.getState().objects.map((object) => object.name)).toEqual([
-        'BOX',
+        'CUBE',
         'CYLINDER',
         'UV SPHERE',
       ]);
@@ -521,10 +521,10 @@ describe('Outliner', () => {
       grouped();
 
       fireEvent.pointerDown(rowOf('CYLINDER'), { button: 0, clientX: 0, clientY: 0 });
-      fireEvent.pointerUp(rowOf('BOX'), { clientX: 0, clientY: 0 });
+      fireEvent.pointerUp(rowOf('CUBE'), { clientX: 0, clientY: 0 });
 
       expect(useEditorStore.getState().objects.map((object) => object.name)).toEqual([
-        'BOX',
+        'CUBE',
         'CYLINDER',
         'UV SPHERE',
       ]);

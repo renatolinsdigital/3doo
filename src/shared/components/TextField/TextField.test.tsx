@@ -24,9 +24,9 @@ describe('TextField', () => {
 
   it('passes uncontrolled use straight through', async () => {
     const onBlur = vi.fn();
-    render(<TextField label="Rename BOX" defaultValue="BOX" onBlur={onBlur} />);
+    render(<TextField label="Rename CUBE" defaultValue="CUBE" onBlur={onBlur} />);
 
-    const field = screen.getByRole('textbox', { name: 'Rename BOX' });
+    const field = screen.getByRole('textbox', { name: 'Rename CUBE' });
     await userEvent.clear(field);
     await userEvent.type(field, 'CHASSIS');
     field.blur();

@@ -23,7 +23,7 @@ describe('HistoryDialog', () => {
   });
 
   it('lists the steps behind the scene, newest first', () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addPrimitive('cylinder');
 
     render(<HistoryDialog />);
@@ -32,34 +32,34 @@ describe('HistoryDialog', () => {
       .getAllByRole('button')
       .map((button) => button.textContent);
     expect(steps[0]).toContain('Add CYLINDER');
-    expect(steps[1]).toContain('Add BOX');
+    expect(steps[1]).toContain('Add CUBE');
   });
 
   it('travels to the step that was clicked rather than one at a time', async () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addPrimitive('cylinder');
     store().addPrimitive('cone');
 
     render(<HistoryDialog />);
-    await userEvent.click(screen.getByRole('button', { name: /Add BOX/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Add CUBE/ }));
 
     // Three steps in one click: the scene as it stood before the box arrived.
     expect(store().objects).toHaveLength(0);
-    expect(store().historyRedo).toEqual(['Add BOX', 'Add CYLINDER', 'Add CONE']);
+    expect(store().historyRedo).toEqual(['Add CUBE', 'Add CYLINDER', 'Add CONE']);
   });
 
   it('offers the steps ahead again once one has been taken back', async () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().undo();
 
     render(<HistoryDialog />);
-    await userEvent.click(screen.getByRole('button', { name: /Add BOX/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Add CUBE/ }));
 
     expect(store().objects).toHaveLength(1);
   });
 
   it('counts a step ahead from the present, not from the far end of the list', async () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
     store().addPrimitive('cylinder');
     store().addPrimitive('cone');
     store().undoTimes(3);
@@ -70,7 +70,7 @@ describe('HistoryDialog', () => {
       .map((button) => button.textContent);
     // Furthest ahead at the top, the nearest step just above NOW.
     expect(rows[0]).toContain('Add CONE3 forward');
-    expect(rows[2]).toContain('Add BOX1 forward');
+    expect(rows[2]).toContain('Add CUBE1 forward');
 
     await userEvent.click(screen.getByRole('button', { name: /Add CYLINDER/ }));
 
@@ -80,12 +80,12 @@ describe('HistoryDialog', () => {
   });
 
   it('stays open while travelling, so a trip too far is one click back', async () => {
-    store().addPrimitive('box');
+    store().addPrimitive('cube');
 
     render(<HistoryDialog />);
-    await userEvent.click(screen.getByRole('button', { name: /Add BOX/ }));
+    await userEvent.click(screen.getByRole('button', { name: /Add CUBE/ }));
 
     expect(store().dialog).toBe('history');
-    expect(screen.getByRole('button', { name: /Add BOX/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Add CUBE/ })).toBeInTheDocument();
   });
 });

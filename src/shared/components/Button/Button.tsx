@@ -36,7 +36,7 @@ export function Button({
    * Runs the click, then drops the focus if a pointer brought it.
    *
    * A clicked button keeps the focus, and Enter on a focused button is a
-   * second click: press BOX and then Enter, and the scene gets two boxes. A
+   * second click: press CUBE and then Enter, and the scene gets two cubes. A
    * keyboard activation reports no click count, and that one keeps its focus,
    * because a hand on the keyboard has nowhere else to put it and pressing
    * Enter twice there is a deliberate second press.

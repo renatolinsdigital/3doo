@@ -9,7 +9,7 @@ describe('StatusBar', () => {
   beforeEach(() => useEditorStore.getState().resetScene());
 
   it('reads a live rotation out in degrees', () => {
-    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().addPrimitive('cube');
     act(() => {
       useEditorStore.getState().beginModal('rotate');
       useEditorStore.getState().updateModal({ value: { x: 42.5, y: 0, z: 0 } });
@@ -21,7 +21,7 @@ describe('StatusBar', () => {
   });
 
   it('names the axis a rotation has been pinned to', () => {
-    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().addPrimitive('cube');
     act(() => {
       useEditorStore.getState().beginModal('rotate');
       useEditorStore.getState().updateModal({ axis: 'z', value: { x: -90, y: 0, z: 0 } });
@@ -35,7 +35,7 @@ describe('StatusBar', () => {
   });
 
   it('says what a slide is moving, and how far along it is', () => {
-    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().addPrimitive('cube');
     act(() => {
       useEditorStore.getState().beginModal('slide', 'edge');
       useEditorStore.getState().updateModal({ value: { x: -0.42, y: 0, z: 0 } });
@@ -47,7 +47,7 @@ describe('StatusBar', () => {
   });
 
   it('reads out how wide a bevel has been dragged so far', () => {
-    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().addPrimitive('cube');
     act(() => {
       useEditorStore.getState().beginModal('bevel');
       useEditorStore.getState().updateModal({ value: { x: 0.125, y: 0, z: 0 } });
@@ -75,7 +75,7 @@ describe('StatusBar', () => {
   });
 
   it('counts geometry from the kernel', () => {
-    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().addPrimitive('cube');
 
     render(<StatusBar />);
 
@@ -87,7 +87,7 @@ describe('StatusBar', () => {
   });
 
   it('shows the current mode', () => {
-    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().addPrimitive('cube');
     useEditorStore.getState().setMode('edit');
 
     render(<StatusBar />);
@@ -96,7 +96,7 @@ describe('StatusBar', () => {
   });
 
   it('reads out a live scale factor while S is running', () => {
-    useEditorStore.getState().addPrimitive('box');
+    useEditorStore.getState().addPrimitive('cube');
     useEditorStore.getState().beginModal('scale');
 
     const { rerender } = render(<StatusBar />);
