@@ -43,8 +43,31 @@ import {
 
 import { WorkerUnavailable, booleanOffThread, canRunOffThread } from '../booleanOffThread';
 import type { EditorStore } from '../useEditorStore';
-import type { LastOperator, Material, SceneObject } from '../types';
+import type {
+  CursorSnapKind,
+  CursorSnapTargets,
+  LastOperator,
+  Material,
+  SceneObject,
+} from '../types';
 import { DEFAULT_PREFERENCES } from './preferences';
+
+/**
+ * What each pointer snap says when it lands and when it finds nothing.
+ *
+ * The right-click menu and the keyboard run the same snaps for the same
+ * reasons, so they report them in the same words: written once here rather
+ * than once per caller, which is how the menu's shortcut labels drifted.
+ */
+export const CURSOR_SNAPS: Record<CursorSnapKind, { label: string; missing: string }> = {
+  point: {
+    label: 'Cursor placed',
+    missing: 'Nothing under the pointer to place the cursor on',
+  },
+  vertex: { label: 'Cursor to vertex', missing: 'No vertex close enough to the pointer' },
+  edge: { label: 'Cursor to edge centre', missing: 'No edge close enough to the pointer' },
+  face: { label: 'Cursor to face centre', missing: 'No face under the pointer' },
+};
 
 const BOOLEAN_LABELS: Record<BooleanOp, string> = {
   union: 'Union',
@@ -267,6 +290,8 @@ export interface SceneSlice {
     patches: { id: string; transform: Partial<SceneObject['transform']> }[],
   ) => void;
   setCursor: (position: Vec3, status?: string) => void;
+  /** Puts the cursor on one of the targets the pointer resolved, or says why not. */
+  snapCursor: (kind: CursorSnapKind, targets: CursorSnapTargets | null) => void;
   cursorToSelection: () => void;
   cursorToSelectionOrigin: () => void;
   selectionToCursor: () => void;
@@ -1138,6 +1163,27 @@ export const createSceneSlice: StateCreator<
     }
     get().recordHistory(status);
     set({ cursor: { ...position }, status });
+  },
+
+  /**
+   * Applies a pointer snap.
+   *
+   * `targets` is what the pointer resolved to, or null when the pointer is not
+   * over the viewport at all: the one refusal the keyboard can hit and the
+   * menu, opened by a click inside it, cannot.
+   */
+  snapCursor: (kind, targets) => {
+    if (!targets) {
+      set({ status: 'Move the pointer into the viewport to snap the cursor' });
+      return;
+    }
+
+    const target = targets[kind];
+    if (!target) {
+      set({ status: CURSOR_SNAPS[kind].missing });
+      return;
+    }
+    get().setCursor(target, CURSOR_SNAPS[kind].label);
   },
 
   cursorToSelection: () => {

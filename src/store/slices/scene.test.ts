@@ -279,3 +279,42 @@ describe('booleans against an unapplied modifier stack', () => {
     expect(useEditorStore.getState().toasts).toHaveLength(0);
   });
 });
+
+describe('cursor snaps', () => {
+  /** What the pointer resolved, with only `kind` found. */
+  function found(kind: 'point' | 'vertex' | 'edge' | 'face', at = vec3(1, 2, 3)) {
+    return { point: null, vertex: null, edge: null, face: null, [kind]: at };
+  }
+
+  it('puts the cursor on what the pointer found', () => {
+    const store = useEditorStore.getState();
+    store.resetScene();
+
+    store.snapCursor('vertex', found('vertex'));
+
+    expect(useEditorStore.getState().cursor).toEqual(vec3(1, 2, 3));
+    expect(useEditorStore.getState().status).toBe('Cursor to vertex');
+  });
+
+  it('leaves the cursor alone and names what the pointer missed', () => {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    store.setCursor(vec3(0, 1, 0));
+
+    // A face was found, an edge was not: the entry asked for is the one that
+    // decides, not whatever else the same pass turned up.
+    store.snapCursor('edge', found('face'));
+
+    expect(useEditorStore.getState().cursor).toEqual(vec3(0, 1, 0));
+    expect(useEditorStore.getState().status).toBe('No edge close enough to the pointer');
+  });
+
+  it('says the pointer is not in the viewport, which only a key can manage', () => {
+    const store = useEditorStore.getState();
+    store.resetScene();
+
+    store.snapCursor('point', null);
+
+    expect(useEditorStore.getState().status).toContain('pointer into the viewport');
+  });
+});

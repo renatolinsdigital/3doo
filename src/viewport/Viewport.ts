@@ -44,7 +44,7 @@ import {
   snapStepFor,
   useEditorStore,
 } from '@store/index';
-import type { CursorSnapTargets, SceneObject, ViewLostReason } from '@store/types';
+import type { CursorSnapKind, CursorSnapTargets, SceneObject, ViewLostReason } from '@store/types';
 
 import { CameraController, viewLostReason } from './CameraController';
 import { type SnapAmounts, ViewportGrid, snapAmounts, snapTo } from './grid';
@@ -988,6 +988,12 @@ export class Viewport {
         (state) => state.axisViewRequest,
         (request) => {
           if (request) this.controls.setAxisView(request.axis, request.negative);
+        },
+      ),
+      store.subscribe(
+        (state) => state.cursorSnapRequest,
+        (request) => {
+          if (request) this.snapCursorUnderPointer(request.kind);
         },
       ),
     );
@@ -2796,6 +2802,22 @@ export class Viewport {
       targets: this.resolveCursorTargets(pointer),
     });
   };
+
+  /**
+   * Runs one of the menu's snaps from the keyboard.
+   *
+   * The menu resolves its targets as the right-click lands, because by the time
+   * an entry is picked the pointer sits over the menu instead. A key has no
+   * click to resolve from, so the same pass runs here against wherever the
+   * pointer was left, and the store words the hit and the miss for both paths.
+   *
+   * A pointer that is not over the canvas has nothing to aim at, and the store
+   * says so rather than the snap landing somewhere nobody pointed at.
+   */
+  private snapCursorUnderPointer(kind: CursorSnapKind): void {
+    const targets = this.pointerInside ? this.resolveCursorTargets(this.pointerPixels) : null;
+    useEditorStore.getState().snapCursor(kind, targets);
+  }
 
   /**
    * Finds everywhere the 3D cursor could land under the pointer.

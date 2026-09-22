@@ -215,6 +215,31 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
     group: 'Selection',
   },
 
+  // C moves the cursor and V brings things to it. Alt+Shift over either one
+  // works on origins rather than on the geometry, and Alt alone over V, E and F
+  // snaps to the vertex, edge or face the pointer is on.
+  { id: 'cursorToPointer', key: 'c', label: 'Place the cursor under the pointer', group: 'Cursor' },
+  {
+    id: 'cursorToVertex',
+    key: 'v',
+    alt: true,
+    label: 'Cursor to the vertex under the pointer',
+    group: 'Cursor',
+  },
+  {
+    id: 'cursorToEdge',
+    key: 'e',
+    alt: true,
+    label: 'Cursor to the centre of the edge under the pointer',
+    group: 'Cursor',
+  },
+  {
+    id: 'cursorToFace',
+    key: 'f',
+    alt: true,
+    label: 'Cursor to the centre of the face under the pointer',
+    group: 'Cursor',
+  },
   {
     id: 'cursorToWorldOrigin',
     key: 'c',
@@ -230,7 +255,24 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
     label: 'Cursor to selection',
     group: 'Cursor',
   },
+  {
+    id: 'cursorToSelectionOrigin',
+    key: 'c',
+    alt: true,
+    shift: true,
+    label: 'Cursor to the origin of the selection',
+    group: 'Cursor',
+  },
   { id: 'selectionToCursor', key: 'v', shift: true, label: 'Selection to cursor', group: 'Cursor' },
+  {
+    id: 'originToCursor',
+    key: 'v',
+    alt: true,
+    shift: true,
+    label: 'Origins of the selected objects to the cursor',
+    group: 'Cursor',
+  },
+  { id: 'toggleCursor', key: 'c', alt: true, label: 'Hide or show the cursor', group: 'Cursor' },
   // Ctrl rather than Shift: shifting a punctuation key changes the character
   // the browser reports, so `Shift+.` arrives as `>` and never matches.
   {

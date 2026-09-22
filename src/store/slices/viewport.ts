@@ -3,6 +3,7 @@ import type { StateCreator } from 'zustand';
 import type { EditorStore } from '../useEditorStore';
 import type {
   CameraPose,
+  CursorSnapKind,
   NavigationPreset,
   OverlaySettings,
   ShadingMode,
@@ -14,6 +15,14 @@ export interface ViewportSlice extends ViewportSettings {
   /** Incremented to ask the viewport to frame geometry; it is not camera state. */
   frameRequest: { target: 'selected' | 'all'; nonce: number } | null;
   axisViewRequest: { axis: 'x' | 'y' | 'z'; negative: boolean; nonce: number } | null;
+  /**
+   * Incremented to ask the viewport for a snap at the pointer.
+   *
+   * The targets are resolved by a raycast, which only the viewport can run, and
+   * the pointer is only known there too. The keyboard asks from here; the
+   * right-click menu resolves its own targets as the click lands.
+   */
+  cursorSnapRequest: { kind: CursorSnapKind; nonce: number } | null;
   /** Why the scene is out of view, or null while it is where the camera can see it. */
   viewLost: ViewLostReason | null;
   /**
@@ -33,6 +42,7 @@ export interface ViewportSlice extends ViewportSettings {
   frameSelected: () => void;
   frameAll: () => void;
   setAxisView: (axis: 'x' | 'y' | 'z', negative?: boolean) => void;
+  snapCursorUnderPointer: (kind: CursorSnapKind) => void;
   setViewLost: (lost: ViewLostReason | null) => void;
   setCameraPose: (pose: CameraPose) => void;
 }
@@ -63,6 +73,7 @@ export const createViewportSlice: StateCreator<
   navigation: 'blender',
   frameRequest: null,
   axisViewRequest: null,
+  cursorSnapRequest: null,
   viewLost: null,
   cameraPose: null,
 
@@ -80,6 +91,8 @@ export const createViewportSlice: StateCreator<
 
   setAxisView: (axis, negative = false) =>
     set({ axisViewRequest: { axis, negative, nonce: ++nonce } }),
+
+  snapCursorUnderPointer: (kind) => set({ cursorSnapRequest: { kind, nonce: ++nonce } }),
 
   setViewLost: (viewLost) => set({ viewLost }),
 

@@ -153,12 +153,13 @@ describe('keymap', () => {
 });
 
 describe('3D cursor bindings', () => {
-  function press(key: string, modifiers: { ctrl?: boolean; shift?: boolean } = {}) {
+  function press(key: string, modifiers: { ctrl?: boolean; shift?: boolean; alt?: boolean } = {}) {
     return matchBinding(
       new KeyboardEvent('keydown', {
         key,
         ctrlKey: modifiers.ctrl ?? false,
         shiftKey: modifiers.shift ?? false,
+        altKey: modifiers.alt ?? false,
       }),
       'object',
     );
@@ -172,6 +173,25 @@ describe('3D cursor bindings', () => {
     expect(press('C', { ctrl: true, shift: true })?.id).toBe('cursorToSelection');
     expect(press('V', { shift: true })?.id).toBe('selectionToCursor');
     expect(press('.', { ctrl: true })?.id).toBe('togglePivot');
+  });
+
+  it('gives every entry of the cursor menu a key of its own', () => {
+    // The menu reads these off the keymap, so an entry with no binding shows
+    // no key at all and looks like one the keyboard cannot reach.
+    expect(press('c')?.id).toBe('cursorToPointer');
+    expect(press('V', { alt: true })?.id).toBe('cursorToVertex');
+    expect(press('E', { alt: true })?.id).toBe('cursorToEdge');
+    expect(press('F', { alt: true })?.id).toBe('cursorToFace');
+    expect(press('C', { alt: true, shift: true })?.id).toBe('cursorToSelectionOrigin');
+    expect(press('V', { alt: true, shift: true })?.id).toBe('originToCursor');
+    expect(press('C', { alt: true })?.id).toBe('toggleCursor');
+  });
+
+  it('keeps Alt and Alt+Shift apart on the same letter', () => {
+    // Alt+V snaps to a vertex and Alt+Shift+V moves origins: one modifier
+    // between them, and `matchBinding` compares all three.
+    expect(press('V')?.id).toBe('selectTool');
+    expect(press('E', { alt: true })?.id).not.toBe('extrude');
   });
 
   it('leaves the unmodified keys they sit on alone', () => {

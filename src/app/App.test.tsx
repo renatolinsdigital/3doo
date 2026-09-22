@@ -527,6 +527,52 @@ describe('App shell', () => {
     expect(useEditorStore.getState().pivot).toBe('origin');
   });
 
+  it('moves the cursor and the selection with the keys the menu names', () => {
+    const store = useEditorStore.getState();
+    store.addPrimitive('box');
+    store.setObjectTransform(useEditorStore.getState().objects[0].id, {
+      position: { x: 0, y: 5, z: 0 },
+    });
+    render(<App />);
+
+    // Alt+Shift+C: the origin of the selection, not the middle of its shape.
+    fireEvent.keyDown(window, { key: 'C', shiftKey: true, altKey: true });
+    expect(useEditorStore.getState().cursor.y).toBeCloseTo(5);
+
+    act(() => useEditorStore.getState().setCursor({ x: 0, y: 2, z: 0 }));
+    // Alt+Shift+V: the origin travels to the cursor and the shape stays put.
+    fireEvent.keyDown(window, { key: 'V', shiftKey: true, altKey: true });
+    expect(useEditorStore.getState().objects[0].transform.position.y).toBeCloseTo(2);
+  });
+
+  it('hides and shows the cursor with Alt+C', () => {
+    render(<App />);
+    expect(useEditorStore.getState().overlays.cursor).toBe(true);
+
+    fireEvent.keyDown(window, { key: 'C', altKey: true });
+    expect(useEditorStore.getState().overlays.cursor).toBe(false);
+
+    fireEvent.keyDown(window, { key: 'C', altKey: true });
+    expect(useEditorStore.getState().overlays.cursor).toBe(true);
+  });
+
+  it('hands the snaps under the pointer to the viewport, which owns the raycast', () => {
+    render(<App />);
+
+    // The menu resolves these as the right-click lands. From the keyboard there
+    // is no click, so the viewport is asked for a pass at the pointer instead.
+    const keys = [
+      ['c', false, 'point'],
+      ['v', true, 'vertex'],
+      ['e', true, 'edge'],
+      ['f', true, 'face'],
+    ] as const;
+
+    for (const [key, alt, kind] of keys) {
+      fireEvent.keyDown(window, { key, altKey: alt });
+      expect(useEditorStore.getState().cursorSnapRequest?.kind).toBe(kind);
+    }
+  });
   it('steps the pivot through all three from the keyboard', () => {
     // The pivot outlives resetScene, so the test before this one leaves it
     // wherever it finished.

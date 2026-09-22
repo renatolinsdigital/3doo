@@ -125,6 +125,9 @@ export interface CursorSnapTargets {
   face: Vec3 | null;
 }
 
+/** Which of them a menu entry or a shortcut is asking for. */
+export type CursorSnapKind = keyof CursorSnapTargets;
+
 export interface CursorMenuState {
   /** Canvas-relative pixels; the menu anchors its top-left corner here. */
   x: number;

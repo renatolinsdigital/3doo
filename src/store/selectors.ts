@@ -225,3 +225,79 @@ export function useSceneStats(): SceneStats {
     }),
   );
 }
+
+/** Why an entry that moves the selection cannot run, or `ready` when it can. */
+export type MoveState = 'ready' | 'none' | 'locked';
+
+/** The same, for origins, which a shared mesh rules out as well. */
+export type OriginMoveState = MoveState | 'linked';
+
+export interface CursorActions {
+  /** Whether there is geometry for the cursor to move onto. */
+  toSelection: boolean;
+  /** Whether there is an origin for the cursor to move onto. */
+  toOrigin: boolean;
+  /** Whether the selection can be carried onto the cursor. */
+  selectionToCursor: MoveState;
+  /** Whether the origins of the selected objects can be carried onto it. */
+  originToCursor: OriginMoveState;
+}
+
+function selectionToCursorState(state: EditorStore): MoveState {
+  if (state.mode === 'edit') {
+    const object = activeObject(state);
+    if (!object || object.mesh.selectedVerts().length === 0) return 'none';
+    return object.locked ? 'locked' : 'ready';
+  }
+
+  const selected = state.objects.filter((object) => state.selectedObjectIds.includes(object.id));
+  if (selected.length === 0) return 'none';
+  return selected.every((object) => object.locked) ? 'locked' : 'ready';
+}
+
+function originToCursorState(state: EditorStore): OriginMoveState {
+  const targets = state.objects.filter((object) => state.selectedObjectIds.includes(object.id));
+  if (targets.length === 0) return 'none';
+
+  const unlocked = targets.filter((object) => !object.locked);
+  if (unlocked.length === 0) return 'locked';
+
+  // A linked duplicate shares its mesh instance, and the store refuses to move
+  // an origin that would carry every other user of that mesh off its own.
+  const single = unlocked.filter(
+    (object) => state.objects.filter((other) => other.mesh === object.mesh).length === 1,
+  );
+  return single.length === 0 ? 'linked' : 'ready';
+}
+
+/**
+ * What the cursor menu's move entries can do right now.
+ *
+ * The same refusals the store's own actions make, asked before the click rather
+ * than after it: an entry that would report "Nothing selected" sits there
+ * disabled and says so in its hint instead.
+ *
+ * Reads `meshVersion` for the reason `useActiveSelectionCounts` does: edit-mode
+ * selection lives on the mesh, which is mutated in place, so nothing changes
+ * identity when it moves.
+ */
+export function useCursorActions(): CursorActions {
+  return useEditorStore(
+    useShallow((state): CursorActions => {
+      void state.meshVersion;
+
+      const edited = state.mode === 'edit' ? activeObject(state) : null;
+      const anySelected = state.objects.some((object) =>
+        state.selectedObjectIds.includes(object.id),
+      );
+
+      return {
+        toSelection:
+          state.mode === 'edit' ? (edited?.mesh.selectedVerts().length ?? 0) > 0 : anySelected,
+        toOrigin: state.mode === 'edit' ? edited !== null : anySelected,
+        selectionToCursor: selectionToCursorState(state),
+        originToCursor: originToCursorState(state),
+      };
+    }),
+  );
+}

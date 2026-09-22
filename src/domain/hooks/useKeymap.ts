@@ -217,14 +217,37 @@ export function useKeymap(): void {
           state.exec('shrinkSelection', {}, 'Shrink selection');
           break;
 
+        // The four snaps need a raycast at the pointer, which only the viewport
+        // can run: it answers the request and reports what it found.
+        case 'cursorToPointer':
+          state.snapCursorUnderPointer('point');
+          break;
+        case 'cursorToVertex':
+          state.snapCursorUnderPointer('vertex');
+          break;
+        case 'cursorToEdge':
+          state.snapCursorUnderPointer('edge');
+          break;
+        case 'cursorToFace':
+          state.snapCursorUnderPointer('face');
+          break;
         case 'cursorToWorldOrigin':
           state.setCursor({ x: 0, y: 0, z: 0 }, 'Cursor to world origin');
           break;
         case 'cursorToSelection':
           state.cursorToSelection();
           break;
+        case 'cursorToSelectionOrigin':
+          state.cursorToSelectionOrigin();
+          break;
         case 'selectionToCursor':
           state.selectionToCursor();
+          break;
+        case 'originToCursor':
+          state.originToCursor();
+          break;
+        case 'toggleCursor':
+          state.setOverlay({ cursor: !state.overlays.cursor });
           break;
         case 'togglePivot':
           state.setPivot(PIVOT_CYCLE[(PIVOT_CYCLE.indexOf(state.pivot) + 1) % PIVOT_CYCLE.length]);

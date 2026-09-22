@@ -444,6 +444,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
+        text: 'Every entry of that menu answers to a key too, and the menu prints it beside the description. C places the cursor under the pointer, and Alt+V, Alt+E and Alt+F snap it to the vertex, edge or face there: from the keyboard they aim at wherever the pointer is resting, so the pointer has to be over the viewport. Alt+Shift over C or V works on origins rather than on the geometry, and Alt+C puts the cursor away and brings it back.',
+      },
+      {
+        kind: 'note',
         text: "CURSOR TO SELECTION and CURSOR TO SELECTION ORIGIN in the right-click menu are two different points, and an edit-mode move is what pulls them apart. The first goes to the middle of the geometry, which is the shape you are looking at. The second goes to the origin, which is the amber square: the median of them across several objects, and the edited object's own in edit mode.",
       },
       {
