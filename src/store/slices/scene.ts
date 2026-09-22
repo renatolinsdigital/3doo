@@ -398,6 +398,8 @@ export interface SceneSlice {
   joinGroup: (id: string) => void;
   /** Drops the folder, leaving its objects loose in the scene. */
   ungroup: (id: string) => void;
+  /** Takes one object out of its folder, leaving the rest of the folder alone. */
+  removeFromGroup: (id: string) => void;
   /** Hides the whole folder, or shows it again once all of it is hidden. */
   toggleGroupVisibility: (id: string) => void;
   /** Locks the whole folder, or unlocks it again once all of it is locked. */
@@ -949,6 +951,28 @@ export const createSceneSlice: StateCreator<
       groups: state.groups.filter((candidate) => candidate.id !== id),
       status: `Ungrouped ${group.name}`,
     }));
+  },
+
+  removeFromGroup: (id) => {
+    const state = get();
+    const object = state.objects.find((candidate) => candidate.id === id);
+    const group = state.groups.find((candidate) => candidate.id === object?.groupId);
+    if (!object || !group) return;
+
+    get().recordHistory('Remove from group');
+
+    set((state) => {
+      const next = state.objects.map((candidate) =>
+        candidate.id === id ? { ...candidate, groupId: null } : candidate,
+      );
+      return {
+        objects: next,
+        // The object may have been the last one in there, and a folder nothing
+        // can be put back into is worth no row.
+        groups: pruneGroups(state.groups, next),
+        status: `Removed ${object.name} from ${group.name}`,
+      };
+    });
   },
 
   toggleGroupVisibility: (id) => {

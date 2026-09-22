@@ -33,6 +33,8 @@ export function Outliner() {
   const deleteGroup = useEditorStore((state) => state.deleteGroup);
   const joinGroup = useEditorStore((state) => state.joinGroup);
   const ungroup = useEditorStore((state) => state.ungroup);
+  const removeFromGroup = useEditorStore((state) => state.removeFromGroup);
+  const groupSelected = useEditorStore((state) => state.groupSelected);
   const toggleGroupVisibility = useEditorStore((state) => state.toggleGroupVisibility);
   const toggleGroupLock = useEditorStore((state) => state.toggleGroupLock);
   const toggleGroupCollapsed = useEditorStore((state) => state.toggleGroupCollapsed);
@@ -50,46 +52,76 @@ export function Outliner() {
 
   // Every entry names the row the menu was opened on rather than the selection,
   // which is what the menu's header says and what right-clicking one row of
-  // several selected ones reads as.
-  const objectEntries = (object: SceneObject): ContextMenuEntry[] => [
-    // One entry either way: what a selected row offers is the way back out of
-    // the selection, which is the only thing selecting it again could mean.
-    selectedObjectIds.includes(object.id)
-      ? {
-          id: 'select',
-          label: 'DESELECT',
-          hint: 'Drop this object from the selection, leaving the rest of it alone',
-          onSelect: () => deselectObject(object.id),
-        }
-      : {
-          id: 'select',
-          label: 'SELECT',
-          hint: 'Make this the active object, dropping anything else selected',
-          onSelect: () => setActiveObject(object.id, false),
-        },
-    {
-      id: 'rename',
-      label: 'RENAME',
-      hint: 'Edit the name in place (double-click it)',
-      onSelect: () => setEditing({ kind: 'object', id: object.id }),
-    },
-    { id: 'rule', separator: true },
-    {
-      id: 'apply-transform',
-      label: 'APPLY TRANSFORMS',
-      disabled: object.locked,
-      hint: object.locked
-        ? 'Locked objects cannot be edited, so unlock it first'
-        : 'Bake rotation and scale into the mesh so modifiers and exports see the real shape (Ctrl+A)',
-      onSelect: () => applyTransform([object.id]),
-    },
-    {
-      id: 'delete',
-      label: 'DELETE',
-      hint: 'Remove this object from the scene (X)',
-      onSelect: () => deleteObjects([object.id]),
-    },
-  ];
+  // several selected ones reads as. GROUP is the exception, since a folder of
+  // one object is not worth making: its hint names the selection instead.
+  const objectEntries = (object: SceneObject): ContextMenuEntry[] => {
+    const selection = objects.filter((candidate) => selectedObjectIds.includes(candidate.id));
+    const grouped = selection.filter((candidate) =>
+      groups.some((group) => group.id === candidate.groupId),
+    );
+    const groupable = selection.length > 1 && grouped.length === 0;
+
+    return [
+      // One entry either way: what a selected row offers is the way back out of
+      // the selection, which is the only thing selecting it again could mean.
+      selectedObjectIds.includes(object.id)
+        ? {
+            id: 'select',
+            label: 'DESELECT',
+            hint: 'Drop this object from the selection, leaving the rest of it alone',
+            onSelect: () => deselectObject(object.id),
+          }
+        : {
+            id: 'select',
+            label: 'SELECT',
+            hint: 'Make this the active object, dropping anything else selected',
+            onSelect: () => setActiveObject(object.id, false),
+          },
+      {
+        id: 'rename',
+        label: 'RENAME',
+        hint: 'Edit the name in place (double-click it)',
+        onSelect: () => setEditing({ kind: 'object', id: object.id }),
+      },
+      {
+        id: 'group',
+        label: 'GROUP',
+        disabled: !groupable,
+        hint: groupable
+          ? `Put the ${selection.length} selected objects in a folder of their own (Ctrl+G)`
+          : selection.length < 2
+            ? 'Grouping needs two objects selected at least'
+            : 'Every object selected has to be loose, so take the grouped ones out of their folders first',
+        onSelect: () => groupSelected(),
+      },
+      ...(groups.some((group) => group.id === object.groupId)
+        ? [
+            {
+              id: 'remove-from-group',
+              label: 'REMOVE FROM GROUP',
+              hint: 'Take this object out of its folder and leave it loose in the scene',
+              onSelect: () => removeFromGroup(object.id),
+            },
+          ]
+        : []),
+      { id: 'rule', separator: true },
+      {
+        id: 'apply-transform',
+        label: 'APPLY TRANSFORMS',
+        disabled: object.locked,
+        hint: object.locked
+          ? 'Locked objects cannot be edited, so unlock it first'
+          : 'Bake rotation and scale into the mesh so modifiers and exports see the real shape (Ctrl+A)',
+        onSelect: () => applyTransform([object.id]),
+      },
+      {
+        id: 'delete',
+        label: 'DELETE',
+        hint: 'Remove this object from the scene (X)',
+        onSelect: () => deleteObjects([object.id]),
+      },
+    ];
+  };
 
   const groupEntries = (group: SceneGroup): ContextMenuEntry[] => {
     const held = members(group);

@@ -244,6 +244,34 @@ describe('Outliner', () => {
         'true',
       );
     });
+
+    it('puts the selection in a folder', async () => {
+      useEditorStore.getState().addPrimitive('box');
+      useEditorStore.getState().addPrimitive('cylinder');
+      act(() => useEditorStore.getState().selectAllObjects());
+      render(<Outliner />);
+
+      await openMenuOn('BOX');
+      await userEvent.click(screen.getByRole('menuitem', { name: 'GROUP' }));
+
+      const folder = useEditorStore.getState().groups[0];
+      expect(useEditorStore.getState().objects.map((object) => object.groupId)).toEqual([
+        folder.id,
+        folder.id,
+      ]);
+    });
+
+    it('will not make a folder of one object', async () => {
+      useEditorStore.getState().addPrimitive('box');
+      render(<Outliner />);
+
+      await openMenuOn('BOX');
+
+      expect(screen.getByRole('menuitem', { name: 'GROUP' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+    });
   });
   describe('groups', () => {
     /** Adds a box and a cylinder, puts them in a folder and renders the panel. */
@@ -368,6 +396,37 @@ describe('Outliner', () => {
       await userEvent.click(screen.getByRole('menuitem', { name: 'JOIN' }));
 
       expect(useEditorStore.getState().objects).toHaveLength(2);
+    });
+
+    it('takes one object out of the folder from its own menu', async () => {
+      const { group } = grouped();
+
+      await openMenuOn('BOX');
+      await userEvent.click(screen.getByRole('menuitem', { name: 'REMOVE FROM GROUP' }));
+
+      expect(useEditorStore.getState().objects[0].groupId).toBeNull();
+      expect(useEditorStore.getState().objects[1].groupId).toBe(group.id);
+      expect(screen.getByRole('button', { name: 'GROUP' })).toBeInTheDocument();
+    });
+
+    it('will not group a selection that is already in a folder', async () => {
+      const { box, cylinder } = grouped();
+      act(() => useEditorStore.getState().selectObjects([box.id, cylinder.id]));
+
+      await openMenuOn('BOX');
+
+      expect(screen.getByRole('menuitem', { name: 'GROUP' })).toHaveAttribute(
+        'aria-disabled',
+        'true',
+      );
+    });
+
+    it('offers nothing to leave on a loose row', async () => {
+      grouped();
+
+      await openMenuOn('UV SPHERE');
+
+      expect(screen.queryByRole('menuitem', { name: 'REMOVE FROM GROUP' })).not.toBeInTheDocument();
     });
 
     it('will not join a folder that is locked', async () => {

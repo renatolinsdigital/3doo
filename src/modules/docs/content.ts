@@ -165,7 +165,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'The row menu',
-            'Right-click a row in the OUTLINER for SELECT, RENAME, APPLY TRANSFORMS and DELETE. The first entry reads DESELECT on a row that is already selected, and drops just that row from the selection. Every entry acts on the row it was opened on (the name in the header) and not on whatever else happens to be selected.',
+            'Right-click a row in the OUTLINER for SELECT, RENAME, GROUP, APPLY TRANSFORMS and DELETE. The first entry reads DESELECT on a row that is already selected, and drops just that row from the selection. A row inside a folder also offers REMOVE FROM GROUP, which leaves that one object loose and the folder otherwise intact. Every entry acts on the row it was opened on (the name in the header) and not on whatever else happens to be selected, GROUP aside: it folds the whole selection into a folder, so it stays off until two objects or more are selected and every one of them is loose.',
           ],
           [
             'The folder menu',

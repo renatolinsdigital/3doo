@@ -470,6 +470,29 @@ describe('outliner groups', () => {
     expect(useEditorStore.getState().groups).toEqual([]);
   });
 
+  it('takes one object out of the folder, leaving the rest of it alone', () => {
+    const [box, cylinder] = threeObjects();
+    const folder = groupOf(box.id, cylinder.id);
+
+    useEditorStore.getState().removeFromGroup(box.id);
+
+    expect(useEditorStore.getState().objects.map((object) => object.groupId)).toEqual([
+      null,
+      folder.id,
+      null,
+    ]);
+    expect(useEditorStore.getState().groups).toHaveLength(1);
+  });
+
+  it('drops the folder once its last object leaves', () => {
+    const [box] = threeObjects();
+    groupOf(box.id);
+
+    useEditorStore.getState().removeFromGroup(box.id);
+
+    expect(useEditorStore.getState().groups).toEqual([]);
+  });
+
   it('joins the folder into the active object, which stays in the folder', () => {
     const [box, cylinder] = threeObjects();
     const folder = groupOf(box.id, cylinder.id);

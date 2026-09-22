@@ -47,23 +47,39 @@
       background: var(--bone-dim);
     }
 
+    // Every row in the selection carries the same plate, so a selection of
+    // several reads as one thing rather than as one row plus some leftovers.
     &--selected {
-      background: var(--bone-shade);
-    }
-
-    // The active object gets a filled marker as well as the outline, so it is
-    // distinguishable from a merely selected row without relying on colour.
-    &--active {
-      @include active-indicator(var(--red));
-
       background: var(--rust);
       color: var(--bone);
+    }
+
+    // The active object carries the same plate as the rest of the selection and
+    // is marked by the bar alone, so a selection of several reads as one block
+    // rather than as one odd row among them.
+    &--active {
+      @include active-indicator(var(--bone));
+    }
+
+    // The name button fills most of the row but not the toggles at its end, so
+    // a ring around the button alone leaves the row looking half-lit. Ringing
+    // the row instead keeps the toggles' own rings telling them apart.
+    //
+    // A selected row is left out: the plate already says where focus is, and
+    // the ring on top of it reads as a second highlight. Keyboard focus lands
+    // on unselected rows too, which is where the ring is the only cue.
+    &:has(.outliner__name:focus-visible):not(.outliner__row--selected) {
+      outline: var(--border-width) solid var(--cyan);
+      outline-offset: 2px;
+      // The ring reaches further than the 2px gap between rows, so the row
+      // below would paint over the bottom of it.
+      position: relative;
+      z-index: 1;
     }
   }
 
   &__name {
     @include label-text;
-    @include brutal-focus;
 
     min-height: var(--field-height);
     padding: var(--space-1) var(--space-3);
@@ -72,6 +88,13 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+
+    // The row draws this button's focus ring, so the browser's own would sit
+    // inside it as a second frame, and on a selected row it is the only one
+    // left to draw.
+    &:focus {
+      outline: none;
+    }
   }
 
   // Reads as a plate rather than a control: it reports the link, it does not
