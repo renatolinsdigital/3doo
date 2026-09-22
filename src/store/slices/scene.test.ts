@@ -678,3 +678,128 @@ describe('outliner groups', () => {
     });
   });
 });
+
+describe('imported images', () => {
+  const asset = () => ({
+    id: 'asset-1',
+    name: 'ref.png',
+    type: 'image/png',
+    width: 800,
+    height: 400,
+    blob: null,
+  });
+
+  it('lands at the world origin, not at the 3D cursor', () => {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    store.setCursor(vec3(3, 4, 5));
+
+    store.addImage(asset());
+
+    const object = useEditorStore.getState().objects[0];
+    expect(object.transform.position).toEqual({ x: 0, y: 0, z: 0 });
+    expect(object.name).toBe('REF.PNG');
+    expect(object.image).toEqual({ assetId: 'asset-1' });
+  });
+
+  it('is a plane the size of the picture, and an ordinary object otherwise', () => {
+    const store = useEditorStore.getState();
+    store.resetScene();
+
+    store.addImage(asset());
+
+    const object = useEditorStore.getState().objects[0];
+    expect(object.mesh.faces.size).toBe(1);
+    expect(object.mesh.verts.size).toBe(4);
+    expect(object.primitive).toBeNull();
+    expect(useEditorStore.getState().assets['asset-1']).toBeDefined();
+  });
+
+  it('keeps the asset when the object is deleted, so undo can bring it back', () => {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    store.addImage(asset());
+
+    useEditorStore.getState().deleteSelected();
+    expect(useEditorStore.getState().objects).toHaveLength(0);
+
+    useEditorStore.getState().undo();
+
+    const state = useEditorStore.getState();
+    expect(state.objects[0].image).toEqual({ assetId: 'asset-1' });
+    expect(state.assets['asset-1']).toBeDefined();
+  });
+
+  it('drops every asset with the scene', () => {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    store.addImage(asset());
+
+    useEditorStore.getState().resetScene();
+
+    expect(useEditorStore.getState().assets).toEqual({});
+  });
+});
+
+describe('what counts as changing the project', () => {
+  const clean = () => {
+    useEditorStore.getState().resetScene();
+    useEditorStore.getState().addPrimitive('cube');
+    useEditorStore.getState().markSaved();
+    return useEditorStore.getState().objects[0];
+  };
+
+  it('starts clean, and an empty new scene is clean too', () => {
+    useEditorStore.getState().resetScene();
+    expect(useEditorStore.getState().dirty).toBe(false);
+  });
+
+  it('counts a rename, which moves no geometry at all', () => {
+    const object = clean();
+
+    useEditorStore.getState().renameObject(object.id, 'LAMP POST');
+
+    expect(useEditorStore.getState().dirty).toBe(true);
+  });
+
+  it('counts a move, a delete and a new object', () => {
+    const object = clean();
+    useEditorStore.getState().patchActiveObject({ transform: { ...object.transform } });
+    expect(useEditorStore.getState().dirty).toBe(true);
+
+    useEditorStore.getState().markSaved();
+    useEditorStore.getState().deleteSelected();
+    expect(useEditorStore.getState().dirty).toBe(true);
+
+    useEditorStore.getState().markSaved();
+    useEditorStore.getState().addPrimitive('cone');
+    expect(useEditorStore.getState().dirty).toBe(true);
+  });
+
+  it('counts undo, which is a change like any other', () => {
+    clean();
+    useEditorStore.getState().addPrimitive('cone');
+    useEditorStore.getState().markSaved();
+
+    useEditorStore.getState().undo();
+
+    expect(useEditorStore.getState().dirty).toBe(true);
+  });
+
+  it('does not count selecting an object, which is what looking around does', () => {
+    const object = clean();
+
+    useEditorStore.getState().setActiveObject(null);
+    useEditorStore.getState().setActiveObject(object.id);
+
+    expect(useEditorStore.getState().dirty).toBe(false);
+  });
+
+  it('does not count folding a panel away', () => {
+    clean();
+
+    useEditorStore.getState().togglePanel('OUTLINER');
+
+    expect(useEditorStore.getState().dirty).toBe(false);
+  });
+});

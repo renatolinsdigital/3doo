@@ -28,7 +28,7 @@ export const useEditorStore = create<EditorStore>()(
 
 | Slice | Holds |
 | --- | --- |
-| `scene` | Objects, active/selected ids, cursor, project name, `meshVersion`, undo flags, status, last operator |
+| `scene` | Objects, imported assets, active/selected ids, cursor, project name, `meshVersion`, undo flags, status, last operator |
 | `tool` | Editor mode, select mode, active tool, pivot, snapping, proportional editing, modal transform |
 | `viewport` | Shading, overlays, camera settings, navigation preset, framing requests |
 | `ui` | Toasts, open dialog, export options, merge preview |
@@ -192,6 +192,19 @@ correctness; per-operation inverse commands are listed in `TODO.txt`.
 
 Because `cloneMesh` is `deserializeMesh(serializeMesh(mesh))`, any bug in the
 format is caught by the operation tests, not just the file tests.
+
+## Assets sit beside the objects, not inside them
+
+An imported image is held once in `state.assets`, keyed by id, and an object
+that draws one carries `image: { assetId }`. Undo replays the object list, so a
+picture stored on the object would be copied into every history step: fifty
+steps of a scene holding a 4MB photograph is 200MB of history. Keeping it out
+of the replay also means an image object can be deleted and undone with its
+bytes still loaded.
+
+The bytes themselves never enter a history step or the IndexedDB record. They
+live in OPFS, and are inlined as base64 only when a `.3doo` is written. See
+[saving.md](saving.md).
 
 ## Store actions are the only mutation path
 

@@ -52,6 +52,33 @@ export interface OperationProgress {
   value: number;
 }
 
+/**
+ * An imported binary the scene points at: at present, an image.
+ *
+ * The bytes are held as the `Blob` they arrived as, which is what the viewport
+ * builds a texture from and what OPFS stores without re-encoding. Kept in one
+ * map on the store rather than on the object that uses it, so a linked
+ * duplicate and an undone delete share the one copy.
+ */
+export interface SceneAsset {
+  id: string;
+  /** The file's own name, as imported. */
+  name: string;
+  /** MIME type of the bytes: `image/png`, `image/jpeg`, `image/bmp`. */
+  type: string;
+  /** Natural pixel size, for the plane's proportions and the properties panel. */
+  width: number;
+  height: number;
+  /**
+   * The bytes, or null for an asset whose file could not be found on load.
+   *
+   * Null rather than dropping the entry: the object still says which picture it
+   * wants, so a project whose OPFS copy was cleared can be told what is missing
+   * instead of silently becoming a blank plane.
+   */
+  blob: Blob | null;
+}
+
 export interface SceneObject {
   id: string;
   name: string;
@@ -68,6 +95,14 @@ export interface SceneObject {
   activeMaterial: number;
   /** Set while a freshly added primitive can still be re-parameterised. */
   primitive: { kind: PrimitiveKind; params: PrimitiveParams } | null;
+  /**
+   * The asset this object is drawn with, or null for ordinary geometry.
+   *
+   * An image object is a plane like any other: this only says which picture
+   * goes on it, so every tool, modifier and export keeps working on it without
+   * knowing images exist.
+   */
+  image: { assetId: string } | null;
 }
 
 /**
@@ -266,6 +301,25 @@ export interface Preferences {
    * on a few boxes and hundreds of megabytes on a dense sculpt.
    */
   historySize: number;
+  /**
+   * Whether the editor keeps writing the scene to IndexedDB as you work, and
+   * offers it back when the tab is opened again.
+   *
+   * On by default: a closed or crashed tab otherwise costs the whole scene.
+   * Off, nothing is written and nothing is offered, and every tab opens on a
+   * new scene, which is what you want when the machine is shared or the
+   * storage is not yours to fill.
+   */
+  autosaveEnabled: boolean;
+  /**
+   * How often the autosave writes, in seconds.
+   *
+   * A trade between how much a crash can cost and how often the tab stops to
+   * serialize a scene, which is why it is the user's call: a few boxes cost
+   * nothing to write every half minute, and a dense sculpt with photographs
+   * beside it does not want to be written that often.
+   */
+  autosaveInterval: number;
   /** `#rrggbb` of the fine division lines, and how solid they are (0 to 1). */
   gridColor: string;
   gridOpacity: number;
@@ -304,7 +358,8 @@ export interface Toast {
   issued: number;
 }
 
-export type DialogId = 'export' | 'shortcuts' | 'merge' | 'preferences' | 'history' | null;
+export type DialogId =
+  'export' | 'shortcuts' | 'merge' | 'preferences' | 'history' | 'newProject' | null;
 
 export interface HintState {
   text: string;

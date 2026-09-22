@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { StrictMode } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { ProjectDocument } from '@kernel/index';
 import { useEditorStore } from '@store/index';
@@ -7,10 +8,18 @@ import { useEditorStore } from '@store/index';
 import { setOpeningSceneDone, useAutosave } from './useAutosave';
 
 let record: { document: ProjectDocument; savedAt: string } | null = null;
+let reads = 0;
+let writes = 0;
 
 vi.mock('../services/autosave', () => ({
-  readAutosave: () => Promise.resolve(record),
-  writeAutosave: () => Promise.resolve(),
+  readAutosave: () => {
+    reads += 1;
+    return Promise.resolve(record);
+  },
+  writeAutosave: () => {
+    writes += 1;
+    return Promise.resolve(true);
+  },
 }));
 
 const objects = () => useEditorStore.getState().objects;
@@ -27,8 +36,15 @@ function sessionWith(kind: 'cone' | 'torus'): { document: ProjectDocument; saved
 describe('what the editor opens on', () => {
   beforeEach(() => {
     record = null;
+    reads = 0;
+    writes = 0;
     setOpeningSceneDone(false);
     useEditorStore.getState().resetScene();
+    useEditorStore.getState().setPreferences({ autosaveEnabled: true, autosaveInterval: 30 });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('puts a cube in a fresh tab, the way Blender does', async () => {
@@ -39,6 +55,26 @@ describe('what the editor opens on', () => {
     await waitFor(() => expect(objects()).toHaveLength(1));
     expect(objects()[0].name).toBe('CUBE');
     expect(objects()[0].primitive?.kind).toBe('cube');
+  });
+
+  it('still puts it there under StrictMode, which mounts the hook twice', async () => {
+    // The double mount is what the dev server does on every load: a guard that
+    // lived on the mount would let the first mount claim the read and the
+    // second find it claimed, and the tab would open on nothing.
+    renderHook(() => useAutosave(), { wrapper: StrictMode });
+
+    await waitFor(() => expect(objects()).toHaveLength(1));
+    expect(objects()[0].name).toBe('CUBE');
+  });
+
+  it('recovers the last session once, not twice, under StrictMode', async () => {
+    record = sessionWith('cone');
+    setOpeningSceneDone(false);
+
+    renderHook(() => useAutosave(), { wrapper: StrictMode });
+
+    await waitFor(() => expect(objects()).toHaveLength(1));
+    expect(objects()[0].name).toBe('CONE');
   });
 
   it('leaves the cube selected and ready to work on', async () => {
@@ -81,6 +117,123 @@ describe('what the editor opens on', () => {
     await act(async () => {});
 
     expect(objects()).toHaveLength(0);
+  });
+
+  it('opens on the cube rather than the last session when autosave is off', async () => {
+    // Handing back work saved before the switch was flipped is the surprise the
+    // switch is there to prevent, so the storage is not even read.
+    record = sessionWith('cone');
+    setOpeningSceneDone(false);
+    act(() => useEditorStore.getState().setPreferences({ autosaveEnabled: false }));
+
+    renderHook(() => useAutosave());
+
+    await waitFor(() => expect(objects()).toHaveLength(1));
+    expect(objects()[0].name).toBe('CUBE');
+    expect(reads).toBe(0);
+  });
+
+  it('writes nothing while the tab sits untouched', async () => {
+    // The opening cube is the editor's doing. A tab opened, looked at and left
+    // alone has nothing anybody would want back.
+    vi.useFakeTimers();
+    renderHook(() => useAutosave());
+    await act(async () => {});
+    expect(objects()).toHaveLength(1);
+
+    act(() => vi.advanceTimersByTime(120_000));
+
+    expect(writes).toBe(0);
+    expect(useEditorStore.getState().dirty).toBe(false);
+  });
+
+  it('writes on the interval once something has changed, then stops again', async () => {
+    // The clock is faked before the hook mounts, because the interval it sets
+    // up on mount is the one being advanced.
+    vi.useFakeTimers();
+    renderHook(() => useAutosave());
+    await act(async () => {});
+
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(writes).toBe(1);
+
+    // Same scene, three ticks later: the first write is still the current one.
+    act(() => vi.advanceTimersByTime(90_000));
+    expect(writes).toBe(1);
+  });
+
+  it('counts a rename as a change, though it moves no geometry', async () => {
+    vi.useFakeTimers();
+    renderHook(() => useAutosave());
+    await act(async () => {});
+
+    const id = objects()[0].id;
+    act(() => useEditorStore.getState().renameObject(id, 'LAMP POST'));
+    act(() => vi.advanceTimersByTime(30_000));
+
+    expect(writes).toBe(1);
+  });
+
+  it('stops writing when autosave is turned off', async () => {
+    vi.useFakeTimers();
+    renderHook(() => useAutosave());
+    await act(async () => {});
+
+    act(() => useEditorStore.getState().setPreferences({ autosaveEnabled: false }));
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+    act(() => vi.advanceTimersByTime(30_000));
+
+    expect(writes).toBe(0);
+  });
+
+  it('writes on the interval the preferences ask for', async () => {
+    act(() => useEditorStore.getState().setPreferences({ autosaveInterval: 300 }));
+    vi.useFakeTimers();
+    const view = renderHook(() => useAutosave());
+    await act(async () => {});
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(writes).toBe(0);
+
+    act(() => vi.advanceTimersByTime(240_000));
+    expect(writes).toBe(1);
+
+    view.unmount();
+  });
+
+  it('does not write a recovered session straight back out', async () => {
+    record = sessionWith('cone');
+    setOpeningSceneDone(false);
+    vi.useFakeTimers();
+    renderHook(() => useAutosave());
+    await act(async () => {});
+    expect(objects()[0].name).toBe('CONE');
+
+    act(() => vi.advanceTimersByTime(120_000));
+
+    expect(writes).toBe(0);
+  });
+
+  it('says which picture it could not find when the session comes back', async () => {
+    // The document names its images and OPFS holds the bytes; a browser that
+    // cleared the one and not the other leaves an object pointing at nothing.
+    record = sessionWith('cone');
+    record.document.assets = [
+      { id: 'asset-1', name: 'ref.png', type: 'image/png', width: 8, height: 8 },
+    ];
+    setOpeningSceneDone(false);
+
+    renderHook(() => useAutosave());
+
+    await waitFor(() => expect(objects()).toHaveLength(1));
+    await waitFor(() =>
+      expect(useEditorStore.getState().toasts.at(-1)).toMatchObject({
+        variant: 'warning',
+        message: 'Could not find the file for ref.png',
+      }),
+    );
   });
 
   it('leaves a scene that is already there alone', async () => {

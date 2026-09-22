@@ -47,7 +47,8 @@ Sculpting is the next module planned. See
 | 3D cursor | Right-click to place it on a point, vertex, edge or face; snap it to the selection or the selection to it; use it as the transform pivot or as a mirror plane |
 | Proportional editing | Six falloff curves, with a viewport ring showing how far the falloff reaches. Scroll to resize it mid-transform, or Ctrl+scroll any time |
 | Viewport | Orbit / pan / zoom (Blender and Maya presets), solid / wireframe / x-ray / matcap, adaptive grid, normals overlay |
-| Files | Save and load JSON projects, autosave to IndexedDB with crash recovery, OBJ import |
+| Files | Save and load JSON projects, OBJ import, PNG / JPG / BMP import as a plane at the origin |
+| Autosave | To this browser (scene in IndexedDB, images in OPFS), with crash recovery. Switchable, every 30s to 5 minutes |
 | Opening scene | A fresh tab starts on a cube, as Blender does; a tab with a session to come back to loads that instead |
 | Preferences | Tooltips, selection outline thickness and colour, kept in localStorage per device, with import / export |
 | Export | OBJ + MTL, **ASCII FBX 7.4**, with Unity / Unreal / Blender / Maya axis and unit presets |
@@ -113,6 +114,7 @@ Four responsibilities, kept strictly apart:
 | [docs/state-management.md](docs/state-management.md) | Zustand slices, mesh versioning, undo |
 | [docs/rendering.md](docs/rendering.md) | The display bridge, buffers, picking, camera |
 | [docs/export.md](docs/export.md) | OBJ and ASCII FBX, axis presets, and the FBX pitfalls |
+| [docs/saving.md](docs/saving.md) | Autosave, project files, and where a project lives in the browser |
 | [docs/design-system.md](docs/design-system.md) | Brutalist tokens, mixins, and usability guardrails |
 | [docs/scripting.md](docs/scripting.md) | The operator registry / `exec` API |
 | [docs/testing.md](docs/testing.md) | What is tested and how to add to it |

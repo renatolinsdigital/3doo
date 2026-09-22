@@ -10,6 +10,9 @@ import type { FileKind, SaveResult } from '../services/download';
 const downloads: { filename: string; contents: string }[] = [];
 const saves: { suggestedName: string; contents: string; kind: FileKind }[] = [];
 let picked: { name: string; text: string } | null = null;
+let pickedFile: File | null = null;
+let pixels = { width: 800, height: 400 };
+const written: string[] = [];
 let saveResult: SaveResult = { status: 'saved', filename: 'placeholder' };
 
 // `saveResultToast` is deliberately left real: the mapping from outcome to
@@ -21,12 +24,34 @@ vi.mock('../services/download', async () => {
     ...actual,
     downloadText: (filename: string, contents: string) => downloads.push({ filename, contents }),
     pickTextFile: () => Promise.resolve(picked),
+    pickFile: () => Promise.resolve(pickedFile),
     saveTextFile: (suggestedName: string, contents: string, kind: FileKind) => {
       saves.push({ suggestedName, contents, kind });
       return Promise.resolve(saveResult);
     },
   };
 });
+
+// The OPFS half is stubbed: jsdom has neither a storage directory nor an image
+// decoder. Everything else in the service, including the base64 a file save
+// runs on, is the real thing.
+vi.mock('../services/assets', async () => {
+  const actual = await vi.importActual<typeof import('../services/assets')>('../services/assets');
+  return {
+    ...actual,
+    imageDimensions: () => Promise.resolve(pixels),
+    writeAsset: (id: string) => {
+      written.push(id);
+      return Promise.resolve(true);
+    },
+    readAsset: () => Promise.resolve(null),
+    clearAssets: () => Promise.resolve(),
+  };
+});
+
+function imageFile(name = 'ref.png', type = 'image/png') {
+  return new File([new Uint8Array([1, 2, 3, 4])], name, { type });
+}
 
 function toasts() {
   return useEditorStore.getState().toasts;
@@ -46,6 +71,9 @@ describe('project actions announce themselves', () => {
     downloads.length = 0;
     saves.length = 0;
     picked = null;
+    pickedFile = null;
+    pixels = { width: 800, height: 400 };
+    written.length = 0;
     saveResult = { status: 'saved', filename: 'placeholder' };
     useEditorStore.getState().resetScene();
     useEditorStore.setState({ toasts: [] });
@@ -140,12 +168,108 @@ describe('project actions announce themselves', () => {
 
   it('reports a new project instead of clearing the scene in silence', () => {
     const project = files();
-    act(() => useEditorStore.getState().addPrimitive('cube'));
+    act(() => useEditorStore.getState().addPrimitive('torus'));
 
     act(() => project.current.newProject());
 
-    expect(useEditorStore.getState().objects).toHaveLength(0);
     expect(lastToast()).toMatchObject({ variant: 'info', message: 'Started a new project' });
+    expect(useEditorStore.getState().status).toBe('New project');
+  });
+
+  it('starts the new project on a cube, the way Blender does', () => {
+    const project = files();
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+
+    act(() => project.current.newProject());
+
+    const state = useEditorStore.getState();
+    expect(state.objects).toHaveLength(1);
+    expect(state.objects[0].name).toBe('CUBE');
+    expect(state.activeObjectId).toBe(state.objects[0].id);
+  });
+
+  it('leaves that cube one undo from an empty scene', () => {
+    const project = files();
+
+    act(() => project.current.newProject());
+    act(() => useEditorStore.getState().undo());
+
+    expect(useEditorStore.getState().objects).toHaveLength(0);
+  });
+
+  it('imports an image as a plane at the world origin', async () => {
+    const project = files();
+    pickedFile = imageFile();
+
+    await act(() => project.current.importImage());
+
+    const state = useEditorStore.getState();
+    expect(state.objects).toHaveLength(1);
+    expect(state.objects[0].name).toBe('REF.PNG');
+    expect(state.objects[0].transform.position).toEqual({ x: 0, y: 0, z: 0 });
+    expect(lastToast()).toMatchObject({
+      variant: 'success',
+      message: 'Imported ref.png (800 by 400)',
+    });
+  });
+
+  it('refuses a file that is not one of the formats it reads', async () => {
+    const project = files();
+    pickedFile = imageFile('drawing.tiff', 'image/tiff');
+
+    await act(() => project.current.importImage());
+
+    expect(useEditorStore.getState().objects).toHaveLength(0);
+    expect(lastToast()).toMatchObject({ variant: 'error' });
+    expect(lastToast().message).toMatch(/drawing.tiff is not a PNG, JPG or BMP image/);
+  });
+
+  it('keeps the bytes in the browser only while autosave is on', async () => {
+    const project = files();
+    pickedFile = imageFile();
+    act(() => useEditorStore.getState().setPreferences({ autosaveEnabled: false }));
+
+    await act(() => project.current.importImage());
+    expect(written).toHaveLength(0);
+
+    act(() => useEditorStore.getState().setPreferences({ autosaveEnabled: true }));
+    pickedFile = imageFile('second.png');
+    await act(() => project.current.importImage());
+
+    expect(written).toHaveLength(1);
+  });
+
+  it('writes the image into the .3doo, so the file stands on its own', async () => {
+    const project = files();
+    pickedFile = imageFile();
+    await act(() => project.current.importImage());
+
+    await act(() => project.current.saveProject());
+
+    const saved = JSON.parse(saves[saves.length - 1].contents);
+    expect(saved.assets).toHaveLength(1);
+    expect(saved.assets[0]).toMatchObject({ name: 'ref.png', type: 'image/png', width: 800 });
+    // Four bytes of base64: what the browser holds is what the file gets.
+    expect(saved.assets[0].data).toBe('AQIDBA==');
+    expect(saved.objects[0].image).toEqual({ assetId: saved.assets[0].id });
+  });
+
+  it('reads that image back out of the file, bytes and all', async () => {
+    const project = files();
+    pickedFile = imageFile();
+    await act(() => project.current.importImage());
+    await act(() => project.current.saveProject());
+    const written3doo = saves[saves.length - 1].contents;
+
+    act(() => useEditorStore.getState().resetScene());
+    picked = { name: 'scene.3doo', text: written3doo };
+    await act(() => project.current.openProject());
+
+    const state = useEditorStore.getState();
+    const assetId = state.objects[0].image?.assetId ?? '';
+    expect(state.objects[0].name).toBe('REF.PNG');
+    expect(state.assets[assetId].name).toBe('ref.png');
+    expect(state.assets[assetId].blob?.size).toBe(4);
   });
 
   it('names the file it opened, and the file it could not', async () => {

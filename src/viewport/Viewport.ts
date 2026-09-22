@@ -1,7 +1,13 @@
 import * as THREE from 'three';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 
-import { AXIS_COLORS, ObjectView, VIEWPORT_COLORS } from '@bridge/index';
+import {
+  AXIS_COLORS,
+  ObjectView,
+  VIEWPORT_COLORS,
+  imageTexture,
+  releaseTextures,
+} from '@bridge/index';
 import {
   type Axis,
   type BMesh,
@@ -1051,7 +1057,9 @@ export class Viewport {
       }
 
       const display = evaluatedMesh(object, state.cursor, state.meshVersion);
+      const asset = object.image ? state.assets[object.image.assetId] : undefined;
       view.update(object, display, {
+        texture: asset ? imageTexture(asset) : null,
         mode: state.mode,
         selectMode: state.selectMode,
         recentVerts: this.recentVerts?.objectId === object.id ? this.recentVerts.ids : undefined,
@@ -1069,6 +1077,11 @@ export class Viewport {
       view.dispose();
       this.views.delete(id);
     }
+
+    // Held by asset rather than by object, so a picture whose plane was deleted
+    // and undone is still decoded, and one the scene has genuinely dropped is
+    // freed on the next sync.
+    releaseTextures(new Set(Object.keys(state.assets)));
 
     this.updateProportionalAnchor(state);
     this.updateGizmo();
@@ -3024,7 +3037,9 @@ export class Viewport {
    * therefore selecting) what the surface would otherwise hide, so they hand
    * back null and leave every element pickable. Everywhere else the pick is
    * held to the geometry actually on screen, which is what stops a click on a
-   * dense model landing on its far side.
+   * dense model landing on its far side. A mesh with a face taken out of it
+   * hands back null as well, since what shows through the hole is the inside
+   * of the far wall (see `facingElements`).
    */
   private pickable(mesh: BMesh, view: ObjectView): FacingElements | null {
     const { shading } = useEditorStore.getState();

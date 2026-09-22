@@ -71,6 +71,39 @@ describe('surface depth offset', () => {
   });
 });
 
+describe('imported image surface', () => {
+  const texture = () => new THREE.Texture();
+
+  it('draws the picture unlit, from both sides', () => {
+    const map = texture();
+    const material = createSurfaceMaterial({
+      color: 0xcccccc,
+      shading: 'solid',
+      backfaceCulling: true,
+      map,
+    });
+
+    expect(material).toBeInstanceOf(THREE.MeshBasicMaterial);
+    expect((material as THREE.MeshBasicMaterial).map).toBe(map);
+    // White, so the picture is the colour: tinting it by the material slot
+    // would be lying about the image.
+    expect((material as THREE.MeshBasicMaterial).color.getHex()).toBe(0xffffff);
+    expect(material.side).toBe(THREE.DoubleSide);
+  });
+
+  it('still gives way to x-ray and wireframe, which are about seeing through', () => {
+    const xray = createSurfaceMaterial({
+      color: 0xcccccc,
+      shading: 'xray',
+      backfaceCulling: true,
+      map: texture(),
+    });
+
+    expect((xray as THREE.MeshBasicMaterial).map).toBeNull();
+    expect(xray.transparent).toBe(true);
+  });
+});
+
 describe('vertex point material', () => {
   it('depth-tests the dots, so vertices behind a solid surface stay hidden', () => {
     expect(createPointMaterial().depthTest).toBe(true);

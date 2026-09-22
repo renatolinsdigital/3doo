@@ -13,6 +13,7 @@ import {
   LoopOperationsPanel,
   MergeDialog,
   ModifierStack,
+  NewProjectDialog,
   ObjectPanel,
   OperationsPanel,
   Outliner,
@@ -27,6 +28,7 @@ import {
 } from '@domain/components';
 import { useAutosave } from '@domain/hooks/useAutosave';
 import { useKeymap } from '@domain/hooks/useKeymap';
+import { useProjectFiles } from '@domain/hooks/useProjectFiles';
 
 import './ModelingModule.scss';
 
@@ -50,6 +52,7 @@ function isTextEntry(target: EventTarget | null): boolean {
 export function ModelingModule() {
   useKeymap();
   useAutosave();
+  const { newProject } = useProjectFiles();
 
   const mode = useEditorStore((state) => state.mode);
   const panels = useEditorStore((state) => state.panels);
@@ -115,6 +118,7 @@ export function ModelingModule() {
       <ExportDialog />
       <HistoryDialog />
       <MergeDialog />
+      <NewProjectDialog onConfirm={newProject} />
       <PreferencesDialog />
       <ShortcutOverlay />
       <ToastHost />

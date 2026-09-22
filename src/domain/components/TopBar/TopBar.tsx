@@ -153,7 +153,8 @@ export function TopBar({ brand }: TopBarProps) {
   const frameAll = useEditorStore((state) => state.frameAll);
   const viewLost = useEditorStore((state) => state.viewLost);
 
-  const { newProject, saveProject, openProject, importMesh } = useProjectFiles();
+  const { newProject, saveProject, openProject, importMesh, importImage } = useProjectFiles();
+  const dirty = useEditorStore((state) => state.dirty);
 
   const snapHint =
     snapMode === 'grid'
@@ -181,8 +182,11 @@ export function TopBar({ brand }: TopBarProps) {
     {
       id: 'new',
       label: 'NEW',
-      hint: 'Start a blank project, discarding unsaved changes',
-      onSelect: newProject,
+      hint: 'Start a fresh project on a cube, discarding this one and its autosave',
+      // Only asks when there is an answer worth giving: a scene nobody has
+      // touched has nothing stored for a new project to throw away, and a
+      // confirmation about losing nothing is one people learn to click past.
+      onSelect: () => (dirty ? openDialog('newProject') : newProject()),
     },
     {
       id: 'open',
@@ -199,9 +203,15 @@ export function TopBar({ brand }: TopBarProps) {
     { id: 'rule-1', separator: true },
     {
       id: 'import',
-      label: 'IMPORT',
+      label: 'IMPORT MESH',
       hint: 'Import geometry from an OBJ file as a new object',
       onSelect: () => void importMesh(),
+    },
+    {
+      id: 'import-image',
+      label: 'IMPORT IMAGE',
+      hint: 'Import a PNG, JPG or BMP as a plane at the world origin, to model against',
+      onSelect: () => void importImage(),
     },
     {
       id: 'export',

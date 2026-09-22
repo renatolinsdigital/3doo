@@ -105,6 +105,14 @@ export interface ObjectViewState {
   meshVersion: number;
   /** Kernel ids of vertices to flash as just-created; empty most of the time. */
   recentVerts?: ReadonlySet<number>;
+  /**
+   * The picture this object is drawn with, for an image plane.
+   *
+   * Resolved by the viewport rather than looked up here: the bridge is handed
+   * what to draw, and which blob became which texture is the viewport's book
+   * to keep.
+   */
+  texture?: THREE.Texture | null;
 }
 
 /** A mesh's materials as a list, however many slots it was built with. */
@@ -117,7 +125,10 @@ function solidMaterialKey(object: SceneObject, state: ObjectViewState): string {
   const colours = object.materials.map(
     (material) => `${material.color.r},${material.color.g},${material.color.b}`,
   );
-  return [state.settings.shading, state.settings.backfaceCulling, ...colours].join('|');
+  // The texture's own id, so a picture arriving late rebuilds the material once
+  // and a drag over an image plane does not rebuild it at all.
+  const image = state.texture?.uuid ?? object.image?.assetId ?? '';
+  return [state.settings.shading, state.settings.backfaceCulling, image, ...colours].join('|');
 }
 
 /**
@@ -374,6 +385,7 @@ export class ObjectView {
               : new THREE.Color(VIEWPORT_COLORS.bone),
             shading: state.settings.shading,
             backfaceCulling: state.settings.backfaceCulling,
+            map: state.texture ?? null,
           }),
       );
       this.solidMaterialKey = materialKey;

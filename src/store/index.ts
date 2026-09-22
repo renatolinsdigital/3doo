@@ -5,6 +5,7 @@ export { CURSOR_SNAPS, activeObject, displayCenter, evaluatedMesh } from './slic
 export { SELECT_SHAPES } from './slices/tool';
 export { axisViewName } from './slices/viewport';
 export {
+  AUTOSAVE_INTERVALS,
   DEFAULT_PREFERENCES,
   MAX_GRID_SCALE,
   MAX_GRID_SUBDIVISIONS,
@@ -16,6 +17,7 @@ export {
   MIN_HISTORY_SIZE,
   MIN_SELECTION_LINE_WIDTH,
   MIN_SNAP_STEP,
+  autosaveIntervalLabel,
   coercePreferences,
   snapStepFor,
   snapStepLabel,

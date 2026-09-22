@@ -33,6 +33,8 @@ describe('App shell', () => {
       tooltipsEnabled: true,
       hint: null,
       panels: DEFAULT_PREFERENCES.panels,
+      // A toast left up by one test is a second role="status" in the next one.
+      toasts: [],
     });
   });
 
@@ -207,6 +209,49 @@ describe('App shell', () => {
     const dialog = screen.getByRole('dialog', { name: 'EXPORT' });
     expect(within(dialog).getByLabelText('PRESET')).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'EXPORT FBX' })).toBeInTheDocument();
+  });
+
+  it('asks before a new project throws the autosaved one away', async () => {
+    render(<App />);
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'FILE' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'NEW' }));
+
+    const dialog = screen.getByRole('dialog', { name: 'START A NEW PROJECT' });
+    expect(within(dialog).getByText('Auto-saved data will be lost. Proceed?')).toBeInTheDocument();
+    // Still there: asking is not doing.
+    expect(useEditorStore.getState().objects).toHaveLength(1);
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'CANCEL' }));
+    expect(useEditorStore.getState().objects[0].name).toBe('TORUS');
+  });
+
+  it('starts a new project without asking when nothing has been touched', async () => {
+    // Nothing is stored for it to throw away, and a confirmation about losing
+    // nothing is one people learn to click straight past.
+    render(<App />);
+    act(() => useEditorStore.getState().markSaved());
+
+    await userEvent.click(screen.getByRole('button', { name: 'FILE' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'NEW' }));
+
+    expect(screen.queryByRole('dialog', { name: 'START A NEW PROJECT' })).not.toBeInTheDocument();
+    expect(useEditorStore.getState().objects[0].name).toBe('CUBE');
+  });
+
+  it('starts the new project on a cube once that is confirmed', async () => {
+    render(<App />);
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'FILE' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'NEW' }));
+    const dialog = screen.getByRole('dialog', { name: 'START A NEW PROJECT' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'PROCEED' }));
+
+    const state = useEditorStore.getState();
+    expect(state.objects).toHaveLength(1);
+    expect(state.objects[0].name).toBe('CUBE');
   });
 
   it('opens the shortcut overlay', async () => {

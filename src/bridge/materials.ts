@@ -139,14 +139,32 @@ export interface SurfaceMaterialOptions {
   color: THREE.ColorRepresentation;
   shading: ShadingMode;
   backfaceCulling: boolean;
+  /** An imported image drawn on the surface, for an image plane. */
+  map?: THREE.Texture | null;
 }
 
 export function createSurfaceMaterial({
   color,
   shading,
   backfaceCulling,
+  map = null,
 }: SurfaceMaterialOptions): THREE.Material {
   const side = backfaceCulling ? THREE.FrontSide : THREE.DoubleSide;
+
+  // An imported picture is drawn unlit and from both sides: it is a reference
+  // to model against, and one that dims as the scene's light swings past it,
+  // or disappears when the plane is turned round, has stopped telling the truth
+  // about the image. X-ray and wireframe fall through to their own treatment
+  // below, because asking to see through the model means this too.
+  if (map && shading !== 'xray' && shading !== 'wireframe') {
+    return new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      map,
+      side: THREE.DoubleSide,
+      ...SURFACE_DEPTH_OFFSET,
+      ...OUTLINE_STENCIL_STAMP,
+    });
+  }
 
   if (shading === 'matcap') {
     return new THREE.MeshMatcapMaterial({

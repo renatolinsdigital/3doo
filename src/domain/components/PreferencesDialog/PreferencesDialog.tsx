@@ -9,6 +9,7 @@ import {
   Toggle,
 } from '@shared/components';
 import {
+  AUTOSAVE_INTERVALS,
   MAX_GRID_SCALE,
   MAX_GRID_SUBDIVISIONS,
   MAX_HISTORY_SIZE,
@@ -19,6 +20,7 @@ import {
   MIN_HISTORY_SIZE,
   MIN_SELECTION_LINE_WIDTH,
   MIN_SNAP_STEP,
+  autosaveIntervalLabel,
   useEditorStore,
 } from '@store/index';
 import type { PanelId, SnapMode } from '@store/types';
@@ -32,6 +34,12 @@ import {
 } from '../../services/download';
 
 import './PreferencesDialog.scss';
+
+/** The intervals the autosave offers, as the picker needs them: strings. */
+const AUTOSAVE_INTERVAL_OPTIONS = AUTOSAVE_INTERVALS.map((seconds) => ({
+  value: String(seconds),
+  label: autosaveIntervalLabel(seconds),
+}));
 
 const SNAP_OPTIONS: readonly { value: SnapMode; label: string }[] = [
   { value: 'grid', label: 'GRID' },
@@ -116,6 +124,8 @@ export function PreferencesDialog() {
   const snapMode = useEditorStore((state) => state.snapMode);
   const snapStep = useEditorStore((state) => state.snapStep);
   const historySize = useEditorStore((state) => state.historySize);
+  const autosaveEnabled = useEditorStore((state) => state.autosaveEnabled);
+  const autosaveInterval = useEditorStore((state) => state.autosaveInterval);
   const gridColor = useEditorStore((state) => state.gridColor);
   const gridOpacity = useEditorStore((state) => state.gridOpacity);
   const gridMajorColor = useEditorStore((state) => state.gridMajorColor);
@@ -309,6 +319,29 @@ export function PreferencesDialog() {
           }
           onChange={(step) => setPreferences({ snapStep: step })}
         />
+      </Accordion>
+
+      <Accordion title="AUTOSAVE">
+        <Toggle
+          label="AUTOSAVE THE SCENE"
+          checked={autosaveEnabled}
+          hint="The scene is kept in this browser's own storage as you work, and offered back when you open the editor again, so a closed or crashed tab does not cost you it. Nothing is uploaded"
+          onChange={(enabled) => setPreferences({ autosaveEnabled: enabled })}
+        />
+        <Select
+          label="EVERY"
+          value={String(autosaveInterval)}
+          options={AUTOSAVE_INTERVAL_OPTIONS}
+          disabled={!autosaveEnabled}
+          hint="How often a changed scene is written. Shorter costs less when a tab dies; longer keeps a heavy scene from being serialised so often. Nothing is written at all until you change something"
+          onChange={(seconds) => setPreferences({ autosaveInterval: Number(seconds) })}
+        />
+        <p className="preferences__hint">
+          Autosave writes to this browser on this machine: the scene into IndexedDB and any
+          imported images into the origin private file system. Nothing is uploaded and nothing
+          follows you to another browser. It keeps one project, the one you are working on, so
+          starting a new one clears it.
+        </p>
       </Accordion>
 
       <Accordion title="HISTORY">

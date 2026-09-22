@@ -42,6 +42,13 @@ export interface FileKind {
   accepts: readonly string[];
   /** Noun phrase, article included, so "OBJ" does not end up behind an "a". */
   label: string;
+  /**
+   * What a refusal says was expected, when `extension` alone would mislead.
+   *
+   * A kind that reads several formats has no one expected suffix: naming the
+   * first of them tells the user to rename a JPG to `.png`.
+   */
+  expected?: string;
 }
 
 export const PROJECT_FILE: FileKind = {
@@ -59,6 +66,19 @@ export const MESH_FILE: FileKind = {
   accepts: ['.obj'],
   label: 'an OBJ mesh',
 };
+/**
+ * The picture formats the importer reads.
+ *
+ * PNG, JPEG and BMP: the three the brief asked for, and three every browser
+ * decodes without a library. `extension` goes unused, since images are only
+ * ever read.
+ */
+export const IMAGE_FILE: FileKind = {
+  extension: '.png',
+  accepts: ['.png', '.jpg', '.jpeg', '.bmp'],
+  label: 'a PNG, JPG or BMP image',
+  expected: '.png, .jpg, .jpeg or .bmp',
+};
 
 /**
  * Why a chosen file cannot be read as this kind, or null when it can.
@@ -71,7 +91,7 @@ export const MESH_FILE: FileKind = {
 export function wrongKindMessage(filename: string, kind: FileKind): string | null {
   const name = filename.toLowerCase();
   if (kind.accepts.some((suffix) => name.endsWith(suffix))) return null;
-  return `${filename} is not ${kind.label}, expected ${kind.extension}`;
+  return `${filename} is not ${kind.label}, expected ${kind.expected ?? kind.extension}`;
 }
 
 interface SaveFilePickerOptions {
@@ -171,6 +191,26 @@ export function saveResultToast(
     case 'cancelled':
       return null;
   }
+}
+
+/**
+ * Opens a file picker, filtered to one kind, and resolves with the file itself.
+ *
+ * The file rather than its text, for the kinds that are not text: an image is
+ * decoded and stored as the bytes it arrived as.
+ */
+export function pickFile(kind: FileKind): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = kind.accepts.join(',');
+
+    input.onchange = () => resolve(input.files?.[0] ?? null);
+
+    // A cancelled picker fires no event in most browsers; the promise simply
+    // never resolves, which is why callers treat it as fire-and-forget.
+    input.click();
+  });
 }
 
 /** Opens a file picker, filtered to one kind, and resolves with its text. */

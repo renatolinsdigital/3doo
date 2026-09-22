@@ -32,7 +32,51 @@ export interface FacingElements {
 }
 
 /**
- * What the camera can actually see of a mesh.
+ * Whether the mesh's own surface is what stands between the camera and its far
+ * side, which is the one thing the front-facing test rests on.
+ *
+ * Only a closed surface, seen from outside it, promises that much. Delete a
+ * face and the camera looks in through the hole at the inside of the walls,
+ * where every face it can see is turned away: the filter would then refuse the
+ * elements the user is aiming at. The wireframe keeps those edges for the same
+ * reason (see `frontEdgePositions`), and a pick that cannot reach what is drawn
+ * is the bug.
+ *
+ * The bounding box answers for a camera standing in among the geometry. It is
+ * cheap and errs towards leaving everything pickable, which is the safe way to
+ * be wrong.
+ */
+function hidesItsFarSide(mesh: BMesh, eye: THREE.Vector3): boolean {
+  if (mesh.faces.size === 0) return false;
+  for (const edge of mesh.edges.values()) if (edge.loops.length !== 2) return false;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let minZ = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  let maxZ = -Infinity;
+  for (const vert of mesh.verts.values()) {
+    minX = Math.min(minX, vert.co.x);
+    minY = Math.min(minY, vert.co.y);
+    minZ = Math.min(minZ, vert.co.z);
+    maxX = Math.max(maxX, vert.co.x);
+    maxY = Math.max(maxY, vert.co.y);
+    maxZ = Math.max(maxZ, vert.co.z);
+  }
+
+  return (
+    eye.x < minX ||
+    eye.x > maxX ||
+    eye.y < minY ||
+    eye.y > maxY ||
+    eye.z < minZ ||
+    eye.z > maxZ
+  );
+}
+
+/**
+ * What the camera can actually see of a mesh, or null when it can see all of it.
  *
  * Vertices and edges are picked in screen space, which has no idea whether one
  * is round the back, so on a dense mesh the element nearest the pointer in
@@ -41,8 +85,8 @@ export interface FacingElements {
  * what makes the pick agree with what is on screen.
  *
  * An element on the silhouette borders a front face and a back one, so it stays
- * pickable. Wire edges and loose vertices have no face to turn away and stay
- * pickable too.
+ * pickable. Loose vertices have no face to turn away and stay pickable too, and
+ * an open mesh drops the filter altogether (see `hidesItsFarSide`).
  *
  * Self-occlusion (a front-facing surface hidden behind another part of the
  * same model) is not caught here; answering that needs a depth buffer. The far
@@ -52,7 +96,7 @@ export function facingElements(
   mesh: BMesh,
   matrix: THREE.Matrix4,
   camera: THREE.Camera,
-): FacingElements {
+): FacingElements | null {
   const inverse = new THREE.Matrix4().copy(matrix).invert();
   const perspective = camera instanceof THREE.PerspectiveCamera;
 
@@ -65,11 +109,12 @@ export function facingElements(
     .transformDirection(inverse)
     .normalize();
 
+  if (!hidesItsFarSide(mesh, eye)) return null;
+
   const verts = new Set<number>();
   const edges = new Set<number>();
   const faces = new Set<number>();
   const facedVerts = new Set<number>();
-  const facedEdges = new Set<number>();
 
   for (const face of mesh.faces.values()) {
     const loops = mesh.faceLoops(face);
@@ -95,7 +140,6 @@ export function facingElements(
     if (front) faces.add(face.id);
     for (const loop of loops) {
       facedVerts.add(loop.vert.id);
-      facedEdges.add(loop.edge.id);
       if (front) {
         verts.add(loop.vert.id);
         edges.add(loop.edge.id);
@@ -104,7 +148,6 @@ export function facingElements(
   }
 
   for (const vert of mesh.verts.values()) if (!facedVerts.has(vert.id)) verts.add(vert.id);
-  for (const edge of mesh.edges.values()) if (!facedEdges.has(edge.id)) edges.add(edge.id);
 
   return { verts, edges, faces };
 }

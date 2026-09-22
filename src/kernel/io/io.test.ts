@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { History } from '../commands/history';
 import { execOperator } from '../commands/operators';
 import { createTransform, dot, vec3 } from '../math';
-import { createBox, createPlane } from '../primitives';
+import { createBox, createImagePlane, createPlane, imagePlaneSize } from '../primitives';
 
 import { exportFBXAscii } from './fbx-ascii';
 import { exportOBJ, importOBJ } from './obj';
@@ -304,6 +304,89 @@ describe('project files', () => {
     expect(() => parseProject('{"version":99}')).toThrow(/Unsupported project version/);
     expect(() => parseProject('{"version":1}')).toThrow(/no objects array/);
     expect(() => parseProject('{"version":1,"objects":[{"name":"X"}]}')).toThrow(/no usable mesh/);
+  });
+});
+
+describe('imported images', () => {
+  it('keeps the proportions of the picture, at the size a primitive starts at', () => {
+    expect(imagePlaneSize(1920, 1080)).toEqual({ width: 1, height: 0.5625 });
+    expect(imagePlaneSize(512, 1024)).toEqual({ width: 0.5, height: 1 });
+    expect(imagePlaneSize(256, 256)).toEqual({ width: 1, height: 1 });
+  });
+
+  it('stands the plane up facing the front view, not flat on the floor', () => {
+    const mesh = createImagePlane(2, 1);
+    const [face] = [...mesh.faces.values()];
+
+    expect(face.normal).toEqual({ x: 0, y: 0, z: 1 });
+    expect(mesh.validate()).toEqual([]);
+  });
+
+  it('maps the corners of the image onto the corners of the plane', () => {
+    const mesh = createImagePlane(2, 1);
+    const [face] = [...mesh.faces.values()];
+    const loops = mesh.faceLoops(face);
+
+    // Bottom-left of the picture on the bottom-left corner: without this the
+    // reference arrives mirrored or upside down, which is worse than useless.
+    expect(loops.map((loop) => loop.uv)).toEqual([
+      { u: 0, v: 0 },
+      { u: 1, v: 0 },
+      { u: 1, v: 1 },
+      { u: 0, v: 1 },
+    ]);
+    expect(loops.map((loop) => loop.vert.co)).toEqual([
+      { x: -1, y: -0.5, z: 0 },
+      { x: 1, y: -0.5, z: 0 },
+      { x: 1, y: 0.5, z: 0 },
+      { x: -1, y: 0.5, z: 0 },
+    ]);
+  });
+
+  it('carries the image and its bytes through a round trip', () => {
+    const asset = {
+      id: 'asset-1',
+      name: 'ref.png',
+      type: 'image/png',
+      width: 800,
+      height: 600,
+      data: 'aGVsbG8=',
+    };
+    const object = {
+      id: 'obj-1',
+      name: 'REF.PNG',
+      transform: createTransform(),
+      visible: true,
+      locked: false,
+      parentId: null,
+      groupId: null,
+      materials: [],
+      modifiers: [],
+      activeMaterial: 0,
+      mesh: createImagePlane(1, 0.75),
+      image: { assetId: 'asset-1' },
+    };
+
+    const document = serializeProject('Ref', [object], vec3(), 'obj-1', [], [asset]);
+    const restored = deserializeProject(parseProject(stringifyProject(document)));
+
+    expect(restored.objects[0].image).toEqual({ assetId: 'asset-1' });
+    expect(restored.assets).toEqual([asset]);
+  });
+
+  it('leaves out an asset nothing in the scene points at', () => {
+    const asset = { id: 'asset-1', name: 'ref.png', type: 'image/png', width: 8, height: 8 };
+    const document = serializeProject('Ref', [], vec3(), null, [], [asset]);
+
+    expect(document.assets).toEqual([]);
+  });
+
+  it('reads a file written before images existed', () => {
+    const document = serializeProject('Old', [], vec3(), null);
+    delete document.assets;
+
+    const restored = deserializeProject(parseProject(stringifyProject(document)));
+    expect(restored.assets).toEqual([]);
   });
 });
 

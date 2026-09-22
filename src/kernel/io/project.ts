@@ -15,6 +15,40 @@ export interface SceneGroupData {
   name: string;
 }
 
+/**
+ * A picture an object is drawn with, by id into the document's assets.
+ *
+ * The object is an ordinary mesh either way: what this adds is which asset
+ * goes on it. An id with no asset behind it draws as a blank plane rather than
+ * failing the load, which is what a file that lost its assets on the way here
+ * should do.
+ */
+export interface ObjectImageData {
+  assetId: string;
+}
+
+/**
+ * One binary the project needs and JSON cannot hold: an imported image.
+ *
+ * `data` is base64 of the original file, exactly as it was imported, and is
+ * optional because the same document is written to two places. A `.3doo` on
+ * disk carries it, so the file is one self-contained thing. The autosave in the
+ * browser leaves it out and keeps the bytes in OPFS instead, where they are
+ * real binary rather than a third bigger and re-encoded on every save. Filling
+ * it back in is what turns the browser's copy into the file (see docs/saving.md).
+ */
+export interface ProjectAssetData {
+  id: string;
+  /** The file's own name, shown in the outliner and on the object. */
+  name: string;
+  /** MIME type, so the blob is rebuilt as what it was: `image/png` and so on. */
+  type: string;
+  /** Natural pixel size, kept so a reload need not decode the image to know it. */
+  width: number;
+  height: number;
+  data?: string;
+}
+
 export interface SceneObjectData {
   id: string;
   name: string;
@@ -39,6 +73,8 @@ export interface SceneObjectData {
    * something valid.
    */
   meshLink?: string;
+  /** Set on an object that draws an imported image. Absent on every other. */
+  image?: ObjectImageData | null;
 }
 
 export interface ProjectDocument {
@@ -53,6 +89,11 @@ export interface ProjectDocument {
    * load with every object loose.
    */
   groups?: SceneGroupData[];
+  /**
+   * The binaries the objects point at. Absent in files written before images
+   * could be imported, which load with no assets and no object asking for one.
+   */
+  assets?: ProjectAssetData[];
   /**
    * Which panels were folded away, keyed by title.
    *
@@ -75,6 +116,7 @@ export interface SceneObjectSnapshot {
   modifiers: Modifier[];
   activeMaterial: number;
   mesh: BMesh;
+  image?: ObjectImageData | null;
 }
 
 export function serializeProject(
@@ -83,8 +125,10 @@ export function serializeProject(
   cursor: Vec3,
   activeObjectId: string | null,
   groups: readonly SceneGroupData[] = [],
+  assets: readonly ProjectAssetData[] = [],
 ): ProjectDocument {
   const owners = new Map<BMesh, string>();
+  const used = new Set(objects.map((object) => object.image?.assetId).filter(Boolean));
 
   return {
     version: 1,
@@ -93,6 +137,10 @@ export function serializeProject(
     cursor: { ...cursor },
     activeObjectId,
     groups: groups.map((group) => ({ id: group.id, name: group.name })),
+    // Only the assets something in the scene still points at: an image whose
+    // object was deleted has no business travelling with the file, and undo
+    // brings it back from the session rather than from here.
+    assets: assets.filter((asset) => used.has(asset.id)).map((asset) => ({ ...asset })),
     objects: objects.map((object) => {
       const owner = owners.get(object.mesh);
       if (owner === undefined) owners.set(object.mesh, object.id);
@@ -110,6 +158,7 @@ export function serializeProject(
         activeMaterial: object.activeMaterial,
         mesh: serializeMesh(object.mesh),
         ...(owner === undefined ? {} : { meshLink: owner }),
+        ...(object.image ? { image: { assetId: object.image.assetId } } : {}),
       };
     }),
   };
@@ -121,6 +170,7 @@ export function deserializeProject(document: ProjectDocument): {
   activeObjectId: string | null;
   objects: SceneObjectSnapshot[];
   groups: SceneGroupData[];
+  assets: ProjectAssetData[];
 } {
   const meshes = new Map<string, BMesh>();
   const groups = (document.groups ?? []).map((group) => ({ id: group.id, name: group.name }));
@@ -131,6 +181,7 @@ export function deserializeProject(document: ProjectDocument): {
     cursor: document.cursor ?? vec3(),
     activeObjectId: document.activeObjectId ?? null,
     groups,
+    assets: (document.assets ?? []).map((asset) => ({ ...asset })),
     objects: (document.objects ?? []).map((data) => {
       // A link to an object that is missing, or that has not been read yet,
       // falls back to this object's own copy rather than failing the load.
@@ -152,6 +203,7 @@ export function deserializeProject(document: ProjectDocument): {
         modifiers: data.modifiers ?? [],
         activeMaterial: data.activeMaterial ?? 0,
         mesh,
+        image: data.image?.assetId ? { assetId: data.image.assetId } : null,
       };
     }),
   };

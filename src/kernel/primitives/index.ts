@@ -192,6 +192,68 @@ export function createPlane(size = 1): BMesh {
   return mesh;
 }
 
+/**
+ * The world size an imported image arrives at: its own proportions, with the
+ * longer side one metre, which is the size every other primitive starts at.
+ *
+ * Pixels are not metres and nothing in the file says what the picture is of, so
+ * the only honest choices are a fixed size and the right shape. A blueprint
+ * scaled to the model it is a reference for is a drag away.
+ */
+export function imagePlaneSize(
+  pixelWidth: number,
+  pixelHeight: number,
+  longestSide = 1,
+): { width: number; height: number } {
+  const width = Math.max(1, Math.round(pixelWidth));
+  const height = Math.max(1, Math.round(pixelHeight));
+  const longest = Math.max(width, height);
+  return {
+    width: (width / longest) * longestSide,
+    height: (height / longest) * longestSide,
+  };
+}
+
+/**
+ * The quad an imported image is drawn on: upright in XY, facing +Z, with the
+ * UVs the picture needs to land on it the right way up.
+ *
+ * Upright rather than flat like `createPlane`, because a reference image is
+ * something you model against and a photograph lying face-up on the floor is
+ * not. It is an ordinary mesh either way: rotate it flat if that is what the
+ * drawing is.
+ */
+export function createImagePlane(width = 1, height = 1): BMesh {
+  const mesh = new BMesh();
+  const halfWidth = Math.max(MIN_OBJECT_SIZE, width) / 2;
+  const halfHeight = Math.max(MIN_OBJECT_SIZE, height) / 2;
+
+  const verts = [
+    mesh.addVert(vec3(-halfWidth, -halfHeight, 0)),
+    mesh.addVert(vec3(halfWidth, -halfHeight, 0)),
+    mesh.addVert(vec3(halfWidth, halfHeight, 0)),
+    mesh.addVert(vec3(-halfWidth, halfHeight, 0)),
+  ];
+  const face = mesh.addFace(verts);
+
+  // Corner by corner rather than through a projection: this is the one mesh in
+  // the app whose UVs have to be exact, since the picture is the point of it.
+  const corners = [
+    { u: 0, v: 0 },
+    { u: 1, v: 0 },
+    { u: 1, v: 1 },
+    { u: 0, v: 1 },
+  ];
+  let index = 0;
+  for (const loop of mesh.faceLoops(face)) {
+    loop.uv = { ...corners[index] };
+    index += 1;
+  }
+
+  mesh.computeNormals();
+  return mesh;
+}
+
 export function createGrid(size = 1, segments = 8): BMesh {
   const mesh = new BMesh();
   const divisions = Math.max(1, Math.floor(segments));

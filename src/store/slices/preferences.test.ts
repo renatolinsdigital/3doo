@@ -66,6 +66,16 @@ describe('preference storage', () => {
     expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}').selectionLineWidth).toBe(4);
   });
 
+  it('remembers autosave being switched off, across a reload', async () => {
+    const store = await freshStore();
+
+    store.getState().setPreferences({ autosaveEnabled: false });
+    vi.resetModules();
+
+    const reloaded = await freshStore();
+    expect(reloaded.getState().autosaveEnabled).toBe(false);
+  });
+
   it('puts everything back on reset', async () => {
     const store = await freshStore();
     store.getState().setPreferences({ selectionLineWidth: 7, selectionLineColor: '#000000' });
@@ -119,6 +129,16 @@ describe('coercePreferences', () => {
   it('rejects a grid colour that is not #rrggbb', () => {
     expect(coercePreferences({ gridColor: 'grey' }).gridColor).toBe(DEFAULT_PREFERENCES.gridColor);
     expect(coercePreferences({ gridMajorColor: '#B8452F' }).gridMajorColor).toBe('#b8452f');
+  });
+
+  it('only takes an autosave interval the picker can show back', () => {
+    expect(coercePreferences({ autosaveInterval: 120 }).autosaveInterval).toBe(120);
+    expect(coercePreferences({ autosaveInterval: 47 }).autosaveInterval).toBe(
+      DEFAULT_PREFERENCES.autosaveInterval,
+    );
+    expect(coercePreferences({ autosaveInterval: 'often' }).autosaveInterval).toBe(
+      DEFAULT_PREFERENCES.autosaveInterval,
+    );
   });
 
   it('does not let one bad value cost the user the rest', () => {

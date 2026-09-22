@@ -11,9 +11,20 @@ import {
 import { evaluatedMesh, useEditorStore } from '@store/index';
 
 import {
+  clearAssets,
+  hydrateAssets,
+  imageDimensions,
+  imageTypeFor,
+  inlineAssets,
+  nextAssetId,
+  writeAsset,
+} from '../services/assets';
+import {
+  IMAGE_FILE,
   MESH_FILE,
   PROJECT_FILE,
   downloadText,
+  pickFile,
   pickTextFile,
   saveResultToast,
   saveTextFile,
@@ -26,6 +37,18 @@ export function useProjectFiles() {
   const newProject = useCallback(() => {
     const state = useEditorStore.getState();
     state.resetScene();
+    // The browser's copy of the last project goes with it: the autosave holds
+    // one project, the one being worked on, and its images would otherwise sit
+    // in OPFS with nothing pointing at them.
+    void clearAssets();
+    // A new project starts on a cube, the way Blender's does, for the same
+    // reason a fresh tab does: an empty viewport gives you nothing to try a
+    // tool against. One Ctrl+Z takes it away for anyone who wants the empty
+    // scene, since the reset cleared history and this is the first step on it.
+    state.addPrimitive('cube');
+    // The cube is where the new project starts, not an edit to it: an editor
+    // left alone from here has nothing worth writing.
+    useEditorStore.setState({ status: 'New project', dirty: false });
     // Discarding the scene is the one project action that used to happen in
     // silence, which reads identically to a button that did nothing at all.
     state.pushToast('info', 'Started a new project');
@@ -35,11 +58,13 @@ export function useProjectFiles() {
     const state = useEditorStore.getState();
     const filename = `${state.projectName || 'untitled'}${PROJECT_FILE.extension}`;
 
-    const result = await saveTextFile(
-      filename,
-      stringifyProject(state.snapshotDocument()),
-      PROJECT_FILE,
-    );
+    // The file carries its own images, as base64 inside the JSON, so a .3doo
+    // sent to someone opens as what was saved rather than as blank planes.
+    // This is the one step between the browser's copy and the file.
+    const document = state.snapshotDocument();
+    document.assets = await inlineAssets(document.assets ?? [], state.assets);
+
+    const result = await saveTextFile(filename, stringifyProject(document), PROJECT_FILE);
 
     const toast = saveResultToast(result);
     if (toast) state.pushToast(toast.variant, toast.message);
@@ -57,7 +82,19 @@ export function useProjectFiles() {
     }
 
     try {
-      state.loadProjectDocument(parseProject(file.text), true);
+      const document = parseProject(file.text);
+      const assets = await hydrateAssets(document.assets ?? []);
+      state.loadProjectDocument(document, true, assets);
+      // Straight into the browser's store, so the project just opened is the
+      // one the autosave is keeping from here on.
+      if (state.autosaveEnabled) {
+        for (const asset of assets) {
+          if (asset.blob) await writeAsset(asset.id, asset.blob);
+        }
+      }
+      // What is on screen is what the file holds, so nothing is pending until
+      // the user changes something.
+      state.markSaved();
       state.pushToast('success', `Opened ${file.name}`);
     } catch (error) {
       // Named, because a bare parser message never says which file it came from
@@ -97,6 +134,33 @@ export function useProjectFiles() {
       }
       useEditorStore.getState().touchMesh();
       state.pushToast('success', `Imported ${imported.length} object(s) from ${file.name}`);
+    } catch (error) {
+      state.pushToast('error', `Could not import ${file.name}: ${(error as Error).message}`);
+    }
+  }, []);
+
+  const importImage = useCallback(async () => {
+    const state = useEditorStore.getState();
+    const file = await pickFile(IMAGE_FILE);
+    if (!file) return;
+
+    const wrongKind = wrongKindMessage(file.name, IMAGE_FILE);
+    if (wrongKind) {
+      state.pushToast('error', wrongKind);
+      return;
+    }
+
+    try {
+      const type = imageTypeFor(file.name, file.type);
+      const { width, height } = await imageDimensions(file);
+      const asset = { id: nextAssetId(), name: file.name, type, width, height, blob: file };
+
+      state.addImage(asset);
+      // Written now rather than at the next autosave tick, so a tab closed
+      // straight after an import still has the picture in it.
+      if (state.autosaveEnabled) await writeAsset(asset.id, file);
+
+      state.pushToast('success', `Imported ${file.name} (${width} by ${height})`);
     } catch (error) {
       state.pushToast('error', `Could not import ${file.name}: ${(error as Error).message}`);
     }
@@ -154,5 +218,5 @@ export function useProjectFiles() {
     [collectExportObjects],
   );
 
-  return { newProject, saveProject, openProject, importMesh, exportModel };
+  return { newProject, saveProject, openProject, importMesh, importImage, exportModel };
 }

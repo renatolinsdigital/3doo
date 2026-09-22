@@ -1,17 +1,20 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 
 import { useEditorStore } from '@store/index';
 
+import { hydrateAssets, syncAssets } from '../services/assets';
 import { readAutosave, writeAutosave } from '../services/autosave';
 
-const AUTOSAVE_INTERVAL_MS = 20_000;
-
 /**
- * Whether this page load has already been given its opening scene.
+ * Whether this page load has already decided what to open on.
  *
- * Module scope rather than a ref, because walking to DOCS and back remounts
- * this hook, and an empty scene at that point is one the user emptied on
- * purpose. Putting a cube back in front of them would be the editor arguing.
+ * Module scope rather than a ref, for two reasons. Walking to DOCS and back
+ * remounts this hook, and an empty scene at that point is one the user emptied
+ * on purpose: putting a cube back in front of them would be the editor
+ * arguing. And StrictMode mounts the hook, unmounts it and mounts it again, so
+ * a per-mount guard would let the first mount claim the read and the second
+ * find it already claimed, leaving the tab with neither a recovered session
+ * nor a cube.
  */
 let opened = false;
 
@@ -34,19 +37,35 @@ export function setOpeningSceneDone(done: boolean): void {
  * anybody does with a fresh tab is add a cube to have something to press keys
  * at. After that it writes on an interval, but only when the scene has
  * actually changed, so an idle editor does not keep hitting IndexedDB.
+ *
+ * The scene description goes to IndexedDB and any imported images to OPFS,
+ * both of them in this browser on this machine and nowhere else. The two are
+ * written together and read back together, and that pair is exactly what a
+ * `.3doo` file holds (see docs/saving.md).
+ *
+ * All of that stops when the AUTOSAVE preference is off: nothing is written,
+ * and no session is offered back either. Restoring work from a setting someone
+ * turned off is the surprise the setting exists to prevent, so a tab in that
+ * state opens on the cube instead.
  */
 export function useAutosave(): void {
-  const lastSavedVersion = useRef(-1);
-  const recoveryChecked = useRef(false);
+  const interval = useEditorStore((state) => state.autosaveInterval);
 
   useEffect(() => {
-    if (recoveryChecked.current) return;
-    recoveryChecked.current = true;
+    if (opened) return;
+    // Claimed before the read rather than after it, so the second of
+    // StrictMode's two mounts stands down instead of racing this one.
+    opened = true;
 
-    let cancelled = false;
-    void readAutosave().then((record) => {
-      if (cancelled) return;
+    // Deliberately not cancelled on unmount: the scene is store state rather
+    // than this component's, so a read that lands after a remount is still the
+    // right answer, and the object count below is what keeps it from
+    // overwriting anything.
+    const offered = useEditorStore.getState().autosaveEnabled
+      ? readAutosave()
+      : Promise.resolve(null);
 
+    void offered.then(async (record) => {
       const state = useEditorStore.getState();
       // Something is already on the table: a scene built while this was still
       // resolving, or a module walked away from and come back to.
@@ -54,37 +73,63 @@ export function useAutosave(): void {
 
       const objectCount = record?.document.objects.length ?? 0;
       if (record && objectCount > 0) {
-        state.loadProjectDocument(record.document, true);
+        // The record names its images; the bytes come back from OPFS beside it.
+        const assets = await hydrateAssets(record.document.assets ?? []);
+        state.loadProjectDocument(record.document, true, assets);
         state.pushToast(
           'info',
           `Recovered ${objectCount} object(s) from ${new Date(record.savedAt).toLocaleTimeString()}`,
         );
-        opened = true;
+
+        // What was just put on screen is what is stored, so nothing here is a
+        // change: an untouched recovered session has no reason to be written
+        // straight back out.
+        state.markSaved();
+
+        // An image the browser no longer has the file for draws as a blank
+        // plane, which on its own looks like the import went wrong rather than
+        // like the storage was cleared.
+        const missing = assets.filter((asset) => !asset.blob);
+        if (missing.length > 0) {
+          state.pushToast(
+            'warning',
+            `Could not find the file for ${missing.map((asset) => asset.name).join(', ')}`,
+          );
+        }
         return;
       }
 
       // Nothing to come back to, so open on a cube. Undoable like any other
       // add, so anyone who wants the empty viewport is one Ctrl+Z from it.
-      if (opened) return;
-      opened = true;
       state.addPrimitive('cube');
+      // The cube is the editor's doing, not the user's. A tab opened and left
+      // alone has nothing worth keeping, so it is not counted as a change.
+      state.markSaved();
     });
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
       const state = useEditorStore.getState();
-      if (state.meshVersion === lastSavedVersion.current) return;
+      if (!state.autosaveEnabled) return;
+      // Nothing has changed since the last write, or since the scene arrived:
+      // an editor sitting open with nobody at it does not keep rewriting the
+      // same document.
+      if (!state.dirty) return;
       if (state.objects.length === 0) return;
 
-      lastSavedVersion.current = state.meshVersion;
-      void writeAutosave(state.snapshotDocument());
-    }, AUTOSAVE_INTERVAL_MS);
+      // Marked before the write rather than after it, so an edit made while it
+      // is in flight raises the flag again and is caught by the next tick
+      // instead of being swallowed by this one.
+      state.markSaved();
+      void writeAutosave(state.snapshotDocument()).then((written) => {
+        if (!written) useEditorStore.getState().markDirty();
+      });
+      // The images go beside it, and this is where one whose object has been
+      // deleted and left deleted is finally dropped.
+      void syncAssets(Object.values(state.assets));
+    }, interval * 1000);
 
     return () => window.clearInterval(timer);
-  }, []);
+  }, [interval]);
 }

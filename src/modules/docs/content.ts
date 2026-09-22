@@ -71,7 +71,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'A fresh tab opens on a cube, the way Blender does, so there is something to press keys at before you have added anything. It is an ordinary object: one Ctrl+Z takes it away if you would rather start empty, and a tab with a session to come back to loads that instead. Work is autosaved to IndexedDB as you go, so a closed or crashed tab does not cost you the scene. Undo holds the last 50 steps, or however many the UNDO STEPS slider in preferences allows, and the ▤ button in the top bar opens the list to click straight back to one of them.',
+        text: 'A fresh tab opens on a cube, the way Blender does, so there is something to press keys at before you have added anything, and FILE > NEW starts the next project the same way. It is an ordinary object: one Ctrl+Z takes it away if you would rather start empty, and a tab with a session to come back to loads that instead. Work is autosaved to IndexedDB as you go, so a closed or crashed tab does not cost you the scene, and the AUTOSAVE switch in preferences turns that off for a machine you would rather leave nothing on. Undo holds the last 50 steps, or however many the UNDO STEPS slider in preferences allows, and the ▤ button in the top bar opens the list to click straight back to one of them.',
       },
     ],
   },
@@ -563,7 +563,15 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Downloads the whole project (objects, transforms, modifiers, materials) as a .3doo file (JSON inside, whatever the suffix says).',
           ],
           ['Open (Ctrl+O)', 'Loads one of those files back, replacing the current scene.'],
-          ['Import', 'Reads an OBJ file in as new objects alongside what is already there.'],
+          [
+            'New',
+            'Clears the scene and starts again on a cube. It asks first, because it also throws away the autosaved copy of what you were working on.',
+          ],
+          ['Import mesh', 'Reads an OBJ file in as new objects alongside what is already there.'],
+          [
+            'Import image',
+            'Reads a PNG, JPG or BMP in as a plane at the world origin, standing upright and facing the front view, with the picture drawn on it.',
+          ],
           [
             'Export (Ctrl+E)',
             'Writes OBJ with a matching MTL, or ASCII FBX 7.4, which Unity, Unreal, Blender, Maya and 3ds Max all import.',
@@ -578,6 +586,14 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         kind: 'note',
         text: 'Modifiers are always applied on the way out. Applying transforms, triangulating, writing per-vertex normals and including UVs are each optional, and SELECTION ONLY exports just what you have picked.',
       },
+      {
+        kind: 'prose',
+        text: 'An imported image arrives as an ordinary object: a plane with its own proportions, one metre on its longer side, which you select, move, rotate and scale like anything else. That is what makes it useful as a reference to model against. Line it up, then build against it. It takes modifiers and booleans too, because there is nothing special about it beyond the picture on its surface, and the picture is the one thing an OBJ or FBX export leaves behind: they carry the plane, not the texture.',
+      },
+      {
+        kind: 'note',
+        text: 'Your work is autosaved into this browser as you go: the scene itself into IndexedDB and any imported images into the origin private file system. That is storage on this machine, in this browser. Nothing is uploaded, nothing follows you to another browser, and clearing site data takes it with everything else. A .3doo file saved with Ctrl+S is the only copy that leaves, and it carries its images inside it, so a project sent to someone opens as what you saved.',
+      },
     ],
   },
   {
@@ -587,11 +603,23 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'PREFS in the top bar holds the settings that belong to you rather than to a scene: whether hint tooltips appear, the viewport background, whether a vertical orbit stops at the poles, the scale, colour and opacity of the grid, and how thick and what colour the outline around selected objects is drawn. They are stored on this device and deliberately kept out of project files, so opening a scene someone sent you never repaints your viewport.',
+        text: 'PREFS in the top bar holds the settings that belong to you rather than to a scene: whether hint tooltips appear, the viewport background, whether a vertical orbit stops at the poles, the scale, colour and opacity of the grid, whether the scene is autosaved, and how thick and what colour the outline around selected objects is drawn. They are stored on this device and deliberately kept out of project files, so opening a scene someone sent you never repaints your viewport.',
       },
       {
         kind: 'prose',
         text: 'The PANELS VISIBILITY section is a switch per surface: the tool rail down the far left, each of the panels on either side, and the status bar along the foot. Turning one off only takes it off the screen. Everything it holds still runs from the keyboard, and nothing about the scene changes, so it is the way to clear room for the model without giving anything up. Folding a panel by its title is the lighter version of the same idea, and that one travels with the project rather than with you.',
+      },
+      {
+        kind: 'prose',
+        text: 'The AUTOSAVE section decides whether the editor keeps a copy of the scene in this browser as you work, and how often. On, which is the default, a closed or crashed tab costs you nothing: the next one opens on what you were doing and says so. EVERY sets the gap between writes, from 30 seconds to 5 minutes: shorter costs you less when a tab dies, longer stops a heavy scene being written out so often. Off, nothing is written and no earlier session is offered back, so every tab opens on a new scene with a cube in it.',
+      },
+      {
+        kind: 'prose',
+        text: 'Nothing is written until you change something, and a change means adding, moving, renaming, regrouping or deleting: anything that would be different in the file. Selecting an object and looking around are not changes. So a tab left open on a scene you have finished with stops writing, and one you opened and never touched never writes at all.',
+      },
+      {
+        kind: 'note',
+        text: 'Autosave keeps one project: the one you are working on. There is no list of past sessions, which is why FILE > NEW asks before it runs, and it only asks when you have something to lose: on a scene you have not touched it just starts the new one. It is also storage in this browser on this machine, never a server, so a .3doo saved with Ctrl+S remains the only copy that outlives the browser.',
       },
       {
         kind: 'note',

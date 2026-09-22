@@ -6,6 +6,7 @@ import {
   type Modifier,
   type PrimitiveKind,
   type PrimitiveParams,
+  type ProjectAssetData,
   type ProjectDocument,
   type SceneObjectSnapshot,
   type Vec3,
@@ -23,6 +24,7 @@ import {
   cloneMesh,
   composeMatrix,
   createModifier,
+  createImagePlane,
   createPrimitive,
   createTransform,
   deserializeProject,
@@ -30,6 +32,7 @@ import {
   evaluateModifiers,
   execOperator,
   flipNormals,
+  imagePlaneSize,
   splitLooseParts,
   inverseTransformPoint,
   medianPoint,
@@ -49,6 +52,7 @@ import type {
   LastOperator,
   Material,
   MoveTarget,
+  SceneAsset,
   SceneGroup,
   SceneObject,
   SelectIntent,
@@ -151,6 +155,42 @@ function pruneGroups(groups: readonly SceneGroup[], objects: readonly SceneObjec
 /** The objects a folder holds, in the order the scene lists them. */
 function groupMembers(objects: readonly SceneObject[], groupId: string): SceneObject[] {
   return objects.filter((object) => object.groupId === groupId);
+}
+
+/**
+ * The assets as a document lists them: everything but the bytes.
+ *
+ * The bytes are held once, in OPFS or in the file being written, and a history
+ * step or an autosave record that carried them would be a copy of every picture
+ * in the scene per entry.
+ */
+function assetMetadata(assets: Record<string, SceneAsset>): ProjectAssetData[] {
+  return Object.values(assets).map(({ id, name, type, width, height }) => ({
+    id,
+    name,
+    type,
+    width,
+    height,
+  }));
+}
+
+/**
+ * The loaded assets, plus an entry for anything the document names that the
+ * session has never heard of.
+ *
+ * The new entries have no bytes, so the object draws blank and the panel can
+ * say which file is missing. Silently dropping them would leave an object
+ * pointing at nothing with no way to say so.
+ */
+function mergedAssets(
+  loaded: Record<string, SceneAsset>,
+  described: readonly ProjectAssetData[],
+): Record<string, SceneAsset> {
+  const merged = { ...loaded };
+  for (const asset of described) {
+    merged[asset.id] ??= { ...asset, blob: null };
+  }
+  return merged;
 }
 
 function defaultMaterial(): Material {
@@ -339,12 +379,35 @@ export interface SceneSlice {
   objects: SceneObject[];
   /** The outliner's folders, in the order they are drawn. */
   groups: SceneGroup[];
+  /**
+   * Imported binaries, by id: the images objects are drawn with.
+   *
+   * Beside the objects rather than inside them because undo replays the object
+   * list and nothing else. An image deleted and undone finds its bytes still
+   * here, and a history step stays the size of a scene description rather than
+   * carrying a copy of every picture in it.
+   */
+  assets: Record<string, SceneAsset>;
   activeObjectId: string | null;
   selectedObjectIds: string[];
   cursor: Vec3;
   projectName: string;
   /** Bumped on every geometry change so the viewport and panels can react. */
   meshVersion: number;
+  /**
+   * Whether the project has been changed since it was last stored.
+   *
+   * Set by a subscription in `useEditorStore` rather than by each action that
+   * edits something: a rename, a regroup and a vertex slide all change the
+   * document and only one of them touches geometry, so a flag raised by hand
+   * would have to be raised in thirty places and would be missed in the
+   * thirty-first.
+   *
+   * False on a scene nobody has touched yet: the cube a fresh tab opens on is
+   * the editor's doing rather than the user's, and a session just recovered is
+   * already exactly what is stored.
+   */
+  dirty: boolean;
   canUndo: boolean;
   canRedo: boolean;
   /** What each undo would take back, newest first, for the history dialog. */
@@ -366,6 +429,14 @@ export interface SceneSlice {
   recentVerts: { objectId: string; vertIds: number[]; token: number } | null;
 
   addPrimitive: (kind: PrimitiveKind, params?: Partial<PrimitiveParams>) => void;
+  /**
+   * Adds an imported image as a plane at the world origin.
+   *
+   * The origin rather than the 3D cursor, unlike every other add: a reference
+   * image is lined up against the world, and starting it wherever the cursor
+   * was left is a nuisance rather than a convenience.
+   */
+  addImage: (asset: SceneAsset) => void;
   updatePrimitiveParams: (params: Partial<PrimitiveParams>) => void;
   patchActiveObject: (
     patch: Partial<SceneObject> | ((object: SceneObject) => Partial<SceneObject> | null),
@@ -467,6 +538,13 @@ export interface SceneSlice {
     label?: string,
     options?: { record?: boolean },
   ) => void;
+  /**
+   * Says the scene now matches what is stored, for the autosave and for
+   * whatever put the opening scene on screen.
+   */
+  markSaved: () => void;
+  /** Says it does not, for a write that failed after being counted as done. */
+  markDirty: () => void;
   recordHistory: (label: string) => void;
   /**
    * Records a document captured earlier rather than the one on screen now.
@@ -487,10 +565,17 @@ export interface SceneSlice {
   setHistoryLimit: (limit: number) => void;
   touchMesh: (status?: string) => void;
 
-  /** `restoreLayout` puts the folded panels back too, for a file load, not for undo. */
+  /**
+   * `restoreLayout` puts the folded panels back too, for a file load, not for undo.
+   *
+   * `assets` replaces the loaded binaries wholesale, and is how a `.3doo` and a
+   * recovered session bring their images with them. Leaving it out keeps the
+   * ones already in the session, which is what an undo wants.
+   */
   loadProjectDocument: (
     document: ReturnType<typeof serializeProject>,
     restoreLayout?: boolean,
+    assets?: readonly SceneAsset[],
   ) => void;
   snapshotDocument: () => ReturnType<typeof serializeProject>;
   setProjectName: (name: string) => void;
@@ -505,6 +590,7 @@ export const createSceneSlice: StateCreator<
 > = (set, get) => ({
   objects: [],
   groups: [],
+  assets: {},
   activeObjectId: null,
   selectedObjectIds: [],
   cursor: vec3(),
@@ -515,6 +601,7 @@ export const createSceneSlice: StateCreator<
   historyUndo: [],
   historyRedo: [],
   status: 'Ready',
+  dirty: false,
   lastOperator: null,
   lockedAttempt: null,
   recentVerts: null,
@@ -526,7 +613,7 @@ export const createSceneSlice: StateCreator<
     })),
 
   snapshotDocument: () => {
-    const { projectName, objects, groups, cursor, activeObjectId, collapsedPanels } = get();
+    const { projectName, objects, groups, cursor, activeObjectId, collapsedPanels, assets } = get();
     return {
       ...serializeProject(
         projectName,
@@ -534,10 +621,15 @@ export const createSceneSlice: StateCreator<
         cursor,
         activeObjectId,
         groups,
+        assetMetadata(assets),
       ),
       panels: { ...collapsedPanels },
     };
   },
+
+  markSaved: () => set({ dirty: false }),
+
+  markDirty: () => set({ dirty: true }),
 
   recordHistory: (label) => get().recordHistoryDocument(label, get().snapshotDocument()),
 
@@ -571,6 +663,7 @@ export const createSceneSlice: StateCreator<
       modifiers: [],
       activeMaterial: 0,
       primitive: { kind, params: resolved },
+      image: null,
     };
 
     set((state) => ({
@@ -584,6 +677,41 @@ export const createSceneSlice: StateCreator<
       // through `setActiveTool`, whose status would bury "Added CUBE".
       activeTool: 'move',
       status: `Added ${PRIMITIVE_LABELS[kind]}`,
+    }));
+  },
+
+  addImage: (asset) => {
+    const name = asset.name.toUpperCase();
+    get().recordHistory(`Add ${name}`);
+
+    const { width, height } = imagePlaneSize(asset.width, asset.height);
+    const mesh = createImagePlane(width, height);
+    const transform = createTransform();
+
+    const object: SceneObject = {
+      id: nextObjectId(),
+      name,
+      mesh,
+      transform,
+      visible: true,
+      locked: false,
+      parentId: null,
+      groupId: null,
+      materials: [defaultMaterial()],
+      modifiers: [],
+      activeMaterial: 0,
+      primitive: null,
+      image: { assetId: asset.id },
+    };
+
+    set((state) => ({
+      assets: { ...state.assets, [asset.id]: asset },
+      objects: [...state.objects, object],
+      activeObjectId: object.id,
+      selectedObjectIds: [object.id],
+      meshVersion: state.meshVersion + 1,
+      activeTool: 'move',
+      status: `Imported ${name}`,
     }));
   },
 
@@ -1874,7 +2002,7 @@ export const createSceneSlice: StateCreator<
     set(historyState());
   },
 
-  loadProjectDocument: (document, restoreLayout = false) => {
+  loadProjectDocument: (document, restoreLayout = false, assets) => {
     const restored = deserializeProject(document);
     // Undo replays the scene, not the shell: a snapshot taken while a panel was
     // folded would otherwise fold it again three operations later.
@@ -1882,6 +2010,7 @@ export const createSceneSlice: StateCreator<
     const objects: SceneObject[] = restored.objects.map((object) => ({
       ...object,
       primitive: null,
+      image: object.image ?? null,
     }));
     // Which folders are folded shut is how the panel looks rather than what the
     // scene is, so it survives the replay an undo runs: a step taken three
@@ -1895,6 +2024,13 @@ export const createSceneSlice: StateCreator<
     set((state) => ({
       objects,
       groups,
+      // Bytes only arrive with a file being opened or a session being
+      // recovered. An undo is a replay of the same session, so it keeps the
+      // assets already loaded and only takes on the description of any it has
+      // never seen, which is how an image survives being deleted and undone.
+      assets: assets
+        ? Object.fromEntries(assets.map((asset) => [asset.id, asset]))
+        : mergedAssets(state.assets, restored.assets),
       projectName: restored.name,
       cursor: restored.cursor,
       activeObjectId: restored.activeObjectId,
@@ -1911,6 +2047,7 @@ export const createSceneSlice: StateCreator<
     set({
       objects: [],
       groups: [],
+      assets: {},
       activeObjectId: null,
       selectedObjectIds: [],
       cursor: vec3(),
@@ -1929,6 +2066,10 @@ export const createSceneSlice: StateCreator<
       dialog: null,
       collapsedPanels: {},
     });
+    // After the emptying rather than inside it: subscribers run once the state
+    // is in place, so the watcher that raises the flag on a changed scene would
+    // raise it again on the way out of the set above.
+    set({ dirty: false });
   },
 });
 

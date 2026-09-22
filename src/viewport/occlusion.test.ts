@@ -4,7 +4,13 @@ import { describe, expect, it } from 'vitest';
 import type { ObjectView } from '@bridge/index';
 import { type BMesh, type Vert, createBox } from '@kernel/index';
 
-import { circleRegion, facingElements, pickElement, pickInRegion } from './picking';
+import {
+  type FacingElements,
+  circleRegion,
+  facingElements,
+  pickElement,
+  pickInRegion,
+} from './picking';
 
 const SIZE = { width: 200, height: 200 };
 
@@ -50,6 +56,13 @@ function viewOf(mesh: BMesh, order: readonly Vert[]): ObjectView {
   } as unknown as ObjectView;
 }
 
+/** The facing set, for the views the filter has something to say about. */
+function facingOf(mesh: BMesh, matrix: THREE.Matrix4, camera: THREE.Camera): FacingElements {
+  const facing = facingElements(mesh, matrix, camera);
+  if (!facing) throw new Error('expected the far side of the mesh to be hidden');
+  return facing;
+}
+
 function corner(mesh: BMesh, x: number, y: number, z: number): Vert {
   const found = [...mesh.verts.values()].find(
     (vert) =>
@@ -62,7 +75,7 @@ function corner(mesh: BMesh, x: number, y: number, z: number): Vert {
 describe('facingElements', () => {
   it('keeps only the face turned towards the camera', () => {
     const mesh = createBox(2);
-    const facing = facingElements(mesh, new THREE.Matrix4(), orthographic());
+    const facing = facingOf(mesh, new THREE.Matrix4(), orthographic());
 
     // Looking straight down -Z at a cube: one face faces the camera, four are
     // edge-on and one is behind. Only the front four corners are reachable.
@@ -76,7 +89,7 @@ describe('facingElements', () => {
 
   it('answers the same for a perspective camera', () => {
     const mesh = createBox(2);
-    const facing = facingElements(mesh, new THREE.Matrix4(), perspective());
+    const facing = facingOf(mesh, new THREE.Matrix4(), perspective());
 
     expect(facing.faces.size).toBe(1);
     expect(facing.verts.size).toBe(4);
@@ -87,24 +100,37 @@ describe('facingElements', () => {
     // Turned half a revolution, the face that was towards the camera is the one
     // now hidden: the test runs in object space, so the matrix has to be read.
     const matrix = new THREE.Matrix4().makeRotationY(Math.PI);
-    const facing = facingElements(mesh, matrix, orthographic());
+    const facing = facingOf(mesh, matrix, orthographic());
 
     for (const id of facing.verts) {
       expect(mesh.verts.get(id)?.co.z).toBeLessThan(0);
     }
   });
 
-  it('keeps wire edges and loose vertices, which have no face to turn away', () => {
+  it('keeps a loose vertex, which has no face to turn away', () => {
     const mesh = createBox(2);
     const loose = mesh.addVert({ x: 5, y: 0, z: -5 });
-    const wireEnd = mesh.addVert({ x: 6, y: 0, z: -5 });
-    const wire = mesh.addEdge(loose, wireEnd);
 
-    const facing = facingElements(mesh, new THREE.Matrix4(), orthographic());
+    const facing = facingOf(mesh, new THREE.Matrix4(), orthographic());
 
     expect(facing.verts.has(loose.id)).toBe(true);
-    expect(facing.verts.has(wireEnd.id)).toBe(true);
-    expect(facing.edges.has(wire.id)).toBe(true);
+  });
+
+  it('filters nothing on an open mesh, where the camera sees the inside of it', () => {
+    const mesh = createBox(2);
+    const [face] = [...mesh.faces.values()];
+    mesh.removeFace(face);
+
+    // The faces on show through the hole are all turned away, so holding the
+    // pick to the front ones takes everything the user is aiming at.
+    expect(facingElements(mesh, new THREE.Matrix4(), orthographic())).toBeNull();
+  });
+
+  it('filters nothing with the camera inside the mesh', () => {
+    // Every wall of a room is turned away from someone standing in it.
+    const mesh = createBox(40);
+
+    expect(facingElements(mesh, new THREE.Matrix4(), orthographic())).toBeNull();
   });
 
   it('keeps a silhouette vertex, which borders a front face and a back one', () => {
@@ -112,7 +138,7 @@ describe('facingElements', () => {
     // Turned an eighth, two faces of the cube face the camera and the corner
     // between them is on the silhouette: visible from either side.
     const matrix = new THREE.Matrix4().makeRotationY(Math.PI / 4);
-    const facing = facingElements(mesh, matrix, orthographic());
+    const facing = facingOf(mesh, matrix, orthographic());
 
     expect(facing.faces.size).toBe(2);
     expect(facing.verts.size).toBe(6);
@@ -153,7 +179,7 @@ describe('picking through a dense mesh', () => {
       camera,
       SIZE,
       new THREE.Raycaster(),
-      facingElements(mesh, view.group.matrix, camera),
+      facingOf(mesh, view.group.matrix, camera),
     );
 
     expect(pick?.elementId).toBe(front.id);
@@ -171,7 +197,7 @@ describe('picking through a dense mesh', () => {
       camera,
       SIZE,
       mesh,
-      facingElements(mesh, view.group.matrix, camera),
+      facingOf(mesh, view.group.matrix, camera),
     );
 
     // The drag covers the whole cube on screen, so without the filter it sweeps

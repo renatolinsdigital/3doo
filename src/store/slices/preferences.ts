@@ -33,6 +33,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   snapMode: 'grid',
   snapStep: 0.1,
   historySize: 50,
+  autosaveEnabled: true,
+  autosaveInterval: 30,
   // VIEWPORT_COLORS.grid and .rust, which the viewport used to hard-code. Named
   // there in hex ints, written here as CSS so the colour inputs can show them.
   gridColor: '#3a2a28',
@@ -64,6 +66,22 @@ export const MAX_SNAP_STEP = MAX_GRID_SCALE;
  */
 export const MIN_HISTORY_SIZE = 10;
 export const MAX_HISTORY_SIZE = 100;
+
+/**
+ * How often the autosave may run, in seconds.
+ *
+ * A short list rather than a free number: the difference between 47 and 50
+ * seconds is nothing anybody needs, and every entry here is a round figure
+ * somebody can hold in their head while deciding what a crash may cost them.
+ */
+export const AUTOSAVE_INTERVALS = [30, 60, 120, 180, 300] as const;
+
+/** What each interval is called, in the picker and in the status messages. */
+export function autosaveIntervalLabel(seconds: number): string {
+  if (seconds < 60) return `${seconds} SECONDS`;
+  const minutes = seconds / 60;
+  return minutes === 1 ? '1 MINUTE' : `${minutes} MINUTES`;
+}
 
 /**
  * The multiple of the grid scale actually in force.
@@ -184,6 +202,17 @@ export function coercePreferences(raw: unknown): Preferences {
         DEFAULT_PREFERENCES.historySize,
       ),
     ),
+    autosaveEnabled:
+      typeof source.autosaveEnabled === 'boolean'
+        ? source.autosaveEnabled
+        : DEFAULT_PREFERENCES.autosaveEnabled,
+    // One of the offered figures or the default: an interval read off a
+    // hand-edited file has to be one the picker can show back.
+    autosaveInterval: (AUTOSAVE_INTERVALS as readonly number[]).includes(
+      Number(source.autosaveInterval),
+    )
+      ? Number(source.autosaveInterval)
+      : DEFAULT_PREFERENCES.autosaveInterval,
     gridColor: coerceColor(source.gridColor, DEFAULT_PREFERENCES.gridColor),
     gridOpacity: coerceNumber(source.gridOpacity, 0, 1, DEFAULT_PREFERENCES.gridOpacity),
     gridMajorColor: coerceColor(source.gridMajorColor, DEFAULT_PREFERENCES.gridMajorColor),
@@ -261,6 +290,8 @@ export const createPreferencesSlice: StateCreator<
         snapMode,
         snapStep,
         historySize,
+        autosaveEnabled,
+        autosaveInterval,
         gridColor,
         gridOpacity,
         gridMajorColor,
@@ -279,6 +310,8 @@ export const createPreferencesSlice: StateCreator<
         snapMode,
         snapStep,
         historySize,
+        autosaveEnabled,
+        autosaveInterval,
         gridColor,
         gridOpacity,
         gridMajorColor,
