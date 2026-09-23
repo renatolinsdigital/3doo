@@ -439,6 +439,21 @@ export interface SceneSlice {
    * token bumps on every run so repeating one re-triggers the flash.
    */
   recentVerts: { objectId: string; vertIds: number[]; token: number } | null;
+  /**
+   * Bumped every time the autosave finishes a write, for the status bar to
+   * flash its disk.
+   *
+   * A counter rather than the time of the write: two ticks a minute apart
+   * both have to start the animation over, and a timestamp the reader would
+   * have to compare against the clock says nothing more. Not `dirty` either,
+   * which is lowered before the write goes out and stays lowered while it is
+   * in flight, so it reads the same whether the write landed or failed.
+   *
+   * Left alone by `resetScene`, unlike everything around it. The reader
+   * flashes on the number changing, so putting it back to zero would draw a
+   * disk for FILE > NEW, which writes nothing.
+   */
+  autosaveToken: number;
 
   addPrimitive: (kind: PrimitiveKind, params?: Partial<PrimitiveParams>) => void;
   /**
@@ -557,6 +572,8 @@ export interface SceneSlice {
   markSaved: () => void;
   /** Says it does not, for a write that failed after being counted as done. */
   markDirty: () => void;
+  /** Says a write has landed, so the status bar can show that it did. */
+  noteAutosaved: () => void;
   /** Says this scene is now in a file on disk, for a save and for an open. */
   markFileSaved: () => void;
   recordHistory: (label: string) => void;
@@ -630,6 +647,7 @@ export const createSceneSlice: StateCreator<
   lastOperator: null,
   lockedAttempt: null,
   recentVerts: null,
+  autosaveToken: 0,
 
   touchMesh: (status) =>
     set((state) => ({
@@ -655,6 +673,8 @@ export const createSceneSlice: StateCreator<
   markSaved: () => set({ dirty: false }),
 
   markDirty: () => set({ dirty: true }),
+
+  noteAutosaved: () => set((state) => ({ autosaveToken: state.autosaveToken + 1 })),
 
   markFileSaved: () => set({ savedToFile: true }),
 

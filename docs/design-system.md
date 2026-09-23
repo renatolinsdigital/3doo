@@ -87,8 +87,12 @@ Brutalism has to stay usable. These are requirements, not preferences:
 - **One toast per message.** The same message raised again renews the toast
   already on screen instead of stacking a copy, and at most four are drawn at
   once, so a key that refuses on every press cannot bury the viewport.
-- **No animation that obscures a state change.** Motion is limited to toast and
-  modal entrances, and `prefers-reduced-motion` disables even those.
+- **No animation that obscures a state change.** Motion is limited to toast
+  and modal entrances, the disk the status strip turns on an autosave, and
+  the tremble that points at Frame All. `prefers-reduced-motion` takes the
+  movement away. Where the motion carries something, as the disk does, the
+  mark itself stays and only the turn goes: reducing motion is not asking to
+  be told less.
 
 ## Layout
 
@@ -108,7 +112,7 @@ Brutalism has to stay usable. These are requirements, not preferences:
 
 The viewport bleeds edge to edge behind the panels while keeping a hard 3px
 frame. The status strip is oxblood and carries counts, the active operation,
-modal hints and snap state.
+modal hints, snap state, and a disk that turns when the autosave writes.
 
 At tablet width the left tool panel collapses; at mobile width the right column
 collapses too, leaving the rail and viewport.

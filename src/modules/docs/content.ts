@@ -114,7 +114,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Status bar',
-            'Scene and selection counts, the last operation that ran, and the hint line during a modal transform.',
+            'Scene and selection counts, the last operation that ran, the hint line during a modal transform, and a floppy disk that turns once each time your work is autosaved.',
           ],
         ],
       },
@@ -611,7 +611,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'prose',
-        text: 'The AUTOSAVE section decides whether the editor keeps a copy of the scene in this browser as you work, and how often. On, which is the default, a closed or crashed tab costs you nothing: the next one opens on what you were doing and says so. EVERY sets the gap between writes, from 30 seconds to 5 minutes: shorter costs you less when a tab dies, longer stops a heavy scene being written out so often. Off, nothing is written and no earlier session is offered back, so every tab opens on a new scene with a cube in it.',
+        text: 'The AUTOSAVE section decides whether the editor keeps a copy of the scene in this browser as you work, and how often. On, which is the default, a closed or crashed tab costs you nothing: the next one opens on what you were doing and says so. EVERY sets the gap between writes, from 30 seconds to 5 minutes: shorter costs you less when a tab dies, longer stops a heavy scene being written out so often. Off, nothing is written and no earlier session is offered back, so every tab opens on a new scene with a cube in it. While it is on, a small floppy disk turns once in the status bar each time a write lands, so you can see the copy being kept rather than having to take it on trust.',
       },
       {
         kind: 'prose',

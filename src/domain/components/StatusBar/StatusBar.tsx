@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { cx } from '@shared/utils/cx';
 import { snapStepLabel, useEditorStore, useSceneStats } from '@store/index';
@@ -33,6 +33,49 @@ function modalLabel(modal: ModalTransform): string {
   return `${kind}${axis} ×${factor.toFixed(3)}`;
 }
 
+/**
+ * How long the disk stays up after a write, and how long its turn takes.
+ *
+ * Paired with the `save-spin` keyframes, which run for the same span: the
+ * animation draws one revolution and this takes the disk back off the bar as
+ * that revolution closes. Change one and the other has to move with it, or
+ * the disk is cut off mid-turn or left sitting still at the end of it.
+ */
+const SAVE_SPIN_MS = 2500;
+
+/**
+ * Whether the autosave disk should be up and turning.
+ *
+ * Driven off the store's counter rather than off `dirty`, which the autosave
+ * lowers before the write goes out: turning on that would report a write
+ * that has not happened yet, and would keep reporting it when the write
+ * failed. The counter is bumped only once a write has landed.
+ *
+ * What starts the turn is the counter moving on from where this bar last
+ * saw it, not the counter being above zero. A bar mounting into a session
+ * that has been writing for an hour, because the status bar was switched
+ * back on in preferences or the editor came back from DOCS, has missed those
+ * writes rather than witnessed them, and announcing the last one on arrival
+ * would report a save that did not just happen.
+ */
+function useSaveSpin(): boolean {
+  const token = useEditorStore((state) => state.autosaveToken);
+  const seen = useRef(token);
+  const [showing, setShowing] = useState(false);
+
+  useEffect(() => {
+    if (token === seen.current) return;
+    seen.current = token;
+    setShowing(true);
+    // Restarted rather than left to finish, so a write landing mid-turn reads
+    // as two saves rather than as one long one.
+    const timer = window.setTimeout(() => setShowing(false), SAVE_SPIN_MS);
+    return () => window.clearTimeout(timer);
+  }, [token]);
+
+  return showing;
+}
+
 export function StatusBar() {
   const stats = useSceneStats();
   const status = useEditorStore((state) => state.status);
@@ -47,6 +90,7 @@ export function StatusBar() {
   const modal = useEditorStore((state) => state.modal);
   const showStatistics = useEditorStore((state) => state.overlays.statistics);
   const progress = useEditorStore((state) => state.progress);
+  const saving = useSaveSpin();
 
   return (
     <footer className="status-bar">
@@ -59,6 +103,7 @@ export function StatusBar() {
             {modal ? `${modalLabel(modal)}: LMB confirm, Esc cancel` : status}
           </span>
         )}
+        <SaveSpin showing={saving} />
       </div>
 
       {showStatistics ? (
@@ -95,6 +140,36 @@ export function StatusBar() {
         </Flag>
       </div>
     </footer>
+  );
+}
+
+/**
+ * A disk, turning once where the status message ends, after a write lands.
+ *
+ * The slot stays in the layout whether or not the disk is in it, so the
+ * status message beside it does not reflow every time a write lands.
+ *
+ * Hidden from screen readers on purpose. The message slot it sits in is a
+ * live region, so announcing this would cut across whatever the editor was
+ * saying every time the timer came round, to report something the user did
+ * not ask for and cannot act on. The AUTOSAVE preference is where the
+ * behaviour is stated.
+ */
+function SaveSpin({ showing }: { showing: boolean }) {
+  return (
+    <span className={cx('status-bar__save', showing && 'status-bar__save--on')} aria-hidden="true">
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      >
+        <path d="M2.75 2.75h7.5l3 3v7.5h-10.5z" />
+        <path d="M5.5 2.75v3.5h4v-3.5" />
+        <path d="M4.75 13.25v-4h6.5v4" />
+      </svg>
+    </span>
   );
 }
 

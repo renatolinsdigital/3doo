@@ -125,6 +125,48 @@ deleted is finally dropped from OPFS. It waits until then because a delete is
 undoable, and the next autosave is the first moment the scene is known to have
 settled without it.
 
+### Saying it happened
+
+A write that lands turns a small floppy disk in the status bar, at the right
+of the message slot where it meets the counts. One revolution about its
+vertical axis, over 2.5 seconds, at full strength for the middle three
+quarters of it so the fade is only the entrance and the exit. An autosave
+that leaves no trace is one people do not believe in, and the alternative is
+the habit of hitting Ctrl+S every few minutes against a copy that was already
+being kept.
+
+It is drawn in bone, the colour the bar writes its own text in, rather than
+the amber the flags light in. Amber on this bar means a setting is in force,
+and the disk is an event going past rather than a state to read off.
+
+Three details make it honest rather than decorative:
+
+- It is driven by `state.autosaveToken`, a counter the hook bumps **after**
+  `writeAutosave` resolves true. Not `dirty`, which is lowered before the
+  write goes out and stays lowered while it is in flight: turning on that
+  would draw a disk for a write that had not happened, and draw one again for
+  a write that failed.
+- A counter rather than a timestamp, because two writes a minute apart both
+  have to start the animation over, and the status bar compares it against
+  the value it last saw rather than against zero. A bar mounting into a
+  session that has been writing for an hour, because the status bar was
+  switched back on in PREFS or the editor came back from DOCS, has missed
+  those writes rather than witnessed them.
+- The slot stays in the layout while the disk is out of it, so the status
+  message beside it does not shift sideways on every tick.
+
+The disk is `aria-hidden`. It sits inside the message slot, which is a live
+region, so announcing it would cut across whatever the editor was saying,
+every time the timer came round, to report something nobody asked for and
+nothing can be done about. The PREFS entry is where the behaviour is stated.
+
+Visibility comes from the class and the turn from the `save-spin` keyframes,
+which is what keeps the reduced-motion rule in `animations.scss` from taking
+the disk away along with its animation: that viewport gets the disk, held
+steady and face on, for the same 2.5 seconds. `SAVE_SPIN_MS` and the
+keyframes are a pair. Move one without the other and the disk is either cut
+off mid-turn or left standing still at the end of it.
+
 Both jobs stop when the AUTOSAVE preference is off. Nothing is written, no
 session is offered back, and an import keeps its image in memory rather than
 putting it in OPFS. Handing work back from a setting someone turned off is the

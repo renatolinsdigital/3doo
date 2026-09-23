@@ -1,5 +1,5 @@
 import { act, render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useEditorStore } from '@store/index';
 
@@ -121,6 +121,59 @@ describe('StatusBar', () => {
     act(() => useEditorStore.getState().setPreferences({ snapMode: 'custom', snapStep: 0.03 }));
 
     expect(screen.getByText('SNAP 0.03 GRID')).toBeInTheDocument();
+  });
+});
+
+describe('the autosave disk', () => {
+  const disk = () => document.querySelector('.status-bar__save--on');
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    useEditorStore.getState().resetScene();
+  });
+
+  afterEach(() => vi.useRealTimers());
+
+  it('turns once a write has landed, then takes itself back off', () => {
+    render(<StatusBar />);
+    expect(disk()).toBeNull();
+
+    act(() => useEditorStore.getState().noteAutosaved());
+    expect(disk()).not.toBeNull();
+
+    // Still turning most of the way through.
+    act(() => vi.advanceTimersByTime(2400));
+    expect(disk()).not.toBeNull();
+
+    act(() => vi.advanceTimersByTime(200));
+    expect(disk()).toBeNull();
+  });
+
+  it('starts over on the next write rather than sitting there', () => {
+    render(<StatusBar />);
+
+    act(() => useEditorStore.getState().noteAutosaved());
+    act(() => vi.advanceTimersByTime(2000));
+    // A second write lands while the first disk is still up: the turn has to
+    // run again from the top, not finish on the first one's clock.
+    act(() => useEditorStore.getState().noteAutosaved());
+    act(() => vi.advanceTimersByTime(2000));
+
+    // Past where the first turn would have ended, and still up.
+    expect(disk()).not.toBeNull();
+  });
+
+  it('shows nothing on a bar that has only just arrived', () => {
+    // A bar mounting into a session that has been writing for an hour has
+    // missed those writes rather than witnessed them, so it must not report
+    // the last one as if it had just happened.
+    act(() => useEditorStore.getState().noteAutosaved());
+    act(() => useEditorStore.getState().noteAutosaved());
+
+    render(<StatusBar />);
+    act(() => vi.advanceTimersByTime(100));
+
+    expect(disk()).toBeNull();
   });
 });
 

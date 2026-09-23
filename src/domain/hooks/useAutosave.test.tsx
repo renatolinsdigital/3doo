@@ -17,6 +17,8 @@ let record: Record | null = null;
 let reads = 0;
 let writes = 0;
 let written: Record | null = null;
+/** Flipped by the one test that asks what a failed write does. */
+let writeSucceeds = true;
 
 // `storableHistory` is left real, so what the hook hands over is checked
 // against what would actually be stored.
@@ -35,7 +37,7 @@ vi.mock('../services/autosave', async () => {
         savedAt: new Date().toISOString(),
         history: history && actual.storableHistory(history),
       };
-      return Promise.resolve(true);
+      return Promise.resolve(writeSucceeds);
     },
   };
 });
@@ -62,6 +64,7 @@ describe('what the editor opens on', () => {
     reads = 0;
     writes = 0;
     written = null;
+    writeSucceeds = true;
     setOpeningSceneDone(false);
     useEditorStore.getState().resetScene();
     useEditorStore.getState().setPreferences({ autosaveEnabled: true, autosaveInterval: 30 });
@@ -253,6 +256,40 @@ describe('what the editor opens on', () => {
     act(() => vi.advanceTimersByTime(30_000));
 
     expect(writes).toBe(1);
+  });
+
+  it('notes a landed write, so the status bar can turn its disk', async () => {
+    vi.useFakeTimers();
+    renderHook(() => useAutosave());
+    await act(async () => {});
+    const before = useEditorStore.getState().autosaveToken;
+
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+
+    expect(useEditorStore.getState().autosaveToken).toBe(before + 1);
+  });
+
+  it('notes nothing when the write fails, and puts the flag back up', async () => {
+    // The disk says the work reached the browser. A write that did not land
+    // must not draw it, or the one moment the reassurance matters is the one
+    // moment it lies.
+    vi.useFakeTimers();
+    writeSucceeds = false;
+    renderHook(() => useAutosave());
+    await act(async () => {});
+    const before = useEditorStore.getState().autosaveToken;
+
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+
+    expect(writes).toBe(1);
+    expect(useEditorStore.getState().autosaveToken).toBe(before);
+    expect(useEditorStore.getState().dirty).toBe(true);
   });
 
   it('stops writing when autosave is turned off', async () => {

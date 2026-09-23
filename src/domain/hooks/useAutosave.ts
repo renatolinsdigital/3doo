@@ -129,7 +129,11 @@ export function useAutosave(): void {
       // instead of being swallowed by this one.
       state.markSaved();
       void writeAutosave(state.snapshotDocument(), state.snapshotHistory()).then((written) => {
-        if (!written) useEditorStore.getState().markDirty();
+        // The status bar flashes a disk off this, so it is noted once the
+        // write has actually landed rather than when it was sent: a flash for
+        // a write that failed is the one thing this is there to rule out.
+        if (written) useEditorStore.getState().noteAutosaved();
+        else useEditorStore.getState().markDirty();
       });
       // The images go beside it, and this is where one whose object has been
       // deleted and left deleted is finally dropped.

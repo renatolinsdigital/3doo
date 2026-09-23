@@ -85,6 +85,30 @@
   }
 }
 
+// The autosave disk, turning once about its vertical axis while it fades up
+// and back down. The fade is kept to the ends, so the disk is at full
+// strength for three quarters of the turn and only the entrance and the exit
+// are soft. One even revolution rather than a spin that winds down: the
+// editor draws this bar as machinery, and a disk easing to a stop reads as
+// decoration. Only the motion lives here. What shows the disk at all is the
+// class, so the reduce rule below leaves it visible and still.
+@keyframes save-spin {
+  from {
+    opacity: 0;
+    transform: rotateY(0deg);
+  }
+
+  10%,
+  85% {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0;
+    transform: rotateY(1turn);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

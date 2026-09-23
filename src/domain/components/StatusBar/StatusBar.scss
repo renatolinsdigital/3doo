@@ -53,6 +53,41 @@
     min-width: 0;
   }
 
+  // The disk the autosave turns. It holds its slot while hidden rather than
+  // leaving the layout, so the status message beside it does not jump sideways
+  // every time a write lands.
+  &__save {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    // The bar's own text colour rather than the amber the flags light in:
+    // amber on this bar means a setting is in force, and the disk is an event
+    // going past, not a state to read off.
+    color: var(--bone);
+    visibility: hidden;
+    // Shallow enough to be felt at 16px: the near edge of the disk swings
+    // toward the reader as it comes round, instead of the turn flattening
+    // into a squash and back.
+    perspective: 48px;
+
+    svg {
+      display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    // Visibility comes from the class and the turn from the animation, so a
+    // viewport asking for reduced motion still gets the disk, held steady and
+    // face on for the same 2.5 seconds.
+    &--on {
+      visibility: visible;
+
+      svg {
+        animation: save-spin 2500ms linear;
+      }
+    }
+  }
+
   // Bracketed like a readout rather than a rounded meter: the editor draws
   // everything else on this bar as hard-edged type, and a soft bar reads as
   // borrowed from somewhere else.
