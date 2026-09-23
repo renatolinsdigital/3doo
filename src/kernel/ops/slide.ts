@@ -37,18 +37,30 @@ export interface SlidePlan {
 }
 
 /**
+ * How nearly travel out of a vertex toward one of its neighbours matches what
+ * the pointer is asking for, larger being nearer.
+ *
+ * A score rather than a direction to compare against, because aiming is done on
+ * a screen and a screen is the viewport's business: an edge running away from
+ * the camera is drawn short but still points at the cursor, and only something
+ * holding the camera can say so. A slide planned with no camera to ask passes
+ * nothing and takes the straightest pair of edges instead.
+ */
+export type SlideAim = (from: Vec3, to: Vec3) => number;
+
+/**
  * Plans a slide of loose vertices along the edges leaving them.
  *
- * `hint` is which way the pointer is asking to go, in object space: the edge
- * pointing most nearly along it becomes the positive way out and the one
- * pointing most nearly against it the negative, which is what lets the vertex
- * under the cursor slide down the edge the cursor is reaching along. Without a
- * hint the straightest pair of edges through the vertex is taken instead.
+ * `aim` scores each edge leaving the vertex: the one scoring highest becomes
+ * the positive way out and the one scoring lowest the negative, which is what
+ * lets the vertex under the cursor slide down the edge the cursor is reaching
+ * along. Without an aim the straightest pair of edges through the vertex is
+ * taken instead.
  */
 export function planVertexSlide(
   mesh: BMesh,
   verts: readonly Vert[],
-  hint: Vec3 | null = null,
+  aim: SlideAim | null = null,
 ): SlidePlan {
   const rails: SlideRail[] = [];
 
@@ -64,17 +76,15 @@ export function planVertexSlide(
       continue;
     }
 
-    const directions = neighbours.map((neighbour) => normalize(sub(neighbour.co, origin)));
     let positive = 0;
     let negative = 1;
 
-    if (hint) {
-      const along = normalize(hint);
+    if (aim) {
       let nearest = -Infinity;
       let furthest = Infinity;
 
-      directions.forEach((direction, i) => {
-        const towards = dot(direction, along);
+      neighbours.forEach((neighbour, i) => {
+        const towards = aim(origin, neighbour.co);
         if (towards > nearest) {
           nearest = towards;
           positive = i;
@@ -88,6 +98,7 @@ export function planVertexSlide(
       // The straightest pair: the two edges facing most nearly opposite ways.
       // Sliding along those reads as travel down one line through the vertex
       // rather than as a turn at it.
+      const directions = neighbours.map((neighbour) => normalize(sub(neighbour.co, origin)));
       let opposed = Infinity;
       for (let i = 0; i < directions.length; i++) {
         for (let j = i + 1; j < directions.length; j++) {

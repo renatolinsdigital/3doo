@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
+import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 
 import {
   AXIS_COLORS,
@@ -16,6 +19,7 @@ import {
   type ProportionalInfluence,
   type ProportionalOptions,
   type SelectMode,
+  type SlideAim,
   type SlidePlan,
   type SlideRail,
   type Transform,
@@ -243,6 +247,33 @@ export function slideFactor(
   return -Math.min(Math.max(back, 0), 1);
 }
 
+/**
+ * Scores each edge leaving a vertex by how nearly it runs toward the pointer.
+ *
+ * Measured where the user is looking rather than out in the scene. An edge
+ * running away from the camera is drawn short but still points at the cursor,
+ * and a direction compared in three dimensions ranks it under an edge lying
+ * flat across the view that aims nowhere near: what the user aimed at is what
+ * they saw, so the ranking is done on screen, after the projection.
+ *
+ * `project` puts an object-space point where it is drawn, in canvas pixels, and
+ * `asked` is the pixels from the selection out to the cursor. One direction for
+ * the whole selection, so a row of vertices travels as one rather than each
+ * turning toward the pointer from wherever it happens to sit.
+ */
+export function slideAim(project: (point: Vec3) => THREE.Vector2, asked: THREE.Vector2): SlideAim {
+  const along = asked.clone().normalize();
+
+  return (from, to) => {
+    const travel = project(to).sub(project(from));
+    // An edge seen end on is a point on screen, and a point aims nowhere. Zero
+    // keeps it out of both ends of the rail while any edge with a direction is
+    // there to take instead.
+    if (travel.lengthSq() < 1e-6) return 0;
+    return travel.normalize().dot(along);
+  };
+}
+
 /** How far each way an extrude's axis line is drawn through the selection. */
 const MODAL_AXIS_REACH_PX = 400;
 
@@ -263,6 +294,16 @@ const MIN_INWARD_PX = 8;
  * falls on top of one, and at the end of the travel it falls exactly on one.
  */
 const SLIDE_PREVIEW_POINT_PX = 6;
+
+/**
+ * How wide a slide's rails are drawn, in CSS pixels.
+ *
+ * A hair over the wireframe: enough for the rail to read as its own line,
+ * short of the bar a thicker one lays across the mesh. A plain line cannot be
+ * widened at all, because WebGL ignores `linewidth`, which is why the rails go
+ * through `LineMaterial`.
+ */
+const SLIDE_GUIDE_WIDTH_PX = 1.25;
 
 /** What each pointer-driven operator's undo step is called. */
 const OFFSET_LABELS: Record<OffsetDrag['kind'], string> = {
@@ -517,7 +558,7 @@ export class Viewport {
   private slideDrag: SlideDrag | null = null;
   private offsetDrag: OffsetDrag | null = null;
   /** The rails a slide may travel along, drawn while one is running. */
-  private readonly slideGuide: THREE.LineSegments;
+  private readonly slideGuide: LineSegments2;
   /** The selection where the TOPOLOGY panel's numbered slide would leave it. */
   private readonly slidePreviewEdges: THREE.LineSegments;
   private readonly slidePreviewPoints: THREE.Points;
@@ -599,7 +640,7 @@ export class Viewport {
     this.scene.add(this.modalLine);
     this.proportionalRing = this.createProportionalRing();
     this.scene.add(this.proportionalRing);
-    this.slideGuide = this.createSlideGuide();
+    this.slideGuide = this.createSlideGuideLine();
     this.scene.add(this.slideGuide);
     this.slidePreviewEdges = this.createSlidePreviewEdges();
     this.slidePreviewPoints = this.createSlidePreviewPoints();
@@ -765,18 +806,18 @@ export class Viewport {
    * where each vertex would land at the end of it. The scale and rotate lines
    * answer a different question and reach out to the pointer instead.
    */
-  private createSlideGuide(): THREE.LineSegments {
-    const line = new THREE.LineSegments(
-      new THREE.BufferGeometry(),
-      new THREE.LineBasicMaterial({
+  private createSlideGuideLine(): LineSegments2 {
+    const line = new LineSegments2(
+      new LineSegmentsGeometry(),
+      new LineMaterial({
         color: VIEWPORT_COLORS.bone,
+        linewidth: SLIDE_GUIDE_WIDTH_PX,
         depthTest: false,
         transparent: true,
-        opacity: 0.55,
       }),
     );
     line.visible = false;
-    line.renderOrder = 11;
+    line.renderOrder = 12;
     line.frustumCulled = false;
     return line;
   }
@@ -1940,7 +1981,7 @@ export class Viewport {
     const plan =
       state.modal?.element === 'edge'
         ? planEdgeSlide(mesh, mesh.selectedEdges())
-        : planVertexSlide(mesh, selected, this.slideHint(selected, object, matrix));
+        : planVertexSlide(mesh, selected, this.slideAim(selected, matrix));
 
     const reference = this.referenceRail(plan, matrix);
     if (!reference) {
@@ -2002,29 +2043,22 @@ export class Viewport {
   }
 
   /**
-   * Which way the pointer is asking a vertex slide to go, in object space.
+   * What the pointer is asking a vertex slide to aim at, on screen.
    *
-   * The direction on screen from the selection out to the cursor, lifted back
-   * into the scene along the camera's own axes. Null while the pointer sits on
-   * the selection itself, which names no direction at all.
+   * Null while the pointer sits on the selection itself, which names no
+   * direction at all: the plan then takes the straightest pair of edges through
+   * each vertex rather than guessing from a few pixels of noise.
    */
-  private slideHint(
-    verts: readonly Vert[],
-    object: SceneObject,
-    matrix: THREE.Matrix4,
-  ): Vec3 | null {
+  private slideAim(verts: readonly Vert[], matrix: THREE.Matrix4): SlideAim | null {
     if (verts.length === 0) return null;
 
-    const median = medianPoint(verts);
-    const anchor = new THREE.Vector3(median.x, median.y, median.z).applyMatrix4(matrix);
-    const offset = this.pointerPixels.clone().sub(this.projectToPixels(anchor));
-    if (offset.lengthSq() < 4) return null;
+    const project = (point: Vec3) =>
+      this.projectToPixels(new THREE.Vector3(point.x, point.y, point.z).applyMatrix4(matrix));
 
-    const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
-    const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1);
-    // Canvas y grows downward, and the camera's up does not.
-    const world = right.multiplyScalar(offset.x).addScaledVector(up, -offset.y);
-    return inverseTransformDirection(object.transform, vec3(world.x, world.y, world.z));
+    const asked = this.pointerPixels.clone().sub(project(medianPoint(verts)));
+    if (asked.lengthSq() < 4) return null;
+
+    return slideAim(project, asked);
   }
 
   /**
@@ -2077,7 +2111,10 @@ export class Viewport {
 
     // A slide plans its rails once and holds them for its whole run, so the
     // geometry is built here rather than rewritten every frame.
-    this.setOverlayPositions(this.slideGuide, points);
+    const geometry = new LineSegmentsGeometry();
+    geometry.setPositions(points);
+    this.slideGuide.geometry.dispose();
+    this.slideGuide.geometry = geometry;
     this.slideGuide.visible = true;
   }
 
@@ -3443,6 +3480,7 @@ export class Viewport {
 
     this.renderer.setSize(width, height, false);
     this.outlineResolution.set(width, height);
+    (this.slideGuide.material as LineMaterial).resolution.set(width, height);
     for (const view of this.views.values()) {
       view.setResolution(width, height, this.renderer.getPixelRatio());
     }

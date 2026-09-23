@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { type Vec3, distance, normalize, sub, vec3 } from '../math';
+import { type Vec3, distance, dot, normalize, sub, vec3 } from '../math';
 import type { BMesh } from '../mesh';
 import type { Edge, Vert } from '../mesh/types';
 import { createGrid, createPlane } from '../primitives';
 
 import { autoMergeVerts } from './merge';
 import {
+  type SlideAim,
   type SlideWay,
   applySlide,
   applySlideDistance,
@@ -16,6 +17,12 @@ import {
   slideLandings,
   vertexSlideWays,
 } from './slide';
+
+/** Aiming by plain geometry, the way a caller with no camera to ask would. */
+const aimedAlong =
+  (along: Vec3): SlideAim =>
+  (from, to) =>
+    dot(normalize(sub(to, from)), normalize(along));
 
 /** The grid vertex nearest `(x, z)`; the grid lies in the XZ plane. */
 function vertAt(mesh: BMesh, x: number, z: number): Vert {
@@ -67,19 +74,33 @@ describe('vertex slide', () => {
     const mesh = createGrid(1, 4);
     const vert = vertAt(mesh, 0, 0);
 
-    const alongX = planVertexSlide(mesh, [vert], vec3(1, 0, 0)).rails[0];
+    const alongX = planVertexSlide(mesh, [vert], aimedAlong(vec3(1, 0, 0))).rails[0];
     expect(alongX.positive).toEqual(vec3(0.25, 0, 0));
     expect(alongX.negative).toEqual(vec3(-0.25, 0, 0));
 
-    const alongZ = planVertexSlide(mesh, [vert], vec3(0, 0, -1)).rails[0];
+    const alongZ = planVertexSlide(mesh, [vert], aimedAlong(vec3(0, 0, -1))).rails[0];
     expect(alongZ.positive).toEqual(vec3(0, 0, -0.25));
     expect(alongZ.negative).toEqual(vec3(0, 0, 0.25));
+  });
+
+  it('takes the best scoring edge out and the worst one back', () => {
+    const mesh = createGrid(1, 4);
+    const vert = vertAt(mesh, 0, 0);
+
+    // A score that has nothing to do with where the edges point: whatever the
+    // aim ranks highest is the way out, which is what lets the viewport rank
+    // them on screen rather than out in the scene.
+    const towardsFarZ: SlideAim = (_from, to) => to.z;
+    const [rail] = planVertexSlide(mesh, [vert], towardsFarZ).rails;
+
+    expect(rail.positive).toEqual(vec3(0, 0, 0.25));
+    expect(rail.negative).toEqual(vec3(0, 0, -0.25));
   });
 
   it('never travels past the edge it is running along', () => {
     const mesh = createGrid(1, 4);
     const vert = vertAt(mesh, 0, 0);
-    const plan = planVertexSlide(mesh, [vert], vec3(1, 0, 0));
+    const plan = planVertexSlide(mesh, [vert], aimedAlong(vec3(1, 0, 0)));
 
     applySlide(mesh, plan, 4);
     expect(vert.co).toEqual(vec3(0.25, 0, 0));
@@ -313,7 +334,7 @@ describe('auto merge', () => {
   it('leaves vertices that were already this close to each other alone', () => {
     const mesh = createGrid(1, 4);
     const vert = vertAt(mesh, 0, 0);
-    const plan = planVertexSlide(mesh, [vert], vec3(1, 0, 0));
+    const plan = planVertexSlide(mesh, [vert], aimedAlong(vec3(1, 0, 0)));
 
     // A threshold far wider than the grid spacing, but only the one vertex
     // moved, so only it can be welded away.
