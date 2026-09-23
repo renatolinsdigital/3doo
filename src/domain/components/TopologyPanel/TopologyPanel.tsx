@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
 
-import { edgeSlideWays, vertexSlideWays } from '@kernel/index';
-import { Button, FieldRow, NumberField, Panel, Select, Slider } from '@shared/components';
 import {
+  type BMesh,
+  type SlideWay,
+  type Vec3,
+  edgeSlideWays,
+  slideLandings,
+  vertexSlideWays,
+} from '@kernel/index';
+import { Button, FieldRow, NumberField, Panel, Select, Slider, Toggle } from '@shared/components';
+import {
+  type SlidePreview,
   useActiveObject,
   useActiveSelectionCounts,
   useEdgeLoopAvailable,
@@ -18,6 +26,34 @@ const MERGE_MODES = [
   { value: 'last', label: 'AT LAST' },
   { value: 'first', label: 'AT FIRST' },
 ] as const;
+
+/**
+ * Where a slide would leave the selection: the landing spot of every vertex it
+ * moves, and the selected edges redrawn across those.
+ *
+ * An edge whose other end holds still is left out. The preview is the elements
+ * the slide acts on, drawn where they end up, not the whole neighbourhood they
+ * drag on.
+ */
+function previewSlide(mesh: BMesh, way: SlideWay, distance: number, scale: Vec3): SlidePreview {
+  const landings = slideLandings(way, distance, scale);
+  const index = new Map<number, number>();
+  const points: Vec3[] = [];
+
+  for (const [id, co] of landings) {
+    index.set(id, points.length);
+    points.push(co);
+  }
+
+  const segments: [number, number][] = [];
+  for (const edge of mesh.selectedEdges()) {
+    const from = index.get(edge.v0.id);
+    const to = index.get(edge.v1.id);
+    if (from !== undefined && to !== undefined) segments.push([from, to]);
+  }
+
+  return { points, segments };
+}
 
 /**
  * What the edit-mode operators do to the surrounding topology: joining and
@@ -62,8 +98,11 @@ export function TopologyPanel() {
   const object = useActiveObject();
   const editMode = useEditorStore((state) => state.mode === 'edit');
   const version = useEditorStore((state) => state.meshVersion);
-  const setSlideAim = useEditorStore((state) => state.setSlideAim);
+  const setSlidePreview = useEditorStore((state) => state.setSlidePreview);
 
+  // Off to begin with: the row draws over the mesh while it is on, and a
+  // preview nobody asked for only stands in front of the geometry behind it.
+  const [slideEnabled, setSlideEnabled] = useState(false);
   const [slideDirection, setSlideDirection] = useState(1);
   const [slideDistance, setSlideDistance] = useState(0.1);
 
@@ -86,18 +125,28 @@ export function TopologyPanel() {
   const slideReach = slideWay ? Math.max(0.01, Math.round(slideWay.reach * 1000) / 1000) : 1;
   const slideTravel = Math.min(slideDistance, slideReach);
 
-  // The arrow the viewport draws over the mesh, up while a picked direction has
-  // somewhere to go and down with the panel.
+  // Nothing in the row acts until it is switched on and the selection has
+  // somewhere to go.
+  const slideReady = slideEnabled && slideWay !== null;
+
+  // The selection the viewport draws over the mesh where this slide would
+  // leave it, up while the row is on and a picked direction has somewhere to
+  // go, down with the switch and the panel.
   useEffect(() => {
-    setSlideAim(
-      slideWay
-        ? { anchor: slideWay.anchor, direction: slideWay.direction, distance: slideTravel }
+    setSlidePreview(
+      slideEnabled && slideWay && object
+        ? previewSlide(object.mesh, slideWay, slideTravel, object.transform.scale)
         : null,
     );
-  }, [setSlideAim, slideWay, slideTravel]);
-  useEffect(() => () => setSlideAim(null), [setSlideAim]);
+  }, [setSlidePreview, slideEnabled, slideWay, slideTravel, object]);
+  useEffect(() => () => setSlidePreview(null), [setSlidePreview]);
+
+  // What every control in the row says for itself while the row is switched off.
+  const slideOffHint =
+    'Switch ENABLE on to set a slide up, and see where it would leave the selection first';
 
   const slideHint = (element: 'vertex' | 'edge') => {
+    if (!slideEnabled) return slideOffHint;
     const mode = element === 'vertex' ? vertexMode : edgeMode;
     if (!mode) {
       return element === 'vertex'
@@ -109,7 +158,7 @@ export function TopologyPanel() {
         ? 'Select vertices with an edge to travel along (Shift+G slides them off the pointer)'
         : 'Select edges with a face beside them to travel across (Shift+G slides them off the pointer)';
     }
-    return `Slide the selection ${slideTravel}m along direction ${direction}, marked by the arrow over the mesh. Shift+G runs the same slide off the pointer instead, with the mouse carrying the distance`;
+    return `Slide the selection ${slideTravel}m along direction ${direction}, onto the preview drawn over the mesh. Shift+G runs the same slide off the pointer instead, with the mouse carrying the distance`;
   };
 
   return (
@@ -242,6 +291,12 @@ export function TopologyPanel() {
       </FieldRow>
 
       <FieldRow legend="SLIDE" columns={1}>
+        <Toggle
+          label="ENABLE"
+          checked={slideEnabled}
+          hint="Wakes up the controls below and draws the selection over the mesh where the slide would leave it. Off, the row leaves the viewport alone"
+          onChange={setSlideEnabled}
+        />
         <Select
           label="DIRECTION"
           value={String(direction)}
@@ -251,11 +306,13 @@ export function TopologyPanel() {
             value: String(index + 1),
             label: String(index + 1),
           }))}
-          disabled={!slideWay}
+          disabled={!slideReady}
           hint={
-            slideWay
-              ? 'Which way out of the selection the slide travels. The arrow over the mesh points along the one picked'
-              : 'Select vertices or edges in vertex or edge select mode for the slide to have a way to go'
+            !slideEnabled
+              ? slideOffHint
+              : slideWay
+                ? 'Which way out of the selection the slide travels. The preview over the mesh shows where the one picked lands it'
+                : 'Select vertices or edges in vertex or edge select mode for the slide to have a way to go'
           }
           onChange={(value) => setSlideDirection(Number(value))}
         />
@@ -266,14 +323,18 @@ export function TopologyPanel() {
           max={slideReach}
           step={0.001}
           suffix="m"
-          disabled={!slideWay}
-          hint="How far to travel, in world metres. The track ends where the first vertex of the selection to arrive lands on its neighbour, which is as far as a slide can go"
+          disabled={!slideReady}
+          hint={
+            slideEnabled
+              ? 'How far to travel, in world metres. The track ends where the first vertex of the selection to arrive lands on its neighbour, which is as far as a slide can go'
+              : slideOffHint
+          }
           onChange={(value) => setSlideDistance(Math.round(value * 1000) / 1000)}
         />
         <div className="topology__slide-buttons">
           <Button
             label="VERTEX SLIDE"
-            disabled={!vertexMode || !slideWay}
+            disabled={!vertexMode || !slideReady}
             hint={slideHint('vertex')}
             onClick={() =>
               exec('vertexSlide', { direction, distance: slideTravel }, 'Vertex slide')
@@ -281,7 +342,7 @@ export function TopologyPanel() {
           />
           <Button
             label="EDGE SLIDE"
-            disabled={!edgeMode || !slideWay}
+            disabled={!edgeMode || !slideReady}
             hint={slideHint('edge')}
             onClick={() => exec('edgeSlide', { direction, distance: slideTravel }, 'Edge slide')}
           />

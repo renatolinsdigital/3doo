@@ -241,9 +241,7 @@ const MAX_VERTEX_SLIDE_WAYS = 3;
 export interface SlideWay {
   /** Where each vertex starts, and where this way takes it. `negative` is unused. */
   rails: SlideRail[];
-  /** Object-space point the arrow is drawn from: the first vertex with somewhere to go. */
-  anchor: Vec3;
-  /** Object-space direction that vertex travels in, unit length. */
+  /** Object-space direction the first vertex with somewhere to go travels in, unit length. */
   direction: Vec3;
   /**
    * How far the way can run before a vertex lands on its neighbour, in world
@@ -277,12 +275,7 @@ function slideWay(rails: SlideRail[], scale: Vec3): SlideWay | null {
   }
   if (!leader) return null;
 
-  return {
-    rails,
-    anchor: clone(leader.origin),
-    direction: normalize(sub(leader.positive, leader.origin)),
-    reach,
-  };
+  return { rails, direction: normalize(sub(leader.positive, leader.origin)), reach };
 }
 
 /** The neighbour of `vert` lying most nearly along `along`. */
@@ -366,13 +359,32 @@ export function edgeSlideWays(mesh: BMesh, edges: readonly Edge[], scale: Vec3):
 }
 
 /**
- * Runs `way` out `distance` metres and reports how many vertices moved.
+ * Where every vertex of `way` lands after `distance` metres, by vertex id.
  *
  * Measured out in the world with the object scale applied, the way an edge
  * length is, so the figure in the field is the size an export writes out. Each
  * vertex stops where its own rail ends, which keeps the selection on the
  * geometry it started on however far the field is pushed.
+ *
+ * Worked out without touching the mesh, so the panel can draw where a slide
+ * would leave the selection before anyone commits to it. Running the slide goes
+ * through the same map, which is what keeps the preview and the result one
+ * answer rather than two.
  */
+export function slideLandings(way: SlideWay, distance: number, scale: Vec3): Map<number, Vec3> {
+  const landings = new Map<number, Vec3>();
+
+  for (const rail of way.rails) {
+    const span = railSpan(rail, scale);
+    if (span < EPSILON) continue;
+
+    landings.set(rail.vert.id, lerp(rail.origin, rail.positive, clamp(distance / span, 0, 1)));
+  }
+
+  return landings;
+}
+
+/** Runs `way` out `distance` metres and reports how many vertices moved. */
 export function applySlideDistance(
   mesh: BMesh,
   way: SlideWay,
@@ -381,13 +393,11 @@ export function applySlideDistance(
 ): number {
   let moved = 0;
 
-  for (const rail of way.rails) {
-    if (!mesh.verts.has(rail.vert.id)) continue;
+  for (const [id, co] of slideLandings(way, distance, scale)) {
+    const vert = mesh.verts.get(id);
+    if (!vert) continue;
 
-    const span = railSpan(rail, scale);
-    if (span < EPSILON) continue;
-
-    rail.vert.co = lerp(rail.origin, rail.positive, clamp(distance / span, 0, 1));
+    vert.co = co;
     moved += 1;
   }
 

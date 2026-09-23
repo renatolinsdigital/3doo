@@ -257,13 +257,12 @@ const MODAL_AXIS_REACH_PX = 400;
 const MIN_INWARD_PX = 8;
 
 /**
- * How short the panel's slide arrow may get on screen before it is held open.
+ * How big the dots of the panel's slide preview are drawn, in pixels.
  *
- * The arrow is as long as the slide it describes, which is a world figure: a
- * centimetre on a metre model is a couple of pixels, and an arrowhead that size
- * reads as a speck rather than as a direction.
+ * Twice the vertex dot: the landing spot has to read as its own mark where it
+ * falls on top of one, and at the end of the travel it falls exactly on one.
  */
-const MIN_SLIDE_ARROW_PX = 48;
+const SLIDE_PREVIEW_POINT_PX = 6;
 
 /** What each pointer-driven operator's undo step is called. */
 const OFFSET_LABELS: Record<OffsetDrag['kind'], string> = {
@@ -519,14 +518,11 @@ export class Viewport {
   private offsetDrag: OffsetDrag | null = null;
   /** The rails a slide may travel along, drawn while one is running. */
   private readonly slideGuide: THREE.LineSegments;
-  /** The arrow the TOPOLOGY panel's numbered slide is aimed along. */
-  private readonly slideArrow: THREE.ArrowHelper;
-  /** That aim in world space, worked out when it changes rather than per frame. */
-  private slideArrowAim: {
-    anchor: THREE.Vector3;
-    direction: THREE.Vector3;
-    distance: number;
-  } | null = null;
+  /** The selection where the TOPOLOGY panel's numbered slide would leave it. */
+  private readonly slidePreviewEdges: THREE.LineSegments;
+  private readonly slidePreviewPoints: THREE.Points;
+  /** Whether that preview has anything to draw, apart from the drag that hides it. */
+  private slidePreviewUp = false;
   private gizmoBaseline: GizmoBaseline | null = null;
   /** What `proportionalSpread` last worked out, and what it was worked out from. */
   private dragSpread: {
@@ -605,8 +601,9 @@ export class Viewport {
     this.scene.add(this.proportionalRing);
     this.slideGuide = this.createSlideGuide();
     this.scene.add(this.slideGuide);
-    this.slideArrow = this.createSlideArrow();
-    this.scene.add(this.slideArrow);
+    this.slidePreviewEdges = this.createSlidePreviewEdges();
+    this.slidePreviewPoints = this.createSlidePreviewPoints();
+    this.scene.add(this.slidePreviewEdges, this.slidePreviewPoints);
     this.scene.add(this.gizmoProxy);
 
     this.controls = new CameraController(this.camera, canvas);
@@ -785,32 +782,47 @@ export class Viewport {
   }
 
   /**
-   * The arrow saying which way a slide picked in the TOPOLOGY panel would run.
+   * The selected edges drawn where a slide picked in the TOPOLOGY panel would
+   * land them.
    *
-   * Built pointing up and a metre long; `updateSlideArrow` turns it to the
-   * direction that was picked and sizes it to the distance every frame. Drawn
-   * over the mesh rather than through it, because what it answers, which way,
-   * is lost the moment the model swallows it.
+   * Cyan, the palette's blue: the geometry around it is bone and what is
+   * selected is red, so a landing spot is neither of the two things already on
+   * screen. Drawn over the mesh rather than through it, because a slide travels
+   * across the faces beside the selection and half of where it lands is usually
+   * behind them.
    */
-  private createSlideArrow(): THREE.ArrowHelper {
-    const arrow = new THREE.ArrowHelper(
-      new THREE.Vector3(0, 1, 0),
-      new THREE.Vector3(),
-      1,
-      VIEWPORT_COLORS.amber,
+  private createSlidePreviewEdges(): THREE.LineSegments {
+    const edges = new THREE.LineSegments(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({
+        color: VIEWPORT_COLORS.cyan,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.9,
+      }),
     );
+    edges.visible = false;
+    edges.renderOrder = 12;
+    edges.frustumCulled = false;
+    return edges;
+  }
 
-    for (const part of [arrow.line, arrow.cone] as THREE.Object3D[]) {
-      const material = (part as THREE.Mesh).material as THREE.Material;
-      material.depthTest = false;
-      material.transparent = true;
-      material.opacity = 0.95;
-      part.renderOrder = 12;
-      part.frustumCulled = false;
-    }
-
-    arrow.visible = false;
-    return arrow;
+  /** The same preview's dots: one per vertex the slide would move. */
+  private createSlidePreviewPoints(): THREE.Points {
+    const points = new THREE.Points(
+      new THREE.BufferGeometry(),
+      new THREE.PointsMaterial({
+        size: SLIDE_PREVIEW_POINT_PX,
+        sizeAttenuation: false,
+        color: VIEWPORT_COLORS.cyan,
+        depthTest: false,
+        transparent: true,
+      }),
+    );
+    points.visible = false;
+    points.renderOrder = 13;
+    points.frustumCulled = false;
+    return points;
   }
 
   /**
@@ -1045,8 +1057,8 @@ export class Viewport {
         { equalityFn: shallowArrayEqual },
       ),
       store.subscribe(
-        (state) => state.slideAim,
-        () => this.updateSlideAim(useEditorStore.getState()),
+        (state) => state.slidePreview,
+        () => this.updateSlidePreview(useEditorStore.getState()),
       ),
       store.subscribe(
         (state) => state.frameRequest,
@@ -1137,7 +1149,7 @@ export class Viewport {
     releaseTextures(new Set(Object.keys(state.assets)));
 
     this.updateProportionalAnchor(state);
-    this.updateSlideAim(state);
+    this.updateSlidePreview(state);
     this.updateGizmo();
     // Every view has just rebuilt its buffers and dropped the mark with them,
     // and the geometry under a still pointer may be different geometry now.
@@ -1207,47 +1219,62 @@ export class Viewport {
   }
 
   /**
-   * Lifts the panel's slide aim into the world the arrow is drawn in.
+   * Lifts the panel's slide preview into the world it is drawn in.
    *
    * The panel publishes it in the object's own space, which is where the
    * geometry it was read off lives, so it survives the object being moved or
    * turned; this is the one place that has the matrix to bring it out again.
+   * Built here rather than per frame: it only changes when the panel says so.
    */
-  private updateSlideAim(state: ReturnType<typeof useEditorStore.getState>): void {
-    this.slideArrowAim = null;
+  private updateSlidePreview(state: ReturnType<typeof useEditorStore.getState>): void {
+    this.slidePreviewUp = false;
 
-    const aim = state.slideAim;
-    if (!aim || state.mode !== 'edit') return;
+    const preview = state.slidePreview;
+    if (!preview || state.mode !== 'edit') return;
 
     const object = activeObject(state);
     const view = object ? this.views.get(object.id) : undefined;
     if (!view) return;
 
     const matrix = view.group.matrix;
-    this.slideArrowAim = {
-      anchor: new THREE.Vector3(aim.anchor.x, aim.anchor.y, aim.anchor.z).applyMatrix4(matrix),
-      direction: new THREE.Vector3(aim.direction.x, aim.direction.y, aim.direction.z)
-        .transformDirection(matrix)
-        .normalize(),
-      distance: aim.distance,
-    };
+    const landed = preview.points.map((point) =>
+      new THREE.Vector3(point.x, point.y, point.z).applyMatrix4(matrix),
+    );
+
+    const dots = new Float32Array(landed.length * 3);
+    landed.forEach((point, i) => dots.set([point.x, point.y, point.z], i * 3));
+
+    const edges = new Float32Array(preview.segments.length * 6);
+    preview.segments.forEach(([from, to], i) => {
+      edges.set([landed[from].x, landed[from].y, landed[from].z], i * 6);
+      edges.set([landed[to].x, landed[to].y, landed[to].z], i * 6 + 3);
+    });
+
+    this.setOverlayPositions(this.slidePreviewPoints, dots);
+    this.setOverlayPositions(this.slidePreviewEdges, edges);
+    this.slidePreviewUp = landed.length > 0;
   }
 
-  /** Aims and sizes the slide arrow, or takes it down when nothing is aimed. */
-  private updateSlideArrow(): void {
-    const aim = this.slideArrowAim;
-    // A slide running off the pointer draws its own rails and reads its travel
-    // out in the status bar. The panel's arrow would be pointing at where the
-    // geometry was when it was published, so it stands down for the drag.
-    const visible = aim !== null && !this.slideDrag;
+  /** Shows the panel's slide preview, or takes it down when there is none. */
+  private updateSlidePreviewVisibility(): void {
+    // A slide running off the pointer moves the geometry itself, draws its own
+    // rails and reads its travel out in the status bar. The panel's preview
+    // sits where the mesh was when it was published, so it stands down for the
+    // drag rather than answering the same question twice.
+    const visible = this.slidePreviewUp && !this.slideDrag;
 
-    this.slideArrow.visible = visible;
-    if (!aim || !visible) return;
+    this.slidePreviewEdges.visible = visible;
+    this.slidePreviewPoints.visible = visible;
+  }
 
-    const length = Math.max(aim.distance, MIN_SLIDE_ARROW_PX * this.worldPerPixel(aim.anchor));
-    this.slideArrow.position.copy(aim.anchor);
-    this.slideArrow.setDirection(aim.direction);
-    this.slideArrow.setLength(length, length * 0.3, length * 0.18);
+  /** Swaps an overlay's geometry for one holding just these world positions. */
+  private setOverlayPositions(
+    overlay: THREE.Points | THREE.LineSegments,
+    positions: Float32Array,
+  ): void {
+    overlay.geometry.dispose();
+    overlay.geometry = new THREE.BufferGeometry();
+    overlay.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   }
 
   /**
@@ -2050,9 +2077,7 @@ export class Viewport {
 
     // A slide plans its rails once and holds them for its whole run, so the
     // geometry is built here rather than rewritten every frame.
-    this.slideGuide.geometry.dispose();
-    this.slideGuide.geometry = new THREE.BufferGeometry();
-    this.slideGuide.geometry.setAttribute('position', new THREE.BufferAttribute(points, 3));
+    this.setOverlayPositions(this.slideGuide, points);
     this.slideGuide.visible = true;
   }
 
@@ -3447,7 +3472,7 @@ export class Viewport {
     this.updateViewLost(distance);
     this.updateCursor();
     this.updateProportionalRing();
-    this.updateSlideArrow();
+    this.updateSlidePreviewVisibility();
     this.updatePointerCursor();
     this.updateSelectionOutlines();
     if (this.modalGuideUp()) this.standDownGizmo();

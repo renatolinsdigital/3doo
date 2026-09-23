@@ -397,16 +397,17 @@ export interface ModalTransform {
 }
 
 /**
- * Where the TOPOLOGY panel's slide row would send the selection.
+ * Where the TOPOLOGY panel's slide row would leave the selection.
  *
- * Published by the panel and drawn by the viewport as an arrow over the mesh,
- * so the direction a numbered slide picked is visible before it is run. All in
- * the active object's own space, but for the distance, which is world metres.
+ * Published while that row is switched on and drawn by the viewport over the
+ * mesh, so where a numbered slide lands is visible before it is run. In the
+ * active object's own space, which is where the geometry it was read off lives.
  */
-export interface SlideAim {
-  anchor: Vec3;
-  direction: Vec3;
-  distance: number;
+export interface SlidePreview {
+  /** Where each vertex the slide would move lands. */
+  points: Vec3[];
+  /** Index pairs into `points`: the selected edges, drawn where they land. */
+  segments: [number, number][];
 }
 
 export interface SceneStats {

@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { type Vert, distance, dot, length } from '@kernel/index';
+import { type Vert, distance, dot } from '@kernel/index';
 import { useEditorStore } from '@store/index';
 
 import { TopologyPanel } from './TopologyPanel';
@@ -23,6 +23,11 @@ function editBox() {
 
 function button(name: string) {
   return screen.getByRole('button', { name });
+}
+
+/** The slide row sits switched off until it is asked for. */
+function enableSlide() {
+  return userEvent.click(screen.getByRole('checkbox', { name: 'ENABLE' }));
 }
 
 describe('TopologyPanel', () => {
@@ -192,6 +197,7 @@ describe('TopologyPanel', () => {
     const from = { ...vert.co };
 
     selectVerts(() => [vert]);
+    await enableSlide();
     expect(button('VERTEX SLIDE')).not.toHaveAttribute('aria-disabled');
     // An edge slide reads the faces beside a selected edge, which vertex
     // select mode has not picked.
@@ -208,6 +214,7 @@ describe('TopologyPanel', () => {
     const from = { ...edge.v0.co };
 
     selectEdges(() => [edge]);
+    await enableSlide();
     expect(button('EDGE SLIDE')).not.toHaveAttribute('aria-disabled');
     expect(button('VERTEX SLIDE')).toHaveAttribute('aria-disabled', 'true');
 
@@ -216,24 +223,64 @@ describe('TopologyPanel', () => {
     expect(distance(edge.v0.co, from)).toBeCloseTo(0.1, 6);
   });
 
-  it('aims the arrow the viewport draws, and takes it down with the panel', async () => {
+  it('draws the vertex where the slide would leave it, and goes with the panel', async () => {
     const view = render(<TopologyPanel />);
     const [vert] = [...activeMesh().verts.values()];
 
     selectVerts(() => [vert]);
-    const aimed = useEditorStore.getState().slideAim;
-    expect(aimed?.anchor).toEqual(vert.co);
-    expect(length(aimed?.direction ?? { x: 0, y: 0, z: 0 })).toBeCloseTo(1, 9);
+    await enableSlide();
+    const landed = useEditorStore.getState().slidePreview?.points ?? [];
+    // The panel opens at a tenth of a metre, which is how far down the edge the
+    // dot sits. The vertex itself has not moved.
+    expect(landed).toHaveLength(1);
+    expect(distance(landed[0], vert.co)).toBeCloseTo(0.1, 6);
 
     // A second direction is a different edge out of the same vertex, so the
-    // arrow turns while its anchor stays put.
+    // dot lands somewhere else entirely.
     await userEvent.selectOptions(screen.getByLabelText('DIRECTION'), '2');
-    const turned = useEditorStore.getState().slideAim;
-    expect(turned?.anchor).toEqual(vert.co);
-    expect(turned?.direction).not.toEqual(aimed?.direction);
+    const turned = useEditorStore.getState().slidePreview?.points ?? [];
+    expect(turned[0]).not.toEqual(landed[0]);
+    expect(distance(turned[0], vert.co)).toBeCloseTo(0.1, 6);
 
     view.unmount();
-    expect(useEditorStore.getState().slideAim).toBeNull();
+    expect(useEditorStore.getState().slidePreview).toBeNull();
+  });
+
+  it('draws the selected edge where the slide would land it', async () => {
+    render(<TopologyPanel />);
+    const edge = [...activeMesh().edges.values()][0];
+
+    selectEdges(() => [edge]);
+    await enableSlide();
+
+    const preview = useEditorStore.getState().slidePreview;
+    const points = preview?.points ?? [];
+    const [from, to] = preview?.segments[0] ?? [0, 0];
+    // Both ends travel, so the preview is the selected edge itself, drawn a
+    // tenth of a metre across the face beside it.
+    expect(preview?.segments).toHaveLength(1);
+    expect(distance(points[from], edge.v0.co)).toBeCloseTo(0.1, 6);
+    expect(distance(points[to], edge.v1.co)).toBeCloseTo(0.1, 6);
+  });
+
+  it('keeps the row and its preview down until the switch is on', async () => {
+    render(<TopologyPanel />);
+    const [vert] = [...activeMesh().verts.values()];
+
+    selectVerts(() => [vert]);
+    // A selection the slide could run on, and still nothing over the mesh: the
+    // preview marks a slide being set up, not one that could be.
+    expect(useEditorStore.getState().slidePreview).toBeNull();
+    expect(button('VERTEX SLIDE')).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByLabelText('DIRECTION')).toBeDisabled();
+
+    await enableSlide();
+    expect(useEditorStore.getState().slidePreview).not.toBeNull();
+    expect(button('VERTEX SLIDE')).not.toHaveAttribute('aria-disabled');
+    expect(screen.getByLabelText('DIRECTION')).not.toBeDisabled();
+
+    await enableSlide();
+    expect(useEditorStore.getState().slidePreview).toBeNull();
   });
 
   it('refuses two faces that do not touch, however many are selected', () => {

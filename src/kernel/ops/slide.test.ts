@@ -13,6 +13,7 @@ import {
   edgeSlideWays,
   planEdgeSlide,
   planVertexSlide,
+  slideLandings,
   vertexSlideWays,
 } from './slide';
 
@@ -255,6 +256,18 @@ describe('slide by distance', () => {
       expect(Math.abs(rail.vert.co.z)).toBeCloseTo(0.25, 9);
       expect(rail.vert.co.x).toBeCloseTo(rail.origin.x, 9);
     }
+  });
+
+  it('lands every vertex where the preview said it would', () => {
+    const mesh = createGrid(1, 4);
+    const [way] = edgeSlideWays(mesh, rowEdges(mesh, 0), UNIT);
+
+    // Read before the mesh is touched, which is what the panel draws.
+    const landings = slideLandings(way, 0.1, UNIT);
+    applySlideDistance(mesh, way, 0.1, UNIT);
+
+    expect(landings.size).toBe(5);
+    for (const [id, co] of landings) expect(mesh.verts.get(id)?.co).toEqual(co);
   });
 
   it('leaves the mesh where it is when there is nowhere to travel', () => {

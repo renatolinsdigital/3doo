@@ -13,12 +13,12 @@ function stubPicker(options: {
   name?: string;
 }) {
   const written: string[] = [];
-  const calls: { suggestedName?: string; extensions: string[] }[] = [];
+  const calls: { suggestedName?: string; accept: Record<string, string[]> }[] = [];
 
   const picker = vi.fn((request: { suggestedName?: string; types?: { accept: object }[] }) => {
     calls.push({
       suggestedName: request.suggestedName,
-      extensions: Object.values(request.types?.[0]?.accept ?? {}).flat() as string[],
+      accept: (request.types?.[0]?.accept ?? {}) as Record<string, string[]>,
     });
     if (options.rejectWith) return Promise.reject(options.rejectWith);
 
@@ -64,9 +64,13 @@ describe('saveTextFile', () => {
 
     expect(result).toEqual({ status: 'saved', filename: 'chosen.3doo' });
     expect(written).toEqual(['{"a":1}']);
-    // Only the canonical suffix is offered to save under: the .json spelling
-    // is there for opening older files, not for naming new ones.
-    expect(calls[0]).toEqual({ suggestedName: 'suggested.3doo', extensions: ['.3doo'] });
+    // Only the canonical suffix is offered to save under, keyed by a type the
+    // browser has nothing else registered against: the .json spelling is there
+    // for opening older files, not for naming new ones.
+    expect(calls[0]).toEqual({
+      suggestedName: 'suggested.3doo',
+      accept: { 'application/x-3doo': ['.3doo'] },
+    });
   });
 
   it('refuses a file that already has contents, without writing to it', async () => {

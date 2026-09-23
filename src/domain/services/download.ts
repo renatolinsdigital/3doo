@@ -155,7 +155,16 @@ export async function saveTextFile(
       // The canonical extension alone, not every suffix opening will take: a
       // save dialog offering `.3doo.json` invites new files to be named with a
       // spelling that exists only so older ones still open.
-      types: [{ description: kind.label, accept: { [mimeType]: [kind.extension] } }],
+      //
+      // Keyed by a private type rather than by `mimeType`, because Chromium
+      // widens the filter with every extension the system has registered for
+      // the key: under `application/json` the dialog offers `.json` too.
+      types: [
+        {
+          description: kind.label,
+          accept: { [`application/x-${kind.extension.slice(1)}`]: [kind.extension] },
+        },
+      ],
     });
   } catch (error) {
     if ((error as DOMException)?.name === 'AbortError') {

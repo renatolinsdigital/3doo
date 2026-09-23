@@ -11,7 +11,7 @@ import type {
   PivotMode,
   ProportionalSettings,
   SelectShape,
-  SlideAim,
+  SlidePreview,
   ToolId,
 } from '../types';
 
@@ -64,7 +64,7 @@ export interface ToolSlice {
   proportional: ProportionalSettings;
   autoMerge: AutoMergeSettings;
   modal: ModalTransform | null;
-  slideAim: SlideAim | null;
+  slidePreview: SlidePreview | null;
 
   setMode: (mode: EditorMode) => void;
   toggleMode: () => void;
@@ -75,7 +75,7 @@ export interface ToolSlice {
   setPivot: (pivot: PivotMode) => void;
   setProportional: (patch: Partial<ProportionalSettings>) => void;
   setAutoMerge: (patch: Partial<AutoMergeSettings>) => void;
-  setSlideAim: (aim: SlideAim | null) => void;
+  setSlidePreview: (preview: SlidePreview | null) => void;
   beginSlide: () => void;
   beginOffset: (kind: 'bevel' | 'inset' | 'extrude') => void;
   beginModal: (kind: ModalTransform['kind'], element?: ModalTransform['element']) => void;
@@ -100,7 +100,7 @@ export const createToolSlice: StateCreator<
   // narrow enough to leave detail the user modelled on purpose alone.
   autoMerge: { enabled: false, threshold: 0.01 },
   modal: null,
-  slideAim: null,
+  slidePreview: null,
 
   setMode: (mode) => {
     const object = activeObject(get());
@@ -176,10 +176,10 @@ export const createToolSlice: StateCreator<
   setAutoMerge: (patch) => set((state) => ({ autoMerge: { ...state.autoMerge, ...patch } })),
 
   /**
-   * Publishes where the panel's numbered slide would go, for the arrow the
-   * viewport draws over the mesh. Null while there is nothing to aim.
+   * Publishes where the panel's numbered slide would leave the selection, for
+   * the preview the viewport draws over the mesh. Null while there is none.
    */
-  setSlideAim: (slideAim) => set({ slideAim }),
+  setSlidePreview: (slidePreview) => set({ slidePreview }),
 
   /**
    * Starts a slide, or says why it cannot.
