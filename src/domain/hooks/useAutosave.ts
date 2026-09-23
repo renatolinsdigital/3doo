@@ -39,9 +39,11 @@ export function setOpeningSceneDone(done: boolean): void {
  * actually changed, so an idle editor does not keep hitting IndexedDB.
  *
  * The scene description goes to IndexedDB and any imported images to OPFS,
- * both of them in this browser on this machine and nowhere else. The two are
- * written together and read back together, and that pair is exactly what a
- * `.3doo` file holds (see docs/saving.md).
+ * both of them in this browser on this machine and nowhere else. The undo
+ * timeline goes with the scene, so a tab that comes back can still take back
+ * what it was doing before it went. That last part is the one thing the
+ * browser's copy holds and a `.3doo` does not: a file is the scene, not the
+ * route taken to it (see docs/saving.md).
  *
  * All of that stops when the AUTOSAVE preference is off: nothing is written,
  * and no session is offered back either. Restoring work from a setting someone
@@ -76,6 +78,10 @@ export function useAutosave(): void {
         // The record names its images; the bytes come back from OPFS beside it.
         const assets = await hydrateAssets(record.document.assets ?? []);
         state.loadProjectDocument(record.document, true, assets);
+        // After the scene rather than before it: loading a document is what an
+        // undo does too, and the mirror of labels the dialog renders from is
+        // set here, at the end.
+        if (record.history) state.restoreHistory(record.history);
         state.pushToast(
           'info',
           `Recovered ${objectCount} object(s) from ${new Date(record.savedAt).toLocaleTimeString()}`,
@@ -122,7 +128,7 @@ export function useAutosave(): void {
       // is in flight raises the flag again and is caught by the next tick
       // instead of being swallowed by this one.
       state.markSaved();
-      void writeAutosave(state.snapshotDocument()).then((written) => {
+      void writeAutosave(state.snapshotDocument(), state.snapshotHistory()).then((written) => {
         if (!written) useEditorStore.getState().markDirty();
       });
       // The images go beside it, and this is where one whose object has been

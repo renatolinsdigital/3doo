@@ -3,6 +3,7 @@ import type { StateCreator } from 'zustand';
 import {
   type BMesh,
   type BooleanOp,
+  type HistorySnapshot,
   type Modifier,
   type PrimitiveKind,
   type PrimitiveParams,
@@ -576,6 +577,16 @@ export interface SceneSlice {
   redoTimes: (count: number) => void;
   /** Re-caps the timeline, dropping the oldest steps the new size cannot hold. */
   setHistoryLimit: (limit: number) => void;
+  /**
+   * The undo timeline as plain data, and back again.
+   *
+   * For the autosave, which keeps the steps beside the scene so a reloaded tab
+   * can still undo its way back. Deliberately not part of `snapshotDocument`:
+   * a `.3doo` is the scene, not the route taken to it, and every entry holds a
+   * whole copy of the scene the file would be multiplied by.
+   */
+  snapshotHistory: () => HistorySnapshot;
+  restoreHistory: (snapshot: HistorySnapshot) => void;
   touchMesh: (status?: string) => void;
 
   /**
@@ -2015,6 +2026,13 @@ export const createSceneSlice: StateCreator<
 
   setHistoryLimit: (limit) => {
     history.setLimit(limit);
+    set(historyState());
+  },
+
+  snapshotHistory: () => history.snapshot(),
+
+  restoreHistory: (snapshot) => {
+    history.restore(snapshot);
     set(historyState());
   },
 

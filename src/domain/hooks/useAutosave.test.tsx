@@ -2,35 +2,58 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { ProjectDocument } from '@kernel/index';
+import type { HistorySnapshot, ProjectDocument } from '@kernel/index';
 import { useEditorStore } from '@store/index';
 
 import { setOpeningSceneDone, useAutosave } from './useAutosave';
 
-let record: { document: ProjectDocument; savedAt: string } | null = null;
+interface Record {
+  document: ProjectDocument;
+  savedAt: string;
+  history?: HistorySnapshot;
+}
+
+let record: Record | null = null;
 let reads = 0;
 let writes = 0;
+let written: Record | null = null;
 
-vi.mock('../services/autosave', () => ({
-  readAutosave: () => {
-    reads += 1;
-    return Promise.resolve(record);
-  },
-  writeAutosave: () => {
-    writes += 1;
-    return Promise.resolve(true);
-  },
-}));
+// `storableHistory` is left real, so what the hook hands over is checked
+// against what would actually be stored.
+vi.mock('../services/autosave', async () => {
+  const actual =
+    await vi.importActual<typeof import('../services/autosave')>('../services/autosave');
+  return {
+    readAutosave: () => {
+      reads += 1;
+      return Promise.resolve(record);
+    },
+    writeAutosave: (document: ProjectDocument, history?: HistorySnapshot) => {
+      writes += 1;
+      written = {
+        document,
+        savedAt: new Date().toISOString(),
+        history: history && actual.storableHistory(history),
+      };
+      return Promise.resolve(true);
+    },
+  };
+});
 
 const objects = () => useEditorStore.getState().objects;
 
 /** A saved session holding one named object, to come back to. */
-function sessionWith(kind: 'cone' | 'torus'): { document: ProjectDocument; savedAt: string } {
+function sessionWith(kind: 'cone' | 'torus'): Record {
   useEditorStore.getState().resetScene();
   useEditorStore.getState().addPrimitive(kind);
-  const document = useEditorStore.getState().snapshotDocument();
+  const state = useEditorStore.getState();
+  const session = {
+    document: state.snapshotDocument(),
+    savedAt: new Date().toISOString(),
+    history: state.snapshotHistory(),
+  };
   useEditorStore.getState().resetScene();
-  return { document, savedAt: new Date().toISOString() };
+  return session;
 }
 
 describe('what the editor opens on', () => {
@@ -38,6 +61,7 @@ describe('what the editor opens on', () => {
     record = null;
     reads = 0;
     writes = 0;
+    written = null;
     setOpeningSceneDone(false);
     useEditorStore.getState().resetScene();
     useEditorStore.getState().setPreferences({ autosaveEnabled: true, autosaveInterval: 30 });
@@ -161,6 +185,62 @@ describe('what the editor opens on', () => {
     // Same scene, three ticks later: the first write is still the current one.
     act(() => vi.advanceTimersByTime(90_000));
     expect(writes).toBe(1);
+  });
+
+  it('writes the undo timeline beside the scene', async () => {
+    vi.useFakeTimers();
+    renderHook(() => useAutosave());
+    await act(async () => {});
+
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+    act(() => useEditorStore.getState().addPrimitive('cone'));
+    act(() => vi.advanceTimersByTime(30_000));
+
+    // The two adds, and the cube the tab opened on before them.
+    expect(written?.history?.past.map((entry) => entry.label)).toEqual([
+      'Add CUBE',
+      'Add TORUS',
+      'Add CONE',
+    ]);
+  });
+
+  it('keeps the redo half too, so a reload lands where the tab did', async () => {
+    vi.useFakeTimers();
+    renderHook(() => useAutosave());
+    await act(async () => {});
+
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+    act(() => useEditorStore.getState().undo());
+    act(() => vi.advanceTimersByTime(30_000));
+
+    expect(written?.history?.future.map((entry) => entry.label)).toEqual(['Add TORUS']);
+  });
+
+  it('hands the recovered session its undo timeline back', async () => {
+    record = sessionWith('cone');
+    setOpeningSceneDone(false);
+
+    renderHook(() => useAutosave());
+    await waitFor(() => expect(objects()).toHaveLength(1));
+
+    // The steps the last tab took are still there to take back, which is the
+    // whole point of keeping them: a crash costs the work, not the way out of
+    // the mistake that came before it.
+    expect(useEditorStore.getState().canUndo).toBe(true);
+    act(() => useEditorStore.getState().undo());
+    expect(objects()).toHaveLength(0);
+  });
+
+  it('opens a record written before timelines were kept, with an empty one', async () => {
+    const session = sessionWith('cone');
+    record = { document: session.document, savedAt: session.savedAt };
+    setOpeningSceneDone(false);
+
+    renderHook(() => useAutosave());
+
+    await waitFor(() => expect(objects()).toHaveLength(1));
+    expect(objects()[0].name).toBe('CONE');
+    expect(useEditorStore.getState().canUndo).toBe(false);
   });
 
   it('counts a rename as a change, though it moves no geometry', async () => {

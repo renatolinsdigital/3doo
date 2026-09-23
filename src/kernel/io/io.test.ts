@@ -437,6 +437,34 @@ describe('history', () => {
     expect(history.canRedo).toBe(false);
   });
 
+  it('hands the whole timeline over and takes it back', () => {
+    const history = new History();
+    history.record('op1', doc('a'));
+    history.record('op2', doc('b'));
+    history.undo(doc('c'));
+
+    const stored = history.snapshot();
+    const reloaded = new History();
+    reloaded.restore(stored);
+
+    // What a reloaded tab gets back: the same steps, both ways, in order.
+    expect(reloaded.undoLabels).toEqual(history.undoLabels);
+    expect(reloaded.redoLabels).toEqual(history.redoLabels);
+    expect(reloaded.undo(doc('current'))?.document.name).toBe('a');
+    expect(reloaded.redo(doc('a'))?.document.name).toBe('current');
+  });
+
+  it('caps a restored timeline at the size preference, not the stored one', () => {
+    const wide = new History(10);
+    for (let i = 0; i < 10; i++) wide.record(`op${i}`, doc(`d${i}`));
+
+    // The preference was turned down between the write and the read.
+    const narrow = new History(3);
+    narrow.restore(wide.snapshot());
+
+    expect(narrow.undoLabels).toEqual(['op9', 'op8', 'op7']);
+  });
+
   it('caps the stack at its limit', () => {
     const history = new History(3);
     for (let i = 0; i < 10; i++) history.record(`op${i}`, doc(`d${i}`));

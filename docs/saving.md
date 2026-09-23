@@ -13,11 +13,20 @@ There are exactly two places a project exists, and they hold the same thing:
 | The file | Wherever you put it | You, with Ctrl+S | Anything, including a different machine |
 
 Both are a `ProjectDocument`: the same JSON structure, built by the same
-`serializeProject` in the kernel. The only difference is where the images go,
-which is the next section. Everything else (objects, meshes, transforms,
-materials, modifiers, groups, the 3D cursor, which panels were folded) is
-identical in both, so the copy in the browser maps onto a `.3doo` with no
-conversion step and no fields that only one of them understands.
+`serializeProject` in the kernel. Objects, meshes, transforms, materials,
+modifiers, groups, the 3D cursor and which panels were folded are identical in
+both, so the copy in the browser maps onto a `.3doo` with no conversion step
+and no fields that only one of them understands.
+
+Two things sit outside that document, and they are where the copies differ:
+
+| | The autosave | The file |
+| --- | --- | --- |
+| Imported images | In OPFS, beside the record | Base64 inside the JSON |
+| The undo timeline | In the record | Not there at all |
+
+Images are the next section. The timeline is further down, under [what the file
+leaves out](#what-the-file-leaves-out).
 
 ## The three stores, and why there are three
 
@@ -33,7 +42,8 @@ to be synchronous), and they belong to you rather than to any project: opening a
 scene someone sent you must not repaint your viewport. `src/store/slices/preferences.ts`.
 
 **The project document** goes in IndexedDB, in database `3doo`, object store
-`autosave`, under the single key `latest`. One record, replaced each time.
+`autosave`, under the single key `latest`. One record, replaced each time,
+holding the document, the time it was written and the undo timeline as it stood.
 IndexedDB rather than `localStorage` because a scene is megabytes rather than
 kilobytes, and `localStorage` is both capped around 5MB and synchronous, which
 would stall the tab mid-edit. `src/domain/services/autosave.ts`.
@@ -178,6 +188,51 @@ One ordering trap is worth knowing about: zustand runs subscribers after the
 `set` that triggered them, so an action that clears the flag inside the same
 `set` that changes the scene will have it raised again on the way out. Clear it
 in a second `set`, as `resetScene` does.
+
+## What the file leaves out
+
+The undo timeline is kept in the browser and stays out of the `.3doo`.
+
+A file is a scene. Someone opening one wants the model, not the forty steps
+whoever made it took to get there, and undoing into a scene they have never seen
+is a worse answer than having nothing to undo. The autosave is the other case
+entirely: it exists so a tab that died can be picked up where it left off, and
+half of "where it left off" is being able to take back what you were in the
+middle of.
+
+So `ProjectDocument` has no timeline field at all, which is what makes this
+hold without anything having to remember to strip it. The steps ride in the
+IndexedDB record instead, beside the document rather than inside it:
+
+```ts
+interface AutosaveRecord {
+  document: ProjectDocument; // this is what a .3doo holds
+  savedAt: string;
+  history?: HistorySnapshot; // this is what only the browser holds
+}
+```
+
+`History.snapshot()` hands both halves over as plain data and `restore()`
+takes them back, capped at the size preference as it is now rather than as it
+was when the record was written. Opening a `.3doo` restores no steps, because
+there are none in it to restore.
+
+### The budget
+
+Every history entry holds a whole copy of the scene, and the record is rewritten
+in full on every tick. A 50 step timeline on a 100k-vertex scene is 5 million
+vertices per write, which is not a thing to do every 30 seconds.
+
+`storableHistory` caps what goes in at 300,000 vertices in total, counted
+across the stored steps, and keeps the newest that fit. A light scene keeps its
+whole timeline. A heavy one keeps the few steps somebody is actually about to
+reach for. One heavier than the budget on its own stores no timeline, and the
+scene alone is written, which is what the autosave was before any of this.
+
+Undo is filled before redo: coming back with three steps to take back and none
+to put forward is the useful half of a tight budget. Entries are dropped from
+the old end only, never from the middle, since a timeline with a hole in it
+would undo to the wrong scene.
 
 ## One project at a time
 

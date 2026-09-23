@@ -6,6 +6,17 @@ export interface HistoryEntry {
 }
 
 /**
+ * The whole timeline, in a form that can be stored and handed back.
+ *
+ * Both halves in the order the class holds them: the next undo and the next
+ * redo are the last entry of each.
+ */
+export interface HistorySnapshot {
+  past: HistoryEntry[];
+  future: HistoryEntry[];
+}
+
+/**
  * Snapshot-based undo.
  *
  * Structural operations rewrite topology in ways that are painful to invert
@@ -131,5 +142,27 @@ export class History {
   clear(): void {
     this.past = [];
     this.future = [];
+  }
+
+  /**
+   * The timeline as plain data, for the autosave to keep.
+   *
+   * Shallow: the documents are already the immutable snapshots this class was
+   * handed, and nothing here edits one in place.
+   */
+  snapshot(): HistorySnapshot {
+    return { past: [...this.past], future: [...this.future] };
+  }
+
+  /**
+   * Takes a stored timeline back on, in place of whatever is here now.
+   *
+   * Trimmed on the way in, because the snapshot may have been written while
+   * the size preference was higher than it is now.
+   */
+  restore(snapshot: HistorySnapshot): void {
+    this.past = [...snapshot.past];
+    this.future = [...snapshot.future];
+    this.trim();
   }
 }

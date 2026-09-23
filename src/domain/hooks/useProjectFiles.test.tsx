@@ -297,6 +297,35 @@ describe('project actions announce themselves', () => {
     expect(state.assets[assetId].blob?.size).toBe(4);
   });
 
+  it('leaves the undo timeline out of the file', async () => {
+    const project = files();
+    act(() => useEditorStore.getState().addPrimitive('cube'));
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+    expect(useEditorStore.getState().canUndo).toBe(true);
+
+    await act(() => project.current.saveProject());
+
+    // A .3doo is the scene, not the route taken to it. The steps are kept in
+    // the browser instead, where a reloaded tab can carry on undoing.
+    const written = saves[saves.length - 1].contents;
+    expect(written).not.toContain('history');
+    expect(Object.keys(JSON.parse(written))).not.toContain('history');
+  });
+
+  it('opens a file without inheriting the timeline of the session that wrote it', async () => {
+    const project = files();
+    act(() => useEditorStore.getState().addPrimitive('cube'));
+    await act(() => project.current.saveProject());
+    picked = { name: 'scene.3doo', text: saves[saves.length - 1].contents };
+    act(() => useEditorStore.getState().resetScene());
+
+    await act(() => project.current.openProject());
+
+    // Nothing in the file to inherit: the scene arrives, the steps behind it
+    // stayed in the browser that made them.
+    expect(useEditorStore.getState().canUndo).toBe(false);
+  });
+
   it('counts a freshly opened project as one a file already holds', async () => {
     const project = files();
     act(() => useEditorStore.getState().addPrimitive('cube'));

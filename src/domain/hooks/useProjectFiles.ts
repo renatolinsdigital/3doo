@@ -82,7 +82,9 @@ export function useProjectFiles() {
       // Otherwise the next thing to ask whether anything is unsaved answers yes
       // about a project that reached the disk a moment ago.
       if (state.autosaveEnabled) {
-        await writeAutosave(document);
+        // With the timeline, which the file deliberately leaves out: the
+        // browser's copy is where this session carries on from.
+        await writeAutosave(document, state.snapshotHistory());
         void syncAssets(Object.values(state.assets));
       }
       state.markSaved();
