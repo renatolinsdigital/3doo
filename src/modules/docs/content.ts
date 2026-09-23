@@ -316,7 +316,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Slide (Shift+G)',
-            'Moves the selection along the geometry it already sits on, without adding any. In vertex select each vertex runs down one of the edges leaving it; in edge select the whole selection runs across the faces to either side, which is how a loop is nudged into place after a loop cut. Face select has no single rail to run along, so it asks you to switch to 1 or 2 first.',
+            'Moves the selection along the geometry it already sits on, without adding any. In vertex select each vertex runs down one of the edges leaving it; in edge select the whole selection runs across the faces to either side, which is how a loop is nudged into place after a loop cut. Face select has no single rail to run along, so it asks you to switch to 1 or 2 first. VERTEX SLIDE and EDGE SLIDE, in the SLIDE row of the TOPOLOGY panel, run the same travel to an exact figure in metres.',
           ],
           [
             'Merge (M) and merge by distance',
@@ -370,7 +370,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'Slide has no panel button of its own: Shift+G in edit mode is the whole of it, and it runs off the bare pointer with no button held. Nothing is added and nothing leaves the surface, which is what makes it the way to adjust where a loop sits without changing the shape it runs over. The rails each vertex may travel along are drawn while it runs, the status bar reads out how far along it has gone, and a click or Enter confirms while Esc puts everything back. Which edge a vertex takes is decided by where the pointer is when you press the key: the edge reaching toward the cursor is the one it slides down, so aim before you press. Run it all the way to either end and the selection lands exactly on the neighbouring vertices, which is the case auto merge is there to collapse. With auto merge off the two stay as they are, one sitting on the other: the hover mark is what says which of them a click has hold of.',
+        text: 'Slide has two ways in. Shift+G in edit mode runs it off the bare pointer with no button held, and the mouse carries the distance: move it and the selection travels, a click or Enter confirms, Esc puts everything back. The rails each vertex may travel along are drawn while it runs and the status bar reads out how far it has got. Which edge a vertex takes is decided by where the pointer is when you press the key: the edge reaching toward the cursor is the one it slides down, so aim before you press. The SLIDE row of the TOPOLOGY panel is the other way, for when the figure is the point rather than the feel: pick DIRECTION 1, 2 or 3 for a vertex slide, 1 or 2 for an edge slide, set TRAVEL in metres, and press VERTEX SLIDE or EDGE SLIDE. An arrow over the mesh points along whichever direction is picked, so which way it will go is settled before the click, and the track ends where the first vertex of the selection would land on its neighbour. Either way nothing is added and nothing leaves the surface, which is what makes a slide the way to adjust where a loop sits without changing the shape it runs over. Run it all the way to the end and the selection lands exactly on the neighbouring vertices, which is the case auto merge is there to collapse. With auto merge off the two stay as they are, one sitting on the other: the hover mark is what says which of them a click has hold of.',
       },
       {
         kind: 'note',

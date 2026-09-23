@@ -129,7 +129,7 @@ describe('docs module', () => {
     // The operation, its shortcut and the note that goes with it, gathered out
     // of a section the reader would otherwise have to know to open.
     expect(screen.getByRole('row', { name: /Slide .*vertex select/ })).toBeInTheDocument();
-    expect(screen.getByText(/in edit mode is the whole of it/)).toBeInTheDocument();
+    expect(screen.getByText(/the mouse carries the distance/)).toBeInTheDocument();
     // Cut to the rows that matched: its neighbour in the same table is gone.
     expect(screen.queryByRole('row', { name: /Chamfers the selected edges/ })).toBeNull();
   });

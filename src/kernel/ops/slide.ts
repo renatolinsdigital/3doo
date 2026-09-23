@@ -1,4 +1,15 @@
-import { type Vec3, clamp, clone, dot, lerp, normalize, sub } from '../math';
+import {
+  type Vec3,
+  EPSILON,
+  clamp,
+  clone,
+  dot,
+  length,
+  lerp,
+  mulVec,
+  normalize,
+  sub,
+} from '../math';
 import type { BMesh } from '../mesh';
 import type { Edge, Face, Vert } from '../mesh/types';
 
@@ -215,4 +226,171 @@ export function applySlide(mesh: BMesh, plan: SlidePlan, factor: number): void {
   }
 
   mesh.computeNormals();
+}
+
+/** How many of the edges leaving a vertex the numbered directions reach. */
+const MAX_VERTEX_SLIDE_WAYS = 3;
+
+/**
+ * One numbered direction a slide may run in, with where it goes and how far.
+ *
+ * What a rail is to a dragged slide, a way is to a typed one: the same travel,
+ * named by a number the panel can offer and measured in metres rather than in a
+ * factor read off the pointer.
+ */
+export interface SlideWay {
+  /** Where each vertex starts, and where this way takes it. `negative` is unused. */
+  rails: SlideRail[];
+  /** Object-space point the arrow is drawn from: the first vertex with somewhere to go. */
+  anchor: Vec3;
+  /** Object-space direction that vertex travels in, unit length. */
+  direction: Vec3;
+  /**
+   * How far the way can run before a vertex lands on its neighbour, in world
+   * metres. The shortest rail of the selection, so the whole of it stays on the
+   * geometry it started on.
+   */
+  reach: number;
+}
+
+/** How far a rail runs out in the world, with the object scale applied. */
+function railSpan(rail: SlideRail, scale: Vec3): number {
+  return length(mulVec(sub(rail.positive, rail.origin), scale));
+}
+
+/**
+ * Gathers rails into a way, or nothing where none of them has anywhere to go.
+ *
+ * A rail whose ends meet is closed: a boundary edge with no face on that side,
+ * or a neighbour sitting on top of the vertex. Those hold still and take no
+ * part in the reach, so one of them cannot pin the whole selection at zero.
+ */
+function slideWay(rails: SlideRail[], scale: Vec3): SlideWay | null {
+  let leader: SlideRail | null = null;
+  let reach = Infinity;
+
+  for (const rail of rails) {
+    const span = railSpan(rail, scale);
+    if (span < EPSILON) continue;
+    if (!leader) leader = rail;
+    reach = Math.min(reach, span);
+  }
+  if (!leader) return null;
+
+  return {
+    rails,
+    anchor: clone(leader.origin),
+    direction: normalize(sub(leader.positive, leader.origin)),
+    reach,
+  };
+}
+
+/** The neighbour of `vert` lying most nearly along `along`. */
+function neighbourTowards(mesh: BMesh, vert: Vert, along: Vec3): Vert | null {
+  let best: Vert | null = null;
+  let nearest = -Infinity;
+
+  for (const edge of vert.edges) {
+    const neighbour = mesh.edgeOther(edge, vert);
+    const towards = dot(normalize(sub(neighbour.co, vert.co)), along);
+    if (towards > nearest) {
+      nearest = towards;
+      best = neighbour;
+    }
+  }
+
+  return best;
+}
+
+/**
+ * The numbered directions a vertex slide may run in.
+ *
+ * The first selected vertex does the numbering, one way per edge leaving it, up
+ * to three: past that the list is more than a panel can offer and more than
+ * anyone would count through. Every other selected vertex joins the way whose
+ * direction its own edges point most nearly along, so a row of vertices travels
+ * as one rather than each picking an edge of its own.
+ */
+export function vertexSlideWays(mesh: BMesh, verts: readonly Vert[], scale: Vec3): SlideWay[] {
+  const live = verts.filter((vert) => mesh.verts.has(vert.id) && vert.edges.length > 0);
+  const [reference] = live;
+  if (!reference) return [];
+
+  const ways: SlideWay[] = [];
+
+  for (const edge of reference.edges.slice(0, MAX_VERTEX_SLIDE_WAYS)) {
+    const target = mesh.edgeOther(edge, reference);
+    const along = normalize(sub(target.co, reference.co));
+    const rails: SlideRail[] = [];
+
+    for (const vert of live) {
+      const neighbour = vert === reference ? target : neighbourTowards(mesh, vert, along);
+      if (!neighbour) continue;
+
+      const origin = clone(vert.co);
+      rails.push({ vert, origin, positive: clone(neighbour.co), negative: clone(origin) });
+    }
+
+    const way = slideWay(rails, scale);
+    if (way) ways.push(way);
+  }
+
+  return ways;
+}
+
+/**
+ * The two directions an edge slide may run in: one per side of the selection.
+ *
+ * Both are read off the one plan, so the sides stay the sides the drag would
+ * take. A selection with nothing on one side, the border of a plane, offers
+ * that way alone.
+ */
+export function edgeSlideWays(mesh: BMesh, edges: readonly Edge[], scale: Vec3): SlideWay[] {
+  const { rails } = planEdgeSlide(mesh, edges);
+  const ways: SlideWay[] = [];
+
+  for (const side of ['positive', 'negative'] as const) {
+    const way = slideWay(
+      rails.map((rail) => ({
+        vert: rail.vert,
+        origin: clone(rail.origin),
+        positive: clone(rail[side]),
+        negative: clone(rail.origin),
+      })),
+      scale,
+    );
+    if (way) ways.push(way);
+  }
+
+  return ways;
+}
+
+/**
+ * Runs `way` out `distance` metres and reports how many vertices moved.
+ *
+ * Measured out in the world with the object scale applied, the way an edge
+ * length is, so the figure in the field is the size an export writes out. Each
+ * vertex stops where its own rail ends, which keeps the selection on the
+ * geometry it started on however far the field is pushed.
+ */
+export function applySlideDistance(
+  mesh: BMesh,
+  way: SlideWay,
+  distance: number,
+  scale: Vec3,
+): number {
+  let moved = 0;
+
+  for (const rail of way.rails) {
+    if (!mesh.verts.has(rail.vert.id)) continue;
+
+    const span = railSpan(rail, scale);
+    if (span < EPSILON) continue;
+
+    rail.vert.co = lerp(rail.origin, rail.positive, clamp(distance / span, 0, 1));
+    moved += 1;
+  }
+
+  mesh.computeNormals();
+  return moved;
 }

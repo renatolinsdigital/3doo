@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
-import { Button, FieldRow, NumberField, Panel, Select } from '@shared/components';
+import { edgeSlideWays, vertexSlideWays } from '@kernel/index';
+import { Button, FieldRow, NumberField, Panel, Select, Slider } from '@shared/components';
 import {
+  useActiveObject,
   useActiveSelectionCounts,
   useEdgeLoopAvailable,
   useEditorStore,
@@ -51,6 +53,64 @@ export function TopologyPanel() {
   const edgeLoopAvailable = useEdgeLoopAvailable();
 
   const [mergeMode, setMergeMode] = useState<(typeof MERGE_MODES)[number]['value']>('center');
+
+  // A slide travels along geometry that is already there, so where it may go is
+  // read off the mesh rather than typed: one numbered way per edge leaving the
+  // vertex, or one per side of the selected edges. Worked out here rather than
+  // in a selector because the list is rebuilt from the live mesh, and
+  // `meshVersion` is the only thing that reports it has moved.
+  const object = useActiveObject();
+  const editMode = useEditorStore((state) => state.mode === 'edit');
+  const version = useEditorStore((state) => state.meshVersion);
+  const setSlideAim = useEditorStore((state) => state.setSlideAim);
+
+  const [slideDirection, setSlideDirection] = useState(1);
+  const [slideDistance, setSlideDistance] = useState(0.1);
+
+  const slideWays = useMemo(() => {
+    void version;
+    if (!object || !editMode) return [];
+
+    const { scale } = object.transform;
+    if (vertexMode) return vertexSlideWays(object.mesh, object.mesh.selectedVerts(), scale);
+    if (edgeMode) return edgeSlideWays(object.mesh, object.mesh.selectedEdges(), scale);
+    return [];
+  }, [object, version, editMode, vertexMode, edgeMode]);
+
+  // A selection that has just lost a way leaves the picker naming one that is
+  // no longer there, so the figure the buttons run with is the one that is.
+  const direction = Math.min(slideDirection, Math.max(slideWays.length, 1));
+  const slideWay = slideWays[direction - 1] ?? null;
+  // Where the first vertex of the selection to arrive lands on its neighbour:
+  // past that the slide would leave the geometry it is travelling along.
+  const slideReach = slideWay ? Math.max(0.01, Math.round(slideWay.reach * 1000) / 1000) : 1;
+  const slideTravel = Math.min(slideDistance, slideReach);
+
+  // The arrow the viewport draws over the mesh, up while a picked direction has
+  // somewhere to go and down with the panel.
+  useEffect(() => {
+    setSlideAim(
+      slideWay
+        ? { anchor: slideWay.anchor, direction: slideWay.direction, distance: slideTravel }
+        : null,
+    );
+  }, [setSlideAim, slideWay, slideTravel]);
+  useEffect(() => () => setSlideAim(null), [setSlideAim]);
+
+  const slideHint = (element: 'vertex' | 'edge') => {
+    const mode = element === 'vertex' ? vertexMode : edgeMode;
+    if (!mode) {
+      return element === 'vertex'
+        ? 'Vertex sliding runs along the edges leaving a vertex, so switch to vertex select mode (1). Shift+G runs the same slide off the pointer'
+        : 'Edge sliding runs across the faces beside an edge, so switch to edge select mode (2). Shift+G runs the same slide off the pointer';
+    }
+    if (!slideWay) {
+      return element === 'vertex'
+        ? 'Select vertices with an edge to travel along (Shift+G slides them off the pointer)'
+        : 'Select edges with a face beside them to travel across (Shift+G slides them off the pointer)';
+    }
+    return `Slide the selection ${slideTravel}m along direction ${direction}, marked by the arrow over the mesh. Shift+G runs the same slide off the pointer instead, with the mouse carrying the distance`;
+  };
 
   return (
     <Panel title="TOPOLOGY" className="topology">
@@ -179,6 +239,53 @@ export function TopologyPanel() {
           }
           onClick={() => exec('selectFaceLoop', {}, 'Select face loop')}
         />
+      </FieldRow>
+
+      <FieldRow legend="SLIDE" columns={1}>
+        <Select
+          label="DIRECTION"
+          value={String(direction)}
+          // Numbered rather than named: the label says what they are, and
+          // spelling it out again in every option widens the whole panel.
+          options={Array.from({ length: Math.max(slideWays.length, 1) }, (_, index) => ({
+            value: String(index + 1),
+            label: String(index + 1),
+          }))}
+          disabled={!slideWay}
+          hint={
+            slideWay
+              ? 'Which way out of the selection the slide travels. The arrow over the mesh points along the one picked'
+              : 'Select vertices or edges in vertex or edge select mode for the slide to have a way to go'
+          }
+          onChange={(value) => setSlideDirection(Number(value))}
+        />
+        <Slider
+          label="TRAVEL"
+          value={slideTravel}
+          min={0}
+          max={slideReach}
+          step={0.001}
+          suffix="m"
+          disabled={!slideWay}
+          hint="How far to travel, in world metres. The track ends where the first vertex of the selection to arrive lands on its neighbour, which is as far as a slide can go"
+          onChange={(value) => setSlideDistance(Math.round(value * 1000) / 1000)}
+        />
+        <div className="topology__slide-buttons">
+          <Button
+            label="VERTEX SLIDE"
+            disabled={!vertexMode || !slideWay}
+            hint={slideHint('vertex')}
+            onClick={() =>
+              exec('vertexSlide', { direction, distance: slideTravel }, 'Vertex slide')
+            }
+          />
+          <Button
+            label="EDGE SLIDE"
+            disabled={!edgeMode || !slideWay}
+            hint={slideHint('edge')}
+            onClick={() => exec('edgeSlide', { direction, distance: slideTravel }, 'Edge slide')}
+          />
+        </div>
       </FieldRow>
 
       <FieldRow legend="AUTO MERGE" columns={1}>

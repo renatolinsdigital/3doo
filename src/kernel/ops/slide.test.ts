@@ -1,12 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { distance, vec3 } from '../math';
+import { type Vec3, distance, normalize, sub, vec3 } from '../math';
 import type { BMesh } from '../mesh';
 import type { Edge, Vert } from '../mesh/types';
 import { createGrid, createPlane } from '../primitives';
 
 import { autoMergeVerts } from './merge';
-import { applySlide, planEdgeSlide, planVertexSlide } from './slide';
+import {
+  type SlideWay,
+  applySlide,
+  applySlideDistance,
+  edgeSlideWays,
+  planEdgeSlide,
+  planVertexSlide,
+  vertexSlideWays,
+} from './slide';
 
 /** The grid vertex nearest `(x, z)`; the grid lies in the XZ plane. */
 function vertAt(mesh: BMesh, x: number, z: number): Vert {
@@ -135,6 +143,126 @@ describe('edge slide', () => {
     applySlide(mesh, plan, 0.6);
     applySlide(mesh, plan, 0);
 
+    expect([...mesh.verts.values()].map((vert) => ({ ...vert.co }))).toEqual(before);
+  });
+});
+
+/** The grid vertices along the row at `z`, ordered by x. */
+function rowVerts(mesh: BMesh, z: number): Vert[] {
+  return [...mesh.verts.values()]
+    .filter((vert) => Math.abs(vert.co.z - z) < 1e-9)
+    .sort((a, b) => a.co.x - b.co.x);
+}
+
+/** The way running along `direction`, which is how a test names one. */
+function wayAlong(ways: readonly SlideWay[], direction: Vec3): SlideWay {
+  const found = ways.find((way) => distance(way.direction, direction) < 1e-9);
+  if (!found) throw new Error('no way runs that way');
+  return found;
+}
+
+const UNIT = vec3(1, 1, 1);
+
+describe('numbered slide directions', () => {
+  it('offers one way per edge leaving the vertex, up to three', () => {
+    const mesh = createGrid(1, 4);
+
+    // Four edges leave a vertex inside the grid, and two leave a corner of it.
+    // Three is as many as the panel numbers, so the fourth is not offered.
+    expect(vertexSlideWays(mesh, [vertAt(mesh, 0, 0)], UNIT)).toHaveLength(3);
+    expect(vertexSlideWays(mesh, [vertAt(mesh, -0.5, -0.5)], UNIT)).toHaveLength(2);
+  });
+
+  it('reaches exactly as far as the neighbour it is travelling toward', () => {
+    const mesh = createGrid(1, 4);
+    const ways = vertexSlideWays(mesh, [vertAt(mesh, 0, 0)], UNIT);
+
+    for (const way of ways) expect(way.reach).toBeCloseTo(0.25, 9);
+  });
+
+  it('measures that reach out in the world, with the object scale applied', () => {
+    const mesh = createGrid(1, 4);
+    const ways = vertexSlideWays(mesh, [vertAt(mesh, 0, 0)], vec3(2, 1, 1));
+
+    // The same quarter-metre grid step, stretched to half a metre along x and
+    // left alone across it: what the field asks for is the size in the world.
+    expect(wayAlong(ways, vec3(1, 0, 0)).reach).toBeCloseTo(0.5, 9);
+    expect(wayAlong(ways, vec3(0, 0, -1)).reach).toBeCloseTo(0.25, 9);
+  });
+
+  it('carries a row of vertices along one way rather than each picking its own', () => {
+    const mesh = createGrid(1, 4);
+    const row = rowVerts(mesh, 0);
+    const way = wayAlong(vertexSlideWays(mesh, row, UNIT), vec3(0, 0, 1));
+
+    expect(way.rails).toHaveLength(row.length);
+    for (const rail of way.rails) {
+      expect(normalize(sub(rail.positive, rail.origin))).toEqual(vec3(0, 0, 1));
+    }
+  });
+
+  it('gives an edge selection a way per side, and a border only the side it has', () => {
+    const mesh = createGrid(1, 4);
+    const [forward, back] = edgeSlideWays(mesh, rowEdges(mesh, 0), UNIT);
+
+    expect(forward.direction).toEqual(vec3(0, 0, -back.direction.z));
+    expect(forward.reach).toBeCloseTo(0.25, 9);
+
+    // A plane is one quad: every edge of it has a face on one side only.
+    const plane = createPlane(1);
+    expect(edgeSlideWays(plane, [...plane.edges.values()].slice(0, 1), UNIT)).toHaveLength(1);
+  });
+});
+
+describe('slide by distance', () => {
+  it('travels the metres it is given, along the way that was picked', () => {
+    const mesh = createGrid(1, 4);
+    const vert = vertAt(mesh, 0, 0);
+    const way = wayAlong(vertexSlideWays(mesh, [vert], UNIT), vec3(1, 0, 0));
+
+    expect(applySlideDistance(mesh, way, 0.1, UNIT)).toBe(1);
+    expect(vert.co.x).toBeCloseTo(0.1, 9);
+    expect(vert.co.z).toBeCloseTo(0, 9);
+  });
+
+  it('stops on the neighbour however far it is asked to go', () => {
+    const mesh = createGrid(1, 4);
+    const vert = vertAt(mesh, 0, 0);
+    const way = wayAlong(vertexSlideWays(mesh, [vert], UNIT), vec3(1, 0, 0));
+
+    applySlideDistance(mesh, way, 40, UNIT);
+    expect(vert.co).toEqual(vec3(0.25, 0, 0));
+  });
+
+  it('counts the metres in the world, so an object scale shortens the travel', () => {
+    const mesh = createGrid(1, 4);
+    const vert = vertAt(mesh, 0, 0);
+    const scale = vec3(2, 1, 1);
+    const way = wayAlong(vertexSlideWays(mesh, [vert], scale), vec3(1, 0, 0));
+
+    // Half a metre out in the world is a quarter of one in a mesh drawn at
+    // twice the size, which is where the neighbour sits.
+    applySlideDistance(mesh, way, 0.5, scale);
+    expect(vert.co.x).toBeCloseTo(0.25, 9);
+  });
+
+  it('slides a whole loop onto the one next door', () => {
+    const mesh = createGrid(1, 4);
+    const [way] = edgeSlideWays(mesh, rowEdges(mesh, 0), UNIT);
+
+    expect(applySlideDistance(mesh, way, way.reach, UNIT)).toBe(5);
+    for (const rail of way.rails) {
+      expect(Math.abs(rail.vert.co.z)).toBeCloseTo(0.25, 9);
+      expect(rail.vert.co.x).toBeCloseTo(rail.origin.x, 9);
+    }
+  });
+
+  it('leaves the mesh where it is when there is nowhere to travel', () => {
+    const mesh = createGrid(1, 4);
+    const before = [...mesh.verts.values()].map((vert) => ({ ...vert.co }));
+    const [way] = edgeSlideWays(mesh, rowEdges(mesh, 0), UNIT);
+
+    applySlideDistance(mesh, way, 0, UNIT);
     expect([...mesh.verts.values()].map((vert) => ({ ...vert.co }))).toEqual(before);
   });
 });

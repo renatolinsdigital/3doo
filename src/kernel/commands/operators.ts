@@ -4,7 +4,9 @@ import type { SelectMode } from '../mesh/types';
 import {
   type FalloffCurve,
   type MergeMode,
+  type SlideWay,
   DISSOLVE_ANGLE_LIMIT_DEGREES,
+  applySlideDistance,
   bevelEdges,
   budgetRefusal,
   bridgeEdgeLoops,
@@ -14,6 +16,7 @@ import {
   dissolveEdges,
   dissolveFaces,
   dissolveVerts,
+  edgeSlideWays,
   extrudeEdges,
   extrudeFaces,
   fillHole,
@@ -47,6 +50,7 @@ import {
   translateVerts,
   triangulateFaces,
   trisToQuads,
+  vertexSlideWays,
   vertsAfterEdgeSubdivide,
 } from '../ops';
 
@@ -134,6 +138,46 @@ function selection(mesh: BMesh) {
     edges: mesh.selectedEdges(),
     faces: mesh.selectedFaces(),
   };
+}
+
+/**
+ * The half of a typed slide both kinds share: pick the numbered way, run it.
+ *
+ * Directions are numbered from 1, the way the panel offers them, and a number
+ * with no way behind it is refused rather than rounded down to one that is
+ * there: a slide that ran somewhere other than where it was asked to would be
+ * worse than one that did not run at all.
+ */
+function runSlide(
+  mesh: BMesh,
+  ways: readonly SlideWay[],
+  params: OperatorParams,
+  scale: Vec3,
+  elements: 'vertices' | 'edges',
+): OperatorResult {
+  if (ways.length === 0) {
+    return { status: `Nothing for the selected ${elements} to slide along`, refused: true };
+  }
+
+  const direction = Math.round(readNumber(params, 'direction', 1));
+  const way = ways[direction - 1];
+  if (!way) {
+    const count = ways.length === 1 ? 'one way' : `${ways.length} ways`;
+    return {
+      status: `There is no direction ${direction} here: this selection slides ${count}`,
+      refused: true,
+    };
+  }
+
+  const distance = readNumber(params, 'distance', 0);
+  if (distance <= 0) {
+    return { status: 'Set a distance above zero for the slide to travel', refused: true };
+  }
+
+  const moved = applySlideDistance(mesh, way, distance, scale);
+  const travelled = Math.round(Math.min(distance, way.reach) * 1000) / 1000;
+  const what = moved === 1 ? 'vertex' : 'vertices';
+  return { status: `Slid ${moved} ${what} ${travelled}m along direction ${direction}` };
 }
 
 /**
@@ -302,6 +346,22 @@ export const OPERATORS: Record<string, OperatorHandler> = {
       return { status: 'No loop runs through that selection to space along', refused: true };
     }
     return { status: `Spaced ${moved} vertices evenly` };
+  },
+
+  vertexSlide: ({ mesh, objectScale }, params) => {
+    const scale = objectScale ?? vec3(1, 1, 1);
+    const verts = mesh.selectedVerts();
+    if (verts.length === 0) return { status: 'Select vertices to slide', refused: true };
+
+    return runSlide(mesh, vertexSlideWays(mesh, verts, scale), params, scale, 'vertices');
+  },
+
+  edgeSlide: ({ mesh, objectScale }, params) => {
+    const scale = objectScale ?? vec3(1, 1, 1);
+    const edges = mesh.selectedEdges();
+    if (edges.length === 0) return { status: 'Select edges to slide', refused: true };
+
+    return runSlide(mesh, edgeSlideWays(mesh, edges, scale), params, scale, 'edges');
   },
 
   mergeByDistance: ({ mesh, selectMode }, params) => {

@@ -255,6 +255,15 @@ const MODAL_AXIS_REACH_PX = 400;
  */
 const MIN_INWARD_PX = 8;
 
+/**
+ * How short the panel's slide arrow may get on screen before it is held open.
+ *
+ * The arrow is as long as the slide it describes, which is a world figure: a
+ * centimetre on a metre model is a couple of pixels, and an arrowhead that size
+ * reads as a speck rather than as a direction.
+ */
+const MIN_SLIDE_ARROW_PX = 48;
+
 /** What each pointer-driven operator's undo step is called. */
 const OFFSET_LABELS: Record<OffsetDrag['kind'], string> = {
   bevel: 'Bevel',
@@ -509,6 +518,14 @@ export class Viewport {
   private offsetDrag: OffsetDrag | null = null;
   /** The rails a slide may travel along, drawn while one is running. */
   private readonly slideGuide: THREE.LineSegments;
+  /** The arrow the TOPOLOGY panel's numbered slide is aimed along. */
+  private readonly slideArrow: THREE.ArrowHelper;
+  /** That aim in world space, worked out when it changes rather than per frame. */
+  private slideArrowAim: {
+    anchor: THREE.Vector3;
+    direction: THREE.Vector3;
+    distance: number;
+  } | null = null;
   private gizmoBaseline: GizmoBaseline | null = null;
   /** What `proportionalSpread` last worked out, and what it was worked out from. */
   private dragSpread: {
@@ -587,6 +604,8 @@ export class Viewport {
     this.scene.add(this.proportionalRing);
     this.slideGuide = this.createSlideGuide();
     this.scene.add(this.slideGuide);
+    this.slideArrow = this.createSlideArrow();
+    this.scene.add(this.slideArrow);
     this.scene.add(this.gizmoProxy);
 
     this.controls = new CameraController(this.camera, canvas);
@@ -762,6 +781,35 @@ export class Viewport {
     line.renderOrder = 11;
     line.frustumCulled = false;
     return line;
+  }
+
+  /**
+   * The arrow saying which way a slide picked in the TOPOLOGY panel would run.
+   *
+   * Built pointing up and a metre long; `updateSlideArrow` turns it to the
+   * direction that was picked and sizes it to the distance every frame. Drawn
+   * over the mesh rather than through it, because what it answers, which way,
+   * is lost the moment the model swallows it.
+   */
+  private createSlideArrow(): THREE.ArrowHelper {
+    const arrow = new THREE.ArrowHelper(
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(),
+      1,
+      VIEWPORT_COLORS.amber,
+    );
+
+    for (const part of [arrow.line, arrow.cone] as THREE.Object3D[]) {
+      const material = (part as THREE.Mesh).material as THREE.Material;
+      material.depthTest = false;
+      material.transparent = true;
+      material.opacity = 0.95;
+      part.renderOrder = 12;
+      part.frustumCulled = false;
+    }
+
+    arrow.visible = false;
+    return arrow;
   }
 
   /**
@@ -996,6 +1044,10 @@ export class Viewport {
         { equalityFn: shallowArrayEqual },
       ),
       store.subscribe(
+        (state) => state.slideAim,
+        () => this.updateSlideAim(useEditorStore.getState()),
+      ),
+      store.subscribe(
         (state) => state.frameRequest,
         (request) => {
           if (request) this.frame(request.target);
@@ -1084,6 +1136,7 @@ export class Viewport {
     releaseTextures(new Set(Object.keys(state.assets)));
 
     this.updateProportionalAnchor(state);
+    this.updateSlideAim(state);
     this.updateGizmo();
     // Every view has just rebuilt its buffers and dropped the mark with them,
     // and the geometry under a still pointer may be different geometry now.
@@ -1150,6 +1203,50 @@ export class Viewport {
     this.proportionalRing.position.copy(anchor);
     this.proportionalRing.quaternion.copy(this.camera.quaternion);
     this.proportionalRing.scale.setScalar(radius * this.proportionalScale);
+  }
+
+  /**
+   * Lifts the panel's slide aim into the world the arrow is drawn in.
+   *
+   * The panel publishes it in the object's own space, which is where the
+   * geometry it was read off lives, so it survives the object being moved or
+   * turned; this is the one place that has the matrix to bring it out again.
+   */
+  private updateSlideAim(state: ReturnType<typeof useEditorStore.getState>): void {
+    this.slideArrowAim = null;
+
+    const aim = state.slideAim;
+    if (!aim || state.mode !== 'edit') return;
+
+    const object = activeObject(state);
+    const view = object ? this.views.get(object.id) : undefined;
+    if (!view) return;
+
+    const matrix = view.group.matrix;
+    this.slideArrowAim = {
+      anchor: new THREE.Vector3(aim.anchor.x, aim.anchor.y, aim.anchor.z).applyMatrix4(matrix),
+      direction: new THREE.Vector3(aim.direction.x, aim.direction.y, aim.direction.z)
+        .transformDirection(matrix)
+        .normalize(),
+      distance: aim.distance,
+    };
+  }
+
+  /** Aims and sizes the slide arrow, or takes it down when nothing is aimed. */
+  private updateSlideArrow(): void {
+    const aim = this.slideArrowAim;
+    // A slide running off the pointer draws its own rails and reads its travel
+    // out in the status bar. The panel's arrow would be pointing at where the
+    // geometry was when it was published, so it stands down for the drag.
+    const visible = aim !== null && !this.slideDrag;
+
+    this.slideArrow.visible = visible;
+    if (!aim || !visible) return;
+
+    const length = Math.max(aim.distance, MIN_SLIDE_ARROW_PX * this.worldPerPixel(aim.anchor));
+    this.slideArrow.position.copy(aim.anchor);
+    this.slideArrow.setDirection(aim.direction);
+    this.slideArrow.setLength(length, length * 0.3, length * 0.18);
   }
 
   /**
@@ -3348,6 +3445,7 @@ export class Viewport {
     this.updateViewLost(distance);
     this.updateCursor();
     this.updateProportionalRing();
+    this.updateSlideArrow();
     this.updatePointerCursor();
     this.updateSelectionOutlines();
     if (this.modalGuideUp()) this.standDownGizmo();

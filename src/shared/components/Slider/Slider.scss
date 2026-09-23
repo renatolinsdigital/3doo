@@ -16,6 +16,10 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
+    // A grid item refuses to go below its own min-content unless told it may,
+    // and a range input's is wider than a side panel: without this the whole
+    // panel is pushed out to fit the track.
+    min-width: 0;
     padding: 0 var(--space-3);
     border: var(--border-thin) solid var(--void);
     background: var(--bone);

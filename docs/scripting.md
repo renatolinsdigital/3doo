@@ -58,6 +58,8 @@ Unknown operator "extrud". Available: bevel, bridge, delete, deselectAll, ...
 | `circle` | `factor` | Rounds each selected loop onto the circle that fits it best |
 | `space` | `factor` | Evens the gaps along each selected loop, leaving its shape alone |
 | `shrinkFatten` | `distance` | Moves along vertex normals |
+| `vertexSlide` | `direction` (1 to 3), `distance` (world metres) | Runs the selected vertices down an edge leaving them; the direction numbers the edges of the first one |
+| `edgeSlide` | `direction` (1 or 2), `distance` (world metres) | Runs the selected edges across the faces on that side; a border offers the one side it has |
 
 ### Cleanup
 

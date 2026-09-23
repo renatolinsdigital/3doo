@@ -1,7 +1,8 @@
 import { act, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { dot } from '@kernel/index';
+import { type Vert, distance, dot, length } from '@kernel/index';
 import { useEditorStore } from '@store/index';
 
 import { TopologyPanel } from './TopologyPanel';
@@ -41,6 +42,8 @@ describe('TopologyPanel', () => {
       'SHRINK',
       'EDGE LOOP',
       'FACE LOOP',
+      'VERTEX SLIDE',
+      'EDGE SLIDE',
     ]) {
       expect(button(name)).toHaveAttribute('aria-disabled', 'true');
     }
@@ -169,6 +172,68 @@ describe('TopologyPanel', () => {
     });
 
     expect(button('EDGE LOOP')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  /** Selects the vertices the picker returns, in vertex mode. */
+  function selectVerts(pick: (mesh: ReturnType<typeof activeMesh>) => Vert[]) {
+    act(() => {
+      const mesh = activeMesh();
+      mesh.deselectAll();
+      for (const vert of pick(mesh)) mesh.selectVert(vert);
+      mesh.flushSelection('vertex');
+      useEditorStore.getState().setSelectMode('vertex');
+      useEditorStore.getState().touchMesh();
+    });
+  }
+
+  it('slides a selected vertex as far as the panel is set to', async () => {
+    render(<TopologyPanel />);
+    const [vert] = [...activeMesh().verts.values()];
+    const from = { ...vert.co };
+
+    selectVerts(() => [vert]);
+    expect(button('VERTEX SLIDE')).not.toHaveAttribute('aria-disabled');
+    // An edge slide reads the faces beside a selected edge, which vertex
+    // select mode has not picked.
+    expect(button('EDGE SLIDE')).toHaveAttribute('aria-disabled', 'true');
+
+    await userEvent.click(button('VERTEX SLIDE'));
+
+    expect(distance(vert.co, from)).toBeCloseTo(0.1, 6);
+  });
+
+  it('slides a selected edge across the face beside it', async () => {
+    render(<TopologyPanel />);
+    const edge = [...activeMesh().edges.values()][0];
+    const from = { ...edge.v0.co };
+
+    selectEdges(() => [edge]);
+    expect(button('EDGE SLIDE')).not.toHaveAttribute('aria-disabled');
+    expect(button('VERTEX SLIDE')).toHaveAttribute('aria-disabled', 'true');
+
+    await userEvent.click(button('EDGE SLIDE'));
+
+    expect(distance(edge.v0.co, from)).toBeCloseTo(0.1, 6);
+  });
+
+  it('aims the arrow the viewport draws, and takes it down with the panel', async () => {
+    const view = render(<TopologyPanel />);
+    const [vert] = [...activeMesh().verts.values()];
+
+    selectVerts(() => [vert]);
+    const aimed = useEditorStore.getState().slideAim;
+    expect(aimed?.anchor).toEqual(vert.co);
+    expect(length(aimed?.direction ?? { x: 0, y: 0, z: 0 })).toBeCloseTo(1, 9);
+
+    // A second direction is a different edge out of the same vertex, so the
+    // arrow turns while its anchor stays put.
+    await userEvent.selectOptions(screen.getByLabelText('DIRECTION'), '2');
+    const turned = useEditorStore.getState().slideAim;
+    expect(turned?.anchor).toEqual(vert.co);
+    expect(turned?.direction).not.toEqual(aimed?.direction);
+
+    view.unmount();
+    expect(useEditorStore.getState().slideAim).toBeNull();
   });
 
   it('refuses two faces that do not touch, however many are selected', () => {

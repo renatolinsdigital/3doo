@@ -396,6 +396,19 @@ export interface ModalTransform {
   value: Vec3;
 }
 
+/**
+ * Where the TOPOLOGY panel's slide row would send the selection.
+ *
+ * Published by the panel and drawn by the viewport as an arrow over the mesh,
+ * so the direction a numbered slide picked is visible before it is run. All in
+ * the active object's own space, but for the distance, which is world metres.
+ */
+export interface SlideAim {
+  anchor: Vec3;
+  direction: Vec3;
+  distance: number;
+}
+
 export interface SceneStats {
   verts: number;
   edges: number;
