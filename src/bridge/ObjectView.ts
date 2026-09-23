@@ -132,6 +132,20 @@ function solidMaterialKey(object: SceneObject, state: ObjectViewState): string {
 }
 
 /**
+ * What an object is drawn as, which is not always what the viewport is set to.
+ *
+ * An image plane is a picture before it is geometry: four vertices holding up
+ * a reference to model against. Wireframe would leave a bare rectangle where
+ * the reference was and x-ray would fade it to a ghost, so the shading modes
+ * pass an image by and it stays solid however the rest of the scene is drawn.
+ * Edit mode still gets its cage, which is drawn whatever the shading says.
+ */
+function shownState(object: SceneObject, state: ObjectViewState): ObjectViewState {
+  if (!object.image || state.settings.shading === 'solid') return state;
+  return { ...state, settings: { ...state.settings, shading: 'solid' } };
+}
+
+/**
  * The Three.js side of one scene object.
  *
  * React never touches this. The viewport rebuilds it from kernel buffers when
@@ -301,7 +315,8 @@ export class ObjectView {
     this.hoverPoint.visible = true;
   }
 
-  update(object: SceneObject, displayMesh: BMesh, state: ObjectViewState): void {
+  update(object: SceneObject, displayMesh: BMesh, viewportState: ObjectViewState): void {
+    const state = shownState(object, viewportState);
     this.group.visible = object.visible;
     this.group.matrixAutoUpdate = false;
     this.group.matrix.fromArray(composeMatrix(object.transform) as number[]);

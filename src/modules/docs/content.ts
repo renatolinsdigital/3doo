@@ -588,7 +588,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'prose',
-        text: 'An imported image arrives as an ordinary object: a plane with its own proportions, one metre on its longer side, which you select, move, rotate and scale like anything else. That is what makes it useful as a reference to model against. Line it up, then build against it. It takes modifiers and booleans too, because there is nothing special about it beyond the picture on its surface, and the picture is the one thing an OBJ or FBX export leaves behind: they carry the plane, not the texture.',
+        text: 'An imported image arrives as an ordinary object: a plane with its own proportions, one metre on its longer side, which you select, move, rotate and scale like anything else. That is what makes it useful as a reference to model against. Line it up, then build against it. It takes modifiers and booleans too, because there is nothing special about it beyond the picture on its surface, and the picture is the one thing an OBJ or FBX export leaves behind: they carry the plane, not the texture. The shading menu passes it by: an image stays solid with its picture showing while the rest of the scene goes to wireframe or x-ray, since a rectangle of edges is not what you put the reference there for.',
       },
       {
         kind: 'note',

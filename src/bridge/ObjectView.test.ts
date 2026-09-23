@@ -93,6 +93,89 @@ describe('ObjectView', () => {
   });
 });
 
+describe('ObjectView image plane', () => {
+  function imagePlane(): { object: SceneObject; settings: ViewportSettings } {
+    const { object, settings } = scene();
+    return { object: { ...object, image: { assetId: 'asset-1' } }, settings };
+  }
+
+  function wireOf(view: ObjectView): LineSegments2 | undefined {
+    return view.group.children.find(
+      (child): child is LineSegments2 => child instanceof LineSegments2 && child.renderOrder === 0,
+    );
+  }
+
+  it.each(['solidWire', 'wireframe', 'xray', 'matcap'] as const)(
+    'draws the picture solid under %s shading, as it does under solid',
+    (shading) => {
+      const { object, settings } = imagePlane();
+      const view = new ObjectView(object.id);
+      const texture = new THREE.Texture();
+
+      view.update(object, evaluatedMesh(object), {
+        mode: 'object',
+        selectMode: 'vertex',
+        isActive: false,
+        isSelected: false,
+        eye: vec3(0, 0, 10),
+        selectionLine: SELECTION_LINE,
+        meshVersion: 1,
+        texture,
+        settings: { ...settings, shading },
+      });
+
+      const solid = view.group.getObjectByName(`${object.id}:solid`) as THREE.Mesh;
+      const material = (
+        Array.isArray(solid.material) ? solid.material[0] : solid.material
+      ) as THREE.MeshBasicMaterial;
+
+      expect(solid.visible).toBe(true);
+      expect(material.map).toBe(texture);
+      // Solid + wire would rule the reference into squares, and the object is
+      // an image before it is four vertices.
+      expect(wireOf(view)?.visible ?? false).toBe(false);
+    },
+  );
+
+  it('leaves the shading mode to every object that is not an image', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), {
+      mode: 'object',
+      selectMode: 'vertex',
+      isActive: false,
+      isSelected: false,
+      eye: vec3(0, 0, 10),
+      selectionLine: SELECTION_LINE,
+      meshVersion: 1,
+      settings: { ...settings, shading: 'wireframe' },
+    });
+
+    expect((view.group.getObjectByName(`${object.id}:solid`) as THREE.Mesh).visible).toBe(false);
+    expect(wireOf(view)?.visible).toBe(true);
+  });
+
+  it('still shows the cage in edit mode, which is what a click picks', () => {
+    const { object, settings } = imagePlane();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), {
+      mode: 'edit',
+      selectMode: 'vertex',
+      isActive: true,
+      isSelected: true,
+      eye: vec3(0, 0, 10),
+      selectionLine: SELECTION_LINE,
+      meshVersion: 1,
+      texture: new THREE.Texture(),
+      settings: { ...settings, shading: 'wireframe' },
+    });
+
+    expect(wireOf(view)?.visible).toBe(true);
+  });
+});
+
 describe('ObjectView selection outline', () => {
   function outlineOf(view: ObjectView, id: string): LineSegments2 {
     return view.group.getObjectByName(`${id}:outline`) as LineSegments2;

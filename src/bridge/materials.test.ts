@@ -93,17 +93,24 @@ describe('imported image surface', () => {
     expect(material.side).toBe(THREE.DoubleSide);
   });
 
-  it('still gives way to x-ray and wireframe, which are about seeing through', () => {
-    const xray = createSurfaceMaterial({
-      color: 0xcccccc,
-      shading: 'xray',
-      backfaceCulling: true,
-      map: texture(),
-    });
+  // The picture is the whole of what an image object is for, and a plane has no
+  // shape to read instead, so nothing the shading menu offers applies to it.
+  it.each(['solid', 'solidWire', 'wireframe', 'xray', 'matcap'] as const)(
+    'keeps the picture under %s shading',
+    (shading) => {
+      const map = texture();
+      const material = createSurfaceMaterial({
+        color: 0xcccccc,
+        shading,
+        backfaceCulling: true,
+        map,
+      });
 
-    expect((xray as THREE.MeshBasicMaterial).map).toBeNull();
-    expect(xray.transparent).toBe(true);
-  });
+      expect(material).toBeInstanceOf(THREE.MeshBasicMaterial);
+      expect((material as THREE.MeshBasicMaterial).map).toBe(map);
+      expect(material.transparent).toBe(false);
+    },
+  );
 });
 
 describe('vertex point material', () => {

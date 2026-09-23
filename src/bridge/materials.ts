@@ -200,9 +200,10 @@ export function createSurfaceMaterial({
   // An imported picture is drawn unlit and from both sides: it is a reference
   // to model against, and one that dims as the scene's light swings past it,
   // or disappears when the plane is turned round, has stopped telling the truth
-  // about the image. X-ray and wireframe fall through to their own treatment
-  // below, because asking to see through the model means this too.
-  if (map && shading !== 'xray' && shading !== 'wireframe') {
+  // about the image. The shading mode never reaches it: a plane wearing a
+  // picture has no shape worth reading, so x-ray and wireframe would trade the
+  // one thing it is there for against four edges (see `ObjectView.update`).
+  if (map) {
     return new THREE.MeshBasicMaterial({
       color: 0xffffff,
       map,
