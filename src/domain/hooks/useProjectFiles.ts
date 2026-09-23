@@ -17,8 +17,10 @@ import {
   imageTypeFor,
   inlineAssets,
   nextAssetId,
+  syncAssets,
   writeAsset,
 } from '../services/assets';
+import { writeAutosave } from '../services/autosave';
 import {
   type SaveResult,
   IMAGE_FILE,
@@ -62,13 +64,32 @@ export function useProjectFiles() {
     const state = useEditorStore.getState();
     const filename = `${state.projectName || 'untitled'}${PROJECT_FILE.extension}`;
 
+    const document = state.snapshotDocument();
     // The file carries its own images, as base64 inside the JSON, so a .3doo
     // sent to someone opens as what was saved rather than as blank planes.
-    // This is the one step between the browser's copy and the file.
-    const document = state.snapshotDocument();
-    document.assets = await inlineAssets(document.assets ?? [], state.assets);
+    // Kept beside the plain document rather than folded into it: the browser's
+    // copy below stores its images separately and wants the plain one.
+    const inlined = {
+      ...document,
+      assets: await inlineAssets(document.assets ?? [], state.assets),
+    };
 
-    const result = await saveTextFile(filename, stringifyProject(document), PROJECT_FILE);
+    const result = await saveTextFile(filename, stringifyProject(inlined), PROJECT_FILE);
+
+    if (result.status === 'saved' || result.status === 'downloaded') {
+      // The file is the newest copy of the project now, so the browser's is
+      // brought level with it rather than left at whenever the last tick was.
+      // Otherwise the next thing to ask whether anything is unsaved answers yes
+      // about a project that reached the disk a moment ago.
+      if (state.autosaveEnabled) {
+        await writeAutosave(document);
+        void syncAssets(Object.values(state.assets));
+      }
+      state.markSaved();
+      // FILE > NEW asks before it runs unless this is up: the browser's copy it
+      // discards is one the user has a file of.
+      state.markFileSaved();
+    }
 
     const toast = saveResultToast(result);
     if (toast) state.pushToast(toast.variant, toast.message);
@@ -98,8 +119,9 @@ export function useProjectFiles() {
         }
       }
       // What is on screen is what the file holds, so nothing is pending until
-      // the user changes something.
+      // the user changes something, and that file is on disk to go back to.
       state.markSaved();
+      state.markFileSaved();
       state.pushToast('success', `Opened ${file.name}`);
     } catch (error) {
       // Named, because a bare parser message never says which file it came from

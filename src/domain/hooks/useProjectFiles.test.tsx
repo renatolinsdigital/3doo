@@ -125,6 +125,31 @@ describe('project actions announce themselves', () => {
     expect(toasts()).toHaveLength(0);
   });
 
+  it('counts the project as saved once the file is on disk', async () => {
+    const project = files();
+    act(() => useEditorStore.getState().addPrimitive('cube'));
+    expect(useEditorStore.getState().dirty).toBe(true);
+    saveResult = { status: 'saved', filename: 'crate.3doo' };
+
+    await act(() => project.current.saveProject());
+
+    // Nothing is pending against a scene that was just written out, and there
+    // is now a file holding it, so FILE > NEW has nothing left to warn about.
+    expect(useEditorStore.getState().dirty).toBe(false);
+    expect(useEditorStore.getState().savedToFile).toBe(true);
+  });
+
+  it('leaves the work pending when no file was written', async () => {
+    const project = files();
+    act(() => useEditorStore.getState().addPrimitive('cube'));
+    saveResult = { status: 'exists', filename: 'taken.3doo' };
+
+    await act(() => project.current.saveProject());
+
+    expect(useEditorStore.getState().dirty).toBe(true);
+    expect(useEditorStore.getState().savedToFile).toBe(false);
+  });
+
   it('falls back to untitled rather than suggesting a nameless file', async () => {
     const project = files();
     act(() => useEditorStore.getState().setProjectName(''));
@@ -270,6 +295,20 @@ describe('project actions announce themselves', () => {
     expect(state.objects[0].name).toBe('REF.PNG');
     expect(state.assets[assetId].name).toBe('ref.png');
     expect(state.assets[assetId].blob?.size).toBe(4);
+  });
+
+  it('counts a freshly opened project as one a file already holds', async () => {
+    const project = files();
+    act(() => useEditorStore.getState().addPrimitive('cube'));
+    await act(() => project.current.saveProject());
+    picked = { name: 'scene.3doo', text: saves[saves.length - 1].contents };
+    act(() => useEditorStore.getState().resetScene());
+
+    await act(() => project.current.openProject());
+
+    // The scene came out of a file that is still there, so FILE > NEW has as
+    // little to warn about as it does straight after a save.
+    expect(useEditorStore.getState().savedToFile).toBe(true);
   });
 
   it('names the file it opened, and the file it could not', async () => {

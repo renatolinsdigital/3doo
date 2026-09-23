@@ -56,15 +56,20 @@ const documentSignal = (state: EditorStore) =>
   ] as const;
 
 /**
- * Raises the dirty flag on the first change since the scene was last stored.
+ * Raises the dirty flag on the first change since the scene was last stored,
+ * and takes away the claim that this scene is in a file on disk.
  *
  * Subscribed here, once, rather than set by each action: the alternative is the
  * same line in thirty actions, and the one place it gets forgotten is a change
  * that silently never reaches the autosave. That is how renaming an object came
  * to be left out of it.
  */
-useEditorStore.subscribe(documentSignal, () => useEditorStore.setState({ dirty: true }), {
-  equalityFn: (a, b) => a.every((value, index) => value === b[index]),
-});
+useEditorStore.subscribe(
+  documentSignal,
+  () => useEditorStore.setState({ dirty: true, savedToFile: false }),
+  {
+    equalityFn: (a, b) => a.every((value, index) => value === b[index]),
+  },
+);
 
 export const editorStore = useEditorStore;

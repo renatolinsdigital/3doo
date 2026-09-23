@@ -149,12 +149,30 @@ did. Which panels are folded is layout, not project. Edit-mode selection does
 come through `meshVersion`, because in this kernel a vertex carries its own
 selected flag.
 
-The flag is lowered in four places: after the opening cube (the editor's doing,
+The flag is lowered in five places: after the opening cube (the editor's doing,
 not the user's), after a session is recovered (what is on screen is what is
-stored), after a file is opened, and by the autosave itself. The autosave lowers
-it *before* the write rather than after, so an edit made while the write is in
-flight raises it again and is caught by the next tick instead of being swallowed
-by this one.
+stored), after a file is opened, after one is saved, and by the autosave itself.
+The autosave lowers it *before* the write rather than after, so an edit made
+while the write is in flight raises it again and is caught by the next tick
+instead of being swallowed by this one.
+
+A save lowers it only once the file is actually written: a dismissed dialog and
+a name already taken both leave the work pending. It also writes the browser's
+copy on the way past, so the file and the autosave stand at the same scene. Left
+out, the browser's copy would still be at the last tick while the flag said
+everything had reached it.
+
+### The scene is in a file
+
+`state.savedToFile` is the second flag, and it answers a different question:
+not "has the browser's copy caught up?" but "is this exact scene sitting in a
+`.3doo` on disk?" A save raises it, and so does an open, since the file the
+scene came out of is still there. The same subscription that raises `dirty`
+takes it away again, so the first edit after a save is enough.
+
+The two are separate because the autosave lowers `dirty` on its own, every
+tick, without anything having left the browser. FILE > NEW below is the one
+place that needs the other answer.
 
 One ordering trap is worth knowing about: zustand runs subscribers after the
 `set` that triggered them, so an action that clears the flag inside the same
@@ -172,10 +190,15 @@ reset, and the reset also clears the browser's copy of the old project along
 with its images. The dialog names the project and its object count, says whether
 autosave is even on, and points at Ctrl+S for anyone who wanted to keep it.
 
-It only asks when there is an answer worth giving. On a scene nobody has
-touched, nothing is stored for a new project to throw away, so NEW simply runs.
-A confirmation about losing nothing is one people learn to click straight past,
-which is how a real warning gets missed later.
+It asks every time, because it clears that copy every time. The one exception is
+a project already saved to a `.3doo` and untouched since, which is what
+`savedToFile` says: the work is on disk, NEW costs nothing, and a confirmation
+about losing nothing is one people learn to click straight past. That is how a
+real warning gets missed later.
+
+An autosave tick is not that exception. It has kept the work in this browser,
+which is exactly the copy NEW is about to clear, so a scene the autosave has
+caught up with is still one worth asking about.
 
 ## Reloading the page
 

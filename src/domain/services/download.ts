@@ -152,7 +152,10 @@ export async function saveTextFile(
   try {
     handle = await picker({
       suggestedName,
-      types: [{ description: kind.label, accept: { [mimeType]: [...kind.accepts] } }],
+      // The canonical extension alone, not every suffix opening will take: a
+      // save dialog offering `.3doo.json` invites new files to be named with a
+      // spelling that exists only so older ones still open.
+      types: [{ description: kind.label, accept: { [mimeType]: [kind.extension] } }],
     });
   } catch (error) {
     if ((error as DOMException)?.name === 'AbortError') {

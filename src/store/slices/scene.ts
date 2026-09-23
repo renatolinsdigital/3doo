@@ -408,6 +408,17 @@ export interface SceneSlice {
    * already exactly what is stored.
    */
   dirty: boolean;
+  /**
+   * Whether this exact scene is sitting in a `.3doo` on disk.
+   *
+   * Lowered by the same subscription that raises `dirty`, so the first edit
+   * after a save takes it away. Separate from `dirty` because the two answer
+   * different questions: `dirty` is about the browser's copy, which the
+   * autosave keeps level on its own, while this is about the only copy that
+   * survives the browser. FILE > NEW discards the browser's copy either way,
+   * so this is what says whether that costs the user anything.
+   */
+  savedToFile: boolean;
   canUndo: boolean;
   canRedo: boolean;
   /** What each undo would take back, newest first, for the history dialog. */
@@ -545,6 +556,8 @@ export interface SceneSlice {
   markSaved: () => void;
   /** Says it does not, for a write that failed after being counted as done. */
   markDirty: () => void;
+  /** Says this scene is now in a file on disk, for a save and for an open. */
+  markFileSaved: () => void;
   recordHistory: (label: string) => void;
   /**
    * Records a document captured earlier rather than the one on screen now.
@@ -602,6 +615,7 @@ export const createSceneSlice: StateCreator<
   historyRedo: [],
   status: 'Ready',
   dirty: false,
+  savedToFile: false,
   lastOperator: null,
   lockedAttempt: null,
   recentVerts: null,
@@ -630,6 +644,8 @@ export const createSceneSlice: StateCreator<
   markSaved: () => set({ dirty: false }),
 
   markDirty: () => set({ dirty: true }),
+
+  markFileSaved: () => set({ savedToFile: true }),
 
   recordHistory: (label) => get().recordHistoryDocument(label, get().snapshotDocument()),
 
@@ -2069,7 +2085,8 @@ export const createSceneSlice: StateCreator<
     // After the emptying rather than inside it: subscribers run once the state
     // is in place, so the watcher that raises the flag on a changed scene would
     // raise it again on the way out of the set above.
-    set({ dirty: false });
+    // The new scene has never been in a file, whatever the old one had been.
+    set({ dirty: false, savedToFile: false });
   },
 });
 

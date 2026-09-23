@@ -154,7 +154,7 @@ export function TopBar({ brand }: TopBarProps) {
   const viewLost = useEditorStore((state) => state.viewLost);
 
   const { newProject, saveProject, openProject, importMesh, importImage } = useProjectFiles();
-  const dirty = useEditorStore((state) => state.dirty);
+  const savedToFile = useEditorStore((state) => state.savedToFile);
 
   const snapHint =
     snapMode === 'grid'
@@ -183,10 +183,11 @@ export function TopBar({ brand }: TopBarProps) {
       id: 'new',
       label: 'NEW',
       hint: 'Start a fresh project on a cube, discarding this one and its autosave',
-      // Only asks when there is an answer worth giving: a scene nobody has
-      // touched has nothing stored for a new project to throw away, and a
-      // confirmation about losing nothing is one people learn to click past.
-      onSelect: () => (dirty ? openDialog('newProject') : newProject()),
+      // NEW always clears the browser's copy, so it always asks first. The one
+      // exception is a scene already saved to a .3doo and untouched since:
+      // there is a file to open it from, and a confirmation about losing
+      // nothing is one people learn to click straight past.
+      onSelect: () => (savedToFile ? newProject() : openDialog('newProject')),
     },
     {
       id: 'open',

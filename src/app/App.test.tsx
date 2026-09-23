@@ -227,17 +227,43 @@ describe('App shell', () => {
     expect(useEditorStore.getState().objects[0].name).toBe('TORUS');
   });
 
-  it('starts a new project without asking when nothing has been touched', async () => {
-    // Nothing is stored for it to throw away, and a confirmation about losing
-    // nothing is one people learn to click straight past.
+  it('still asks on a scene that has only reached the autosave', async () => {
     render(<App />);
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+    // The autosave has caught up, so nothing is pending against the browser's
+    // copy. NEW clears that copy all the same, and a file is the only thing
+    // that would have survived it.
     act(() => useEditorStore.getState().markSaved());
 
     await userEvent.click(screen.getByRole('button', { name: 'FILE' }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'NEW' }));
 
+    expect(screen.getByRole('dialog', { name: 'START A NEW PROJECT' })).toBeInTheDocument();
+  });
+
+  it('starts a new project without asking when a file already holds it', async () => {
+    render(<App />);
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+    act(() => useEditorStore.getState().markFileSaved());
+
+    await userEvent.click(screen.getByRole('button', { name: 'FILE' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'NEW' }));
+
+    // A confirmation about losing nothing is one people learn to click
+    // straight past, which is how a real warning gets missed later.
     expect(screen.queryByRole('dialog', { name: 'START A NEW PROJECT' })).not.toBeInTheDocument();
     expect(useEditorStore.getState().objects[0].name).toBe('CUBE');
+  });
+
+  it('asks again as soon as the saved project is edited', async () => {
+    render(<App />);
+    act(() => useEditorStore.getState().markFileSaved());
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'FILE' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'NEW' }));
+
+    expect(screen.getByRole('dialog', { name: 'START A NEW PROJECT' })).toBeInTheDocument();
   });
 
   it('starts the new project on a cube once that is confirmed', async () => {

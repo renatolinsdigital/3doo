@@ -64,10 +64,9 @@ describe('saveTextFile', () => {
 
     expect(result).toEqual({ status: 'saved', filename: 'chosen.3doo' });
     expect(written).toEqual(['{"a":1}']);
-    expect(calls[0]).toEqual({
-      suggestedName: 'suggested.3doo',
-      extensions: ['.3doo', '.3doo.json'],
-    });
+    // Only the canonical suffix is offered to save under: the .json spelling
+    // is there for opening older files, not for naming new ones.
+    expect(calls[0]).toEqual({ suggestedName: 'suggested.3doo', extensions: ['.3doo'] });
   });
 
   it('refuses a file that already has contents, without writing to it', async () => {
