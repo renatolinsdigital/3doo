@@ -30,6 +30,7 @@ import {
   execOperator,
   faceLoopAtClick,
   inverseTransformDirection,
+  inverseTransformOffset,
   inverseTransformPoint,
   medianPoint,
   mulVec,
@@ -2630,13 +2631,14 @@ export class Viewport {
     const delta = this.gizmoProxy.position.clone().sub(baseline.position);
     if (delta.lengthSq() < 1e-12) return;
 
-    // The gizmo drags in world space; the mesh edit is in object space, so undo
-    // the object's scale before applying the delta to the vertices.
-    const scale = object.transform.scale;
+    // The handles are world-aligned and the mesh edit is in object space, so
+    // the drag comes back through the object's whole frame, its turn as well as
+    // its scale. Undoing the scale alone sent a move along world X off along
+    // the object's own X on anything that had been rotated.
     translateVerts(
       object.mesh,
       selected,
-      vec3(delta.x / (scale.x || 1), delta.y / (scale.y || 1), delta.z / (scale.z || 1)),
+      inverseTransformOffset(object.transform, vec3(delta.x, delta.y, delta.z)),
       spread,
     );
     this.captureGizmoBaseline();

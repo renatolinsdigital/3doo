@@ -1328,6 +1328,26 @@ describe('editor store', () => {
     expect(activeObject().transform.position.x).toBeCloseTo(0);
   });
 
+  it('carries an edit-mode selection to the cursor along world axes, not local ones', () => {
+    store().addPrimitive('cube');
+    const id = activeObject().id;
+    // A quarter turn about Y, so the object's own X points along world -Z. A
+    // world offset applied straight to the vertices lands the selection there
+    // instead of on the cursor.
+    store().setObjectTransforms([{ id, transform: { rotation: vec3(0, Math.PI / 2, 0) } }]);
+    store().setMode('edit');
+    store().exec('selectAll', {}, 'Select all');
+    store().setCursor({ x: 3, y: 0, z: 0 });
+
+    store().selectionToCursor();
+
+    const object = activeObject();
+    const moved = displayCenter(object, evaluatedMesh(object, store().cursor, store().meshVersion));
+    expect(moved.x).toBeCloseTo(3, 6);
+    expect(moved.y).toBeCloseTo(0, 6);
+    expect(moved.z).toBeCloseTo(0, 6);
+  });
+
   it('separates the selection origin from the middle of its geometry', () => {
     store().addPrimitive('cube');
     driftMesh(vec3(0, 3, 0));

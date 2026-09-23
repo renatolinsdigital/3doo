@@ -80,26 +80,37 @@ export function transformPoint(m: Mat4, p: Vec3): Vec3 {
 }
 
 /**
- * Maps a world-space point into the local space of `transform`.
+ * Maps a world-space displacement into the local space of `transform`.
  *
  * `composeMatrix` builds T·R·S with an orthonormal R, so the inverse is
- * analytic and no general 4x4 inversion is needed: drop the translation,
- * project onto each rotated axis, and divide that axis's scale back out. The
- * columns hold `scale · R·axis`, hence the square.
+ * analytic and no general 4x4 inversion is needed: project onto each rotated
+ * axis and divide that axis's scale back out. The columns hold
+ * `scale · R·axis`, hence the square.
+ *
+ * The length survives, unlike `inverseTransformDirection`, because a
+ * displacement measures a distance travelled. A drag read off the screen comes
+ * back through this before it reaches the vertices, or a move along world X
+ * lands along the object's own X instead.
  */
-export function inverseTransformPoint(transform: Transform, point: Vec3): Vec3 {
+export function inverseTransformOffset(transform: Transform, offset: Vec3): Vec3 {
   const m = composeMatrix(transform);
-  const local = sub(point, transform.position);
   const along = (column: number, scale: number): number => {
     if (scale === 0) return 0;
     const index = column * 4;
-    return (m[index] * local.x + m[index + 1] * local.y + m[index + 2] * local.z) / (scale * scale);
+    return (
+      (m[index] * offset.x + m[index + 1] * offset.y + m[index + 2] * offset.z) / (scale * scale)
+    );
   };
   return vec3(
     along(0, transform.scale.x),
     along(1, transform.scale.y),
     along(2, transform.scale.z),
   );
+}
+
+/** Maps a world-space point into the local space of `transform`. */
+export function inverseTransformPoint(transform: Transform, point: Vec3): Vec3 {
+  return inverseTransformOffset(transform, sub(point, transform.position));
 }
 
 /**

@@ -35,6 +35,7 @@ import {
   flipNormals,
   imagePlaneSize,
   splitLooseParts,
+  inverseTransformOffset,
   inverseTransformPoint,
   medianPoint,
   normalizePrimitiveParams,
@@ -1747,10 +1748,9 @@ export const createSceneSlice: StateCreator<
       const object = activeObject(state);
       if (!object || object.locked) return;
       state.recordHistory('Selection to cursor');
-      // The gizmo drags in world space but vertices live in object space, so
-      // the offset has to come back through the object's own frame.
-      const origin = inverseTransformPoint(object.transform, vec3());
-      const local = sub(inverseTransformPoint(object.transform, offset), origin);
+      // The cursor is a world point but vertices live in object space, so the
+      // offset has to come back through the object's own frame.
+      const local = inverseTransformOffset(object.transform, offset);
       translateVerts(object.mesh, object.mesh.selectedVerts(), local);
       set((current) => ({ meshVersion: current.meshVersion + 1, status: 'Selection to cursor' }));
       return;
