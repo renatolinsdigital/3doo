@@ -183,17 +183,19 @@ export function TopBar({ brand }: TopBarProps) {
       id: 'new',
       label: 'NEW',
       hint: 'Start a fresh project on a cube, discarding this one and its autosave',
-      // NEW always clears the browser's copy, so it always asks first. The one
-      // exception is a scene already saved to a .3doo and untouched since:
-      // there is a file to open it from, and a confirmation about losing
-      // nothing is one people learn to click straight past.
-      onSelect: () => (savedToFile ? newProject() : openDialog('newProject')),
+      // NEW always clears the browser's copy, so it always offers the save
+      // first. The one exception is a scene already saved to a .3doo and
+      // untouched since: there is a file to open it from, and a prompt about
+      // losing nothing is one people learn to click straight past.
+      onSelect: () => (savedToFile ? void newProject() : openDialog('newProject')),
     },
     {
       id: 'open',
       label: 'OPEN',
-      hint: 'Load a .3doo project file from disk',
-      onSelect: () => void openProject(),
+      hint: 'Load a .3doo project file from disk, over this project and its autosave',
+      // Opening costs what NEW costs: the file takes the browser's copy with
+      // it, so it asks on the same terms.
+      onSelect: () => (savedToFile ? void openProject() : openDialog('openProject')),
     },
     {
       id: 'save',

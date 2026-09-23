@@ -158,3 +158,36 @@ export async function readAutosave(): Promise<AutosaveRecord | null> {
     }
   });
 }
+
+/**
+ * Drops the stored project, for a new one starting or a file being opened.
+ *
+ * Without this the record outlives the scene it was written from. Nothing is
+ * written back until an edit raises `dirty` again, so a tab reloaded in
+ * between would come back on the project the user had just walked away from,
+ * undo timeline and all.
+ */
+export async function clearAutosave(): Promise<boolean> {
+  const database = await openDatabase();
+  if (!database) return false;
+
+  return new Promise((resolve) => {
+    try {
+      const transaction = database.transaction(STORE_NAME, 'readwrite');
+      transaction.objectStore(STORE_NAME).delete(RECORD_KEY);
+      transaction.oncomplete = () => {
+        database.close();
+        resolve(true);
+      };
+      transaction.onerror = () => {
+        console.warn('3DOO: autosave clear failed', transaction.error);
+        database.close();
+        resolve(false);
+      };
+    } catch (error) {
+      console.warn('3DOO: autosave clear threw', error);
+      database.close();
+      resolve(false);
+    }
+  });
+}

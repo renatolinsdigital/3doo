@@ -74,13 +74,9 @@ export function ReloadDialog({ onSave }: ReloadDialogProps) {
           ? `Reloading opens on this browser's copy of the project, which is rewritten every ${autosaveIntervalLabel(autosaveInterval).toLowerCase()}. ${
               dirty
                 ? 'There are changes on screen that have not reached it yet, and those go.'
-                : 'Everything on screen has reached it.'
+                : "Everything on this scene is saved on Browser's autosave copy."
             }`
           : 'Autosave is off, so this browser has kept nothing to come back to: reloading opens a fresh scene, and the only copy of this project is a file you save yourself.'}
-      </p>
-      <p className="reload__detail">
-        Saving writes a .3doo file where you put it, the imported images inside it, and the page
-        reloads once the file is on disk.
       </p>
     </Modal>
   );

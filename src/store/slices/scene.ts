@@ -417,8 +417,9 @@ export interface SceneSlice {
    * after a save takes it away. Separate from `dirty` because the two answer
    * different questions: `dirty` is about the browser's copy, which the
    * autosave keeps level on its own, while this is about the only copy that
-   * survives the browser. FILE > NEW discards the browser's copy either way,
-   * so this is what says whether that costs the user anything.
+   * survives the browser. FILE > NEW and FILE > OPEN discard the browser's
+   * copy either way, so this is what says whether that costs the user
+   * anything.
    */
   savedToFile: boolean;
   canUndo: boolean;
@@ -605,6 +606,14 @@ export interface SceneSlice {
    */
   snapshotHistory: () => HistorySnapshot;
   restoreHistory: (snapshot: HistorySnapshot) => void;
+  /**
+   * Forgets every step, without touching the scene.
+   *
+   * For a file opened over the session already running: the steps behind the
+   * old project would otherwise still be there, and one Ctrl+Z would undo into
+   * a scene the file never held.
+   */
+  clearHistory: () => void;
   touchMesh: (status?: string) => void;
 
   /**
@@ -2053,6 +2062,11 @@ export const createSceneSlice: StateCreator<
 
   restoreHistory: (snapshot) => {
     history.restore(snapshot);
+    set(historyState());
+  },
+
+  clearHistory: () => {
+    history.clear();
     set(historyState());
   },
 

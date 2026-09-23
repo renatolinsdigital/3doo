@@ -20,7 +20,7 @@ import {
   syncAssets,
   writeAsset,
 } from '../services/assets';
-import { writeAutosave } from '../services/autosave';
+import { clearAutosave, writeAutosave } from '../services/autosave';
 import {
   type SaveResult,
   IMAGE_FILE,
@@ -37,13 +37,18 @@ import {
 
 /** New / save / load / import / export, kept out of the components that trigger them. */
 export function useProjectFiles() {
-  const newProject = useCallback(() => {
+  const newProject = useCallback(async () => {
     const state = useEditorStore.getState();
     state.resetScene();
     // The browser's copy of the last project goes with it: the autosave holds
     // one project, the one being worked on, and its images would otherwise sit
     // in OPFS with nothing pointing at them.
-    void clearAssets();
+    //
+    // The reset empties the timeline in memory; the record holds the other
+    // copy of it, and a tab reloaded before the next tick would come back on
+    // the project that was just discarded, steps and all. Awaited so both are
+    // gone before this returns and the caller can reach for a file.
+    await Promise.all([clearAutosave(), clearAssets()]);
     // A new project starts on a cube, the way Blender's does, for the same
     // reason a fresh tab does: an empty viewport gives you nothing to try a
     // tool against. One Ctrl+Z takes it away for anyone who wants the empty
@@ -88,8 +93,8 @@ export function useProjectFiles() {
         void syncAssets(Object.values(state.assets));
       }
       state.markSaved();
-      // FILE > NEW asks before it runs unless this is up: the browser's copy it
-      // discards is one the user has a file of.
+      // FILE > NEW and FILE > OPEN ask before they run unless this is up: the
+      // browser's copy they discard is one the user has a file of.
       state.markFileSaved();
     }
 
@@ -113,12 +118,23 @@ export function useProjectFiles() {
       const document = parseProject(file.text);
       const assets = await hydrateAssets(document.assets ?? []);
       state.loadProjectDocument(document, true, assets);
-      // Straight into the browser's store, so the project just opened is the
-      // one the autosave is keeping from here on.
+      // The steps behind the project this file replaced are not steps behind
+      // this one. Left in place, one Ctrl+Z would undo into a scene the file
+      // never held, and the autosave would carry that route into storage.
+      state.clearHistory();
       if (state.autosaveEnabled) {
-        for (const asset of assets) {
-          if (asset.blob) await writeAsset(asset.id, asset.blob);
-        }
+        // Straight into the browser's store, so the project just opened is the
+        // one the autosave is keeping from here on, rather than the one it was
+        // keeping until a moment ago. Written from the store rather than from
+        // the file: a `.3doo` carries its images inside it and the record
+        // keeps them next door in OPFS, which is what syncAssets puts there,
+        // dropping whatever the old project had left behind.
+        await writeAutosave(useEditorStore.getState().snapshotDocument());
+        await syncAssets(assets);
+      } else {
+        // Autosave is off, so nothing is being kept from here on, and what the
+        // browser is still holding is the project this file just replaced.
+        await Promise.all([clearAutosave(), clearAssets()]);
       }
       // What is on screen is what the file holds, so nothing is pending until
       // the user changes something, and that file is on disk to go back to.

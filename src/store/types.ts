@@ -365,6 +365,7 @@ export type DialogId =
   | 'preferences'
   | 'history'
   | 'newProject'
+  | 'openProject'
   | 'reload'
   | null;
 

@@ -13,6 +13,7 @@ let picked: { name: string; text: string } | null = null;
 let pickedFile: File | null = null;
 let pixels = { width: 800, height: 400 };
 const written: string[] = [];
+const stored: string[] = [];
 let saveResult: SaveResult = { status: 'saved', filename: 'placeholder' };
 
 // `saveResultToast` is deliberately left real: the mapping from outcome to
@@ -49,6 +50,25 @@ vi.mock('../services/assets', async () => {
   };
 });
 
+// jsdom has no IndexedDB, so the real service would answer "no autosave" to
+// everything. What these tests are about is which call the hook makes, so the
+// two writes are recorded in the order they land.
+vi.mock('../services/autosave', async () => {
+  const actual =
+    await vi.importActual<typeof import('../services/autosave')>('../services/autosave');
+  return {
+    ...actual,
+    writeAutosave: () => {
+      stored.push('write');
+      return Promise.resolve(true);
+    },
+    clearAutosave: () => {
+      stored.push('clear');
+      return Promise.resolve(true);
+    },
+  };
+});
+
 function imageFile(name = 'ref.png', type = 'image/png') {
   return new File([new Uint8Array([1, 2, 3, 4])], name, { type });
 }
@@ -74,7 +94,9 @@ describe('project actions announce themselves', () => {
     pickedFile = null;
     pixels = { width: 800, height: 400 };
     written.length = 0;
+    stored.length = 0;
     saveResult = { status: 'saved', filename: 'placeholder' };
+    useEditorStore.setState({ autosaveEnabled: true });
     useEditorStore.getState().resetScene();
     useEditorStore.setState({ toasts: [] });
   });
@@ -191,21 +213,21 @@ describe('project actions announce themselves', () => {
     expect(lastToast().message).toBe('Nothing selected to export');
   });
 
-  it('reports a new project instead of clearing the scene in silence', () => {
+  it('reports a new project instead of clearing the scene in silence', async () => {
     const project = files();
     act(() => useEditorStore.getState().addPrimitive('torus'));
 
-    act(() => project.current.newProject());
+    await act(() => project.current.newProject());
 
     expect(lastToast()).toMatchObject({ variant: 'info', message: 'Started a new project' });
     expect(useEditorStore.getState().status).toBe('New project');
   });
 
-  it('starts the new project on a cube, the way Blender does', () => {
+  it('starts the new project on a cube, the way Blender does', async () => {
     const project = files();
     act(() => useEditorStore.getState().addPrimitive('torus'));
 
-    act(() => project.current.newProject());
+    await act(() => project.current.newProject());
 
     const state = useEditorStore.getState();
     expect(state.objects).toHaveLength(1);
@@ -213,13 +235,25 @@ describe('project actions announce themselves', () => {
     expect(state.activeObjectId).toBe(state.objects[0].id);
   });
 
-  it('leaves that cube one undo from an empty scene', () => {
+  it('leaves that cube one undo from an empty scene', async () => {
     const project = files();
 
-    act(() => project.current.newProject());
+    await act(() => project.current.newProject());
     act(() => useEditorStore.getState().undo());
 
     expect(useEditorStore.getState().objects).toHaveLength(0);
+  });
+
+  it('takes the stored project with it, timeline and all', async () => {
+    const project = files();
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+
+    await act(() => project.current.newProject());
+
+    // The reset empties the timeline in memory. Left in storage, the record
+    // would hand a tab reloaded before the next tick the project that was
+    // just discarded.
+    expect(stored).toEqual(['clear']);
   });
 
   it('imports an image as a plane at the world origin', async () => {
@@ -324,6 +358,51 @@ describe('project actions announce themselves', () => {
     // Nothing in the file to inherit: the scene arrives, the steps behind it
     // stayed in the browser that made them.
     expect(useEditorStore.getState().canUndo).toBe(false);
+  });
+
+  it('leaves no way to undo back into the project the file replaced', async () => {
+    const project = files();
+    act(() => useEditorStore.getState().addPrimitive('cube'));
+    await act(() => project.current.saveProject());
+    picked = { name: 'scene.3doo', text: saves[saves.length - 1].contents };
+    // The session carries on rather than being reset first, which is what
+    // opening a file from the menu actually does.
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+    expect(useEditorStore.getState().canUndo).toBe(true);
+
+    await act(() => project.current.openProject());
+
+    // One Ctrl+Z would otherwise put back a scene this file never held.
+    expect(useEditorStore.getState().canUndo).toBe(false);
+  });
+
+  it('brings the stored copy level with the file that was just opened', async () => {
+    const project = files();
+    act(() => useEditorStore.getState().addPrimitive('cube'));
+    await act(() => project.current.saveProject());
+    stored.length = 0;
+    picked = { name: 'scene.3doo', text: saves[saves.length - 1].contents };
+
+    await act(() => project.current.openProject());
+
+    // Left alone, the record would still be the project the file replaced, and
+    // a reload before the first edit would come back on it.
+    expect(stored).toEqual(['write']);
+  });
+
+  it('clears that copy instead when autosave is off', async () => {
+    const project = files();
+    act(() => useEditorStore.getState().addPrimitive('cube'));
+    await act(() => project.current.saveProject());
+    stored.length = 0;
+    picked = { name: 'scene.3doo', text: saves[saves.length - 1].contents };
+    act(() => useEditorStore.setState({ autosaveEnabled: false }));
+
+    await act(() => project.current.openProject());
+
+    // Nothing is being kept from here on, so what is still in storage is the
+    // project this file replaced.
+    expect(stored).toEqual(['clear']);
   });
 
   it('counts a freshly opened project as one a file already holds', async () => {

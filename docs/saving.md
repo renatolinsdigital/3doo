@@ -223,8 +223,8 @@ scene came out of is still there. The same subscription that raises `dirty`
 takes it away again, so the first edit after a save is enough.
 
 The two are separate because the autosave lowers `dirty` on its own, every
-tick, without anything having left the browser. FILE > NEW below is the one
-place that needs the other answer.
+tick, without anything having left the browser. FILE > NEW and FILE > OPEN below
+are the places that need the other answer.
 
 One ordering trap is worth knowing about: zustand runs subscribers after the
 `set` that triggered them, so an action that clears the flag inside the same
@@ -281,21 +281,58 @@ would undo to the wrong scene.
 The autosave holds the project being worked on, and only that one. There is no
 list of past sessions and no way back to one.
 
-That is why FILE > NEW asks before it runs, one of the two confirmations in the
-editor, the reload prompt below being the other. Undo cannot reach back past a
-reset, and the reset also clears the browser's copy of the old project along
-with its images. The dialog names the project and its object count, says whether
-autosave is even on, and points at Ctrl+S for anyone who wanted to keep it.
+That is why FILE > NEW and FILE > OPEN both ask before they run. They cost the
+same thing: whichever project arrives next is what clears this one out of the
+browser, images and undo timeline with it, and undo cannot reach back across
+either. `ReplaceProjectDialog` is the one prompt behind both, reading
+`dialog === 'newProject'` or `'openProject'` to know which wording and which
+route it is standing in front of.
+
+It offers three ways out, the way every editor with something to lose does:
+save and go on, go on anyway, or stay. Saving waits for the file to be written
+before anything is discarded, so a dismissed picker leaves the dialog standing
+rather than throwing the project away over a save that never happened. The
+older wording pointed at Ctrl+S and left the user to find their own way back,
+which is how the save gets skipped.
 
 It asks every time, because it clears that copy every time. The one exception is
 a project already saved to a `.3doo` and untouched since, which is what
-`savedToFile` says: the work is on disk, NEW costs nothing, and a confirmation
-about losing nothing is one people learn to click straight past. That is how a
-real warning gets missed later.
+`savedToFile` says: the work is on disk, so neither NEW nor OPEN costs
+anything, and a prompt about losing nothing is one people learn to click
+straight past. That is how a real warning gets missed later. Ctrl+O goes through
+the same check, because a shortcut is a faster route to the action rather than a
+way around what it costs.
 
 An autosave tick is not that exception. It has kept the work in this browser,
 which is exactly the copy NEW is about to clear, so a scene the autosave has
 caught up with is still one worth asking about.
+
+### Clearing it means clearing it
+
+Emptying the scene is not enough on its own. The record in IndexedDB outlives
+the reset that was supposed to take it, because nothing is written back until an
+edit raises `dirty` again, and a tab reloaded in that gap comes back on the
+project the user had just walked away from, undo steps and all.
+
+So `newProject` awaits `clearAutosave()` and `clearAssets()` together: the
+record and the images in OPFS both go, and both are gone before the call
+returns. `resetScene` has already emptied the timeline in memory, and the
+record is where the other copy of it was.
+
+Opening a file is the same discard with something arriving in its place, so it
+does the same work:
+
+- `clearHistory()`, because the steps behind the old project are not steps
+  behind this one. Left alone, one Ctrl+Z would undo into a scene the file never
+  held, and the next tick would write that route into storage.
+- With autosave on, the record is rewritten from the store there and then, and
+  `syncAssets` puts the file's images in OPFS and drops whatever the old
+  project left behind. Written from `snapshotDocument()` rather than from the
+  parsed file: a `.3doo` carries its images inlined as base64, and the record
+  keeps them next door instead.
+- With autosave off, the record and the images are cleared outright. Nothing is
+  being kept from here on, and what storage still held was the project this file
+  replaced.
 
 ## Reloading the page
 

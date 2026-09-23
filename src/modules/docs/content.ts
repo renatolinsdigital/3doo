@@ -562,10 +562,13 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Save (Ctrl+S)',
             'Downloads the whole project (objects, transforms, modifiers, materials) as a .3doo file (JSON inside, whatever the suffix says).',
           ],
-          ['Open (Ctrl+O)', 'Loads one of those files back, replacing the current scene.'],
+          [
+            'Open (Ctrl+O)',
+            'Loads one of those files back over the current scene. It offers to save that scene to a file first, because the autosaved copy of it goes when the file arrives.',
+          ],
           [
             'New',
-            'Clears the scene and starts again on a cube. It asks first, because it also throws away the autosaved copy of what you were working on.',
+            'Clears the scene and starts again on a cube. It offers the same save first: the autosaved copy of what you were working on, its images and its undo steps all go with it.',
           ],
           ['Import mesh', 'Reads an OBJ file in as new objects alongside what is already there.'],
           [
@@ -619,7 +622,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'Autosave keeps one project: the one you are working on. There is no list of past sessions, which is why FILE > NEW asks before it runs, and it only asks when you have something to lose: on a scene you have not touched it just starts the new one. It is also storage in this browser on this machine, never a server, so a .3doo saved with Ctrl+S remains the only copy that outlives the browser.',
+        text: 'Autosave keeps one project: the one you are working on. There is no list of past sessions, which is why FILE > NEW and FILE > OPEN both ask before they run: either one clears the stored project, its images and its undo steps, and the prompt offers to write a .3doo first, waiting for the file before it discards anything. It only asks when you have something to lose: on a scene already saved to a file and untouched since, it just gets on with it. Autosave is also storage in this browser on this machine, never a server, so a .3doo saved with Ctrl+S remains the only copy that outlives the browser.',
       },
       {
         kind: 'note',

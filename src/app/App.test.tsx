@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -219,7 +219,9 @@ describe('App shell', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'NEW' }));
 
     const dialog = screen.getByRole('dialog', { name: 'START A NEW PROJECT' });
-    expect(within(dialog).getByText('Auto-saved data will be lost. Proceed?')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('Auto-saved data will be lost. Save this project to a file first?'),
+    ).toBeInTheDocument();
     // Still there: asking is not doing.
     expect(useEditorStore.getState().objects).toHaveLength(1);
 
@@ -273,11 +275,39 @@ describe('App shell', () => {
     await userEvent.click(screen.getByRole('button', { name: 'FILE' }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'NEW' }));
     const dialog = screen.getByRole('dialog', { name: 'START A NEW PROJECT' });
-    await userEvent.click(within(dialog).getByRole('button', { name: 'PROCEED' }));
+    await userEvent.click(within(dialog).getByRole('button', { name: 'START WITHOUT SAVING' }));
 
-    const state = useEditorStore.getState();
-    expect(state.objects).toHaveLength(1);
-    expect(state.objects[0].name).toBe('CUBE');
+    await waitFor(() => expect(useEditorStore.getState().objects).toHaveLength(1));
+    expect(useEditorStore.getState().objects[0].name).toBe('CUBE');
+  });
+
+  it('asks before a file opened from disk throws the autosaved project away', async () => {
+    render(<App />);
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+
+    await userEvent.click(screen.getByRole('button', { name: 'FILE' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'OPEN' }));
+
+    // Opening costs what NEW costs: the browser keeps one project, and the
+    // file about to be loaded is what replaces it.
+    const dialog = screen.getByRole('dialog', { name: 'OPEN A PROJECT FILE' });
+    expect(
+      within(dialog).getByText('Auto-saved data will be lost. Save this project to a file first?'),
+    ).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'CANCEL' }));
+    expect(useEditorStore.getState().objects[0].name).toBe('TORUS');
+  });
+
+  it('opens without asking when a file already holds the project', async () => {
+    render(<App />);
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+    act(() => useEditorStore.getState().markFileSaved());
+
+    await userEvent.click(screen.getByRole('button', { name: 'FILE' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'OPEN' }));
+
+    expect(screen.queryByRole('dialog', { name: 'OPEN A PROJECT FILE' })).not.toBeInTheDocument();
   });
 
   it('opens the shortcut overlay', async () => {

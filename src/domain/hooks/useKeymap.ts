@@ -326,7 +326,10 @@ export function useKeymap(): void {
           void saveProject();
           break;
         case 'open':
-          void openProject();
+          // Through the same prompt the menu goes through: the shortcut is a
+          // faster route to the action, not a way around what it costs.
+          if (state.savedToFile) void openProject();
+          else state.openDialog('openProject');
           break;
         case 'export':
           state.openDialog('export');
