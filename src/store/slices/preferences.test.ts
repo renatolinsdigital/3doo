@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DEFAULT_PREFERENCES, coercePreferences } from './preferences';
+import { DEFAULT_PREFERENCES, autosaveIntervalLabel, coercePreferences } from './preferences';
 
 const STORAGE_KEY = '3doo:preferences';
 
@@ -66,14 +66,21 @@ describe('preference storage', () => {
     expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}').selectionLineWidth).toBe(4);
   });
 
-  it('remembers autosave being switched off, across a reload', async () => {
+  it('starts with autosave off, set to every three minutes once it is on', async () => {
     const store = await freshStore();
 
-    store.getState().setPreferences({ autosaveEnabled: false });
+    expect(store.getState().autosaveEnabled).toBe(false);
+    expect(store.getState().autosaveInterval).toBe(180);
+  });
+
+  it('remembers autosave being switched on, across a reload', async () => {
+    const store = await freshStore();
+
+    store.getState().setPreferences({ autosaveEnabled: true });
     vi.resetModules();
 
     const reloaded = await freshStore();
-    expect(reloaded.getState().autosaveEnabled).toBe(false);
+    expect(reloaded.getState().autosaveEnabled).toBe(true);
   });
 
   it('puts everything back on reset', async () => {
@@ -132,13 +139,21 @@ describe('coercePreferences', () => {
   });
 
   it('only takes an autosave interval the picker can show back', () => {
-    expect(coercePreferences({ autosaveInterval: 120 }).autosaveInterval).toBe(120);
+    expect(coercePreferences({ autosaveInterval: 30 }).autosaveInterval).toBe(30);
+    expect(coercePreferences({ autosaveInterval: 900 }).autosaveInterval).toBe(900);
     expect(coercePreferences({ autosaveInterval: 47 }).autosaveInterval).toBe(
       DEFAULT_PREFERENCES.autosaveInterval,
     );
     expect(coercePreferences({ autosaveInterval: 'often' }).autosaveInterval).toBe(
       DEFAULT_PREFERENCES.autosaveInterval,
     );
+  });
+
+  it('names every interval, thirty seconds to fifteen minutes', () => {
+    expect(autosaveIntervalLabel(30)).toBe('30 SECONDS');
+    expect(autosaveIntervalLabel(60)).toBe('1 MINUTE');
+    expect(autosaveIntervalLabel(180)).toBe('3 MINUTES');
+    expect(autosaveIntervalLabel(900)).toBe('15 MINUTES');
   });
 
   it('does not let one bad value cost the user the rest', () => {

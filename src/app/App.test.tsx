@@ -211,7 +211,7 @@ describe('App shell', () => {
     expect(within(dialog).getByRole('button', { name: 'EXPORT FBX' })).toBeInTheDocument();
   });
 
-  it('asks before a new project throws the autosaved one away', async () => {
+  it('asks before a new project throws the scene on screen away', async () => {
     render(<App />);
     act(() => useEditorStore.getState().addPrimitive('torus'));
 
@@ -219,9 +219,7 @@ describe('App shell', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'NEW' }));
 
     const dialog = screen.getByRole('dialog', { name: 'START A NEW PROJECT' });
-    expect(
-      within(dialog).getByText('Auto-saved data will be lost. Save this project to a file first?'),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByText('Save this project to a file first?')).toBeInTheDocument();
     // Still there: asking is not doing.
     expect(useEditorStore.getState().objects).toHaveLength(1);
 
@@ -232,9 +230,8 @@ describe('App shell', () => {
   it('still asks on a scene that has only reached the autosave', async () => {
     render(<App />);
     act(() => useEditorStore.getState().addPrimitive('torus'));
-    // The autosave has caught up, so nothing is pending against the browser's
-    // copy. NEW clears that copy all the same, and a file is the only thing
-    // that would have survived it.
+    // The autosave has caught up, but a numbered copy is a backup rather than
+    // the project's own file, so NEW still offers to write that.
     act(() => useEditorStore.getState().markSaved());
 
     await userEvent.click(screen.getByRole('button', { name: 'FILE' }));
@@ -281,19 +278,17 @@ describe('App shell', () => {
     expect(useEditorStore.getState().objects[0].name).toBe('CUBE');
   });
 
-  it('asks before a file opened from disk throws the autosaved project away', async () => {
+  it('asks before a file opened from disk throws the scene on screen away', async () => {
     render(<App />);
     act(() => useEditorStore.getState().addPrimitive('torus'));
 
     await userEvent.click(screen.getByRole('button', { name: 'FILE' }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'OPEN' }));
 
-    // Opening costs what NEW costs: the browser keeps one project, and the
-    // file about to be loaded is what replaces it.
+    // Opening costs what NEW costs: the file about to be loaded replaces the
+    // scene on screen.
     const dialog = screen.getByRole('dialog', { name: 'OPEN A PROJECT FILE' });
-    expect(
-      within(dialog).getByText('Auto-saved data will be lost. Save this project to a file first?'),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByText('Save this project to a file first?')).toBeInTheDocument();
 
     await userEvent.click(within(dialog).getByRole('button', { name: 'CANCEL' }));
     expect(useEditorStore.getState().objects[0].name).toBe('TORUS');
@@ -308,6 +303,37 @@ describe('App shell', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'OPEN' }));
 
     expect(screen.queryByRole('dialog', { name: 'OPEN A PROJECT FILE' })).not.toBeInTheDocument();
+  });
+
+  it('greys out SAVE until there is a file to save over, and never SAVE AS', async () => {
+    render(<App />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'FILE' }));
+
+    expect(screen.getByRole('menuitem', { name: 'SAVE' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('menuitem', { name: 'SAVE AS' })).not.toHaveAttribute('aria-disabled');
+
+    act(() => {
+      useEditorStore.getState().setProjectName('lamp');
+      useEditorStore.getState().setProjectFile({ name: 'lamp.3doo' } as FileSystemFileHandle);
+    });
+
+    expect(screen.getByRole('menuitem', { name: 'SAVE' })).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('greys out SAVE again once the project is renamed away from its file', async () => {
+    render(<App />);
+    act(() => {
+      useEditorStore.getState().setProjectName('lamp');
+      useEditorStore.getState().setProjectFile({ name: 'lamp.3doo' } as FileSystemFileHandle);
+    });
+
+    await userEvent.type(screen.getByLabelText('Project name'), ' post');
+    await userEvent.click(screen.getByRole('button', { name: 'FILE' }));
+
+    // A different name is a different file, and only SAVE AS can place one.
+    expect(screen.getByRole('menuitem', { name: 'SAVE' })).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByRole('menuitem', { name: 'SAVE AS' })).not.toHaveAttribute('aria-disabled');
   });
 
   it('opens the shortcut overlay', async () => {
@@ -433,6 +459,18 @@ describe('App shell', () => {
       const field = screen.getByLabelText('Project name');
       expect(fireEvent.keyDown(field, { key: 'F5' })).toBe(false);
       expect(useEditorStore.getState().dialog).toBe('reload');
+    });
+
+    it('leaves the reload to the browser when nothing has changed since the last save', async () => {
+      render(<App />);
+      await addCube();
+      act(() => useEditorStore.getState().markSaved());
+
+      // true means the browser got the key and reloads as it was asked to: a
+      // prompt about losing nothing is one people learn to click straight past.
+      expect(fireEvent.keyDown(window, { key: 'F5' })).toBe(true);
+      expect(fireEvent.keyDown(window, { key: 'r', ctrlKey: true, shiftKey: true })).toBe(true);
+      expect(useEditorStore.getState().dialog).toBeNull();
     });
 
     it('swallows Ctrl+R in object mode, where there is no loop to cut', async () => {
@@ -924,6 +962,104 @@ describe('App shell', () => {
     await userEvent.click(within(dialog).getByRole('checkbox', { name: 'LOCK VERTICAL ORBIT' }));
 
     expect(useEditorStore.getState().lockVerticalOrbit).toBe(true);
+  });
+
+  describe('autosave in preferences', () => {
+    afterEach(() => {
+      Reflect.deleteProperty(window, 'showDirectoryPicker');
+      act(() => useEditorStore.getState().setAutosaveLocation(null, false));
+    });
+
+    /** A folder the picker hands over, with the browser's permission already given. */
+    function grantedFolder(name: string) {
+      return {
+        name,
+        queryPermission: () => Promise.resolve('granted'),
+        getDirectoryHandle: () => Promise.resolve({ name: '3doo-auto-saves' }),
+      } as unknown as FileSystemDirectoryHandle;
+    }
+
+    /** The AUTOSAVE section, opened, with autosave starting from `enabled`. */
+    async function autosaveSection(enabled: boolean) {
+      act(() => useEditorStore.getState().setPreferences({ autosaveEnabled: enabled }));
+      render(<App />);
+      await userEvent.click(screen.getByRole('button', { name: 'PREFS' }));
+      const dialog = screen.getByRole('dialog', { name: 'PREFERENCES' });
+      await userEvent.click(within(dialog).getByRole('button', { name: 'AUTOSAVE' }));
+      return dialog;
+    }
+
+    it('starts off, and turns on by asking for a location when there is none', async () => {
+      const folder = grantedFolder('Projects');
+      const picker = vi.fn(() => Promise.resolve(folder));
+      Object.assign(window, { showDirectoryPicker: picker });
+      const dialog = await autosaveSection(false);
+      const toggle = within(dialog).getByRole('checkbox', { name: 'AUTOSAVE THE SCENE' });
+      expect(toggle).not.toBeChecked();
+      expect(dialog).toHaveTextContent('Not chosen');
+
+      // The switch is the click the picker needs, so turning it on is asking.
+      await userEvent.click(toggle);
+
+      expect(picker).toHaveBeenCalledWith({ startIn: 'documents', mode: 'readwrite' });
+      await waitFor(() => expect(toggle).toBeChecked());
+      expect(dialog).toHaveTextContent('Projects/3doo-auto-saves');
+    });
+
+    it('greys the switch out where the browser cannot hand over a folder', async () => {
+      // Auto-saves only go into a folder, so here there is nowhere to write.
+      const dialog = await autosaveSection(false);
+
+      expect(within(dialog).getByRole('checkbox', { name: 'AUTOSAVE THE SCENE' })).toBeDisabled();
+      expect(dialog).toHaveTextContent('this browser cannot give the editor a folder');
+    });
+
+    it('chooses the location from its own row, leaving autosave off', async () => {
+      Object.assign(window, {
+        showDirectoryPicker: vi.fn(() => Promise.resolve(grantedFolder('Work'))),
+      });
+      const dialog = await autosaveSection(false);
+
+      await userEvent.click(within(dialog).getByRole('button', { name: 'CHOOSE' }));
+
+      await waitFor(() => expect(dialog).toHaveTextContent('Work/3doo-auto-saves'));
+      expect(within(dialog).getByRole('button', { name: 'CHANGE' })).toBeInTheDocument();
+      expect(useEditorStore.getState().autosaveEnabled).toBe(false);
+    });
+
+    it('stays off when the folder picker is dismissed', async () => {
+      Object.assign(window, {
+        showDirectoryPicker: () =>
+          Promise.reject(new DOMException('The user aborted a request.', 'AbortError')),
+      });
+      const dialog = await autosaveSection(false);
+
+      await userEvent.click(within(dialog).getByRole('checkbox', { name: 'AUTOSAVE THE SCENE' }));
+
+      await waitFor(() => expect(useEditorStore.getState().autosaveEnabled).toBe(false));
+      expect(
+        within(dialog).getByRole('checkbox', { name: 'AUTOSAVE THE SCENE' }),
+      ).not.toBeChecked();
+    });
+
+    it('offers to ask again while the location waits for permission', async () => {
+      const requestPermission = vi.fn(() => Promise.resolve('granted'));
+      const folder = {
+        name: '3doo-auto-saves',
+        queryPermission: () => Promise.resolve('prompt'),
+        requestPermission,
+      } as unknown as FileSystemDirectoryHandle;
+      Object.assign(window, { showDirectoryPicker: vi.fn() });
+      act(() => useEditorStore.getState().setAutosaveLocation(folder, false));
+      const dialog = await autosaveSection(true);
+
+      await userEvent.click(within(dialog).getByRole('button', { name: 'ALLOW' }));
+
+      expect(requestPermission).toHaveBeenCalledWith({ mode: 'readwrite' });
+      await waitFor(() =>
+        expect(within(dialog).queryByRole('button', { name: 'ALLOW' })).not.toBeInTheDocument(),
+      );
+    });
   });
 
   it('sets the number of undo steps from preferences', async () => {

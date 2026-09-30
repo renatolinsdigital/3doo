@@ -7,14 +7,25 @@ import { useProjectFiles } from './useProjectFiles';
 
 import type { FileKind, SaveResult } from '../services/download';
 
+/** Stands in for a file on disk: all the hook ever reads off one is its name. */
+function fakeHandle(name: string): FileSystemFileHandle {
+  return { name } as FileSystemFileHandle;
+}
+
 const downloads: { filename: string; contents: string }[] = [];
 const saves: { suggestedName: string; contents: string; kind: FileKind }[] = [];
-let picked: { name: string; text: string } | null = null;
+const overwrites: { handle: FileSystemFileHandle; contents: string }[] = [];
+/** What the picker hands back. Leaving `handle` out is the file input route. */
+let picked: { name: string; text: string; handle?: FileSystemFileHandle } | null = null;
 let pickedFile: File | null = null;
 let pixels = { width: 800, height: 400 };
-const written: string[] = [];
-const stored: string[] = [];
-let saveResult: SaveResult = { status: 'saved', filename: 'placeholder' };
+let saveResult: SaveResult = {
+  status: 'saved',
+  filename: 'placeholder',
+  handle: fakeHandle('placeholder'),
+};
+/** Null writes through whichever handle it is given, which is the usual ending. */
+let overwriteResult: SaveResult | null = null;
 
 // `saveResultToast` is deliberately left real: the mapping from outcome to
 // message is what these tests are checking.
@@ -24,48 +35,26 @@ vi.mock('../services/download', async () => {
   return {
     ...actual,
     downloadText: (filename: string, contents: string) => downloads.push({ filename, contents }),
-    pickTextFile: () => Promise.resolve(picked),
+    pickTextFile: () => Promise.resolve(picked && { handle: null, ...picked }),
     pickFile: () => Promise.resolve(pickedFile),
     saveTextFile: (suggestedName: string, contents: string, kind: FileKind) => {
       saves.push({ suggestedName, contents, kind });
       return Promise.resolve(saveResult);
     },
+    overwriteTextFile: (handle: FileSystemFileHandle, contents: string) => {
+      overwrites.push({ handle, contents });
+      return Promise.resolve(overwriteResult ?? { status: 'saved', filename: handle.name, handle });
+    },
   };
 });
 
-// The OPFS half is stubbed: jsdom has neither a storage directory nor an image
-// decoder. Everything else in the service, including the base64 a file save
-// runs on, is the real thing.
+// The image decoder is stubbed: jsdom has none. Everything else in the
+// service, including the base64 a file save runs on, is the real thing.
 vi.mock('../services/assets', async () => {
   const actual = await vi.importActual<typeof import('../services/assets')>('../services/assets');
   return {
     ...actual,
     imageDimensions: () => Promise.resolve(pixels),
-    writeAsset: (id: string) => {
-      written.push(id);
-      return Promise.resolve(true);
-    },
-    readAsset: () => Promise.resolve(null),
-    clearAssets: () => Promise.resolve(),
-  };
-});
-
-// jsdom has no IndexedDB, so the real service would answer "no autosave" to
-// everything. What these tests are about is which call the hook makes, so the
-// two writes are recorded in the order they land.
-vi.mock('../services/autosave', async () => {
-  const actual =
-    await vi.importActual<typeof import('../services/autosave')>('../services/autosave');
-  return {
-    ...actual,
-    writeAutosave: () => {
-      stored.push('write');
-      return Promise.resolve(true);
-    },
-    clearAutosave: () => {
-      stored.push('clear');
-      return Promise.resolve(true);
-    },
   };
 });
 
@@ -90,12 +79,12 @@ describe('project actions announce themselves', () => {
   beforeEach(() => {
     downloads.length = 0;
     saves.length = 0;
+    overwrites.length = 0;
     picked = null;
     pickedFile = null;
     pixels = { width: 800, height: 400 };
-    written.length = 0;
-    stored.length = 0;
-    saveResult = { status: 'saved', filename: 'placeholder' };
+    saveResult = { status: 'saved', filename: 'placeholder', handle: fakeHandle('placeholder') };
+    overwriteResult = null;
     useEditorStore.setState({ autosaveEnabled: true });
     useEditorStore.getState().resetScene();
     useEditorStore.setState({ toasts: [] });
@@ -104,9 +93,9 @@ describe('project actions announce themselves', () => {
   it('offers the project name to the save dialog, and reports where it landed', async () => {
     const project = files();
     act(() => useEditorStore.getState().setProjectName('LAMP POST'));
-    saveResult = { status: 'saved', filename: 'lamp.3doo' };
+    saveResult = { status: 'saved', filename: 'lamp.3doo', handle: fakeHandle('lamp.3doo') };
 
-    await act(() => project.current.saveProject());
+    await act(() => project.current.saveProjectAs());
 
     expect(saves).toHaveLength(1);
     expect(saves[0].suggestedName).toBe('LAMP POST.3doo');
@@ -121,7 +110,7 @@ describe('project actions announce themselves', () => {
     act(() => useEditorStore.getState().setProjectName('CRATE'));
     saveResult = { status: 'downloaded', filename: 'CRATE.3doo' };
 
-    await act(() => project.current.saveProject());
+    await act(() => project.current.saveProjectAs());
 
     expect(lastToast().message).toBe('Saved CRATE.3doo to your downloads');
   });
@@ -130,7 +119,7 @@ describe('project actions announce themselves', () => {
     const project = files();
     saveResult = { status: 'exists', filename: 'taken.3doo' };
 
-    await act(() => project.current.saveProject());
+    await act(() => project.current.saveProjectAs());
 
     expect(lastToast()).toMatchObject({
       variant: 'error',
@@ -142,7 +131,7 @@ describe('project actions announce themselves', () => {
     const project = files();
     saveResult = { status: 'cancelled', filename: 'untitled.3doo' };
 
-    await act(() => project.current.saveProject());
+    await act(() => project.current.saveProjectAs());
 
     expect(toasts()).toHaveLength(0);
   });
@@ -151,7 +140,7 @@ describe('project actions announce themselves', () => {
     const project = files();
     act(() => useEditorStore.getState().addPrimitive('cube'));
     expect(useEditorStore.getState().dirty).toBe(true);
-    saveResult = { status: 'saved', filename: 'crate.3doo' };
+    saveResult = { status: 'saved', filename: 'crate.3doo', handle: fakeHandle('crate.3doo') };
 
     await act(() => project.current.saveProject());
 
@@ -176,7 +165,7 @@ describe('project actions announce themselves', () => {
     const project = files();
     act(() => useEditorStore.getState().setProjectName(''));
 
-    await act(() => project.current.saveProject());
+    await act(() => project.current.saveProjectAs());
 
     expect(saves[0].suggestedName).toBe('untitled.3doo');
   });
@@ -244,18 +233,6 @@ describe('project actions announce themselves', () => {
     expect(useEditorStore.getState().objects).toHaveLength(0);
   });
 
-  it('takes the stored project with it, timeline and all', async () => {
-    const project = files();
-    act(() => useEditorStore.getState().addPrimitive('torus'));
-
-    await act(() => project.current.newProject());
-
-    // The reset empties the timeline in memory. Left in storage, the record
-    // would hand a tab reloaded before the next tick the project that was
-    // just discarded.
-    expect(stored).toEqual(['clear']);
-  });
-
   it('imports an image as a plane at the world origin', async () => {
     const project = files();
     pickedFile = imageFile();
@@ -281,21 +258,6 @@ describe('project actions announce themselves', () => {
     expect(useEditorStore.getState().objects).toHaveLength(0);
     expect(lastToast()).toMatchObject({ variant: 'error' });
     expect(lastToast().message).toMatch(/drawing.tiff is not a PNG, JPG or BMP image/);
-  });
-
-  it('keeps the bytes in the browser only while autosave is on', async () => {
-    const project = files();
-    pickedFile = imageFile();
-    act(() => useEditorStore.getState().setPreferences({ autosaveEnabled: false }));
-
-    await act(() => project.current.importImage());
-    expect(written).toHaveLength(0);
-
-    act(() => useEditorStore.getState().setPreferences({ autosaveEnabled: true }));
-    pickedFile = imageFile('second.png');
-    await act(() => project.current.importImage());
-
-    expect(written).toHaveLength(1);
   });
 
   it('writes the image into the .3doo, so the file stands on its own', async () => {
@@ -339,8 +301,7 @@ describe('project actions announce themselves', () => {
 
     await act(() => project.current.saveProject());
 
-    // A .3doo is the scene, not the route taken to it. The steps are kept in
-    // the browser instead, where a reloaded tab can carry on undoing.
+    // A .3doo is the scene, not the route taken to it.
     const written = saves[saves.length - 1].contents;
     expect(written).not.toContain('history');
     expect(Object.keys(JSON.parse(written))).not.toContain('history');
@@ -356,7 +317,7 @@ describe('project actions announce themselves', () => {
     await act(() => project.current.openProject());
 
     // Nothing in the file to inherit: the scene arrives, the steps behind it
-    // stayed in the browser that made them.
+    // stayed in the tab that took them.
     expect(useEditorStore.getState().canUndo).toBe(false);
   });
 
@@ -374,35 +335,6 @@ describe('project actions announce themselves', () => {
 
     // One Ctrl+Z would otherwise put back a scene this file never held.
     expect(useEditorStore.getState().canUndo).toBe(false);
-  });
-
-  it('brings the stored copy level with the file that was just opened', async () => {
-    const project = files();
-    act(() => useEditorStore.getState().addPrimitive('cube'));
-    await act(() => project.current.saveProject());
-    stored.length = 0;
-    picked = { name: 'scene.3doo', text: saves[saves.length - 1].contents };
-
-    await act(() => project.current.openProject());
-
-    // Left alone, the record would still be the project the file replaced, and
-    // a reload before the first edit would come back on it.
-    expect(stored).toEqual(['write']);
-  });
-
-  it('clears that copy instead when autosave is off', async () => {
-    const project = files();
-    act(() => useEditorStore.getState().addPrimitive('cube'));
-    await act(() => project.current.saveProject());
-    stored.length = 0;
-    picked = { name: 'scene.3doo', text: saves[saves.length - 1].contents };
-    act(() => useEditorStore.setState({ autosaveEnabled: false }));
-
-    await act(() => project.current.openProject());
-
-    // Nothing is being kept from here on, so what is still in storage is the
-    // project this file replaced.
-    expect(stored).toEqual(['clear']);
   });
 
   it('counts a freshly opened project as one a file already holds', async () => {
@@ -495,6 +427,187 @@ describe('project actions announce themselves', () => {
     expect(lastToast()).toMatchObject({
       variant: 'warning',
       message: 'No geometry found in empty.obj',
+    });
+  });
+
+  describe('SAVE and SAVE AS', () => {
+    /** A valid .3doo holding one cube, to open. */
+    async function projectText(project: ReturnType<typeof files>) {
+      act(() => useEditorStore.getState().addPrimitive('cube'));
+      await act(() => project.current.saveProjectAs());
+      return saves[saves.length - 1].contents;
+    }
+
+    it('saves straight back over the file SAVE AS wrote, without asking again', async () => {
+      const project = files();
+      const lamp = fakeHandle('lamp.3doo');
+      saveResult = { status: 'saved', filename: 'lamp.3doo', handle: lamp };
+      await act(() => project.current.saveProjectAs());
+
+      act(() => useEditorStore.getState().addPrimitive('torus'));
+      await act(() => project.current.saveProject());
+
+      expect(saves).toHaveLength(1);
+      expect(overwrites.map((write) => write.handle)).toEqual([lamp]);
+      expect(JSON.parse(overwrites[0].contents).objects[0].name).toBe('TORUS');
+      expect(lastToast()).toMatchObject({ variant: 'success', message: 'Saved lamp.3doo' });
+    });
+
+    it('saves back over the file the project was opened from', async () => {
+      const project = files();
+      const scene = fakeHandle('scene.3doo');
+      picked = { name: 'scene.3doo', text: await projectText(project), handle: scene };
+      await act(() => project.current.openProject());
+
+      await act(() => project.current.saveProject());
+
+      expect(overwrites.map((write) => write.handle)).toEqual([scene]);
+    });
+
+    it('names the project after the file SAVE AS wrote, whatever the dialog was offered', async () => {
+      const project = files();
+      act(() => useEditorStore.getState().setProjectName('LAMP POST'));
+      saveResult = { status: 'saved', filename: 'lamp.3doo', handle: fakeHandle('lamp.3doo') };
+
+      await act(() => project.current.saveProjectAs());
+
+      // The top bar names the file SAVE writes over, so it takes the name the
+      // dialog settled on. Renaming is part of the save, not an edit after it.
+      expect(useEditorStore.getState().projectName).toBe('lamp');
+      expect(useEditorStore.getState().dirty).toBe(false);
+      expect(useEditorStore.getState().savedToFile).toBe(true);
+    });
+
+    it('names the project after the file it opened, not the name saved inside it', async () => {
+      const project = files();
+      act(() => useEditorStore.getState().setProjectName('LAMP POST'));
+      const text = await projectText(project);
+      act(() => useEditorStore.getState().resetScene());
+      picked = { name: 'lamp-v2.3doo', text, handle: fakeHandle('lamp-v2.3doo') };
+
+      await act(() => project.current.openProject());
+
+      expect(useEditorStore.getState().projectName).toBe('lamp-v2');
+      expect(useEditorStore.getState().dirty).toBe(false);
+      expect(useEditorStore.getState().savedToFile).toBe(true);
+    });
+
+    it('asks where once the project is renamed away from its file', async () => {
+      const project = files();
+      saveResult = { status: 'saved', filename: 'lamp.3doo', handle: fakeHandle('lamp.3doo') };
+      await act(() => project.current.saveProjectAs());
+
+      act(() => useEditorStore.getState().setProjectName('NAAAADA'));
+      await act(() => project.current.saveProject());
+
+      // A different name is a different file, so SAVE asks where it goes
+      // rather than writing it over lamp.3doo.
+      expect(saves).toHaveLength(2);
+      expect(saves[1].suggestedName).toBe('NAAAADA.3doo');
+      expect(overwrites).toHaveLength(0);
+    });
+
+    it('saves over the file again once its name is put back', async () => {
+      const project = files();
+      const lamp = fakeHandle('lamp.3doo');
+      saveResult = { status: 'saved', filename: 'lamp.3doo', handle: lamp };
+      await act(() => project.current.saveProjectAs());
+
+      act(() => useEditorStore.getState().setProjectName('NAAAADA'));
+      act(() => useEditorStore.getState().setProjectName('lamp'));
+      await act(() => project.current.saveProject());
+
+      expect(saves).toHaveLength(1);
+      expect(overwrites.map((write) => write.handle)).toEqual([lamp]);
+    });
+
+    it('asks where while there is nothing to save over, since the key still has to save', async () => {
+      const project = files();
+
+      await act(() => project.current.saveProject());
+
+      expect(saves).toHaveLength(1);
+      expect(overwrites).toHaveLength(0);
+    });
+
+    it('still asks where on SAVE AS when there is a file to save over', async () => {
+      const project = files();
+      await act(() => project.current.saveProjectAs());
+
+      await act(() => project.current.saveProjectAs());
+
+      expect(saves).toHaveLength(2);
+      expect(overwrites).toHaveLength(0);
+    });
+
+    it('keeps the file through an edit, which only takes savedToFile away', async () => {
+      const project = files();
+      await act(() => project.current.saveProjectAs());
+
+      act(() => useEditorStore.getState().addPrimitive('cube'));
+
+      // The project still belongs to that file. It has moved on from what the
+      // file holds, which is what SAVE is there for.
+      expect(useEditorStore.getState().projectFile?.name).toBe('placeholder');
+      expect(useEditorStore.getState().savedToFile).toBe(false);
+    });
+
+    it('forgets the file once a new project starts', async () => {
+      const project = files();
+      await act(() => project.current.saveProjectAs());
+
+      await act(() => project.current.newProject());
+
+      expect(useEditorStore.getState().projectFile).toBeNull();
+    });
+
+    it('has nothing to save over after an open that only lent the page a copy', async () => {
+      const project = files();
+      // No handle: the file input route, which is every browser without the
+      // open picker.
+      picked = { name: 'scene.3doo', text: await projectText(project) };
+
+      await act(() => project.current.openProject());
+
+      expect(useEditorStore.getState().projectFile).toBeNull();
+    });
+
+    it('has nothing to save over after a save the browser downloaded', async () => {
+      const project = files();
+      await act(() => project.current.saveProjectAs());
+      saveResult = { status: 'downloaded', filename: 'untitled.3doo' };
+
+      await act(() => project.current.saveProjectAs());
+
+      // The last save is in the downloads folder, out of reach. Writing over
+      // the file before it would be writing over something else.
+      expect(useEditorStore.getState().projectFile).toBeNull();
+    });
+
+    it('leaves the file it had when the save is dismissed', async () => {
+      const project = files();
+      await act(() => project.current.saveProjectAs());
+      saveResult = { status: 'cancelled', filename: 'untitled.3doo' };
+
+      await act(() => project.current.saveProjectAs());
+
+      expect(useEditorStore.getState().projectFile?.name).toBe('placeholder');
+    });
+
+    it('says why the file did not change, and leaves the work pending', async () => {
+      const project = files();
+      await act(() => project.current.saveProjectAs());
+      act(() => useEditorStore.getState().addPrimitive('cube'));
+      overwriteResult = { status: 'failed', filename: 'placeholder', reason: 'it is locked' };
+
+      await act(() => project.current.saveProject());
+
+      expect(lastToast()).toMatchObject({
+        variant: 'error',
+        message: 'Could not save placeholder: it is locked',
+      });
+      expect(useEditorStore.getState().dirty).toBe(true);
+      expect(useEditorStore.getState().savedToFile).toBe(false);
     });
   });
 });

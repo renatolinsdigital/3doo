@@ -7,4 +7,50 @@
     font-size: var(--text-xs);
     color: var(--ink-muted);
   }
+
+  // A field row like EVERY beside it: the label cell, then the chosen
+  // location's name with the buttons that change it, kept to the row's height.
+  &__location {
+    @include field-grid;
+  }
+
+  &__location-label {
+    @include field-label;
+  }
+
+  &__location-value {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-width: 0;
+    padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+    background: var(--bone);
+    border: var(--border-thin) solid var(--void);
+
+    // Scoped under the row so it outranks the button's own sizing whatever
+    // order the stylesheets load in. A full-height button, and the press that
+    // shifts it by the shadow's width, would burst a row this dense.
+    .preferences__location-button {
+      min-height: 0;
+      padding: 0 var(--space-2);
+
+      &:active:not(:disabled):not([aria-disabled='true']) {
+        transform: none;
+      }
+    }
+  }
+
+  &__location-name {
+    @include mono-value;
+
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+
+    &--empty {
+      color: var(--ink-muted);
+    }
+  }
 }

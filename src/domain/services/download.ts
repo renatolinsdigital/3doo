@@ -94,12 +94,28 @@ export function wrongKindMessage(filename: string, kind: FileKind): string | nul
   return `${filename} is not ${kind.label}, expected ${kind.expected ?? kind.extension}`;
 }
 
-interface SaveFilePickerOptions {
-  suggestedName?: string;
+/** A project file's name as the top bar shows it: `lamp.3doo` is `lamp`. */
+export function withoutProjectSuffix(filename: string): string {
+  const suffix = PROJECT_FILE.accepts.find((accepted) => filename.toLowerCase().endsWith(accepted));
+  return suffix ? filename.slice(0, -suffix.length) : filename;
+}
+
+interface FilePickerOptions {
   types?: { description: string; accept: Record<string, string[]> }[];
 }
 
+interface SaveFilePickerOptions extends FilePickerOptions {
+  suggestedName?: string;
+}
+
+interface DirectoryPickerOptions {
+  startIn?: FileSystemHandle | 'documents';
+  mode?: 'readwrite';
+}
+
 type SaveFilePicker = (options: SaveFilePickerOptions) => Promise<FileSystemFileHandle>;
+type OpenFilePicker = (options: FilePickerOptions) => Promise<FileSystemFileHandle[]>;
+type DirectoryPicker = (options: DirectoryPickerOptions) => Promise<FileSystemDirectoryHandle>;
 
 /**
  * `window.showSaveFilePicker`, where the browser has it.
@@ -113,16 +129,81 @@ function saveFilePicker(): SaveFilePicker | null {
   return typeof picker === 'function' ? picker.bind(window) : null;
 }
 
-export interface SaveResult {
-  /**
-   * `saved`: written where the user put it.
-   * `downloaded`: no picker available, so the browser placed it.
-   * `exists`: refused rather than overwrite.
-   * `cancelled`: the user dismissed the dialog.
-   */
-  status: 'saved' | 'downloaded' | 'exists' | 'cancelled';
-  filename: string;
+/** `window.showOpenFilePicker`, where the browser has it, declared for the same reason. */
+function openFilePicker(): OpenFilePicker | null {
+  const picker = (window as unknown as { showOpenFilePicker?: OpenFilePicker }).showOpenFilePicker;
+  return typeof picker === 'function' ? picker.bind(window) : null;
 }
+
+/** `window.showDirectoryPicker`, where the browser has it, declared for the same reason. */
+function directoryPicker(): DirectoryPicker | null {
+  const picker = (window as unknown as { showDirectoryPicker?: DirectoryPicker })
+    .showDirectoryPicker;
+  return typeof picker === 'function' ? picker.bind(window) : null;
+}
+
+/**
+ * Whether this browser can hand the page a folder to keep auto-saves in.
+ *
+ * Chromium only. Elsewhere autosave has nowhere to write, so it stays off.
+ */
+export function canPickFolder(): boolean {
+  return directoryPicker() !== null;
+}
+
+/**
+ * Whether this browser can hand the page a file it may write back to later.
+ *
+ * Only the pickers do. Without them an open reads a copy and a save is a
+ * download, so FILE > SAVE never has a file to write over.
+ */
+export function canWriteBack(): boolean {
+  return saveFilePicker() !== null || openFilePicker() !== null;
+}
+
+/**
+ * The file FILE > SAVE writes over, or null when it has none.
+ *
+ * The project's own file, but only while the top bar still carries that
+ * file's name. A project renamed since is on its way to a new file, and only
+ * SAVE AS can ask where that goes.
+ */
+export function saveTarget(
+  file: FileSystemFileHandle | null,
+  projectName: string,
+): FileSystemFileHandle | null {
+  return file && withoutProjectSuffix(file.name) === projectName ? file : null;
+}
+
+/**
+ * The filter a picker offers for one kind of file.
+ *
+ * Keyed by a private type rather than a real one, because Chromium widens the
+ * filter with every extension the system has registered for the key: under
+ * `application/json` the dialog offers `.json` too.
+ */
+function pickerTypes(kind: FileKind, extensions: readonly string[]): FilePickerOptions['types'] {
+  return [
+    {
+      description: kind.label,
+      accept: { [`application/x-${kind.extension.slice(1)}`]: [...extensions] },
+    },
+  ];
+}
+
+/**
+ * Where a save got to.
+ *
+ * `saved`: written where the user put it, through `handle`.
+ * `downloaded`: no picker available, so the browser placed it.
+ * `exists`: refused rather than overwrite.
+ * `cancelled`: the user dismissed the dialog.
+ * `failed`: there was a file to write and the write did not land.
+ */
+export type SaveResult =
+  | { status: 'saved'; filename: string; handle: FileSystemFileHandle }
+  | { status: 'downloaded' | 'exists' | 'cancelled'; filename: string }
+  | { status: 'failed'; filename: string; reason: string };
 
 /**
  * Writes text to a file the user places themselves.
@@ -155,16 +236,7 @@ export async function saveTextFile(
       // The canonical extension alone, not every suffix opening will take: a
       // save dialog offering `.3doo.json` invites new files to be named with a
       // spelling that exists only so older ones still open.
-      //
-      // Keyed by a private type rather than by `mimeType`, because Chromium
-      // widens the filter with every extension the system has registered for
-      // the key: under `application/json` the dialog offers `.json` too.
-      types: [
-        {
-          description: kind.label,
-          accept: { [`application/x-${kind.extension.slice(1)}`]: [kind.extension] },
-        },
-      ],
+      types: pickerTypes(kind, [kind.extension]),
     });
   } catch (error) {
     if ((error as DOMException)?.name === 'AbortError') {
@@ -182,7 +254,114 @@ export async function saveTextFile(
   const writable = await handle.createWritable();
   await writable.write(contents);
   await writable.close();
-  return { status: 'saved', filename: handle.name };
+  return { status: 'saved', filename: handle.name, handle };
+}
+
+const WRITE_ACCESS = { mode: 'readwrite' } as const;
+
+/**
+ * `queryPermission` and `requestPermission`, which are Chromium's and missing
+ * from the DOM lib. Where they are absent the write goes ahead, and the browser
+ * refuses it on its own if it has to.
+ */
+type PermissionCalls = FileSystemHandle & {
+  queryPermission?: (access: typeof WRITE_ACCESS) => Promise<PermissionState>;
+  requestPermission?: (access: typeof WRITE_ACCESS) => Promise<PermissionState>;
+};
+
+/**
+ * Whether the page may write through this handle right now, without asking.
+ *
+ * What a timer has to settle for: asking needs a click to answer it, and an
+ * autosave tick is not one.
+ */
+export async function mayWriteNow(handle: FileSystemHandle): Promise<boolean> {
+  const permissions = handle as PermissionCalls;
+  if (!permissions.queryPermission) return true;
+  return (await permissions.queryPermission(WRITE_ACCESS)) === 'granted';
+}
+
+/** Whether the page may write through this handle, asking the user when it has to. */
+export async function mayWrite(handle: FileSystemHandle): Promise<boolean> {
+  if (await mayWriteNow(handle)) return true;
+  const permissions = handle as PermissionCalls;
+  if (!permissions.requestPermission) return true;
+  return (await permissions.requestPermission(WRITE_ACCESS)) === 'granted';
+}
+
+/**
+ * How asking for a folder ended.
+ *
+ * `picked`: `folder` may be written to, with permission given.
+ * `cancelled`: the picker was dismissed, or the browser refused the folder
+ * chosen and the user gave up rather than choosing another.
+ * `failed`: the browser gave a folder but not the use of it.
+ */
+export type FolderPick =
+  | { status: 'picked'; folder: FileSystemDirectoryHandle }
+  | { status: 'cancelled' }
+  | { status: 'failed'; reason: string };
+
+/**
+ * Asks the user for a folder to write into, which only works inside a click.
+ *
+ * Chromium refuses a few folders outright: the home folder, the Desktop,
+ * Documents and Downloads themselves, while allowing any folder inside them.
+ * Picking one of those gets the browser's own notice that it holds system
+ * files, and giving up there reaches this as a dismissed picker.
+ */
+export async function pickFolder(
+  startIn: FileSystemDirectoryHandle | 'documents',
+): Promise<FolderPick> {
+  const picker = directoryPicker();
+  if (!picker) return { status: 'failed', reason: 'this browser cannot write to a folder' };
+
+  let picked: FileSystemDirectoryHandle;
+  try {
+    picked = await picker({ startIn, mode: 'readwrite' });
+  } catch (error) {
+    if ((error as DOMException)?.name === 'AbortError') return { status: 'cancelled' };
+    return { status: 'failed', reason: (error as Error).message };
+  }
+
+  try {
+    // Asked for with the pick itself where the browser can. One that cannot
+    // hands back a folder it may only read, and this is the second question.
+    if (!(await mayWrite(picked))) {
+      return { status: 'failed', reason: 'permission to write to it was not given' };
+    }
+    return { status: 'picked', folder: picked };
+  } catch (error) {
+    return { status: 'failed', reason: (error as Error).message };
+  }
+}
+
+/**
+ * Writes text over a file picked earlier, with no dialog.
+ *
+ * A handle from the save picker can already write. One from the open picker
+ * can only read, so the first write asks the user, and a refusal is reported
+ * rather than treated as a dismissed dialog: nothing else on screen would say
+ * why the file did not change.
+ */
+export async function overwriteTextFile(
+  handle: FileSystemFileHandle,
+  contents: string,
+): Promise<SaveResult> {
+  const filename = handle.name;
+  try {
+    if (!(await mayWrite(handle))) {
+      return { status: 'failed', filename, reason: 'permission to write to it was not given' };
+    }
+    const writable = await handle.createWritable();
+    await writable.write(contents);
+    await writable.close();
+    return { status: 'saved', filename, handle };
+  } catch (error) {
+    // Moved, deleted, locked by another program: the browser's own words say
+    // which better than a guess made here would.
+    return { status: 'failed', filename, reason: (error as Error).message };
+  }
 }
 
 /** How each save outcome is announced. Null when there is nothing to say. */
@@ -199,6 +378,8 @@ export function saveResultToast(
         variant: 'error',
         message: `${result.filename} already exists, save under a different name`,
       };
+    case 'failed':
+      return { variant: 'error', message: `Could not save ${result.filename}: ${result.reason}` };
     // Dismissing a dialog is a decision, not an event worth a toast.
     case 'cancelled':
       return null;
@@ -225,8 +406,48 @@ export function pickFile(kind: FileKind): Promise<File | null> {
   });
 }
 
-/** Opens a file picker, filtered to one kind, and resolves with its text. */
-export function pickTextFile(kind: FileKind): Promise<{ name: string; text: string } | null> {
+/** A text file read in, with the way back to it where the browser gave one. */
+export interface PickedTextFile {
+  name: string;
+  text: string;
+  /**
+   * The file on disk, which FILE > SAVE can write back to.
+   *
+   * Null when it came through a file input, which hands the page a copy of the
+   * contents and nothing that leads back to where they came from.
+   */
+  handle: FileSystemFileHandle | null;
+}
+
+/**
+ * Opens a file picker, filtered to one kind, and resolves with its text.
+ *
+ * Through `showOpenFilePicker` where the browser has it, since that is the only
+ * picker that hands back the file itself, and through a file input elsewhere.
+ */
+export async function pickTextFile(kind: FileKind): Promise<PickedTextFile | null> {
+  const picker = openFilePicker();
+  if (!picker) return inputTextFile(kind);
+
+  let handle: FileSystemFileHandle;
+  try {
+    [handle] = await picker({ types: pickerTypes(kind, kind.accepts) });
+  } catch (error) {
+    if ((error as DOMException)?.name === 'AbortError') return null;
+    // As with a save, any other refusal from the picker must not cost the user
+    // the open, so take the plain route.
+    return inputTextFile(kind);
+  }
+
+  try {
+    const file = await handle.getFile();
+    return { name: file.name, text: await file.text(), handle };
+  } catch {
+    return null;
+  }
+}
+
+function inputTextFile(kind: FileKind): Promise<PickedTextFile | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
@@ -240,7 +461,7 @@ export function pickTextFile(kind: FileKind): Promise<{ name: string; text: stri
       }
       file
         .text()
-        .then((text) => resolve({ name: file.name, text }))
+        .then((text) => resolve({ name: file.name, text, handle: null }))
         .catch(() => resolve(null));
     };
 

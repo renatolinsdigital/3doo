@@ -45,16 +45,20 @@ function isTypingTarget(target: HTMLElement | null): boolean {
 
 /** Wires the keymap table to store actions. */
 export function useKeymap(): void {
-  const { saveProject, openProject } = useProjectFiles();
+  const { saveProject, saveProjectAs, openProject } = useProjectFiles();
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const state = useEditorStore.getState();
 
       // Checked ahead of the typing guard, and ahead of everything else: a
-      // refresh takes the scene back to the last autosave tick whatever the
-      // keyboard focus was on at the time.
+      // refresh throws away whatever is in no file, whatever the keyboard
+      // focus was on at the time.
       const reload = reloadShortcut(event);
+      // Nothing has changed since the last save, so the reload loses nothing
+      // and the browser is left to run it. Not `location.reload()`, which
+      // cannot skip the cache the way the hard reloads ask it to.
+      if (reload === 'ask' && !state.dirty) return;
       if (reload) {
         event.preventDefault();
         if (reload === 'ask') {
@@ -325,6 +329,9 @@ export function useKeymap(): void {
         case 'save':
           void saveProject();
           break;
+        case 'saveAs':
+          void saveProjectAs();
+          break;
         case 'open':
           // Through the same prompt the menu goes through: the shortcut is a
           // faster route to the action, not a way around what it costs.
@@ -342,5 +349,5 @@ export function useKeymap(): void {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [openProject, saveProject]);
+  }, [openProject, saveProject, saveProjectAs]);
 }

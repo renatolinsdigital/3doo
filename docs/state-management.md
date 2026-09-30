@@ -187,7 +187,7 @@ correctness; per-operation inverse commands are listed in `TODO.txt`.
 
 - Save and load project files
 - Undo snapshots
-- Autosave to IndexedDB and crash recovery
+- Autosave's numbered copies, which are `.3doo` files like any other
 - The clipboard path for `cloneMesh`
 
 Because `cloneMesh` is `deserializeMesh(serializeMesh(mesh))`, any bug in the
@@ -202,9 +202,8 @@ steps of a scene holding a 4MB photograph is 200MB of history. Keeping it out
 of the replay also means an image object can be deleted and undone with its
 bytes still loaded.
 
-The bytes themselves never enter a history step or the IndexedDB record. They
-live in OPFS, and are inlined as base64 only when a `.3doo` is written. See
-[saving.md](saving.md).
+The bytes themselves never enter a history step. They live in the store, and
+are inlined as base64 only when a `.3doo` is written. See [saving.md](saving.md).
 
 ## Store actions are the only mutation path
 

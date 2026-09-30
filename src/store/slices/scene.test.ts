@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createModifier, vec3 } from '@kernel/index';
 import type { RemeshModifier } from '@kernel/index';
@@ -801,5 +801,77 @@ describe('what counts as changing the project', () => {
     useEditorStore.getState().togglePanel('OUTLINER');
 
     expect(useEditorStore.getState().dirty).toBe(false);
+  });
+
+  it('forgets what was stored once a write of it fails, or a new scene starts', () => {
+    clean();
+    useEditorStore.getState().markSaved(42);
+    useEditorStore.getState().markDirty();
+    expect(useEditorStore.getState().savedFingerprint).toBeNull();
+
+    useEditorStore.getState().markSaved(42);
+    useEditorStore.getState().resetScene();
+    expect(useEditorStore.getState().savedFingerprint).toBeNull();
+  });
+});
+
+describe('ids across page loads', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.resetModules();
+  });
+
+  /** The store as a page load would build it at `time`: counters back at zero. */
+  async function pageLoadAt(time: string) {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(time));
+    vi.resetModules();
+    return (await import('../useEditorStore')).useEditorStore;
+  }
+
+  it('never hands a new object the id of one a file brought in', async () => {
+    // Saved yesterday, in a tab whose counter started where this one's does.
+    const yesterday = await pageLoadAt('2026-09-25T10:00:00Z');
+    yesterday.getState().addPrimitive('cone');
+    const saved = yesterday.getState().snapshotDocument();
+
+    const today = await pageLoadAt('2026-09-26T10:00:00Z');
+    today.getState().loadProjectDocument(saved, true);
+    today.getState().addPrimitive('cube');
+
+    // Sharing an id, the viewport drew one mesh for both and the cone vanished.
+    const ids = today.getState().objects.map((object) => object.id);
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it('never gives a new modifier the id of one the object already has', async () => {
+    const yesterday = await pageLoadAt('2026-09-25T10:00:00Z');
+    yesterday.getState().addPrimitive('cone');
+    yesterday.getState().addModifier('mirror');
+    const saved = yesterday.getState().snapshotDocument();
+
+    const today = await pageLoadAt('2026-09-26T10:00:00Z');
+    today.getState().loadProjectDocument(saved, true);
+    today.getState().addModifier('mirror');
+
+    const ids = today.getState().objects[0].modifiers.map((modifier) => modifier.id);
+    expect(new Set(ids).size).toBe(2);
+  });
+
+  it('brings back both of two objects a damaged file holds under one id', () => {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    store.addPrimitive('cone');
+    store.addPrimitive('torus');
+    const saved = useEditorStore.getState().snapshotDocument();
+    saved.objects[1].id = saved.objects[0].id;
+
+    useEditorStore.getState().loadProjectDocument(saved, true);
+
+    const { objects } = useEditorStore.getState();
+    expect(objects.map((object) => object.name)).toEqual(['CONE', 'TORUS']);
+    expect(objects[0].id).toBe(saved.objects[0].id);
+    expect(objects[1].id).not.toBe(objects[0].id);
   });
 });

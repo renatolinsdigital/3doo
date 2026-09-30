@@ -71,7 +71,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'A fresh tab opens on a cube, the way Blender does, so there is something to press keys at before you have added anything, and FILE > NEW starts the next project the same way. It is an ordinary object: one Ctrl+Z takes it away if you would rather start empty, and a tab with a session to come back to loads that instead. Work is autosaved to IndexedDB as you go, so a closed or crashed tab does not cost you the scene, and the AUTOSAVE switch in preferences turns that off for a machine you would rather leave nothing on. Undo holds the last 50 steps, or however many the UNDO STEPS slider in preferences allows, and the ▤ button in the top bar opens the list to click straight back to one of them.',
+        text: 'A fresh tab opens on a cube, the way Blender does, so there is something to press keys at before you have added anything, and FILE > NEW starts the next project the same way. It is an ordinary object: one Ctrl+Z takes it away if you would rather start empty. Autosave is off until you turn it on with the AUTOSAVE switch in preferences. From then on every change is written as a numbered .3doo into a 3doo-auto-saves folder, in the location you choose there, so a closed or crashed tab costs you at most the changes since the last one, which FILE > OPEN brings back. Undo holds the last 50 steps, or however many the UNDO STEPS slider in preferences allows, and the ▤ button in the top bar opens the list to click straight back to one of them.',
       },
     ],
   },
@@ -560,15 +560,19 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'Save (Ctrl+S)',
-            'Downloads the whole project (objects, transforms, modifiers, materials) as a .3doo file (JSON inside, whatever the suffix says).',
+            "Writes the project straight back over the .3doo it was opened from or last saved to, with no dialog. The first time after an open, the browser asks whether the editor may write to that file. The project name in the top bar is that file's name: change it and the project is on its way to a new file, so the menu entry is greyed out and Ctrl+S does a Save as instead, until the old name is put back. The same goes while there is no file to write over yet. A browser that cannot write back to a file keeps it greyed out, and every save there is a Save as.",
+          ],
+          [
+            'Save as (Ctrl+Shift+S)',
+            'Writes the whole project (objects, transforms, modifiers, materials) to a new .3doo file (JSON inside, whatever the suffix says), which Save writes over from then on, and the top bar takes the name you gave the file. It will not replace a file that is already there.',
           ],
           [
             'Open (Ctrl+O)',
-            'Loads one of those files back over the current scene. It offers to save that scene to a file first, because the autosaved copy of it goes when the file arrives.',
+            "Loads one of those files back over the current scene, and the top bar takes the file's name. It offers to save that scene to a file first, since whatever is in no file goes when the file arrives. The numbered copies in 3doo-auto-saves stay.",
           ],
           [
             'New',
-            'Clears the scene and starts again on a cube. It offers the same save first: the autosaved copy of what you were working on, its images and its undo steps all go with it.',
+            'Clears the scene and starts again on a cube. It offers the same save first: what you were working on goes, undo steps and all. The numbered copies in 3doo-auto-saves stay.',
           ],
           ['Import mesh', 'Reads an OBJ file in as new objects alongside what is already there.'],
           [
@@ -595,7 +599,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'Your work is autosaved into this browser as you go: the scene itself into IndexedDB and any imported images into the origin private file system. That is storage on this machine, in this browser. Nothing is uploaded, nothing follows you to another browser, and clearing site data takes it with everything else. A .3doo file saved with Ctrl+S is the only copy that leaves, and it carries its images inside it, so a project sent to someone opens as what you saved.',
+        text: 'With autosave on, your work is written as you go into numbered .3doo files in the 3doo-auto-saves folder of the location you chose, and nowhere else. This browser keeps no copy of the project, so a reload opens a fresh scene, and FILE > OPEN brings back any file you saved or autosave wrote. Nothing is uploaded. A .3doo, saved with Ctrl+S or written by autosave, carries its images inside it, so a project sent to someone opens as what you saved.',
       },
     ],
   },
@@ -614,19 +618,31 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'prose',
-        text: 'The AUTOSAVE section decides whether the editor keeps a copy of the scene in this browser as you work, and how often. On, which is the default, a closed or crashed tab costs you nothing: the next one opens on what you were doing and says so. EVERY sets the gap between writes, from 30 seconds to 5 minutes: shorter costs you less when a tab dies, longer stops a heavy scene being written out so often. Off, nothing is written and no earlier session is offered back, so every tab opens on a new scene with a cube in it. While it is on, a small floppy disk turns once in the status bar each time a write lands, so you can see the copy being kept rather than having to take it on trust.',
+        text: 'The AUTOSAVE section decides whether the editor keeps copies of the scene as you work, where, and how often. It is off until you turn it on. LOCATION is the folder the copies go in: CHOOSE opens a folder picker, and a 3doo-auto-saves folder is made inside whatever you pick, or used as it is if you pick one called that. Turning autosave on with no location chosen yet asks for one first. The browser only writes where you allow it, so choosing a location asks your permission, and it will not hand over the Desktop, Documents or Downloads themselves: pick a folder inside one of them, or anywhere else.',
       },
       {
         kind: 'prose',
-        text: 'Nothing is written until you change something, and a change means adding, moving, renaming, regrouping or deleting: anything that would be different in the file. Selecting an object and looking around are not changes. So a tab left open on a scene you have finished with stops writing, and one you opened and never touched never writes at all.',
+        text: 'From then on each write leaves a new file in that folder, NAME_01.3doo, then NAME_02.3doo and on, never over one already there. NAME is the .3doo you saved as or opened, or the project name in the top bar until there is one, so a project nobody has named writes untitled_01.3doo. The numbers carry on from the highest one in the folder, so a project reopened tomorrow picks up where it left off. EVERY sets the gap between writes, from 30 seconds to 15 minutes, 3 minutes by default: shorter costs you less when a tab dies, longer leaves fewer copies and stops a heavy scene being written out so often.',
+      },
+      {
+        kind: 'prose',
+        text: 'Nothing else is kept. The browser holds no copy of the project, so every tab opens on a new scene with a cube in it, and the latest numbered copy is where the work of a closed or crashed tab comes back from, with FILE > OPEN. After the browser restarts it asks once for permission to write to the location again, and allowing it on every visit, where the browser offers that, stops the question coming back. Until you allow it, nothing is written. Turning autosave off keeps the location for next time. Each write that lands turns a small floppy disk once in the status bar, so you can see the copies being kept rather than having to take them on trust. Only a write that fails raises a message.',
       },
       {
         kind: 'note',
-        text: 'Autosave keeps one project: the one you are working on. There is no list of past sessions, which is why FILE > NEW and FILE > OPEN both ask before they run: either one clears the stored project, its images and its undo steps, and the prompt offers to write a .3doo first, waiting for the file before it discards anything. It only asks when you have something to lose: on a scene already saved to a file and untouched since, it just gets on with it. Autosave is also storage in this browser on this machine, never a server, so a .3doo saved with Ctrl+S remains the only copy that outlives the browser.',
+        text: 'Autosave needs a browser that can hand a page a folder, which today means Chrome, Edge and the other Chromium browsers. Elsewhere the switch is greyed out, and Ctrl+S is how work is kept.',
+      },
+      {
+        kind: 'prose',
+        text: 'Nothing is written until you change something, and a change means adding, moving, renaming, regrouping or deleting: anything that would be different in the file. Selecting an object and looking around are not changes, and neither is an edit you undo before the next write: the scene is compared with the last one kept, by autosave or by your own Ctrl+S, and one that matches it is not written again. So a tab left open on a scene you have finished with stops writing, and one you opened and never touched never writes at all.',
       },
       {
         kind: 'note',
-        text: 'EXPORT writes your preferences to a .pref file and IMPORT reads one back, which is how you carry them to another browser or machine. RESET puts everything back to the defaults.',
+        text: 'FILE > NEW and FILE > OPEN both ask before they run, because either one replaces the scene on screen and every undo step behind it. The prompt offers to write a .3doo first, waiting for the file before it discards anything. It only asks when you have something to lose: on a scene already saved to a file and untouched since, it just gets on with it. The numbered copies in 3doo-auto-saves are files like any other, so neither one touches them, and nothing is ever sent to a server.',
+      },
+      {
+        kind: 'note',
+        text: 'EXPORT writes your preferences to a .pref file and IMPORT reads one back, which is how you carry them to another browser or machine. RESET puts everything back to the defaults and forgets the autosave LOCATION, so turning autosave on asks for one again.',
       },
     ],
   },

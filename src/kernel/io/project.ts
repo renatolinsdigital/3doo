@@ -31,11 +31,11 @@ export interface ObjectImageData {
  * One binary the project needs and JSON cannot hold: an imported image.
  *
  * `data` is base64 of the original file, exactly as it was imported, and is
- * optional because the same document is written to two places. A `.3doo` on
- * disk carries it, so the file is one self-contained thing. The autosave in the
- * browser leaves it out and keeps the bytes in OPFS instead, where they are
- * real binary rather than a third bigger and re-encoded on every save. Filling
- * it back in is what turns the browser's copy into the file (see docs/saving.md).
+ * optional because the same document has two lives. A `.3doo` on disk carries
+ * it, so the file is one self-contained thing. The document in memory and on
+ * the undo timeline leaves it out, since the store already holds the bytes
+ * and every step would otherwise copy every picture. Filling it back in is
+ * what turns one into the other (see docs/saving.md).
  */
 export interface ProjectAssetData {
   id: string;

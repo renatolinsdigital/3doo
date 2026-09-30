@@ -6,49 +6,76 @@ import {
   exportOBJ,
   importOBJ,
   parseProject,
-  stringifyProject,
 } from '@kernel/index';
 import { evaluatedMesh, useEditorStore } from '@store/index';
 
 import {
-  clearAssets,
   hydrateAssets,
   imageDimensions,
   imageTypeFor,
-  inlineAssets,
   nextAssetId,
-  syncAssets,
-  writeAsset,
+  projectText,
 } from '../services/assets';
-import { clearAutosave, writeAutosave } from '../services/autosave';
+import { sceneFingerprint } from '../services/autosave';
 import {
   type SaveResult,
   IMAGE_FILE,
   MESH_FILE,
   PROJECT_FILE,
   downloadText,
+  overwriteTextFile,
   pickFile,
   pickTextFile,
   saveResultToast,
+  saveTarget,
   saveTextFile,
   savedToDownloads,
+  withoutProjectSuffix,
   wrongKindMessage,
 } from '../services/download';
 
+/**
+ * Writes the project out through `write`, and settles what a save settles.
+ *
+ * SAVE and SAVE AS differ only in where the text goes. Reports where the save
+ * got to rather than only announcing it, because the reload prompt has to know
+ * whether the file was actually written before it throws the tab away.
+ */
+async function writeProject(write: (contents: string) => Promise<SaveResult>): Promise<SaveResult> {
+  const state = useEditorStore.getState();
+
+  const document = state.snapshotDocument();
+  // The file carries its own images, as base64 inside the JSON, so a .3doo
+  // sent to someone opens as what was saved rather than as blank planes.
+  const result = await write(await projectText(document, state.assets));
+
+  if (result.status === 'saved' || result.status === 'downloaded') {
+    // A download is out of the page's reach once it lands, so it leaves
+    // nothing for SAVE to write over.
+    const file = result.status === 'saved' ? result.handle : null;
+    // The top bar carries the name of the file SAVE writes over, and the save
+    // dialog may have settled on another than the one it was offered. Renamed
+    // ahead of the marks below, which a rename would otherwise take away.
+    if (file) state.setProjectName(withoutProjectSuffix(file.name));
+    // So the next autosave tick, finding the scene touched but not changed
+    // since, does not write a copy of what the file already holds.
+    state.markSaved(sceneFingerprint(document));
+    // FILE > NEW and FILE > OPEN ask before they run unless this is up: what
+    // they discard is a scene the user has a file of.
+    state.markFileSaved();
+    state.setProjectFile(file);
+  }
+
+  const toast = saveResultToast(result);
+  if (toast) state.pushToast(toast.variant, toast.message);
+  return result;
+}
+
 /** New / save / load / import / export, kept out of the components that trigger them. */
 export function useProjectFiles() {
-  const newProject = useCallback(async () => {
+  const newProject = useCallback(() => {
     const state = useEditorStore.getState();
     state.resetScene();
-    // The browser's copy of the last project goes with it: the autosave holds
-    // one project, the one being worked on, and its images would otherwise sit
-    // in OPFS with nothing pointing at them.
-    //
-    // The reset empties the timeline in memory; the record holds the other
-    // copy of it, and a tab reloaded before the next tick would come back on
-    // the project that was just discarded, steps and all. Awaited so both are
-    // gone before this returns and the caller can reach for a file.
-    await Promise.all([clearAutosave(), clearAssets()]);
     // A new project starts on a cube, the way Blender's does, for the same
     // reason a fresh tab does: an empty viewport gives you nothing to try a
     // tool against. One Ctrl+Z takes it away for anyone who wants the empty
@@ -62,46 +89,21 @@ export function useProjectFiles() {
     state.pushToast('info', 'Started a new project');
   }, []);
 
-  // Reports where the save got to rather than only announcing it, because the
-  // reload prompt has to know whether the file was actually written before it
-  // throws the tab away.
-  const saveProject = useCallback(async (): Promise<SaveResult> => {
-    const state = useEditorStore.getState();
-    const filename = `${state.projectName || 'untitled'}${PROJECT_FILE.extension}`;
-
-    const document = state.snapshotDocument();
-    // The file carries its own images, as base64 inside the JSON, so a .3doo
-    // sent to someone opens as what was saved rather than as blank planes.
-    // Kept beside the plain document rather than folded into it: the browser's
-    // copy below stores its images separately and wants the plain one.
-    const inlined = {
-      ...document,
-      assets: await inlineAssets(document.assets ?? [], state.assets),
-    };
-
-    const result = await saveTextFile(filename, stringifyProject(inlined), PROJECT_FILE);
-
-    if (result.status === 'saved' || result.status === 'downloaded') {
-      // The file is the newest copy of the project now, so the browser's is
-      // brought level with it rather than left at whenever the last tick was.
-      // Otherwise the next thing to ask whether anything is unsaved answers yes
-      // about a project that reached the disk a moment ago.
-      if (state.autosaveEnabled) {
-        // With the timeline, which the file deliberately leaves out: the
-        // browser's copy is where this session carries on from.
-        await writeAutosave(document, state.snapshotHistory());
-        void syncAssets(Object.values(state.assets));
-      }
-      state.markSaved();
-      // FILE > NEW and FILE > OPEN ask before they run unless this is up: the
-      // browser's copy they discard is one the user has a file of.
-      state.markFileSaved();
-    }
-
-    const toast = saveResultToast(result);
-    if (toast) state.pushToast(toast.variant, toast.message);
-    return result;
+  const saveProjectAs = useCallback((): Promise<SaveResult> => {
+    const { projectName } = useEditorStore.getState();
+    const filename = `${projectName || 'untitled'}${PROJECT_FILE.extension}`;
+    return writeProject((contents) => saveTextFile(filename, contents, PROJECT_FILE));
   }, []);
+
+  // SAVE AS while there is nothing to write over, no file yet or a project
+  // renamed away from it: Ctrl+S and the prompts that offer a save before a
+  // project is replaced reach here either way, and have to end with a file.
+  const saveProject = useCallback((): Promise<SaveResult> => {
+    const { projectFile, projectName } = useEditorStore.getState();
+    const file = saveTarget(projectFile, projectName);
+    if (!file) return saveProjectAs();
+    return writeProject((contents) => overwriteTextFile(file, contents));
+  }, [saveProjectAs]);
 
   const openProject = useCallback(async () => {
     const state = useEditorStore.getState();
@@ -116,30 +118,25 @@ export function useProjectFiles() {
 
     try {
       const document = parseProject(file.text);
-      const assets = await hydrateAssets(document.assets ?? []);
-      state.loadProjectDocument(document, true, assets);
+      // Named after the file rather than the name saved inside it: the top bar
+      // names the file SAVE writes over, and a file renamed on disk would
+      // otherwise open with SAVE already greyed out.
+      state.loadProjectDocument(
+        { ...document, name: withoutProjectSuffix(file.name) },
+        true,
+        hydrateAssets(document.assets ?? []),
+      );
       // The steps behind the project this file replaced are not steps behind
       // this one. Left in place, one Ctrl+Z would undo into a scene the file
-      // never held, and the autosave would carry that route into storage.
+      // never held.
       state.clearHistory();
-      if (state.autosaveEnabled) {
-        // Straight into the browser's store, so the project just opened is the
-        // one the autosave is keeping from here on, rather than the one it was
-        // keeping until a moment ago. Written from the store rather than from
-        // the file: a `.3doo` carries its images inside it and the record
-        // keeps them next door in OPFS, which is what syncAssets puts there,
-        // dropping whatever the old project had left behind.
-        await writeAutosave(useEditorStore.getState().snapshotDocument());
-        await syncAssets(assets);
-      } else {
-        // Autosave is off, so nothing is being kept from here on, and what the
-        // browser is still holding is the project this file just replaced.
-        await Promise.all([clearAutosave(), clearAssets()]);
-      }
       // What is on screen is what the file holds, so nothing is pending until
       // the user changes something, and that file is on disk to go back to.
-      state.markSaved();
+      // Fingerprinted from the scene as loaded rather than from the file,
+      // because loading tidies a document and the autosave reads the scene.
+      state.markSaved(sceneFingerprint(state.snapshotDocument()));
       state.markFileSaved();
+      state.setProjectFile(file.handle);
       state.pushToast('success', `Opened ${file.name}`);
     } catch (error) {
       // Named, because a bare parser message never says which file it came from
@@ -201,10 +198,6 @@ export function useProjectFiles() {
       const asset = { id: nextAssetId(), name: file.name, type, width, height, blob: file };
 
       state.addImage(asset);
-      // Written now rather than at the next autosave tick, so a tab closed
-      // straight after an import still has the picture in it.
-      if (state.autosaveEnabled) await writeAsset(asset.id, file);
-
       state.pushToast('success', `Imported ${file.name} (${width} by ${height})`);
     } catch (error) {
       state.pushToast('error', `Could not import ${file.name}: ${(error as Error).message}`);
@@ -263,5 +256,13 @@ export function useProjectFiles() {
     [collectExportObjects],
   );
 
-  return { newProject, saveProject, openProject, importMesh, importImage, exportModel };
+  return {
+    newProject,
+    saveProject,
+    saveProjectAs,
+    openProject,
+    importMesh,
+    importImage,
+    exportModel,
+  };
 }

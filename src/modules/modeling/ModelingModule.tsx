@@ -7,6 +7,7 @@ import { useEditorStore } from '@store/index';
 
 import {
   AddPanel,
+  AutosaveLocationDialog,
   BooleanPanel,
   ExportDialog,
   HistoryDialog,
@@ -122,6 +123,7 @@ export function ModelingModule() {
       <PreferencesDialog />
       <ReloadDialog onSave={saveProject} />
       <ReplaceProjectDialog onNew={newProject} onOpen={openProject} onSave={saveProject} />
+      <AutosaveLocationDialog />
       <ShortcutOverlay />
       <ToastHost />
       <TooltipHost bounds={mainRef} />

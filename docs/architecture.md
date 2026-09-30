@@ -75,11 +75,13 @@ only barrel.
 Everything that knows what the application *is*: panels, the keymap, autosave,
 file services, and the hooks that hold behaviour so components stay declarative.
 
-This is also the only layer that talks to browser storage: `services/autosave.ts`
-for the project document in IndexedDB and `services/assets.ts` for imported
-images in OPFS. The viewport never reads either. It draws what the store holds,
-which is how an image reaches the screen without `/src/viewport` importing
-`/src/domain` and inverting the arrows above. See [saving.md](saving.md).
+This is also the only layer that talks to files and browser storage:
+`services/autosave.ts` for the numbered copies and the one handle it keeps in
+IndexedDB, the autosave location, and `services/download.ts` for opening and
+saving `.3doo` files. The browser keeps no copy of a project. The viewport never
+reads any of it. It draws what the store holds, which is how an image reaches
+the screen without `/src/viewport` importing `/src/domain` and inverting the
+arrows above. See [saving.md](saving.md).
 
 ### `/src/modules` and `/src/app`
 

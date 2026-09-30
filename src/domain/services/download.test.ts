@@ -1,6 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { PREFERENCES_FILE, PROJECT_FILE, saveTextFile, wrongKindMessage } from './download';
+import {
+  PREFERENCES_FILE,
+  PROJECT_FILE,
+  canPickFolder,
+  canWriteBack,
+  mayWriteNow,
+  overwriteTextFile,
+  pickFolder,
+  pickTextFile,
+  saveTextFile,
+  wrongKindMessage,
+} from './download';
 
 interface FakeFile {
   size: number;
@@ -62,7 +73,9 @@ describe('saveTextFile', () => {
 
     const result = await saveTextFile('suggested.3doo', '{"a":1}', PROJECT_FILE);
 
-    expect(result).toEqual({ status: 'saved', filename: 'chosen.3doo' });
+    expect(result).toMatchObject({ status: 'saved', filename: 'chosen.3doo' });
+    // The way back to the file, for SAVE to write over later.
+    expect(result.status === 'saved' && result.handle.name).toBe('chosen.3doo');
     expect(written).toEqual(['{"a":1}']);
     // Only the canonical suffix is offered to save under, keyed by a type the
     // browser has nothing else registered against: the .json spelling is there
@@ -115,6 +128,240 @@ describe('saveTextFile', () => {
     // file goes, which is why the status is reported separately.
     expect(result).toEqual({ status: 'downloaded', filename: 'suggested.3doo' });
     expect(click).toHaveBeenCalled();
+  });
+});
+
+/** A file picked earlier, with Chromium's permission calls answering as asked. */
+function stubHandle(
+  options: {
+    permission?: PermissionState;
+    granted?: PermissionState;
+    refuseWrite?: DOMException;
+    permissionApi?: boolean;
+  } = {},
+) {
+  const written: string[] = [];
+  const requestPermission = vi.fn(() => Promise.resolve(options.granted ?? 'granted'));
+  const handle = {
+    name: 'scene.3doo',
+    createWritable: () =>
+      options.refuseWrite
+        ? Promise.reject(options.refuseWrite)
+        : Promise.resolve({
+            write: (contents: string) => {
+              written.push(contents);
+              return Promise.resolve();
+            },
+            close: () => Promise.resolve(),
+          }),
+    ...(options.permissionApi === false
+      ? {}
+      : {
+          queryPermission: () => Promise.resolve(options.permission ?? 'granted'),
+          requestPermission,
+        }),
+  };
+  return { handle: handle as unknown as FileSystemFileHandle, written, requestPermission };
+}
+
+describe('overwriteTextFile', () => {
+  it('writes over the file with no dialog when it may already write', async () => {
+    const { handle, written, requestPermission } = stubHandle();
+
+    const result = await overwriteTextFile(handle, '{"a":1}');
+
+    expect(result).toEqual({ status: 'saved', filename: 'scene.3doo', handle });
+    expect(written).toEqual(['{"a":1}']);
+    expect(requestPermission).not.toHaveBeenCalled();
+  });
+
+  it('asks first when the file was only opened for reading', async () => {
+    const { handle, written, requestPermission } = stubHandle({ permission: 'prompt' });
+
+    const result = await overwriteTextFile(handle, '{}');
+
+    expect(requestPermission).toHaveBeenCalledWith({ mode: 'readwrite' });
+    expect(result.status).toBe('saved');
+    expect(written).toEqual(['{}']);
+  });
+
+  it('leaves the file alone, and says why, when writing is not allowed', async () => {
+    const { handle, written } = stubHandle({ permission: 'prompt', granted: 'denied' });
+
+    const result = await overwriteTextFile(handle, '{}');
+
+    expect(result).toEqual({
+      status: 'failed',
+      filename: 'scene.3doo',
+      reason: 'permission to write to it was not given',
+    });
+    expect(written).toEqual([]);
+  });
+
+  it('reports a write the browser refuses in its own words', async () => {
+    const { handle } = stubHandle({
+      refuseWrite: new DOMException('The file is in use', 'NoModificationAllowedError'),
+    });
+
+    const result = await overwriteTextFile(handle, '{}');
+
+    expect(result).toEqual({
+      status: 'failed',
+      filename: 'scene.3doo',
+      reason: 'The file is in use',
+    });
+  });
+
+  it('goes ahead where the browser has no permission calls to make', async () => {
+    const { handle, written } = stubHandle({ permissionApi: false });
+
+    const result = await overwriteTextFile(handle, '{}');
+
+    expect(result.status).toBe('saved');
+    expect(written).toEqual(['{}']);
+  });
+});
+
+/** jsdom's `File` has no `text()`, so the pickers hand over one that does. */
+function textFile(name: string, text: string) {
+  return { name, text: () => Promise.resolve(text) };
+}
+
+describe('pickTextFile', () => {
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'showOpenFilePicker');
+    vi.restoreAllMocks();
+  });
+
+  it('reads through the open picker and keeps the way back to the file', async () => {
+    const handle = {
+      name: 'scene.3doo',
+      getFile: () => Promise.resolve(textFile('scene.3doo', '{"a":1}')),
+    };
+    const picker = vi.fn((_request: { types?: { accept: object }[] }) => Promise.resolve([handle]));
+    Object.assign(window, { showOpenFilePicker: picker });
+
+    const result = await pickTextFile(PROJECT_FILE);
+
+    expect(result).toEqual({ name: 'scene.3doo', text: '{"a":1}', handle });
+    // Every suffix opening takes, under the same private type a save uses.
+    expect(picker.mock.calls[0][0].types?.[0].accept).toEqual({
+      'application/x-3doo': ['.3doo', '.3doo.json'],
+    });
+  });
+
+  it('treats a dismissed picker as nothing chosen', async () => {
+    Object.assign(window, {
+      showOpenFilePicker: () =>
+        Promise.reject(new DOMException('The user aborted a request.', 'AbortError')),
+    });
+
+    expect(await pickTextFile(PROJECT_FILE)).toBeNull();
+  });
+
+  it('reads through a file input where there is no picker, with no way back', async () => {
+    vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (
+      this: HTMLInputElement,
+    ) {
+      Object.defineProperty(this, 'files', { value: [textFile('scene.3doo', '{}')] });
+      this.onchange?.(new Event('change'));
+    });
+
+    const result = await pickTextFile(PROJECT_FILE);
+
+    expect(result).toEqual({ name: 'scene.3doo', text: '{}', handle: null });
+  });
+});
+
+describe('pickFolder', () => {
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'showDirectoryPicker');
+  });
+
+  /** A picked folder, with Chromium's permission calls answering as asked. */
+  function stubFolder(options: { permission?: PermissionState; granted?: PermissionState } = {}) {
+    return {
+      name: 'Projects',
+      queryPermission: () => Promise.resolve(options.permission ?? 'granted'),
+      requestPermission: () => Promise.resolve(options.granted ?? 'granted'),
+    };
+  }
+
+  function offer(result: object | DOMException) {
+    const picker = vi.fn((_options: { startIn?: unknown; mode?: string }) =>
+      result instanceof DOMException ? Promise.reject(result) : Promise.resolve(result),
+    );
+    Object.assign(window, { showDirectoryPicker: picker });
+    return picker;
+  }
+
+  it('opens where it is told to, asking to write there', async () => {
+    const folder = stubFolder();
+    const picker = offer(folder);
+
+    expect(await pickFolder('documents')).toEqual({ status: 'picked', folder });
+    expect(picker).toHaveBeenCalledWith({ startIn: 'documents', mode: 'readwrite' });
+  });
+
+  it('treats a dismissed picker, or a folder the browser refused, as nothing chosen', async () => {
+    // Choosing the Desktop itself gets Chrome's notice about system files, and
+    // giving up there reaches the page as this same abort.
+    offer(new DOMException('The user aborted a request.', 'AbortError'));
+
+    expect(await pickFolder('documents')).toEqual({ status: 'cancelled' });
+  });
+
+  it('says why when the browser gives a folder but not the use of it', async () => {
+    offer(stubFolder({ permission: 'prompt', granted: 'denied' }));
+
+    expect(await pickFolder('documents')).toEqual({
+      status: 'failed',
+      reason: 'permission to write to it was not given',
+    });
+  });
+
+  it('passes on any other refusal from the picker in its own words', async () => {
+    offer(new DOMException('Must be handling a user gesture', 'SecurityError'));
+
+    expect(await pickFolder('documents')).toEqual({
+      status: 'failed',
+      reason: 'Must be handling a user gesture',
+    });
+  });
+
+  it('fails plainly where there is no folder picker at all', async () => {
+    expect(canPickFolder()).toBe(false);
+    expect(await pickFolder('documents')).toMatchObject({ status: 'failed' });
+  });
+});
+
+describe('mayWriteNow', () => {
+  it('answers from the permission as it stands, never asking', async () => {
+    const requestPermission = vi.fn();
+    const handle = (permission: PermissionState) =>
+      ({
+        queryPermission: () => Promise.resolve(permission),
+        requestPermission,
+      }) as unknown as FileSystemHandle;
+
+    expect(await mayWriteNow(handle('granted'))).toBe(true);
+    expect(await mayWriteNow(handle('prompt'))).toBe(false);
+    // A timer has no click to answer a prompt with.
+    expect(requestPermission).not.toHaveBeenCalled();
+  });
+});
+
+describe('canWriteBack', () => {
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'showSaveFilePicker');
+  });
+
+  it('is true only where a picker can hand over a file to write back to', () => {
+    expect(canWriteBack()).toBe(false);
+
+    Object.assign(window, { showSaveFilePicker: () => Promise.reject(new Error('unused')) });
+
+    expect(canWriteBack()).toBe(true);
   });
 });
 

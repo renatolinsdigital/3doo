@@ -33,8 +33,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   snapMode: 'grid',
   snapStep: 0.1,
   historySize: 50,
-  autosaveEnabled: true,
-  autosaveInterval: 30,
+  autosaveEnabled: false,
+  autosaveInterval: 180,
   // VIEWPORT_COLORS.grid and .rust, which the viewport used to hard-code. Named
   // there in hex ints, written here as CSS so the colour inputs can show them.
   gridColor: '#3a2a28',
@@ -68,13 +68,14 @@ export const MIN_HISTORY_SIZE = 10;
 export const MAX_HISTORY_SIZE = 100;
 
 /**
- * How often the autosave may run, in seconds.
+ * How often the autosave may run, in seconds: thirty seconds to fifteen minutes.
  *
- * A short list rather than a free number: the difference between 47 and 50
- * seconds is nothing anybody needs, and every entry here is a round figure
- * somebody can hold in their head while deciding what a crash may cost them.
+ * A short list rather than a free number: the difference between seven
+ * minutes and eight is nothing anybody needs, and every entry here is a round
+ * figure somebody can hold in their head while deciding what a crash may cost
+ * them.
  */
-export const AUTOSAVE_INTERVALS = [30, 60, 120, 180, 300] as const;
+export const AUTOSAVE_INTERVALS = [30, 60, 120, 180, 300, 600, 900] as const;
 
 /** What each interval is called, in the picker and in the status messages. */
 export function autosaveIntervalLabel(seconds: number): string {

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 
 import { Button, Modal } from '@shared/components';
-import { autosaveIntervalLabel, useEditorStore } from '@store/index';
+import { useEditorStore } from '@store/index';
 
+import { autosaveLocationLabel } from '../../services/autosave';
 import type { SaveResult } from '../../services/download';
 
 import './ReloadDialog.scss';
@@ -16,16 +17,21 @@ export interface ReloadDialogProps {
  * The offer to save before a reload takes the tab away.
  *
  * F5 and the hard-reload keys are caught in the keymap and arrive here instead
- * of at the browser, which would have reloaded without asking anything. What
- * comes back after one is the autosave, and that is only ever as new as the
- * last tick that wrote it.
+ * of at the browser, which would have reloaded without asking anything. The
+ * browser keeps no copy of a project, so a reload opens a fresh scene, and
+ * only what is in a file, saved or auto-saved, survives it. With nothing
+ * changed since the last save there is nothing to offer, and the keymap leaves
+ * the keys to the browser.
  */
 export function ReloadDialog({ onSave }: ReloadDialogProps) {
   const open = useEditorStore((state) => state.dialog === 'reload');
   const closeDialog = useEditorStore((state) => state.closeDialog);
-  const autosaveEnabled = useEditorStore((state) => state.autosaveEnabled);
-  const autosaveInterval = useEditorStore((state) => state.autosaveInterval);
   const dirty = useEditorStore((state) => state.dirty);
+  const autosaveFolder = useEditorStore((state) =>
+    state.autosaveEnabled && state.autosaveLocation
+      ? autosaveLocationLabel(state.autosaveLocation)
+      : null,
+  );
   const [saving, setSaving] = useState(false);
 
   /**
@@ -70,13 +76,15 @@ export function ReloadDialog({ onSave }: ReloadDialogProps) {
     >
       <p className="reload__warning">Save the project before reloading?</p>
       <p className="reload__detail">
-        {autosaveEnabled
-          ? `Reloading opens on this browser's copy of the project, which is rewritten every ${autosaveIntervalLabel(autosaveInterval).toLowerCase()}. ${
-              dirty
-                ? 'There are changes on screen that have not reached it yet, and those go.'
-                : "Everything on this scene is saved on Browser's autosave copy."
-            }`
-          : 'Autosave is off, so this browser has kept nothing to come back to: reloading opens a fresh scene, and the only copy of this project is a file you save yourself.'}
+        {`Reloading opens a fresh scene: this browser keeps no copy of the project. ${
+          dirty
+            ? 'Changes since the last save are in no file yet, and those go.'
+            : 'Nothing on screen has changed since the last save.'
+        } ${
+          autosaveFolder
+            ? `Auto-saves are in ${autosaveFolder}, and FILE > OPEN brings any of them back.`
+            : 'Autosave is off, so only a file you save yourself keeps this project.'
+        }`}
       </p>
     </Modal>
   );

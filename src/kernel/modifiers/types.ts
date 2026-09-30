@@ -90,10 +90,16 @@ export type Modifier =
   | RemeshModifier;
 
 let counter = 0;
+/**
+ * Which page load made an id. The counter starts again at every load, while an
+ * object opened from a file keeps the modifier ids it was saved with, and two
+ * modifiers sharing one would both answer every edit meant for either.
+ */
+const SESSION = Date.now().toString(36);
 
 function nextId(type: ModifierType): string {
   counter += 1;
-  return `${type}-${counter}`;
+  return `${type}-${SESSION}-${counter}`;
 }
 
 export function createModifier(type: ModifierType): Modifier {

@@ -79,12 +79,26 @@ describe('ReloadDialog', () => {
     expect(reload).not.toHaveBeenCalled();
   });
 
-  it('says what reloading comes back on when autosave is off', () => {
-    useEditorStore.setState({ autosaveEnabled: false });
+  it('says a reload opens a fresh scene, and what goes with it', () => {
+    useEditorStore.setState({ autosaveEnabled: false, dirty: true });
     render(<ReloadDialog onSave={saving('saved')} />);
 
-    expect(screen.getByRole('dialog', { name: 'RELOAD THE PAGE' })).toHaveTextContent(
-      /Autosave is off/,
-    );
+    const dialog = screen.getByRole('dialog', { name: 'RELOAD THE PAGE' });
+    // The browser keeps no copy of the project to come back on.
+    expect(dialog).toHaveTextContent('Reloading opens a fresh scene');
+    expect(dialog).toHaveTextContent('Changes since the last save are in no file yet');
+    expect(dialog).toHaveTextContent(/Autosave is off/);
+  });
+
+  it('says where the auto-saves are, for FILE > OPEN to bring back', () => {
+    useEditorStore.setState({
+      autosaveLocation: { name: 'Projects' } as FileSystemDirectoryHandle,
+      dirty: false,
+    });
+    render(<ReloadDialog onSave={saving('saved')} />);
+
+    const dialog = screen.getByRole('dialog', { name: 'RELOAD THE PAGE' });
+    expect(dialog).toHaveTextContent('Auto-saves are in Projects/3doo-auto-saves');
+    expect(dialog).toHaveTextContent('Nothing on screen has changed since the last save.');
   });
 });

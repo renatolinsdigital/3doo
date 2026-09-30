@@ -14,6 +14,7 @@ export { TopologyPanel } from './TopologyPanel/TopologyPanel';
 export { MergeDialog } from './MergeDialog/MergeDialog';
 export { ReplaceProjectDialog } from './ReplaceProjectDialog/ReplaceProjectDialog';
 export { ReloadDialog } from './ReloadDialog/ReloadDialog';
+export { AutosaveLocationDialog } from './AutosaveLocationDialog/AutosaveLocationDialog';
 export { ExportDialog } from './ExportDialog/ExportDialog';
 export { HistoryDialog } from './HistoryDialog/HistoryDialog';
 export { PreferencesDialog } from './PreferencesDialog/PreferencesDialog';

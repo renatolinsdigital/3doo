@@ -1707,6 +1707,24 @@ describe('history timeline', () => {
     expect(store().status).toBe('Undo: Add CUBE');
   });
 
+  it('leaves the project name alone, which no step recorded', () => {
+    store().addPrimitive('cube');
+    store().setProjectName('LAMP POST');
+
+    store().undo();
+
+    // The name says which file SAVE writes over, so taking it back along with
+    // an unrelated step would quietly grey SAVE out.
+    expect(store().objects).toHaveLength(0);
+    expect(store().projectName).toBe('LAMP POST');
+
+    store().setProjectName('CRATE');
+    store().redo();
+
+    expect(store().objects).toHaveLength(1);
+    expect(store().projectName).toBe('CRATE');
+  });
+
   it('drops the oldest steps when the size is lowered', () => {
     for (let step = 0; step < 12; step++) store().addPrimitive('cube');
     expect(store().historyUndo).toHaveLength(12);

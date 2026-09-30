@@ -19,7 +19,11 @@ function replacing() {
 
 describe('ReplaceProjectDialog', () => {
   beforeEach(() => {
-    useEditorStore.setState({ dialog: 'newProject', autosaveEnabled: true });
+    useEditorStore.setState({
+      dialog: 'newProject',
+      autosaveEnabled: true,
+      autosaveLocation: null,
+    });
   });
 
   it('starts the new project on the spot when the save is turned down', async () => {
@@ -97,7 +101,8 @@ describe('ReplaceProjectDialog', () => {
       );
 
       const dialog = screen.getByRole('dialog', { name: 'OPEN A PROJECT FILE' });
-      expect(dialog).toHaveTextContent('Auto-saved data will be lost.');
+      expect(dialog).toHaveTextContent('Save this project to a file first?');
+      expect(dialog).toHaveTextContent('Opening a file replaces');
     });
 
     it('reaches the picker rather than the reset', async () => {
@@ -121,6 +126,36 @@ describe('ReplaceProjectDialog', () => {
       await waitFor(() => expect(onOpen).toHaveBeenCalledTimes(1));
       expect(onSave).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it('says the auto-saves stay, and where they are', () => {
+    useEditorStore.setState({
+      autosaveLocation: { name: 'Projects' } as FileSystemDirectoryHandle,
+      dirty: false,
+    });
+    render(
+      <ReplaceProjectDialog onNew={replacing()} onOpen={replacing()} onSave={saving('saved')} />,
+    );
+
+    const dialog = screen.getByRole('dialog', { name: 'START A NEW PROJECT' });
+    expect(dialog).toHaveTextContent(
+      'The auto-saves in Projects/3doo-auto-saves stay where they are, and FILE > OPEN brings any of them back.',
+    );
+    expect(dialog).not.toHaveTextContent('in no file yet');
+  });
+
+  it('says when there are changes the auto-saves do not have yet', () => {
+    useEditorStore.setState({
+      autosaveLocation: { name: 'Projects' } as FileSystemDirectoryHandle,
+      dirty: true,
+    });
+    render(
+      <ReplaceProjectDialog onNew={replacing()} onOpen={replacing()} onSave={saving('saved')} />,
+    );
+
+    expect(screen.getByRole('dialog', { name: 'START A NEW PROJECT' })).toHaveTextContent(
+      'Changes since the last save are in no file yet.',
+    );
   });
 
   it('says what there is to lose when autosave is off', () => {

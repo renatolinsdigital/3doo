@@ -3,7 +3,6 @@ import type { StateCreator } from 'zustand';
 import {
   type BMesh,
   type BooleanOp,
-  type HistorySnapshot,
   type Modifier,
   type PrimitiveKind,
   type PrimitiveParams,
@@ -123,14 +122,24 @@ let recentVertsCounter = 0;
  */
 const heldAtSizeFloor = new Set<string>();
 
+/**
+ * Which page load made an id, so the ids it makes cannot meet those in a file.
+ *
+ * The counters start again at every load, while a scene opened from a `.3doo`
+ * keeps the ids it was saved with. On a counter alone, the next object added
+ * could take the id of one already on screen, and the viewport, which draws
+ * one mesh per id, drew the new object in the old one's place.
+ */
+const SESSION = Date.now().toString(36);
+
 function nextObjectId(): string {
   objectCounter += 1;
-  return `object-${objectCounter}`;
+  return `object-${SESSION}-${objectCounter}`;
 }
 
 function nextGroupId(): string {
   groupCounter += 1;
-  return `group-${groupCounter}`;
+  return `group-${SESSION}-${groupCounter}`;
 }
 
 /** The first GROUP name no folder is wearing yet. */
@@ -162,9 +171,9 @@ function groupMembers(objects: readonly SceneObject[], groupId: string): SceneOb
 /**
  * The assets as a document lists them: everything but the bytes.
  *
- * The bytes are held once, in OPFS or in the file being written, and a history
- * step or an autosave record that carried them would be a copy of every picture
- * in the scene per entry.
+ * The bytes are held once, in the store and in the file being written, and a
+ * history step that carried them would be a copy of every picture in the scene
+ * per entry.
  */
 function assetMetadata(assets: Record<string, SceneAsset>): ProjectAssetData[] {
   return Object.values(assets).map(({ id, name, type, width, height }) => ({
@@ -198,7 +207,7 @@ function mergedAssets(
 function defaultMaterial(): Material {
   materialCounter += 1;
   return {
-    id: `material-${materialCounter}`,
+    id: `material-${SESSION}-${materialCounter}`,
     name: `Material ${materialCounter}`,
     color: { r: 0.85, g: 0.84, b: 0.8 },
   };
@@ -406,22 +415,56 @@ export interface SceneSlice {
    * thirty-first.
    *
    * False on a scene nobody has touched yet: the cube a fresh tab opens on is
-   * the editor's doing rather than the user's, and a session just recovered is
+   * the editor's doing rather than the user's, and a file just opened is
    * already exactly what is stored.
    */
   dirty: boolean;
   /**
+   * `sceneFingerprint` of the scene as last stored, by SAVE or by the
+   * autosave, or null while nothing stored is known to hold it.
+   *
+   * `dirty` only says the scene was touched since, and the autosave checks
+   * this before writing so it never stores again what is already stored. A
+   * separate field because the flag goes up on every edit, while this costs a
+   * pass over the whole scene, which is worth paying once a tick at most.
+   */
+  savedFingerprint: number | null;
+  /**
    * Whether this exact scene is sitting in a `.3doo` on disk.
    *
    * Lowered by the same subscription that raises `dirty`, so the first edit
-   * after a save takes it away. Separate from `dirty` because the two answer
-   * different questions: `dirty` is about the browser's copy, which the
-   * autosave keeps level on its own, while this is about the only copy that
-   * survives the browser. FILE > NEW and FILE > OPEN discard the browser's
-   * copy either way, so this is what says whether that costs the user
-   * anything.
+   * after a save takes it away. Separate from `dirty` because the autosave
+   * lowers that one with a numbered copy, which is a backup rather than the
+   * project's own file. FILE > NEW and FILE > OPEN discard the scene on screen,
+   * and this is what says whether that costs the user anything.
    */
   savedToFile: boolean;
+  /**
+   * The `.3doo` this project was opened from or last saved to, which FILE >
+   * SAVE writes over without asking where.
+   *
+   * An edit leaves it in place, unlike `savedToFile`: the project still
+   * belongs to that file once it has moved on from what the file holds. Null
+   * until there is a file the page may write back to, which a download or a
+   * file input never gives it.
+   */
+  projectFile: FileSystemFileHandle | null;
+  /**
+   * The folder the user chose for the numbered copies, which go in a
+   * `3doo-auto-saves` inside it, or null until one is chosen.
+   *
+   * Left alone by `resetScene`, like `autosaveToken`: it is where the autosave
+   * writes rather than part of any one project, so FILE > NEW changes what
+   * goes into it, not where. Turning autosave off keeps it too.
+   */
+  autosaveLocation: FileSystemDirectoryHandle | null;
+  /**
+   * Whether the page may write to that location right now.
+   *
+   * False after a browser restart until the user allows it again, which takes
+   * a click. Nothing is auto-saved meanwhile.
+   */
+  autosaveLocationReady: boolean;
   canUndo: boolean;
   canRedo: boolean;
   /** What each undo would take back, newest first, for the history dialog. */
@@ -569,15 +612,23 @@ export interface SceneSlice {
   ) => void;
   /**
    * Says the scene now matches what is stored, for the autosave and for
-   * whatever put the opening scene on screen.
+   * whatever put the opening scene on screen. `fingerprint` is the stored
+   * scene's, left out when nothing was stored, as for the opening cube.
    */
-  markSaved: () => void;
-  /** Says it does not, for a write that failed after being counted as done. */
+  markSaved: (fingerprint?: number) => void;
+  /**
+   * Says it does not, for a write that failed after being counted as done,
+   * which leaves nothing stored known to hold the scene.
+   */
   markDirty: () => void;
   /** Says a write has landed, so the status bar can show that it did. */
   noteAutosaved: () => void;
   /** Says this scene is now in a file on disk, for a save and for an open. */
   markFileSaved: () => void;
+  /** Says which file SAVE writes over from here on, or that there is none. */
+  setProjectFile: (file: FileSystemFileHandle | null) => void;
+  /** Says where the numbered copies go, and whether they may go there yet. */
+  setAutosaveLocation: (location: FileSystemDirectoryHandle | null, ready: boolean) => void;
   recordHistory: (label: string) => void;
   /**
    * Records a document captured earlier rather than the one on screen now.
@@ -597,16 +648,6 @@ export interface SceneSlice {
   /** Re-caps the timeline, dropping the oldest steps the new size cannot hold. */
   setHistoryLimit: (limit: number) => void;
   /**
-   * The undo timeline as plain data, and back again.
-   *
-   * For the autosave, which keeps the steps beside the scene so a reloaded tab
-   * can still undo its way back. Deliberately not part of `snapshotDocument`:
-   * a `.3doo` is the scene, not the route taken to it, and every entry holds a
-   * whole copy of the scene the file would be multiplied by.
-   */
-  snapshotHistory: () => HistorySnapshot;
-  restoreHistory: (snapshot: HistorySnapshot) => void;
-  /**
    * Forgets every step, without touching the scene.
    *
    * For a file opened over the session already running: the steps behind the
@@ -619,9 +660,9 @@ export interface SceneSlice {
   /**
    * `restoreLayout` puts the folded panels back too, for a file load, not for undo.
    *
-   * `assets` replaces the loaded binaries wholesale, and is how a `.3doo` and a
-   * recovered session bring their images with them. Leaving it out keeps the
-   * ones already in the session, which is what an undo wants.
+   * `assets` replaces the loaded binaries wholesale, and is how a `.3doo`
+   * brings its images with it. Leaving it out keeps the ones already in the
+   * session, which is what an undo wants.
    */
   loadProjectDocument: (
     document: ReturnType<typeof serializeProject>,
@@ -653,7 +694,11 @@ export const createSceneSlice: StateCreator<
   historyRedo: [],
   status: 'Ready',
   dirty: false,
+  savedFingerprint: null,
   savedToFile: false,
+  projectFile: null,
+  autosaveLocation: null,
+  autosaveLocationReady: false,
   lastOperator: null,
   lockedAttempt: null,
   recentVerts: null,
@@ -680,13 +725,18 @@ export const createSceneSlice: StateCreator<
     };
   },
 
-  markSaved: () => set({ dirty: false }),
+  markSaved: (fingerprint) => set({ dirty: false, savedFingerprint: fingerprint ?? null }),
 
-  markDirty: () => set({ dirty: true }),
+  markDirty: () => set({ dirty: true, savedFingerprint: null }),
 
   noteAutosaved: () => set((state) => ({ autosaveToken: state.autosaveToken + 1 })),
 
   markFileSaved: () => set({ savedToFile: true }),
+
+  setProjectFile: (file) => set({ projectFile: file }),
+
+  setAutosaveLocation: (location, ready) =>
+    set({ autosaveLocation: location, autosaveLocationReady: location !== null && ready }),
 
   recordHistory: (label) => get().recordHistoryDocument(label, get().snapshotDocument()),
 
@@ -2030,7 +2080,10 @@ export const createSceneSlice: StateCreator<
       set({ status: 'Nothing to undo' });
       return;
     }
-    get().loadProjectDocument(entry.document);
+    // A rename records no step, so undo leaves the name as it is. The name
+    // says which file SAVE writes over, and a step from before a rename would
+    // otherwise grey SAVE out.
+    get().loadProjectDocument({ ...entry.document, name: get().projectName });
     set({
       ...historyState(),
       // A trip through the dialog says how far it went; a plain Ctrl+Z has only
@@ -2046,7 +2099,8 @@ export const createSceneSlice: StateCreator<
       set({ status: 'Nothing to redo' });
       return;
     }
-    get().loadProjectDocument(entry.document);
+    // The name stays put, as it does through an undo.
+    get().loadProjectDocument({ ...entry.document, name: get().projectName });
     set({
       ...historyState(),
       status: steps > 1 ? `Redo ${steps} steps, up to: ${entry.label}` : `Redo: ${entry.label}`,
@@ -2055,13 +2109,6 @@ export const createSceneSlice: StateCreator<
 
   setHistoryLimit: (limit) => {
     history.setLimit(limit);
-    set(historyState());
-  },
-
-  snapshotHistory: () => history.snapshot(),
-
-  restoreHistory: (snapshot) => {
-    history.restore(snapshot);
     set(historyState());
   },
 
@@ -2075,11 +2122,15 @@ export const createSceneSlice: StateCreator<
     // Undo replays the scene, not the shell: a snapshot taken while a panel was
     // folded would otherwise fold it again three operations later.
     if (restoreLayout) get().setCollapsedPanels(document.panels ?? {});
-    const objects: SceneObject[] = restored.objects.map((object) => ({
-      ...object,
-      primitive: null,
-      image: object.image ?? null,
-    }));
+    // A file saved while new ids could repeat old ones may hold two objects
+    // under one id, and the viewport draws only one of them. The second gets
+    // an id of its own, so both come back on screen.
+    const seen = new Set<string>();
+    const objects: SceneObject[] = restored.objects.map((object) => {
+      const id = seen.has(object.id) ? nextObjectId() : object.id;
+      seen.add(id);
+      return { ...object, id, primitive: null, image: object.image ?? null };
+    });
     // Which folders are folded shut is how the panel looks rather than what the
     // scene is, so it survives the replay an undo runs: a step taken three
     // operations ago has no business folding a group open again.
@@ -2092,8 +2143,8 @@ export const createSceneSlice: StateCreator<
     set((state) => ({
       objects,
       groups,
-      // Bytes only arrive with a file being opened or a session being
-      // recovered. An undo is a replay of the same session, so it keeps the
+      // Bytes only arrive with a file being opened. An undo is a replay of the
+      // same session, so it keeps the
       // assets already loaded and only takes on the description of any it has
       // never seen, which is how an image survives being deleted and undone.
       assets: assets
@@ -2138,7 +2189,7 @@ export const createSceneSlice: StateCreator<
     // is in place, so the watcher that raises the flag on a changed scene would
     // raise it again on the way out of the set above.
     // The new scene has never been in a file, whatever the old one had been.
-    set({ dirty: false, savedToFile: false });
+    set({ dirty: false, savedFingerprint: null, savedToFile: false, projectFile: null });
   },
 });
 

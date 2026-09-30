@@ -64,6 +64,17 @@ describe('keymap', () => {
     expect(matchBinding(keyEvent('j'), 'object')).toBeNull();
   });
 
+  it('keeps save and save as on one letter, apart by Shift', () => {
+    // Blender's pair. Shift over a letter reports its upper case, which the
+    // match lower-cases back.
+    for (const mode of ['object', 'edit'] as const) {
+      expect(matchBinding(keyEvent('s', { ctrlKey: true }), mode)?.id).toBe('save');
+      expect(matchBinding(keyEvent('S', { ctrlKey: true, shiftKey: true }), mode)?.id).toBe(
+        'saveAs',
+      );
+    }
+  });
+
   it('treats Meta as Ctrl for macOS users', () => {
     expect(matchBinding(keyEvent('z', { metaKey: true }), 'object')?.id).toBe('undo');
   });

@@ -30,6 +30,7 @@ import type {
 } from '@store/types';
 
 import { useProjectFiles } from '../../hooks/useProjectFiles';
+import { canWriteBack, saveTarget } from '../../services/download';
 
 import './TopBar.scss';
 
@@ -153,8 +154,11 @@ export function TopBar({ brand }: TopBarProps) {
   const frameAll = useEditorStore((state) => state.frameAll);
   const viewLost = useEditorStore((state) => state.viewLost);
 
-  const { newProject, saveProject, openProject, importMesh, importImage } = useProjectFiles();
+  const { newProject, saveProject, saveProjectAs, openProject, importMesh, importImage } =
+    useProjectFiles();
   const savedToFile = useEditorStore((state) => state.savedToFile);
+  const projectFile = useEditorStore((state) => state.projectFile);
+  const saveFile = saveTarget(projectFile, projectName);
 
   const snapHint =
     snapMode === 'grid'
@@ -182,26 +186,39 @@ export function TopBar({ brand }: TopBarProps) {
     {
       id: 'new',
       label: 'NEW',
-      hint: 'Start a fresh project on a cube, discarding this one and its autosave',
-      // NEW always clears the browser's copy, so it always offers the save
-      // first. The one exception is a scene already saved to a .3doo and
-      // untouched since: there is a file to open it from, and a prompt about
-      // losing nothing is one people learn to click straight past.
-      onSelect: () => (savedToFile ? void newProject() : openDialog('newProject')),
+      hint: 'Start a fresh project on a cube, discarding this one',
+      // NEW discards the scene on screen, so it offers the save first. The one
+      // exception is a scene already saved to a .3doo and untouched since:
+      // there is a file to open it from, and a prompt about losing nothing is
+      // one people learn to click straight past.
+      onSelect: () => (savedToFile ? newProject() : openDialog('newProject')),
     },
     {
       id: 'open',
       label: 'OPEN',
-      hint: 'Load a .3doo project file from disk, over this project and its autosave',
-      // Opening costs what NEW costs: the file takes the browser's copy with
-      // it, so it asks on the same terms.
+      hint: 'Load a .3doo project file from disk, over this project',
+      // Opening costs what NEW costs: the file replaces the scene on screen,
+      // so it asks on the same terms.
       onSelect: () => (savedToFile ? void openProject() : openDialog('openProject')),
     },
     {
       id: 'save',
       label: 'SAVE',
-      hint: 'Save the current project as a .3doo file',
+      hint: saveFile
+        ? `Save over ${saveFile.name}, the file this project was opened from or last saved to (Ctrl+S)`
+        : projectFile
+          ? `The name no longer matches ${projectFile.name}, so this is a new file: use SAVE AS. Put the name back to save over that file again`
+          : canWriteBack()
+            ? 'Writes back to the .3doo this project was opened from or saved to. There is none yet: use SAVE AS or OPEN first'
+            : 'This browser cannot write back to a file, so every save goes through SAVE AS',
+      disabled: !saveFile,
       onSelect: () => void saveProject(),
+    },
+    {
+      id: 'save-as',
+      label: 'SAVE AS',
+      hint: 'Save the project to a new .3doo file (Ctrl+Shift+S)',
+      onSelect: () => void saveProjectAs(),
     },
     { id: 'rule-1', separator: true },
     {

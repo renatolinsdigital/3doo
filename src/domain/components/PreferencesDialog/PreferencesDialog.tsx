@@ -8,6 +8,7 @@ import {
   Slider,
   Toggle,
 } from '@shared/components';
+import { cx } from '@shared/utils/cx';
 import {
   AUTOSAVE_INTERVALS,
   MAX_GRID_SCALE,
@@ -26,7 +27,15 @@ import {
 import type { PanelId, SnapMode } from '@store/types';
 
 import {
+  allowAutosaveLocation,
+  chooseAutosaveLocation,
+  forgetAutosaveLocation,
+  turnAutosaveOn,
+} from '../../hooks/useAutosave';
+import { AUTOSAVE_FOLDER, autosaveLocationLabel } from '../../services/autosave';
+import {
   PREFERENCES_FILE,
+  canPickFolder,
   pickTextFile,
   saveResultToast,
   saveTextFile,
@@ -126,6 +135,8 @@ export function PreferencesDialog() {
   const historySize = useEditorStore((state) => state.historySize);
   const autosaveEnabled = useEditorStore((state) => state.autosaveEnabled);
   const autosaveInterval = useEditorStore((state) => state.autosaveInterval);
+  const autosaveLocation = useEditorStore((state) => state.autosaveLocation);
+  const autosaveLocationReady = useEditorStore((state) => state.autosaveLocationReady);
   const gridColor = useEditorStore((state) => state.gridColor);
   const gridOpacity = useEditorStore((state) => state.gridOpacity);
   const gridMajorColor = useEditorStore((state) => state.gridMajorColor);
@@ -135,6 +146,17 @@ export function PreferencesDialog() {
 
   const setPanel = (id: PanelId, visible: boolean) =>
     setPreferences({ panels: { ...panels, [id]: visible } });
+
+  // Whether autosave is possible here at all. It only writes into a folder, so
+  // without a folder picker the switch is greyed out and the section says why.
+  const folders = canPickFolder();
+
+  // The location is kept apart from the preferences, in IndexedDB, because a
+  // folder handle cannot go into a .pref file. RESET clears it all the same.
+  const reset = () => {
+    resetPreferences();
+    void forgetAutosaveLocation();
+  };
 
   const exportPreferences = async () => {
     const state = useEditorStore.getState();
@@ -177,8 +199,8 @@ export function PreferencesDialog() {
         <>
           <Button
             label="RESET"
-            onClick={resetPreferences}
-            hint="Put every preference back to its default"
+            onClick={reset}
+            hint="Put every preference back to its default and forget the autosave LOCATION"
           />
           <Button
             label="IMPORT"
@@ -325,23 +347,75 @@ export function PreferencesDialog() {
         <Toggle
           label="AUTOSAVE THE SCENE"
           checked={autosaveEnabled}
-          hint="The scene is kept in this browser's own storage as you work, and offered back when you open the editor again, so a closed or crashed tab does not cost you it. Nothing is uploaded"
-          onChange={(enabled) => setPreferences({ autosaveEnabled: enabled })}
+          disabled={!folders}
+          hint={
+            folders
+              ? 'Off until you turn it on. With no LOCATION chosen yet, turning it on asks for one first'
+              : 'Not available here: autosave writes to a folder, and this browser cannot give it one'
+          }
+          // The switch can run the folder picker itself: a picker only opens
+          // on a click, and this is the click.
+          onChange={(enabled) =>
+            void (enabled ? turnAutosaveOn() : setPreferences({ autosaveEnabled: false }))
+          }
         />
+        {folders ? (
+          <div className="preferences__location">
+            <span className="preferences__location-label">LOCATION</span>
+            <div className="preferences__location-value">
+              <span
+                className={cx(
+                  'preferences__location-name',
+                  !autosaveLocation && 'preferences__location-name--empty',
+                )}
+              >
+                {autosaveLocation ? autosaveLocationLabel(autosaveLocation) : 'Not chosen'}
+              </span>
+              {autosaveEnabled && autosaveLocation && !autosaveLocationReady ? (
+                <Button
+                  label="ALLOW"
+                  variant="ghost"
+                  className="preferences__location-button"
+                  hint="The browser wants your permission again before autosave writes here"
+                  onClick={() => void allowAutosaveLocation()}
+                />
+              ) : null}
+              <Button
+                label={autosaveLocation ? 'CHANGE' : 'CHOOSE'}
+                variant="ghost"
+                className="preferences__location-button"
+                hint={`Pick the folder auto-saves go in. A ${AUTOSAVE_FOLDER} folder is made inside it`}
+                onClick={() => void chooseAutosaveLocation()}
+              />
+            </div>
+          </div>
+        ) : null}
         <Select
           label="EVERY"
           value={String(autosaveInterval)}
           options={AUTOSAVE_INTERVAL_OPTIONS}
           disabled={!autosaveEnabled}
-          hint="How often a changed scene is written. Shorter costs less when a tab dies; longer keeps a heavy scene from being serialised so often. Nothing is written at all until you change something"
+          hint="How often a changed scene is written. Shorter costs less when a tab dies; longer leaves fewer copies in the folder and keeps a heavy scene from being written out so often. Nothing is written at all until you change something"
           onChange={(seconds) => setPreferences({ autosaveInterval: Number(seconds) })}
         />
-        <p className="preferences__hint">
-          Autosave writes to this browser on this machine: the scene into IndexedDB and any
-          imported images into the origin private file system. Nothing is uploaded and nothing
-          follows you to another browser. It keeps one project, the one you are working on, so
-          starting a new one clears it.
-        </p>
+        {folders ? (
+          <>
+            <p className="preferences__hint">
+              Saves to {AUTOSAVE_FOLDER} inside the LOCATION above: NAME_01.3doo, NAME_02.3doo and
+              on, where NAME is the .3doo you saved or opened. Nothing is kept in the browser.
+            </p>
+            <p className="preferences__hint">
+              Choosing a location asks you to allow access, and a browser restart asks once more.
+              The browser refuses Desktop, Documents and Downloads themselves, so pick a folder
+              inside them or anywhere else.
+            </p>
+          </>
+        ) : (
+          <p className="preferences__hint">
+            Autosave writes numbered copies into a folder you choose, and this browser cannot give
+            the editor a folder. Chrome and Edge can. Here, save with Ctrl+S.
+          </p>
+        )}
       </Accordion>
 
       <Accordion title="HISTORY">

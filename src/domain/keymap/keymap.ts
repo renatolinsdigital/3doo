@@ -427,6 +427,14 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
   { id: 'toggleWireframe', key: 'z', shift: true, label: 'Cycle shading', group: 'View' },
 
   { id: 'save', key: 's', ctrl: true, label: 'Save project', group: 'File' },
+  {
+    id: 'saveAs',
+    key: 's',
+    ctrl: true,
+    shift: true,
+    label: 'Save project as a new file',
+    group: 'File',
+  },
   { id: 'open', key: 'o', ctrl: true, label: 'Open project', group: 'File' },
   { id: 'export', key: 'e', ctrl: true, label: 'Export', group: 'File' },
   { id: 'shortcuts', key: '?', shift: true, label: 'Shortcut overlay', group: 'Help' },
@@ -482,10 +490,11 @@ export function matchBinding(
  *
  * Every browser reloads on F5 and on Ctrl+R, takes Shift or Ctrl in front of
  * either one as the reload that skips the cache, and reads Cmd for Ctrl on a
- * Mac. None of them may reach the browser: a reload puts the scene back to
- * whatever the last autosave tick wrote, and the work since then is gone.
+ * Mac. None of them may reach the browser over unsaved changes: a reload opens
+ * a fresh scene, and whatever is in no file by then is gone.
  *
- * `ask` is a reload the user meant, so it is worth offering the save first.
+ * `ask` is a reload the user meant, so it is worth offering the save first
+ * when there is anything to save.
  * `loopCut` is Ctrl+R, which the keymap has taken for the loop cut, so it is
  * only a reload as far as the browser is concerned.
  *
