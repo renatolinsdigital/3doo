@@ -69,6 +69,7 @@ import { type MarqueeLayer, createMarqueeLayer, drawMarquee, hideMarquee } from 
 import {
   type FacingElements,
   type Marquee,
+  type PickResult,
   type Region,
   facingElements,
   marqueeBounds,
@@ -553,6 +554,8 @@ export class Viewport {
   private dragUniform = false;
   /** Shift, Ctrl and Alt as they stand, which is what the pointer is drawn from. */
   private readonly heldModifiers = { shift: false, ctrl: false, alt: false };
+  /** What `selectedUnderPointer` last answered, and everything the answer rested on. */
+  private hoverTarget: { key: unknown[]; selected: boolean } | null = null;
   /** The overlay's SVG shapes, built on first use. */
   private shapeLayer: MarqueeLayer | null = null;
   private slideDrag: SlideDrag | null = null;
@@ -920,7 +923,9 @@ export class Viewport {
    *
    * In edit mode the handles sit on the very mesh being edited, and the arms
    * reach out across the rest of it, so a vertex behind one used to be
-   * unselectable until the view was orbited to move the handle off it.
+   * unselectable until the view was orbited to move the handle off it. Object
+   * mode is no different: the handles stand on the selected object's pivot,
+   * which is exactly where a Shift+click to drop that object lands.
    *
    * TransformControls decides to drag in `pointerDown`, which is the one place
    * the decision can be held back. A press with something selectable under it
@@ -941,7 +946,7 @@ export class Viewport {
       // rather than only when it defers, so a press can never inherit the last
       // one's answer.
       this.deferredGrab =
-        this.gizmo.axis !== null && this.elementUnderPointer(this.pixelPosition(pointer));
+        this.gizmo.axis !== null && this.selectedAt(this.pixelPosition(pointer)) !== null;
       if (this.deferredGrab) return;
       grab(pointer);
     };
@@ -2791,8 +2796,8 @@ export class Viewport {
     this.dragCurrent = this.dragStart.clone();
     this.dragPath = [this.dragStart.clone()];
     // Shift means two things at once, so they are read at two different
-    // moments: the keys down when the gesture began decide whether what it
-    // takes joins the selection or leaves it, and whether Shift is down as the
+    // moments: the keys down when the gesture began decide whether it builds
+    // on the selection or replaces it, and whether Shift is down as the
     // pointer moves decides whether an oval is held round. Holding it
     // throughout asks for both, and letting go mid-drag frees the shape without
     // turning the addition back into a replacement.
@@ -2893,7 +2898,8 @@ export class Viewport {
     }
 
     // Alt names a loop whichever way the pick is pulling, so Shift+Alt stacks
-    // one onto the selection and Shift+Ctrl+Alt takes a whole one back out.
+    // one onto the selection or takes it back out, by the same rule as a
+    // single element, and Shift+Ctrl+Alt only ever takes one out.
     this.clickSelect(end, intent, event.altKey);
   };
 
@@ -2924,22 +2930,51 @@ export class Viewport {
   }
 
   /**
-   * Whether a click at `pointer` would land on a mesh element.
+   * Whether what a click at `pointer` would land on is selected already, or
+   * null when it would land on nothing.
    *
-   * Runs the pick `clickSelect` would run, so the two never disagree about what
-   * is behind a handle. Object mode is not asked: its gizmo is seated on the
-   * object as a whole, and there is no element picking to lose.
+   * An object in object mode, a vertex, edge or face of the mesh being edited
+   * in edit mode. Built on the picks `clickSelect` runs, so the pointer's sign,
+   * the gizmo's deferral and the click itself never disagree about what is
+   * there.
    */
-  private elementUnderPointer(pointer: THREE.Vector2): boolean {
+  private selectedAt(pointer: THREE.Vector2): boolean | null {
     const state = useEditorStore.getState();
-    if (state.mode !== 'edit') return false;
+
+    if (state.mode === 'object') {
+      const objectId = this.objectUnderPointer(pointer);
+      return objectId === null ? null : state.selectedObjectIds.includes(objectId);
+    }
+
+    const object = activeObject(state);
+    const pick = this.elementUnderPointer(pointer);
+    return object && pick ? elementSelected(object.mesh, state.selectMode, pick.elementId) : null;
+  }
+
+  /** The visible object a click at `pointer` would land on in object mode. */
+  private objectUnderPointer(pointer: THREE.Vector2): string | null {
+    const state = useEditorStore.getState();
+    const targets = state.objects
+      .filter((object) => object.visible)
+      .map((object) => this.views.get(object.id)?.pickTarget)
+      .filter((target): target is THREE.Mesh => target !== undefined);
+
+    this.updateRaycaster(pointer);
+    const objectId = this.raycaster.intersectObjects(targets, false)[0]?.object.userData.objectId;
+    return typeof objectId === 'string' ? objectId : null;
+  }
+
+  /** The element of the mesh being edited that a click at `pointer` would land on. */
+  private elementUnderPointer(pointer: THREE.Vector2): PickResult | null {
+    const state = useEditorStore.getState();
+    if (state.mode !== 'edit') return null;
 
     const object = activeObject(state);
     const view = object ? this.views.get(object.id) : undefined;
-    if (!object || !view) return false;
+    if (!object || !view) return null;
 
     this.updateRaycaster(pointer);
-    const result = pickElement(
+    return pickElement(
       view,
       object.mesh,
       state.selectMode,
@@ -2949,7 +2984,6 @@ export class Viewport {
       this.raycaster,
       this.pickable(object.mesh, view),
     );
-    return result !== null;
   }
 
   private handleWheel = (event: WheelEvent): void => {
@@ -3286,17 +3320,10 @@ export class Viewport {
 
   private clickSelect(pointer: THREE.Vector2, intent: SelectIntent, loopSelect: boolean): void {
     const state = useEditorStore.getState();
-    this.updateRaycaster(pointer);
 
     if (state.mode === 'object') {
-      const targets = state.objects
-        .filter((object) => object.visible)
-        .map((object) => this.views.get(object.id)?.pickTarget)
-        .filter((target): target is THREE.Mesh => target !== undefined);
-
-      const hit = this.raycaster.intersectObjects(targets, false)[0];
-      const objectId = hit?.object.userData.objectId;
-      if (typeof objectId !== 'string') {
+      const objectId = this.objectUnderPointer(pointer);
+      if (objectId === null) {
         // A plain click on empty space clears the selection. One that was
         // asking to add or take away found nothing to work on, so it leaves
         // what is selected alone rather than emptying it by accident.
@@ -3304,7 +3331,10 @@ export class Viewport {
         return;
       }
 
-      state.setActiveObject(objectId, intent);
+      state.setActiveObject(
+        objectId,
+        clickIntent(intent, state.selectedObjectIds.includes(objectId)),
+      );
       return;
     }
 
@@ -3312,17 +3342,7 @@ export class Viewport {
     const view = object ? this.views.get(object.id) : undefined;
     if (!object || !view) return;
 
-    const result = pickElement(
-      view,
-      object.mesh,
-      state.selectMode,
-      pointer,
-      this.camera,
-      { width: this.canvas.clientWidth, height: this.canvas.clientHeight },
-      this.raycaster,
-      this.pickable(object.mesh, view),
-    );
-
+    const result = this.elementUnderPointer(pointer);
     if (!result) {
       if (intent === 'replace') {
         object.mesh.deselectAll();
@@ -3331,12 +3351,7 @@ export class Viewport {
       return;
     }
 
-    applySelection(object, state.selectMode, [result.elementId], {
-      intent,
-      loopSelect,
-      point: result.point,
-    });
-    object.mesh.flushSelection(state.selectMode);
+    clickElement(object.mesh, state.selectMode, result, intent, loopSelect);
     state.touchMesh();
   }
 
@@ -3437,7 +3452,7 @@ export class Viewport {
       }
     }
 
-    applySelection(object, state.selectMode, hits, { intent, loopSelect: false });
+    applySelection(object.mesh, state.selectMode, hits, { intent, loopSelect: false });
     object.mesh.flushSelection(state.selectMode);
     state.touchMesh();
   }
@@ -3597,12 +3612,13 @@ export class Viewport {
    * The marks the pointer wears for the pick the held keys would make.
    *
    * What a click is about to do is settled before it is made, and nothing else
-   * on screen says what: the same click adds or takes away, and takes one
-   * element or a whole loop, depending on which keys are down. So the answer
-   * belongs on the pointer. Worn under every tool, not the select one alone,
-   * because a click picks things up whichever tool is in hand: move, rotate
-   * and scale all leave Shift+click building a selection for the gizmo to work
-   * on, and that is the moment the marks are most needed.
+   * on screen says what: the same Shift+click adds or takes away depending on
+   * whether what is under the pointer is selected already, and takes one
+   * element or a whole loop depending on Alt. So the answer belongs on the
+   * pointer. Worn under every tool, not the select one alone, because a click
+   * picks things up whichever tool is in hand: move, rotate and scale all
+   * leave Shift+click building a selection for the gizmo to work on, and that
+   * is the moment the marks are most needed.
    */
   private selectionCursor(): string {
     // Mid-drag the gizmo is moving something rather than picking it, and Shift
@@ -3610,11 +3626,55 @@ export class Viewport {
     if (this.gizmoDragging) return '';
 
     const { shift, ctrl, alt } = this.heldModifiers;
-    const loop = alt && this.loopUnderAlt();
+    // Once the button is down the keys it went down with are the ones the
+    // release will read, and a region being drawn takes what it touches the
+    // way those keys said, one element at a time whatever Alt says.
+    const intent = this.dragStart
+      ? this.dragIntent
+      : selectIntent({ shiftKey: shift, ctrlKey: ctrl, metaKey: false });
+    const drawingRegion =
+      this.dragStart !== null &&
+      this.dragCurrent !== null &&
+      this.dragStart.distanceTo(this.dragCurrent) > CLICK_SLOP_PIXELS;
+    if (drawingRegion) return selectCursor(intent, false);
 
-    if (!shift) return loop ? SELECT_LOOP_CURSOR : '';
-    if (ctrl) return loop ? SELECT_SUBTRACT_LOOP_CURSOR : SELECT_SUBTRACT_CURSOR;
-    return loop ? SELECT_ADD_LOOP_CURSOR : SELECT_ADD_CURSOR;
+    const landsOnSelected = intent === 'add' && this.selectedUnderPointer();
+    return selectCursor(clickIntent(intent, landsOnSelected), alt && this.loopUnderAlt());
+  }
+
+  /**
+   * Whether what a click would land on right now is selected already.
+   *
+   * Asked every frame while Shift is down, and the pick behind it is the
+   * dearest thing a frame could be made to run, so the answer is held until
+   * something it rests on moves: the pointer, the camera, or the scene and its
+   * selection. A click flips the answer by changing the selection, which is
+   * what turns the plus into a minus under the pointer the moment it lands.
+   */
+  private selectedUnderPointer(): boolean {
+    if (!this.pointerInside) return false;
+
+    const state = useEditorStore.getState();
+    const key = [
+      this.pointerPixels.x,
+      this.pointerPixels.y,
+      this.camera,
+      ...this.camera.matrixWorld.elements,
+      ...this.camera.projectionMatrix.elements,
+      state.objects,
+      state.selectedObjectIds,
+      state.meshVersion,
+      state.mode,
+      state.selectMode,
+      state.shading,
+    ];
+    if (this.hoverTarget && shallowArrayEqual(key, this.hoverTarget.key)) {
+      return this.hoverTarget.selected;
+    }
+
+    const selected = this.selectedAt(this.pointerPixels) === true;
+    this.hoverTarget = { key, selected };
+    return selected;
   }
 
   /**
@@ -3792,13 +3852,41 @@ export class Viewport {
   }
 }
 
+/**
+ * A click on one element of the mesh being edited, for `clickSelect`.
+ *
+ * Whether the element was selected is read before anything changes, and it
+ * decides a Shift+click on a loop as well as on the one element: a picked
+ * edge or face takes its whole loop back out, an unpicked one adds it, which
+ * is how Blender reads the same click.
+ */
+export function clickElement(
+  mesh: BMesh,
+  mode: SelectMode,
+  pick: PickResult,
+  intent: SelectIntent,
+  loopSelect: boolean,
+): void {
+  applySelection(mesh, mode, [pick.elementId], {
+    intent: clickIntent(intent, elementSelected(mesh, mode, pick.elementId)),
+    loopSelect,
+    point: pick.point,
+  });
+  mesh.flushSelection(mode);
+}
+
+function elementSelected(mesh: BMesh, mode: SelectMode, id: number): boolean {
+  if (mode === 'vertex') return mesh.verts.get(id)?.selected ?? false;
+  if (mode === 'edge') return mesh.edges.get(id)?.selected ?? false;
+  return mesh.faces.get(id)?.selected ?? false;
+}
+
 function applySelection(
-  object: SceneObject,
+  mesh: BMesh,
   mode: SelectMode,
   ids: readonly number[],
   options: { intent: SelectIntent; loopSelect: boolean; point?: Vec3 },
 ): void {
-  const mesh = object.mesh;
   // A replacing pick starts from an empty selection; ADD and SUBTRACT both
   // work on whatever is already there.
   if (options.intent === 'replace') mesh.deselectAll();
@@ -4021,10 +4109,14 @@ export interface SelectModifiers {
 /**
  * What the keys held during a gesture ask the selection to do.
  *
- * Shift adds and Shift+Ctrl takes away, which is the pair the pointer draws.
- * Command counts as Ctrl, as it does everywhere else in the bindings, and on a
- * Mac it is the only one of the two that reaches here: Ctrl+click is a
- * right-click there and opens the cursor menu instead.
+ * Shift builds on the selection and Shift+Ctrl takes away. What Shift asks for
+ * is ADD, and a click then settles it against what it lands on (`clickIntent`),
+ * while a region drag adds everything it touches: a region lands on selected
+ * and unselected things at once, and adding is the one answer the pointer can
+ * promise before the drag is drawn. Command counts as Ctrl, as it does
+ * everywhere else in the bindings, and on a Mac it is the only one of the two
+ * that reaches here: Ctrl+click is a right-click there and opens the cursor
+ * menu instead.
  *
  * Alt is not part of this. It names an edge or face loop, and whatever it
  * names is added, removed or swapped in by the same rule as a single element.
@@ -4032,6 +4124,26 @@ export interface SelectModifiers {
 export function selectIntent(event: SelectModifiers): SelectIntent {
   if (!event.shiftKey) return 'replace';
   return event.ctrlKey || event.metaKey ? 'subtract' : 'add';
+}
+
+/**
+ * Which way a click goes, once it is known whether what it landed on is
+ * selected already.
+ *
+ * Shift is the one key for building a selection both ways: a Shift+click takes
+ * in what is out and drops what is already in, for an object, a vertex, an
+ * edge and a face alike. A bare click replaces and Shift+Ctrl takes away,
+ * whatever is under the pointer.
+ */
+export function clickIntent(intent: SelectIntent, alreadySelected: boolean): SelectIntent {
+  return intent === 'add' && alreadySelected ? 'subtract' : intent;
+}
+
+/** The pointer for a pick going `intent`'s way, ringed when it takes a whole loop. */
+export function selectCursor(intent: SelectIntent, loop: boolean): string {
+  if (intent === 'add') return loop ? SELECT_ADD_LOOP_CURSOR : SELECT_ADD_CURSOR;
+  if (intent === 'subtract') return loop ? SELECT_SUBTRACT_LOOP_CURSOR : SELECT_SUBTRACT_CURSOR;
+  return loop ? SELECT_LOOP_CURSOR : '';
 }
 
 /**

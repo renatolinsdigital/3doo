@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
+import type { BMesh, Edge, SelectMode } from '@kernel/index';
+import { createGrid } from '@kernel/primitives';
+
 import {
   type SelectModifiers,
   SELECT_ADD_CURSOR,
@@ -7,6 +10,9 @@ import {
   SELECT_LOOP_CURSOR,
   SELECT_SUBTRACT_CURSOR,
   SELECT_SUBTRACT_LOOP_CURSOR,
+  clickElement,
+  clickIntent,
+  selectCursor,
   selectIntent,
 } from './Viewport';
 
@@ -60,11 +66,128 @@ describe('what the keys held over a pick ask for', () => {
     expect(selectIntent(keys({ shiftKey: true, ctrlKey: true, altKey: true }))).toBe('subtract');
   });
 
-  it('never toggles, so a run of clicks under one key pulls one way', () => {
-    // The whole point of splitting add from subtract: holding Shift down over
-    // several clicks used to turn selected elements back off again.
-    const held = [keys({ shiftKey: true }), keys({ shiftKey: true }), keys({ shiftKey: true })];
-    expect(held.map(selectIntent)).toEqual(['add', 'add', 'add']);
+  it('leaves which way a Shift+click goes to what it lands on', () => {
+    // Shift names the gesture rather than its direction: the one key both
+    // builds a selection and trims it.
+    const intent = selectIntent(keys({ shiftKey: true }));
+    expect(clickIntent(intent, false)).toBe('add');
+    expect(clickIntent(intent, true)).toBe('subtract');
+  });
+});
+
+describe('which way a click goes once it is known what it landed on', () => {
+  it('takes in what is out and drops what is already in, under Shift', () => {
+    expect(clickIntent('add', false)).toBe('add');
+    expect(clickIntent('add', true)).toBe('subtract');
+  });
+
+  it('leaves a bare click and Shift+Ctrl alone, whatever is under the pointer', () => {
+    for (const selected of [false, true]) {
+      expect(clickIntent('replace', selected)).toBe('replace');
+      expect(clickIntent('subtract', selected)).toBe('subtract');
+    }
+  });
+});
+
+/** A 4 by 4 sheet of quads: the smallest one with a loop running clean across it. */
+const sheet = () => createGrid(1, 4);
+
+/** The sheet's vertex at column `x` and row `z`, each counted 0 to 4. */
+const vertAt = (mesh: BMesh, x: number, z: number) => [...mesh.verts.values()][z * 5 + x];
+
+/** The sheet's edge from one vertex to another, which has to be there. */
+function edgeAt(mesh: BMesh, from: [number, number], to: [number, number]): Edge {
+  const edge = mesh.findEdge(vertAt(mesh, ...from), vertAt(mesh, ...to));
+  if (!edge) throw new Error(`no edge from ${from} to ${to}`);
+  return edge;
+}
+
+/** An element in the middle of the sheet, well clear of its border, for each select mode. */
+function middleOf(mesh: BMesh, mode: SelectMode): number {
+  if (mode === 'vertex') return vertAt(mesh, 2, 2).id;
+  if (mode === 'edge') return edgeAt(mesh, [2, 1], [2, 2]).id;
+  return [...mesh.faces.values()][5].id;
+}
+
+function isSelected(mesh: BMesh, mode: SelectMode, id: number): boolean {
+  if (mode === 'vertex') return mesh.verts.get(id)?.selected ?? false;
+  if (mode === 'edge') return mesh.edges.get(id)?.selected ?? false;
+  return mesh.faces.get(id)?.selected ?? false;
+}
+
+/** A Shift+click on one element, with or without Alt naming its loop. */
+const shiftClick = (mesh: BMesh, mode: SelectMode, id: number, loop = false) =>
+  clickElement(mesh, mode, { kind: mode, elementId: id }, 'add', loop);
+
+describe('a Shift+click on the mesh being edited', () => {
+  const modes: SelectMode[] = ['vertex', 'edge', 'face'];
+
+  it.each(modes)('picks a %s up on the first click and puts it down on the second', (mode) => {
+    const mesh = sheet();
+    const id = middleOf(mesh, mode);
+
+    shiftClick(mesh, mode, id);
+    expect(isSelected(mesh, mode, id)).toBe(true);
+    shiftClick(mesh, mode, id);
+    expect(isSelected(mesh, mode, id)).toBe(false);
+  });
+
+  it('drops only the vertex clicked and keeps the rest of the selection', () => {
+    const mesh = sheet();
+    const kept = vertAt(mesh, 1, 1);
+    const dropped = vertAt(mesh, 3, 3);
+    shiftClick(mesh, 'vertex', kept.id);
+    shiftClick(mesh, 'vertex', dropped.id);
+
+    shiftClick(mesh, 'vertex', dropped.id);
+
+    expect(kept.selected).toBe(true);
+    expect(dropped.selected).toBe(false);
+  });
+
+  it('drops a face without taking the corners it shares with one still picked', () => {
+    const mesh = sheet();
+    const [first, second] = [...mesh.faces.values()];
+    shiftClick(mesh, 'face', first.id);
+    shiftClick(mesh, 'face', second.id);
+
+    shiftClick(mesh, 'face', first.id);
+
+    // The two share a side. Flushing from faces is what keeps that side's
+    // corners picked for the face that stays, and lets the other two go.
+    expect(first.selected).toBe(false);
+    expect(second.selected).toBe(true);
+    expect(mesh.faceVerts(second).every((vert) => vert.selected)).toBe(true);
+    expect(mesh.selectedVerts()).toHaveLength(4);
+  });
+
+  it('adds a whole loop, and takes it back out from any edge along it', () => {
+    const mesh = sheet();
+    const first = edgeAt(mesh, [2, 1], [2, 2]);
+    const further = edgeAt(mesh, [2, 3], [2, 4]);
+
+    shiftClick(mesh, 'edge', first.id, true);
+    // Column 2 runs border to border, four edges long.
+    expect(mesh.selectedEdges()).toHaveLength(4);
+    expect(further.selected).toBe(true);
+
+    shiftClick(mesh, 'edge', further.id, true);
+    expect(mesh.selectedEdges()).toHaveLength(0);
+  });
+
+  it('adds a loop through an edge left out of it, rather than dropping the edge', () => {
+    const mesh = sheet();
+    const picked = edgeAt(mesh, [2, 1], [2, 2]);
+    const across = edgeAt(mesh, [1, 2], [2, 2]);
+    shiftClick(mesh, 'edge', picked.id);
+
+    shiftClick(mesh, 'edge', across.id, true);
+
+    // The edge under the pointer was out, so its loop goes in and the edge
+    // picked before stays where it was.
+    expect(picked.selected).toBe(true);
+    expect(across.selected).toBe(true);
+    expect(mesh.selectedEdges()).toHaveLength(5);
   });
 });
 
@@ -76,6 +199,20 @@ describe('the marks the pointer wears', () => {
     SELECT_ADD_LOOP_CURSOR,
     SELECT_SUBTRACT_LOOP_CURSOR,
   ];
+
+  it('wears a minus over something already selected and a plus over anything else', () => {
+    // The sign is the click's own answer, read before the click is made.
+    const shift = selectIntent(keys({ shiftKey: true }));
+    expect(selectCursor(clickIntent(shift, true), false)).toBe(SELECT_SUBTRACT_CURSOR);
+    expect(selectCursor(clickIntent(shift, false), false)).toBe(SELECT_ADD_CURSOR);
+    expect(selectCursor(clickIntent(shift, true), true)).toBe(SELECT_SUBTRACT_LOOP_CURSOR);
+    expect(selectCursor(clickIntent(shift, false), true)).toBe(SELECT_ADD_LOOP_CURSOR);
+  });
+
+  it('wears no sign for a click that replaces, and the ring alone for a loop', () => {
+    expect(selectCursor('replace', false)).toBe('');
+    expect(selectCursor('replace', true)).toBe(SELECT_LOOP_CURSOR);
+  });
 
   it('hangs a plus off the arrow for adding and a minus for taking away', () => {
     const plus = svgOf(SELECT_ADD_CURSOR);

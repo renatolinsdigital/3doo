@@ -63,12 +63,8 @@ export function ShortcutOverlay() {
             </div>
             <div className="shortcuts__row">
               <dt className="shortcuts__keys">Shift + Click</dt>
-              <dd className="shortcuts__action">Add to the selection (the pointer wears a plus)</dd>
-            </div>
-            <div className="shortcuts__row">
-              <dt className="shortcuts__keys">Shift + Ctrl + Click</dt>
               <dd className="shortcuts__action">
-                Drop from the selection, leaving the rest (the pointer wears a minus)
+                Toggle in or out of the selection (the pointer wears a plus or a minus)
               </dd>
             </div>
             <div className="shortcuts__row">
@@ -79,15 +75,23 @@ export function ShortcutOverlay() {
             </div>
             <div className="shortcuts__row">
               <dt className="shortcuts__keys">Shift + Alt + Click</dt>
-              <dd className="shortcuts__action">Add a loop to the selection</dd>
-            </div>
-            <div className="shortcuts__row">
-              <dt className="shortcuts__keys">Shift + Ctrl + Alt + Click</dt>
-              <dd className="shortcuts__action">Drop a whole loop from the selection</dd>
+              <dd className="shortcuts__action">
+                Toggle a whole loop, by whether the element clicked is selected
+              </dd>
             </div>
             <div className="shortcuts__row">
               <dt className="shortcuts__keys">Drag</dt>
               <dd className="shortcuts__action">Region select: square, circle or lasso (V)</dd>
+            </div>
+            <div className="shortcuts__row">
+              <dt className="shortcuts__keys">Shift + Drag</dt>
+              <dd className="shortcuts__action">Add a region to the selection</dd>
+            </div>
+            <div className="shortcuts__row">
+              <dt className="shortcuts__keys">Shift + Ctrl + Drag</dt>
+              <dd className="shortcuts__action">
+                Drop a region from the selection, leaving the rest
+              </dd>
             </div>
           </dl>
         </section>

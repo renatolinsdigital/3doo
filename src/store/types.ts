@@ -20,10 +20,10 @@ export type SelectShape = 'box' | 'circle' | 'lasso';
 /**
  * What a click or a region drag does with what it picked.
  *
- * Shift asks for ADD and Shift+Ctrl for SUBTRACT, in the viewport and in the
- * outliner alike. Nothing toggles: a pick either joins the selection or leaves
- * it, so holding the same keys down across a run of clicks always pulls the
- * same way.
+ * Each value pulls one way only. The viewport's Shift+click toggles by
+ * choosing between ADD and SUBTRACT from what it landed on, and the outliner
+ * does the same from the row clicked, so by the time a pick reaches the store
+ * it has already been settled.
  */
 export type SelectIntent = 'replace' | 'add' | 'subtract';
 

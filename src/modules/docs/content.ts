@@ -218,15 +218,15 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'One element',
-            'Click it. Shift+click adds it to the selection, Shift+Ctrl+click drops it out again.',
+            'Click it. Shift+click toggles it: one outside the selection joins it, one already in it drops out. The same goes for a vertex, an edge, a face and, in object mode, a whole object.',
           ],
           [
             'More, without losing what you have',
-            'Hold Shift as you press, and Shift+Ctrl to take away instead. Nothing toggles: the same keys held over a run of clicks always pull the same way, and the pointer wears a plus or a minus while they are down, so you can see which way the next pick will go before you make it. Hold Alt as well, in edge or face select, and a ring joins it above: the sign at the foot of the pointer says which way the pick goes, the ring at the head says how much it takes. The marks follow whichever tool is in hand, since a click picks things up under MOVE, ROTATE and SCALE as readily as under SELECT. Whether the keys were down when the gesture began is what decides it, so a region drag can let go of Shift halfway to free its oval without turning the addition back into a replacement.',
+            'Hold Shift as you press. The pointer says which way a click will go before you make it: a plus over anything the click would add, and over empty space, and a minus over anything already selected, which the click would drop. The sign flips the moment a click lands, so it always answers for the next one. A Shift+drag adds everything the region touches, and the pointer keeps the plus for as long as the region is being drawn. Hold Alt as well, in edge or face select, and a ring joins the sign above it: the sign at the foot of the pointer says which way the pick goes, the ring at the head says how much it takes. The marks follow whichever tool is in hand, since a click picks things up under MOVE, ROTATE and SCALE as readily as under SELECT, and a click on a gizmo handle reaches whatever is under it, so Shift+clicking a selected object where its handles stand drops it. Whether the keys were down when the gesture began is what decides it, so a region drag can let go of Shift halfway to free its oval without turning the addition back into a replacement.',
           ],
           [
             'Less, without losing the rest',
-            'Shift+Ctrl and a click drops the one element under the pointer. Shift+Ctrl and a region drag drops everything the region touched and leaves the rest of the selection standing, whichever shape the drag draws. On a Mac it is Shift+Cmd: Ctrl+click is a right-click there, and opens the cursor menu instead.',
+            'Shift+click anything already selected and it drops out. Shift+Ctrl only ever takes away, which is what it is for with a region drag: it drops everything the region touched and leaves the rest of the selection standing, whichever shape the drag draws. On a Mac it is Shift+Cmd: Ctrl+click is a right-click there, and opens the cursor menu instead.',
           ],
           [
             'A region of elements',
@@ -238,11 +238,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'An edge loop',
-            'Alt+click an edge. The pointer takes a ring the moment Alt goes down, which is how you know the click is about to take the whole loop rather than the one edge under it. The loop runs on until it meets a pole, and Shift+Alt+click stacks another one onto what is already picked. EDGE LOOP, in the TOPOLOGY panel, names one from edges already picked instead: select two that meet and it extends the selection along the whole loop they sit in, one loop per edge that named it.',
+            'Alt+click an edge. The pointer takes a ring the moment Alt goes down, which is how you know the click is about to take the whole loop rather than the one edge under it. The loop runs on until it meets a pole. Shift+Alt+click an edge left out of the selection and its loop stacks onto what is already picked, or an edge already picked and its whole loop drops back out. EDGE LOOP, in the TOPOLOGY panel, names one from edges already picked instead: select two that meet and it extends the selection along the whole loop they sit in, one loop per edge that named it.',
           ],
           [
             'A face loop',
-            'Alt+click a face, near the edge you want the loop to run across: that edge is what says which of the two loops through the face you meant, so point at the side you are heading for rather than the middle. Shift+Alt+click adds a loop instead of replacing the selection, so bands stack up one click at a time, and Shift+Ctrl+Alt+click takes a whole loop back out again: the pointer shows both marks together, the ring over the sign. Vertex select has no loops to name, so Alt puts no ring up there. Alt+L still names one from two faces already picked.',
+            'Alt+click a face, near the edge you want the loop to run across: that edge is what says which of the two loops through the face you meant, so point at the side you are heading for rather than the middle. Shift+Alt+click adds a loop instead of replacing the selection, so bands stack up one click at a time, and the same click on a face already picked takes its whole loop back out: the pointer shows both marks together, the ring over the sign. Vertex select has no loops to name, so Alt puts no ring up there. Alt+L still names one from two faces already picked.',
           ],
           [
             'What a click would take',
