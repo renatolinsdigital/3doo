@@ -195,7 +195,7 @@ object mode only. The rest work in both.
 | `Ctrl+G` | Group the selected objects into a folder in the outliner (*object*) |
 | `Ctrl+A` | Apply rotation and scale into the mesh (*object*) |
 | `X` | Object mode: delete the object. Edit mode: delete the selection, leaving a hole |
-| `Delete` | Object mode: delete the object. Edit mode: dissolve the selection, keeping the surface |
+| `Delete` | Object mode: delete the object. Edit mode: open the delete menu, to delete or dissolve vertices, edges or faces |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
 
 ### The 3D cursor
@@ -332,33 +332,43 @@ mode:
 
 ### Delete versus dissolve
 
-In edit mode, <kbd>X</kbd> and <kbd>Delete</kbd> both act on the element type
-of the current select mode: vertices in <kbd>1</kbd>, edges in <kbd>2</kbd>,
-faces in <kbd>3</kbd>. The difference is what they leave behind:
+In edit mode, <kbd>Delete</kbd> opens the delete menu at the pointer, modelled
+on Blender's. It offers six entries, a delete and a dissolve for each element
+type, and the difference between the two is what they leave behind:
 
-| Key | Does | Leaves |
+| Entry | Does | Leaves |
 | --- | --- | --- |
-| `X` | Delete: removes the geometry | A hole |
-| `Delete` | Dissolve: removes the topology | The surrounding surface, intact |
+| Delete vertices, edges or faces | Removes the geometry | A hole |
+| Dissolve vertices, edges or faces | Removes the topology | The surrounding surface, intact |
+
+Each entry names the element type it acts on, so the select mode does not
+decide it: with one face selected in vertex select, Delete Faces takes that
+face and leaves its four corners. An entry with nothing to act on is greyed
+out, and its hint says what it is waiting for.
+
+<kbd>X</kbd> skips the menu and deletes straight away, acting on the element
+type of the current select mode: vertices in <kbd>1</kbd>, edges in
+<kbd>2</kbd>, faces in <kbd>3</kbd>.
 
 Dissolve keeps every remaining vertex where it is and merges the faces around
 the removed element into one. That has consequences, so it follows three rules:
 
 - **Faces** merge into a single n-gon, so dissolve needs two or more touching
-  faces. A lone face has nothing to merge with, and the status bar says so
-  instead of reporting success.
-- **Edges** are skipped when their two faces meet at more than 40°. Merging two
-  faces that steep makes a folded face, which shades badly: dissolving a cube
-  edge would look broken.
+  faces. A lone face has nothing to merge with, so the menu greys the entry
+  out until a second one is selected beside it.
+- **Edges** need a face on each side, so an edge on an open border never
+  dissolves. They are also skipped when their two faces meet at more than 40°.
+  Merging two faces that steep makes a folded face, which shades badly:
+  dissolving a cube edge would look broken.
 - **Vertices** at a corner follow the same 40° rule across their faces. A
   vertex lying along a path, such as the midpoint left by subdividing an edge,
   merges nothing and always dissolves.
 
 ### What the panels offer
 
-Because the keys cover delete and dissolve, no panel has a button for them.
-The OBJECT panel has Recalculate Normals in that spot instead, since it is most
-often wanted right after a merge. Merge lives in the TOPOLOGY panel, welding the
+Because the delete menu and <kbd>X</kbd> cover delete and dissolve, no panel
+has a button for them. The OBJECT panel has Recalculate Normals in that spot
+instead, since it is most often wanted right after a merge. Merge lives in the TOPOLOGY panel, welding the
 selected vertices at their centre, at the 3D cursor, or onto the first or last
 one selected.
 

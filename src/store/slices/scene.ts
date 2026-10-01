@@ -2259,6 +2259,7 @@ export const createSceneSlice: StateCreator<
       mode: 'object',
       activeTool: 'select',
       modal: null,
+      deleteMenu: null,
       dialog: null,
       collapsedPanels: {},
     });

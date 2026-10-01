@@ -26,6 +26,13 @@ export interface ViewportSlice extends ViewportSettings {
    * right-click menu resolves its own targets as the click lands.
    */
   cursorSnapRequest: { kind: CursorSnapKind; nonce: number } | null;
+  /**
+   * Incremented to ask the viewport to open the delete menu at the pointer.
+   *
+   * The Delete key has no click to take a position from, and only the
+   * viewport knows where the pointer was left.
+   */
+  deleteMenuRequest: { nonce: number } | null;
   /** Why the scene is out of view, or null while it is where the camera can see it. */
   viewLost: ViewLostReason | null;
   /**
@@ -47,6 +54,7 @@ export interface ViewportSlice extends ViewportSettings {
   setAxisView: (axis: 'x' | 'y' | 'z', negative?: boolean) => void;
   orbitView: (step: OrbitStep) => void;
   snapCursorUnderPointer: (kind: CursorSnapKind) => void;
+  openDeleteMenuAtPointer: () => void;
   setViewLost: (lost: ViewLostReason | null) => void;
   setCameraPose: (pose: CameraPose) => void;
 }
@@ -100,6 +108,7 @@ export const createViewportSlice: StateCreator<
   axisViewRequest: null,
   orbitRequest: null,
   cursorSnapRequest: null,
+  deleteMenuRequest: null,
   viewLost: null,
   cameraPose: null,
 
@@ -124,6 +133,8 @@ export const createViewportSlice: StateCreator<
   orbitView: (step) => set({ orbitRequest: { step, nonce: ++nonce }, status: ORBIT_STATUS[step] }),
 
   snapCursorUnderPointer: (kind) => set({ cursorSnapRequest: { kind, nonce: ++nonce } }),
+
+  openDeleteMenuAtPointer: () => set({ deleteMenuRequest: { nonce: ++nonce } }),
 
   setViewLost: (viewLost) => set({ viewLost }),
 

@@ -24,13 +24,13 @@ describe('keymap', () => {
     expect(matchBinding(keyEvent('e'), 'object')).toBeNull();
   });
 
-  it('splits X and Delete into delete and dissolve', () => {
+  it('keeps X for a straight delete and gives Delete the menu in edit mode', () => {
     expect(matchBinding(keyEvent('x'), 'edit')?.id).toBe('delete');
-    expect(matchBinding(keyEvent('Delete'), 'edit')?.id).toBe('dissolve');
+    expect(matchBinding(keyEvent('Delete'), 'edit')?.id).toBe('deleteMenu');
 
     // In object mode both keys remove the object, so they share one action.
     expect(matchBinding(keyEvent('x'), 'object')?.id).toBe('delete');
-    expect(matchBinding(keyEvent('Delete'), 'object')?.id).toBe('dissolve');
+    expect(matchBinding(keyEvent('Delete'), 'object')?.id).toBe('delete');
   });
 
   it('maps M to a merge in either mode, to a different one in each', () => {

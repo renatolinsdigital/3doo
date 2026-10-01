@@ -1134,6 +1134,12 @@ export class Viewport {
           if (request) this.snapCursorUnderPointer(request.kind);
         },
       ),
+      store.subscribe(
+        (state) => state.deleteMenuRequest,
+        (request) => {
+          if (request) this.openDeleteMenu();
+        },
+      ),
     );
   }
 
@@ -3016,6 +3022,20 @@ export class Viewport {
   private snapCursorUnderPointer(kind: CursorSnapKind): void {
     const targets = this.pointerInside ? this.resolveCursorTargets(this.pointerPixels) : null;
     useEditorStore.getState().snapCursor(kind, targets);
+  }
+
+  /**
+   * Opens the delete menu where the pointer is, for the Delete key.
+   *
+   * A pointer off the canvas, over a panel say, has left no spot to open at,
+   * so the menu opens in the middle of the view instead of at the edge it
+   * last crossed.
+   */
+  private openDeleteMenu(): void {
+    const at = this.pointerInside
+      ? this.pointerPixels
+      : new THREE.Vector2(this.canvas.clientWidth / 2, this.canvas.clientHeight / 2);
+    useEditorStore.getState().openDeleteMenu({ x: at.x, y: at.y });
   }
 
   /**
