@@ -61,10 +61,6 @@ export function fillHole(mesh: BMesh, edges: readonly Edge[]): Face[] {
 }
 
 /**
- * Fills a boundary loop with a fan of triangles instead of one n-gon, which
- * behaves better on long or non-planar loops.
- */
-/**
  * Bridges two edge loops with a band of quads.
  *
  * The second loop is rotated so its start is nearest the first loop's start,

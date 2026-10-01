@@ -72,10 +72,6 @@ export function normalize(a: Vec3): Vec3 {
   return mul(a, 1 / len);
 }
 
-export function negate(a: Vec3): Vec3 {
-  return { x: -a.x, y: -a.y, z: -a.z };
-}
-
 export function lerp(a: Vec3, b: Vec3, t: number): Vec3 {
   return {
     x: a.x + (b.x - a.x) * t,

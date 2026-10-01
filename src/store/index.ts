@@ -1,6 +1,6 @@
 export * from './types';
 export * from './selectors';
-export { useEditorStore, editorStore, type EditorStore } from './useEditorStore';
+export { useEditorStore, type EditorStore } from './useEditorStore';
 export { CURSOR_SNAPS, activeObject, displayCenter, evaluatedMesh } from './slices/scene';
 export { SELECT_SHAPES } from './slices/tool';
 export { axisViewName } from './slices/viewport';

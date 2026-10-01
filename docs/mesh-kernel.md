@@ -115,7 +115,7 @@ point is the original corner, which rounds the profile.
 
 **Known limitation:** a bevel terminating against three or more unbeveled edges
 can close with a coplanar cap. The result stays a valid closed manifold, but it
-carries a zero-volume flap. Tracked in `TODO.txt`.
+carries a zero-volume flap.
 
 Verified on a cube with all 12 edges beveled: 24 vertices, 26 faces, 48 edges,
 Euler characteristic 2.

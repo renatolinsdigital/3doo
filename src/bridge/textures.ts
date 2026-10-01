@@ -2,6 +2,12 @@ import * as THREE from 'three';
 
 import type { SceneAsset } from '@store/types';
 
+interface TextureSlot {
+  texture: THREE.Texture;
+  /** Revoked once the image has been decoded, which is the only use it has. */
+  url: string;
+}
+
 /**
  * One GPU texture per imported image, held for as long as the scene points at
  * it.
@@ -12,12 +18,6 @@ import type { SceneAsset } from '@store/types';
  * switches, and re-decoding every reference photograph to come back from the
  * docs page would be a visible stall.
  */
-interface TextureSlot {
-  texture: THREE.Texture;
-  /** Revoked once the image has been decoded, which is the only use it has. */
-  url: string;
-}
-
 const textures = new Map<string, TextureSlot>();
 
 /**

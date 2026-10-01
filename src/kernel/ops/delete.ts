@@ -18,6 +18,7 @@ export function deleteGeometry(
       break;
 
     case 'edges':
+    case 'edgesAndFaces':
       for (const edge of selection.edges) mesh.removeEdge(edge);
       mesh.removeLooseVerts();
       break;
@@ -37,11 +38,6 @@ export function deleteGeometry(
 
     case 'onlyFaces':
       for (const face of selection.faces) mesh.removeFace(face);
-      break;
-
-    case 'edgesAndFaces':
-      for (const edge of selection.edges) mesh.removeEdge(edge);
-      mesh.removeLooseVerts();
       break;
   }
 

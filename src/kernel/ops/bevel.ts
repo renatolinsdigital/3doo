@@ -2,7 +2,7 @@ import { type Vec3, add, clamp, distance, dot, mul, normalize, sub } from '../ma
 import type { BMesh } from '../mesh';
 import type { Edge, Face, Vert } from '../mesh/types';
 
-import { loopInwardDirection, miterOffset } from './region';
+import { dedupeRing, loopInwardDirection, miterOffset } from './region';
 
 export interface BevelOptions {
   width?: number;
@@ -21,6 +21,16 @@ type ProfileCache = Map<string, Vert[]>;
 
 function cornerKey(faceId: number, vertId: number): string {
   return `${faceId}:${vertId}`;
+}
+
+/** Where a chamfer ending on `edge` cuts it, measured from its `from` end. */
+function splitKey(edge: Edge, from: Vert): string {
+  return `${edge.id}:${from.id}`;
+}
+
+/** The profile rail running from `from` to `to` around `corner`. */
+function profileKey(from: Vert, to: Vert, corner: Vert): string {
+  return `${from.id}:${to.id}:${corner.id}`;
 }
 
 /**
@@ -135,7 +145,7 @@ function collectTerminationSplits(
   const requests = new Map<string, { edge: Edge; from: Vert; travel: number }>();
 
   const request = (edge: Edge, from: Vert, travel: number) => {
-    const key = `${edge.id}:${from.id}`;
+    const key = splitKey(edge, from);
     const existing = requests.get(key);
     if (existing) existing.travel = Math.max(existing.travel, travel);
     else requests.set(key, { edge, from, travel });
@@ -207,21 +217,21 @@ function computeCornerPoints(
       }
 
       if (nextBeveled) {
-        const split = splitVerts.get(`${loop.prev.edge.id}:${loop.vert.id}`);
+        const split = splitVerts.get(splitKey(loop.prev.edge, loop.vert));
         if (split) cornerPoint.set(key, split);
         continue;
       }
 
       if (previousBeveled) {
-        const split = splitVerts.get(`${loop.edge.id}:${loop.vert.id}`);
+        const split = splitVerts.get(splitKey(loop.edge, loop.vert));
         if (split) cornerPoint.set(key, split);
         continue;
       }
 
       // Neither corner edge is beveled: the corner survives unless chamfers
       // arriving along both of its edges have already cut it away.
-      const cutBefore = splitVerts.has(`${loop.prev.edge.id}:${loop.vert.id}`);
-      const cutAfter = splitVerts.has(`${loop.edge.id}:${loop.vert.id}`);
+      const cutBefore = splitVerts.has(splitKey(loop.prev.edge, loop.vert));
+      const cutAfter = splitVerts.has(splitKey(loop.edge, loop.vert));
       if (!(cutBefore && cutAfter)) cornerPoint.set(key, loop.vert);
     }
   }
@@ -274,8 +284,8 @@ function rebuildRing(
     }
     if (beveledIds.has(loop.edge.id)) continue;
 
-    const near = splitVerts.get(`${loop.edge.id}:${loop.vert.id}`);
-    const far = splitVerts.get(`${loop.edge.id}:${loop.next.vert.id}`);
+    const near = splitVerts.get(splitKey(loop.edge, loop.vert));
+    const far = splitVerts.get(splitKey(loop.edge, loop.next.vert));
     if (near) ring.push(near);
     if (far) ring.push(far);
   }
@@ -301,21 +311,11 @@ function cutCornerRail(
   const loop = mesh.loopOfVertInFace(face, vert);
   if (!loop) return undefined;
 
-  const before = splitVerts.get(`${loop.prev.edge.id}:${vert.id}`);
-  const after = splitVerts.get(`${loop.edge.id}:${vert.id}`);
+  const before = splitVerts.get(splitKey(loop.prev.edge, vert));
+  const after = splitVerts.get(splitKey(loop.edge, vert));
   if (!before || !after) return undefined;
 
-  return profiles.get(`${before.id}:${after.id}:${vert.id}`);
-}
-
-function dedupeRing(ring: readonly Vert[]): Vert[] {
-  const result: Vert[] = [];
-  for (const vert of ring) {
-    if (result.length > 0 && result[result.length - 1] === vert) continue;
-    result.push(vert);
-  }
-  while (result.length > 1 && result[0] === result[result.length - 1]) result.pop();
-  return result;
+  return profiles.get(profileKey(before, after, vert));
 }
 
 interface StripPlan {
@@ -363,7 +363,7 @@ function profileRail(
   profiles: ProfileCache,
   newVerts: Vert[],
 ): Vert[] {
-  const key = `${from.id}:${to.id}:${corner.id}`;
+  const key = profileKey(from, to, corner);
   const cached = profiles.get(key);
   if (cached) return cached;
 
@@ -383,28 +383,24 @@ function profileRail(
 
   for (let i = 1; i < rail.length - 1; i++) newVerts.push(rail[i]);
   profiles.set(key, rail);
-  profiles.set(`${to.id}:${from.id}:${corner.id}`, [...rail].reverse());
+  profiles.set(profileKey(to, from, corner), [...rail].reverse());
   return rail;
 }
 
-/** Lays out both profile rails of a strip, which the cache then hands out. */
+/** Lays out both profile rails of a strip, or hands back the ones the cache already holds. */
 function buildRails(
   mesh: BMesh,
   plan: StripPlan,
   segments: number,
   profiles: ProfileCache,
   newVerts: Vert[],
-) {
-  profileRail(
-    mesh,
-    plan.railStart[0],
-    plan.railStart[1],
-    plan.cornerStart,
-    segments,
-    profiles,
-    newVerts,
-  );
-  profileRail(mesh, plan.railEnd[0], plan.railEnd[1], plan.cornerEnd, segments, profiles, newVerts);
+): [Vert[], Vert[]] {
+  const [startFrom, startTo] = plan.railStart;
+  const [endFrom, endTo] = plan.railEnd;
+  return [
+    profileRail(mesh, startFrom, startTo, plan.cornerStart, segments, profiles, newVerts),
+    profileRail(mesh, endFrom, endTo, plan.cornerEnd, segments, profiles, newVerts),
+  ];
 }
 
 function buildStrip(
@@ -414,24 +410,7 @@ function buildStrip(
   profiles: ProfileCache,
   newVerts: Vert[],
 ): Face[] {
-  const start = profileRail(
-    mesh,
-    plan.railStart[0],
-    plan.railStart[1],
-    plan.cornerStart,
-    segments,
-    profiles,
-    newVerts,
-  );
-  const end = profileRail(
-    mesh,
-    plan.railEnd[0],
-    plan.railEnd[1],
-    plan.cornerEnd,
-    segments,
-    profiles,
-    newVerts,
-  );
+  const [start, end] = buildRails(mesh, plan, segments, profiles, newVerts);
 
   const faces: Face[] = [];
   for (let i = 0; i < segments; i++) {
@@ -527,7 +506,7 @@ function expandCapRing(cap: CapPlan, segments: number, profiles: ProfileCache): 
     ring.push(entry.corner);
 
     if (!entry.bridged || segments < 2) continue;
-    const rail = profiles.get(`${entry.corner.id}:${next.corner.id}:${cap.vert.id}`);
+    const rail = profiles.get(profileKey(entry.corner, next.corner, cap.vert));
     if (!rail) continue;
     for (let step = 1; step < rail.length - 1; step++) ring.push(rail[step]);
   }

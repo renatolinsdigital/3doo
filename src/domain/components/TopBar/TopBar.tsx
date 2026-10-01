@@ -298,7 +298,7 @@ export function TopBar({ brand }: TopBarProps) {
               min={MIN_SNAP_STEP}
               max={MAX_SNAP_STEP}
               step={0.01}
-              hint="The step, as a multiple of the grid SCALE set in preferences: 1 is one whole square, 0.03 three hundredths of one. This adjustment is is saved with your preferences."
+              hint="The step, as a multiple of the grid SCALE set in preferences: 1 is one whole square, 0.03 three hundredths of one. This adjustment is saved with your preferences."
               onChange={(step) => setPreferences({ snapStep: step })}
             />
           ) : null}

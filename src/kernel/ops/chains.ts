@@ -108,13 +108,14 @@ function walkChains(
     // The walk came back to where it started, so the chain closes on itself and
     // has no ends to pin.
     const closed = tail === vert || head === vert;
-    const path = ordered.map((member) => member.co);
-    chains.push({
+    const chain: Chain = {
       verts: ordered,
       head: closed ? null : head,
       tail: closed ? null : tail,
-      border: !link.border ? null : closed ? path : [head.co, ...path, tail.co],
-    });
+      border: null,
+    };
+    if (link.border) chain.border = chainPath(chain);
+    chains.push(chain);
   }
 
   return chains;

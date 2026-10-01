@@ -447,26 +447,13 @@ export async function pickTextFile(kind: FileKind): Promise<PickedTextFile | nul
   }
 }
 
-function inputTextFile(kind: FileKind): Promise<PickedTextFile | null> {
-  return new Promise((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = kind.accepts.join(',');
+async function inputTextFile(kind: FileKind): Promise<PickedTextFile | null> {
+  const file = await pickFile(kind);
+  if (!file) return null;
 
-    input.onchange = () => {
-      const file = input.files?.[0];
-      if (!file) {
-        resolve(null);
-        return;
-      }
-      file
-        .text()
-        .then((text) => resolve({ name: file.name, text, handle: null }))
-        .catch(() => resolve(null));
-    };
-
-    // A cancelled picker fires no event in most browsers; the promise simply
-    // never resolves, which is why callers treat it as fire-and-forget.
-    input.click();
-  });
+  try {
+    return { name: file.name, text: await file.text(), handle: null };
+  } catch {
+    return null;
+  }
 }

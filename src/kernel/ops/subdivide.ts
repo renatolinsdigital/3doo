@@ -6,6 +6,7 @@ import {
   centroid,
   clamp,
   cross,
+  degToRad,
   distanceSq,
   dot,
   length,
@@ -543,12 +544,10 @@ function planCuts(
   };
 
   for (const outline of outlines.values()) {
-    for (const side of outline.sides) demand_side(side);
-  }
-
-  function demand_side(side: Loop[]) {
-    const count = cutsPerEdge(side, cuts);
-    for (const loop of side) demand(loop.edge, count);
+    for (const side of outline.sides) {
+      const count = cutsPerEdge(side, cuts);
+      for (const loop of side) demand(loop.edge, count);
+    }
   }
 
   while (queue.length > 0) {
@@ -1074,7 +1073,7 @@ export function triangulateFaces(mesh: BMesh, faces: readonly Face[]): Face[] {
 
 /** Merges adjacent, near-coplanar triangle pairs back into quads. */
 export function trisToQuads(mesh: BMesh, faces: readonly Face[], angleLimit = 40): Face[] {
-  const limit = Math.cos((angleLimit * Math.PI) / 180);
+  const limit = Math.cos(degToRad(angleLimit));
   const candidates = faces.filter(
     (face) => mesh.faces.has(face.id) && mesh.faceLoops(face).length === 3,
   );

@@ -39,10 +39,7 @@ export function Panel({ title, children, actions, scrollable = false, className 
   const bodyId = useId();
 
   return (
-    <section
-      className={cx('panel', collapsed && 'panel--collapsed', className)}
-      aria-label={title}
-    >
+    <section className={cx('panel', collapsed && 'panel--collapsed', className)} aria-label={title}>
       <header className="panel__header">
         <h2 className="panel__title">
           <button

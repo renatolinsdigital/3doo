@@ -430,8 +430,7 @@ export function PreferencesDialog() {
         />
         <p className="preferences__hint">
           Undo keeps a whole copy of the scene per step, so this figure multiplies the model rather
-          than adding to it. Lower it if editing turns sluggish or the tab is killed for
-          memory.
+          than adding to it. Lower it if editing turns sluggish or the tab is killed for memory.
         </p>
       </Accordion>
 

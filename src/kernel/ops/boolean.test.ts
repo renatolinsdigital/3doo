@@ -16,6 +16,7 @@ import { triangulatePolygon } from '../mesh/triangulate';
 import {
   createBox,
   createCapsule,
+  createCircle,
   createCone,
   createCylinder,
   createGrid,
@@ -550,6 +551,61 @@ describe('mesh booleans', () => {
     expect(deepest).toBeLessThan(1e-9);
   });
 
+  it('does not fold a warped face over the hole it cuts in it', () => {
+    // A box with its top turned a little, which twists every wall into a quad
+    // that is not flat. A wall like that goes into the cut as triangles, and
+    // stitching the pieces of two of them back into one face gave a ring bent
+    // across both planes. Drawn flat, it folded over the hole the sphere left
+    // and painted a flap across it.
+    const target = createBox(1);
+    const turn = (30 * Math.PI) / 180;
+    for (const vert of target.verts.values()) {
+      if (vert.co.y < 0) continue;
+      const { x, y, z } = vert.co;
+      vert.co = vec3(
+        x * Math.cos(turn) + z * Math.sin(turn),
+        y,
+        -x * Math.sin(turn) + z * Math.cos(turn),
+      );
+    }
+    target.computeNormals();
+
+    const walls = [...target.faces.values()].map((face) => target.facePoints(face));
+    const result = booleanMesh(
+      'difference',
+      target,
+      createUVSphere(0.5, 24, 12),
+      offsetBy(vec3(0.5, 0.35, 0.15)),
+    );
+
+    expect(isClosed(result)).toBe(true);
+
+    const shapeOf = (points: readonly Vec3[]) =>
+      points
+        .map((point) => `${point.x.toFixed(9)},${point.y.toFixed(9)},${point.z.toFixed(9)}`)
+        .sort()
+        .join('|');
+    const warpOf = (points: readonly Vec3[]) => {
+      const normal = polygonNormal(points);
+      const offsets = points.map((point) => dot(normal, point));
+      return Math.max(...offsets) - Math.min(...offsets);
+    };
+
+    // A face may only be warped if it is a wall the cut never reached, handed
+    // back as the very quad it went in as. Anything the cut made is flat.
+    const untouched = new Set(walls.map(shapeOf));
+    const warped = [...result.faces.values()]
+      .map((face) => result.facePoints(face))
+      .filter((points) => warpOf(points) > 1e-9);
+    expect(warped.filter((points) => !untouched.has(shapeOf(points)))).toEqual([]);
+
+    // The wall on the far side from the sphere is twisted and nowhere near the
+    // cut, so it comes back whole rather than as the triangles it went in as.
+    const far = walls.find((points) => points.every((point) => point.x < 0)) as Vec3[];
+    expect(warpOf(far)).toBeGreaterThan(1e-3);
+    expect(warped.map(shapeOf)).toContain(shapeOf(far));
+  });
+
   it('welds the cut so the result has edges to work with, not loose triangles', () => {
     const result = booleanMesh('union', createBox(2), createBox(2), offsetBy(vec3(1, 0, 0)));
 
@@ -810,5 +866,99 @@ describe('operands that arrive inside out', () => {
 
     expect(near.faces.size).toBeGreaterThan(0);
     expect(far.faces.size).toBeGreaterThan(0);
+  });
+});
+
+describe('operands that are surfaces rather than solids', () => {
+  /** A filled circle wider than the 2 m box, lying flat through its middle. */
+  const disc = () => createCircle(2, 24, true);
+
+  function surfaceArea(mesh: BMesh): number {
+    let total = 0;
+    for (const face of mesh.faces.values()) total += mesh.faceArea(face);
+    return total;
+  }
+
+  /** The area of the faces lying flat at height `y`. */
+  function areaAt(mesh: BMesh, y: number): number {
+    let total = 0;
+    for (const face of mesh.faces.values()) {
+      const points = mesh.facePoints(face);
+      if (points.every((point) => Math.abs(point.y - y) < 1e-6)) total += polygonArea(points);
+    }
+    return total;
+  }
+
+  /** The same box with one face on vertices of its own, so its rim is a seam. */
+  function unwelded(mesh: BMesh): BMesh {
+    const copy = new BMesh();
+    const moved = new Map<number, Vert>();
+    for (const vert of mesh.verts.values()) moved.set(vert.id, copy.addVert({ ...vert.co }));
+    const [first, ...rest] = [...mesh.faces.values()];
+    copy.addFace(mesh.faceVerts(first).map((vert) => copy.addVert({ ...vert.co })));
+    for (const face of rest) {
+      copy.addFace(mesh.faceVerts(face).flatMap((vert) => moved.get(vert.id) ?? []));
+    }
+    copy.computeNormals();
+    return copy;
+  }
+
+  it('unions a filled circle with a box without cutting the box', () => {
+    // Read as a solid, the circle's one plane stood for everything on one side
+    // of it, and the union sliced the box in half along it.
+    for (const [target, tool] of [
+      [createBox(2), disc()],
+      [disc(), createBox(2)],
+    ] as const) {
+      const result = booleanMesh('union', target, tool, offsetBy(vec3()));
+
+      expect(volume(result)).toBeCloseTo(8, 6);
+      expect(areaAt(result, 1)).toBeCloseTo(4, 6);
+      expect(areaAt(result, -1)).toBeCloseTo(4, 6);
+      // The part of the circle inside the box is inside the solid, and goes.
+      expect(areaAt(result, 0)).toBeCloseTo(surfaceArea(disc()) - 4, 6);
+    }
+  });
+
+  it('takes nothing away with a surface, having nothing inside it', () => {
+    const result = booleanMesh('difference', createBox(2), disc(), offsetBy(vec3()));
+
+    expect(result.faces.size).toBe(6);
+    expect(volume(result)).toBeCloseTo(8, 6);
+  });
+
+  it('cuts a hole in a surface without walling it in', () => {
+    // An imported image is a plane, and a box pushed through one should leave
+    // a window in the picture rather than half a box hanging off it.
+    const result = booleanMesh('difference', createGrid(4, 4), createBox(2), offsetBy(vec3()));
+
+    expect(areaAt(result, 0)).toBeCloseTo(12, 6);
+    expect(surfaceArea(result)).toBeCloseTo(12, 6);
+  });
+
+  it('keeps the part of a surface inside the solid on an intersect', () => {
+    for (const [target, tool] of [
+      [createBox(2), disc()],
+      [disc(), createBox(2)],
+    ] as const) {
+      const result = booleanMesh('intersect', target, tool, offsetBy(vec3()));
+
+      expect(areaAt(result, 0)).toBeCloseTo(4, 6);
+      expect(surfaceArea(result)).toBeCloseTo(4, 6);
+    }
+  });
+
+  it('still cuts with a solid whose seam was never welded', () => {
+    // Open along the seam as far as the topology goes, and as closed as ever
+    // as far as the shape goes, which is what decides whether it has an inside.
+    const result = booleanMesh(
+      'difference',
+      createBox(2),
+      unwelded(createBox(2)),
+      offsetBy(vec3(1, 0, 0)),
+    );
+
+    expect(isClosed(result)).toBe(true);
+    expect(volume(result)).toBeCloseTo(4, 2);
   });
 });

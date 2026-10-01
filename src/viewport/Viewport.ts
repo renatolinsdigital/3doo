@@ -8,6 +8,7 @@ import {
   AXIS_COLORS,
   ObjectView,
   VIEWPORT_COLORS,
+  disposeMaterial,
   imageTexture,
   releaseTextures,
 } from '@bridge/index';
@@ -49,6 +50,7 @@ import {
   vec3,
 } from '@kernel/index';
 import {
+  type EditorStore,
   activeObject,
   displayCenter,
   evaluatedMesh,
@@ -992,7 +994,7 @@ export class Viewport {
         () => this.syncGizmoSnap(),
         { equalityFn: shallowArrayEqual, fireImmediately: true },
       ),
-      useEditorStore.subscribe(
+      store.subscribe(
         (state) => [state.overlays.grid, state.overlays.axes] as const,
         ([grid, axes]) => this.grid.setVisibility(grid, axes),
         { equalityFn: shallowArrayEqual, fireImmediately: true },
@@ -1213,7 +1215,7 @@ export class Viewport {
    * own scale. Under a non-uniform one the true reach is an ellipsoid and the
    * circle can only average it, as Blender's does.
    */
-  private updateProportionalAnchor(state: ReturnType<typeof useEditorStore.getState>): void {
+  private updateProportionalAnchor(state: EditorStore): void {
     this.proportionalAnchor = null;
     if (state.mode !== 'edit') return;
 
@@ -1228,8 +1230,7 @@ export class Viewport {
       this.views.get(object.id)?.group.matrix ?? new THREE.Matrix4(),
     );
 
-    const { scale } = object.transform;
-    this.proportionalScale = (Math.abs(scale.x) + Math.abs(scale.y) + Math.abs(scale.z)) / 3;
+    this.proportionalScale = meanScale(object.transform.scale);
   }
 
   /**
@@ -1272,7 +1273,7 @@ export class Viewport {
    * turned; this is the one place that has the matrix to bring it out again.
    * Built here rather than per frame: it only changes when the panel says so.
    */
-  private updateSlidePreview(state: ReturnType<typeof useEditorStore.getState>): void {
+  private updateSlidePreview(state: EditorStore): void {
     this.slidePreviewUp = false;
 
     const preview = state.slidePreview;
@@ -1408,19 +1409,19 @@ export class Viewport {
     this.updateEditGizmo(state, gizmoMode);
   }
 
-  /**
-   * Stands the handles down for a scale that draws its own line.
-   *
-   * Hiding the helper is not enough on its own: three raycasts its picker
-   * meshes whether or not they are drawn, so a handle nobody can see would
-   * still highlight and still take a drag. Disabling the controls is what puts
-   * the whole gizmo out of reach until the scale ends.
-   */
   /** Whether a modal transform has its own guide up, and the handles are away. */
   private modalGuideUp(): boolean {
     return this.modalLine.visible || this.slideGuide.visible;
   }
 
+  /**
+   * Stands the handles down for a transform that draws its own guide.
+   *
+   * Hiding the helper is not enough on its own: three raycasts its picker
+   * meshes whether or not they are drawn, so a handle nobody can see would
+   * still highlight and still take a drag. Disabling the controls is what puts
+   * the whole gizmo out of reach until the transform ends.
+   */
   private standDownGizmo(): void {
     this.gizmo.enabled = false;
     this.gizmoHelper.visible = false;
@@ -1445,10 +1446,7 @@ export class Viewport {
    * The drag is applied to every unlocked object in the selection, so a group
    * moves as a unit about the one point.
    */
-  private updateObjectGizmo(
-    state: ReturnType<typeof useEditorStore.getState>,
-    gizmoMode: 'translate' | 'rotate' | 'scale',
-  ): void {
+  private updateObjectGizmo(state: EditorStore, gizmoMode: 'translate' | 'rotate' | 'scale'): void {
     const selected = state.objects.filter((object) => state.selectedObjectIds.includes(object.id));
     const transformable = selected.filter((object) => !object.locked);
 
@@ -1503,10 +1501,7 @@ export class Viewport {
    * when the active object is locked or unset, which still leaves the pivot on
    * an origin rather than on a point belonging to none of them.
    */
-  private objectPivotPoint(
-    state: ReturnType<typeof useEditorStore.getState>,
-    transformable: readonly SceneObject[],
-  ): Vec3 {
+  private objectPivotPoint(state: EditorStore, transformable: readonly SceneObject[]): Vec3 {
     if (state.pivot === 'cursor') return state.cursor;
 
     if (state.pivot === 'median') {
@@ -1527,10 +1522,7 @@ export class Viewport {
    * seated wherever the pivot says a turn is measured from: the middle of the
    * picked vertices, the object's own origin, or the 3D cursor.
    */
-  private updateEditGizmo(
-    state: ReturnType<typeof useEditorStore.getState>,
-    gizmoMode: 'translate' | 'rotate' | 'scale',
-  ): void {
+  private updateEditGizmo(state: EditorStore, gizmoMode: 'translate' | 'rotate' | 'scale'): void {
     const object = activeObject(state);
     if (!object || object.locked) {
       this.detachGizmo();
@@ -1573,18 +1565,26 @@ export class Viewport {
     };
   }
 
+  /**
+   * Holds where the gizmo and every object in the drag group stand, for a
+   * transform to be measured from and, if it is cancelled, put back to.
+   */
+  private captureBaselines(state: EditorStore): void {
+    this.captureGizmoBaseline();
+    this.objectBaselines.clear();
+    for (const object of state.objects) {
+      if (!this.transformGroup.includes(object.id)) continue;
+      this.objectBaselines.set(object.id, structuredClone(object.transform));
+    }
+  }
+
   private handleGizmoDragging = (event: { value: unknown }): void => {
     const dragging = event.value === true;
     this.gizmoDragging = dragging;
     const state = useEditorStore.getState();
 
     if (dragging) {
-      this.captureGizmoBaseline();
-      this.objectBaselines.clear();
-      for (const object of state.objects) {
-        if (!this.transformGroup.includes(object.id)) continue;
-        this.objectBaselines.set(object.id, structuredClone(object.transform));
-      }
+      this.captureBaselines(state);
       const tool = state.activeTool === 'select' ? 'move' : state.activeTool;
       state.recordHistory(
         state.mode === 'object' ? 'Transform object' : `${tool} selection`.toUpperCase(),
@@ -1691,13 +1691,6 @@ export class Viewport {
     this.modalLine.visible = false;
   }
 
-  /**
-   * Starts a scale that runs off the bare pointer, the way Blender's S does.
-   *
-   * No button is held, so it ends on a click, Enter or Escape instead of on
-   * pointerup, and because it can be cancelled, it captures how to put
-   * everything back before it touches anything.
-   */
   /** Pointer bearing around a screen point, counter-clockwise from the +X axis. */
   private pointerBearing(origin: THREE.Vector2): number {
     // Canvas y grows downward, so it is negated here: that puts the bearing in
@@ -1753,6 +1746,22 @@ export class Viewport {
   private beginModalRotate(): void {
     if (this.rotateDrag || this.scaleDrag) return;
 
+    const restore = this.prepareModalTransform('ROTATE');
+    if (!restore) return;
+
+    this.startRotateDrag({ restore });
+    this.captureModalInput();
+  }
+
+  /**
+   * What a keyboard rotate or scale does before anything moves, and how it is
+   * undone on a cancel. Null, with the modal already ended, when the selection
+   * gives it nothing to move.
+   *
+   * The history entry goes in first, while the scene is still untouched, which
+   * is the only moment there is a state to undo back to.
+   */
+  private prepareModalTransform(label: 'ROTATE' | 'SCALE'): (() => void) | null {
     const state = useEditorStore.getState();
     const editing = state.mode === 'edit';
     const object = activeObject(state);
@@ -1760,47 +1769,51 @@ export class Viewport {
 
     if (editing ? selected.length === 0 : this.transformGroup.length === 0) {
       state.endModal();
-      return;
+      return null;
     }
 
-    state.recordHistory(editing ? 'ROTATE selection' : 'Transform object');
+    state.recordHistory(editing ? `${label} selection` : 'Transform object');
     if (editing) state.patchActiveObject({ primitive: null }, { touchGeometry: false });
+    this.captureBaselines(state);
 
-    this.captureGizmoBaseline();
-    this.objectBaselines.clear();
-    for (const candidate of state.objects) {
-      if (!this.transformGroup.includes(candidate.id)) continue;
-      this.objectBaselines.set(candidate.id, structuredClone(candidate.transform));
+    if (!editing) {
+      return () =>
+        useEditorStore
+          .getState()
+          .setObjectTransforms(
+            [...this.objectBaselines].map(([id, transform]) => ({ id, transform })),
+          );
     }
 
     const restorePoints = selected.map((vert) => ({ vert, co: { ...vert.co } }));
-    const restore = editing
-      ? () => {
-          for (const point of restorePoints) point.vert.co = point.co;
-          object?.mesh.computeNormals();
-          useEditorStore.getState().touchMesh();
-        }
-      : () => {
-          useEditorStore
-            .getState()
-            .setObjectTransforms(
-              [...this.objectBaselines].map(([id, transform]) => ({ id, transform })),
-            );
-        };
+    return () => {
+      for (const point of restorePoints) point.vert.co = point.co;
+      object?.mesh.computeNormals();
+      useEditorStore.getState().touchMesh();
+    };
+  }
 
-    this.startRotateDrag({ restore });
+  /**
+   * Takes the keyboard and the next click for a modal transform: no button is
+   * held, so a click, Enter or Escape is what ends it, and X, Y or Z pins it.
+   */
+  private captureModalInput(): void {
     window.addEventListener('keydown', this.handleModalKey, true);
     window.addEventListener('pointerdown', this.handleModalPointer, true);
     window.addEventListener('contextmenu', this.handleModalContextMenu, true);
+  }
+
+  private releaseModalInput(): void {
+    window.removeEventListener('keydown', this.handleModalKey, true);
+    window.removeEventListener('pointerdown', this.handleModalPointer, true);
+    window.removeEventListener('contextmenu', this.handleModalContextMenu, true);
   }
 
   private finishModalRotate(cancelled: boolean): void {
     const drag = this.rotateDrag;
     if (!drag?.modal) return;
 
-    window.removeEventListener('keydown', this.handleModalKey, true);
-    window.removeEventListener('pointerdown', this.handleModalPointer, true);
-    window.removeEventListener('contextmenu', this.handleModalContextMenu, true);
+    this.releaseModalInput();
 
     const state = useEditorStore.getState();
     if (cancelled) {
@@ -1889,57 +1902,28 @@ export class Viewport {
     this.applyEditTransform(state, object);
   }
 
+  /**
+   * Starts a scale that runs off the bare pointer, the way Blender's S does.
+   *
+   * No button is held, so it ends on a click, Enter or Escape instead of on
+   * pointerup, and because it can be cancelled, it captures how to put
+   * everything back before it touches anything.
+   */
   private beginModalScale(): void {
     if (this.scaleDrag) return;
 
-    const state = useEditorStore.getState();
-    const editing = state.mode === 'edit';
-    const object = activeObject(state);
-    const selected = editing && object ? object.mesh.selectedVerts() : [];
-
-    if (editing ? selected.length === 0 : this.transformGroup.length === 0) {
-      state.endModal();
-      return;
-    }
-
-    state.recordHistory(editing ? 'SCALE selection' : 'Transform object');
-    if (editing) state.patchActiveObject({ primitive: null }, { touchGeometry: false });
-
-    this.captureGizmoBaseline();
-    this.objectBaselines.clear();
-    for (const candidate of state.objects) {
-      if (!this.transformGroup.includes(candidate.id)) continue;
-      this.objectBaselines.set(candidate.id, structuredClone(candidate.transform));
-    }
-
-    const restorePoints = selected.map((vert) => ({ vert, co: { ...vert.co } }));
-    const restore = editing
-      ? () => {
-          for (const point of restorePoints) point.vert.co = point.co;
-          object?.mesh.computeNormals();
-          useEditorStore.getState().touchMesh();
-        }
-      : () => {
-          useEditorStore
-            .getState()
-            .setObjectTransforms(
-              [...this.objectBaselines].map(([id, transform]) => ({ id, transform })),
-            );
-        };
+    const restore = this.prepareModalTransform('SCALE');
+    if (!restore) return;
 
     this.startScaleDrag('XYZ', { restore, seeded: false });
-    window.addEventListener('keydown', this.handleModalKey, true);
-    window.addEventListener('pointerdown', this.handleModalPointer, true);
-    window.addEventListener('contextmenu', this.handleModalContextMenu, true);
+    this.captureModalInput();
   }
 
   private finishModalScale(cancelled: boolean): void {
     const drag = this.scaleDrag;
     if (!drag?.modal) return;
 
-    window.removeEventListener('keydown', this.handleModalKey, true);
-    window.removeEventListener('pointerdown', this.handleModalPointer, true);
-    window.removeEventListener('contextmenu', this.handleModalContextMenu, true);
+    this.releaseModalInput();
 
     const state = useEditorStore.getState();
     if (cancelled) {
@@ -2010,19 +1994,14 @@ export class Viewport {
     // The handles say nothing the rails do not, and they sit over the very
     // geometry being slid. `updateGizmo` brings them back at the end.
     this.standDownGizmo();
-
-    window.addEventListener('keydown', this.handleModalKey, true);
-    window.addEventListener('pointerdown', this.handleModalPointer, true);
-    window.addEventListener('contextmenu', this.handleModalContextMenu, true);
+    this.captureModalInput();
   }
 
   private finishModalSlide(cancelled: boolean): void {
     const drag = this.slideDrag;
     if (!drag) return;
 
-    window.removeEventListener('keydown', this.handleModalKey, true);
-    window.removeEventListener('pointerdown', this.handleModalPointer, true);
-    window.removeEventListener('contextmenu', this.handleModalContextMenu, true);
+    this.releaseModalInput();
 
     const state = useEditorStore.getState();
     if (cancelled) {
@@ -2360,8 +2339,7 @@ export class Viewport {
     // screen, so the object's own scale sits between the two. A non-uniform one
     // has no single answer, and the mean is what the falloff ring averages to
     // as well.
-    const { scale } = object.transform;
-    const meanScale = (Math.abs(scale.x) + Math.abs(scale.y) + Math.abs(scale.z)) / 3;
+    const scale = meanScale(object.transform.scale);
 
     state.recordHistory(OFFSET_LABELS[kind]);
     state.patchActiveObject({ primitive: null }, { touchGeometry: false });
@@ -2378,7 +2356,7 @@ export class Viewport {
       reference: 0,
       seeded: false,
       held: false,
-      unitsPerPixel: this.worldPerPixel(pivot) / Math.max(meanScale, 1e-6),
+      unitsPerPixel: this.worldPerPixel(pivot) / Math.max(scale, 1e-6),
       axis,
       screenAxis: axis ? this.projectDirection(pivot, axis) : null,
       amount: 0,
@@ -2391,10 +2369,10 @@ export class Viewport {
     this.standDownGizmo();
     this.updateModalLine();
 
-    window.addEventListener('keydown', this.handleModalKey, true);
-    window.addEventListener('pointerdown', this.handleModalPointer, true);
+    this.captureModalInput();
+    // Only an offset drag can be held down with the button, so only it waits
+    // on the release.
     window.addEventListener('pointerup', this.handleModalPointerUp, true);
-    window.addEventListener('contextmenu', this.handleModalContextMenu, true);
   }
 
   /** Where the drag reads nothing: the pointer's place, and the guide line's length. */
@@ -2484,10 +2462,8 @@ export class Viewport {
     const drag = this.offsetDrag;
     if (!drag) return;
 
-    window.removeEventListener('keydown', this.handleModalKey, true);
-    window.removeEventListener('pointerdown', this.handleModalPointer, true);
+    this.releaseModalInput();
     window.removeEventListener('pointerup', this.handleModalPointerUp, true);
-    window.removeEventListener('contextmenu', this.handleModalContextMenu, true);
 
     // A confirm that never left the start has nothing to keep either: the
     // operator has not run, and the entry recorded before it would undo to the
@@ -2616,7 +2592,7 @@ export class Viewport {
    * what the wheel does mid-drag.
    */
   private proportionalSpread(
-    state: ReturnType<typeof useEditorStore.getState>,
+    state: EditorStore,
     object: SceneObject,
     selected: readonly Vert[],
   ): ProportionalOptions | ProportionalInfluence {
@@ -2651,11 +2627,7 @@ export class Viewport {
    * mesh. Move ignores the pivot, because a translation is the same wherever
    * you measure it from.
    */
-  private applyEditTransform(
-    state: ReturnType<typeof useEditorStore.getState>,
-    object: SceneObject,
-    scaleStep?: Vec3,
-  ): void {
+  private applyEditTransform(state: EditorStore, object: SceneObject, scaleStep?: Vec3): void {
     const baseline = this.gizmoBaseline;
     if (!baseline) return;
 
@@ -2725,10 +2697,7 @@ export class Viewport {
    * than staying put, unless the point is the object's own origin, where the
    * offset is zero and it turns where it stands.
    */
-  private applyObjectGroupTransform(
-    state: ReturnType<typeof useEditorStore.getState>,
-    scaleRatio: Vec3 = vec3(1, 1, 1),
-  ): void {
+  private applyObjectGroupTransform(state: EditorStore, scaleRatio: Vec3 = vec3(1, 1, 1)): void {
     if (!this.gizmoBaseline || this.transformGroup.length === 0) return;
 
     const pivotProxy = this.gizmoBaseline.position;
@@ -2980,7 +2949,7 @@ export class Viewport {
       state.selectMode,
       pointer,
       this.camera,
-      { width: this.canvas.clientWidth, height: this.canvas.clientHeight },
+      this.canvasSize(),
       this.raycaster,
       this.pickable(object.mesh, view),
     );
@@ -3025,8 +2994,7 @@ export class Viewport {
     event.preventDefault();
     if (this.gizmo.dragging) return;
 
-    const rect = this.canvas.getBoundingClientRect();
-    const pointer = new THREE.Vector2(event.clientX - rect.left, event.clientY - rect.top);
+    const pointer = this.pointerPosition(event);
     useEditorStore.getState().openCursorMenu({
       x: pointer.x,
       y: pointer.y,
@@ -3060,7 +3028,7 @@ export class Viewport {
   private resolveCursorTargets(pointer: THREE.Vector2): CursorSnapTargets {
     const state = useEditorStore.getState();
     this.updateRaycaster(pointer);
-    const size = { width: this.canvas.clientWidth, height: this.canvas.clientHeight };
+    const size = this.canvasSize();
     const targets: CursorSnapTargets = { point: null, vertex: null, edge: null, face: null };
 
     const ordered = [...state.objects].sort(
@@ -3191,7 +3159,7 @@ export class Viewport {
     this.heldModifiers.alt = event.altKey;
   }
 
-  private pointerPosition(event: PointerEvent): THREE.Vector2 {
+  private pointerPosition(event: MouseEvent): THREE.Vector2 {
     const rect = this.canvas.getBoundingClientRect();
     return new THREE.Vector2(event.clientX - rect.left, event.clientY - rect.top);
   }
@@ -3220,7 +3188,7 @@ export class Viewport {
    * everywhere else the pick lands on what is drawn. The two differ only while
    * a modifier is previewing on top of the object being edited.
    */
-  private pickMesh(object: SceneObject, state: ReturnType<typeof useEditorStore.getState>): BMesh {
+  private pickMesh(object: SceneObject, state: EditorStore): BMesh {
     if (state.mode === 'edit' && object.id === state.activeObjectId) return object.mesh;
     return evaluatedMesh(object, state.cursor, state.meshVersion);
   }
@@ -3274,7 +3242,7 @@ export class Viewport {
         'vertex',
         this.pointerPixels,
         this.camera,
-        { width: this.canvas.clientWidth, height: this.canvas.clientHeight },
+        this.canvasSize(),
         this.raycaster,
         this.pickable(object.mesh, view),
       );
@@ -3298,6 +3266,11 @@ export class Viewport {
 
   private clearHoverVert(): void {
     for (const view of this.views.values()) view.showHoverVert(null);
+  }
+
+  /** The canvas in CSS pixels, the space every pointer position here is in. */
+  private canvasSize(): { width: number; height: number } {
+    return { width: this.canvas.clientWidth, height: this.canvas.clientHeight };
   }
 
   private ndcPosition(pointer: THREE.Vector2): THREE.Vector2 {
@@ -3386,7 +3359,7 @@ export class Viewport {
       .map((object) => ({ id: object.id, view: this.views.get(object.id) }))
       .filter((entry): entry is { id: string; view: ObjectView } => entry.view !== undefined);
 
-    const size = { width: this.canvas.clientWidth, height: this.canvas.clientHeight };
+    const size = this.canvasSize();
     const bounds = marqueeBounds(marquee);
     const hits = pickObjectsInRegion(entries, region, bounds, this.camera, size);
 
@@ -3418,7 +3391,7 @@ export class Viewport {
     const view = object ? this.views.get(object.id) : undefined;
     if (state.mode !== 'edit' || !object || !view) return;
 
-    const size = { width: this.canvas.clientWidth, height: this.canvas.clientHeight };
+    const size = this.canvasSize();
     const facing = this.pickable(object.mesh, view);
     const hits = pickInRegion(
       view,
@@ -3576,7 +3549,7 @@ export class Viewport {
     if (modal?.axis) return pinnedAxes(modal.axis, modal.excludeAxis);
 
     if (!this.gizmoDragging) return null;
-    const handle = (this.gizmo as unknown as { axis: string | null }).axis ?? '';
+    const handle = this.gizmo.axis ?? '';
     const axes = (['x', 'y', 'z'] as const).filter((axis) => handle.toLowerCase().includes(axis));
     // All three is the free handle, which pins nothing at all.
     return axes.length > 0 && axes.length < 3 ? axes : null;
@@ -3590,7 +3563,7 @@ export class Viewport {
    * stale value behind whenever one ended without the other noticing.
    */
   private updatePointerCursor(): void {
-    const axis = (this.gizmo as unknown as { axis: string | null }).axis;
+    const axis = this.gizmo.axis;
     const rotating =
       this.rotateDrag !== null || (this.gizmo.mode === 'rotate' && axis === FREE_ROTATE_AXIS);
 
@@ -3844,10 +3817,7 @@ export class Viewport {
         material?: THREE.Material | THREE.Material[];
       };
       holder.geometry?.dispose();
-      if (holder.material) {
-        if (Array.isArray(holder.material)) for (const item of holder.material) item.dispose();
-        else holder.material.dispose();
-      }
+      if (holder.material) disposeMaterial(holder.material);
     });
   }
 }
@@ -4005,7 +3975,7 @@ export function paintGizmoAxes(helper: THREE.Object3D, controls: TransformContro
       material.color.copy(material._color ?? material.color).lerp(WHITE, GIZMO_HIGHLIGHT_MIX);
     }
 
-    const tint = axisTint((controls as unknown as { axis: string | null }).axis ?? null);
+    const tint = axisTint(controls.axis ?? null);
     for (const guide of guides) {
       if (tint === null) guide.material.color.copy(guide.base);
       else guide.material.color.setHex(tint);
@@ -4185,7 +4155,7 @@ export function trimGizmoGuides(helper: THREE.Object3D, controls: TransformContr
   helper.updateMatrixWorld = (force?: boolean) => {
     update(force);
 
-    const axis = (controls as unknown as { axis: string | null }).axis ?? '';
+    const axis = controls.axis ?? '';
     // 'XYZX' and friends repeat a letter, so count the distinct ones.
     const spanned = new Set([...axis].filter((letter) => 'XYZ'.includes(letter))).size;
 
@@ -4193,6 +4163,11 @@ export function trimGizmoGuides(helper: THREE.Object3D, controls: TransformContr
     if (spanned === 2) for (const guide of deltaGuides) guide.visible = false;
     for (const guide of rotateGuides) guide.visible = false;
   };
+}
+
+/** An object scale as one number, for distances read in its space under a non-uniform scale. */
+function meanScale(scale: Vec3): number {
+  return (Math.abs(scale.x) + Math.abs(scale.y) + Math.abs(scale.z)) / 3;
 }
 
 function focalLengthToFov(focalLength: number): number {

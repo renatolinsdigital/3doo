@@ -2,6 +2,8 @@ import { type Vec3, centroid, clone, distanceSq } from '../math';
 import type { BMesh } from '../mesh';
 import type { Face, Vert } from '../mesh/types';
 
+import { dedupeRing } from './region';
+
 export type MergeMode = 'center' | 'cursor' | 'first' | 'last' | 'collapse';
 
 export interface MergeByDistanceResult {
@@ -26,13 +28,7 @@ export function weldVerts(mesh: BMesh, mapping: ReadonlyMap<number, Vert>): numb
     const ring = mesh.faceVerts(face);
     if (!ring.some((vert) => mapping.has(vert.id))) continue;
 
-    const collapsed: Vert[] = [];
-    for (const vert of ring.map(resolve)) {
-      if (collapsed.length > 0 && collapsed[collapsed.length - 1] === vert) continue;
-      collapsed.push(vert);
-    }
-    while (collapsed.length > 1 && collapsed[0] === collapsed[collapsed.length - 1])
-      collapsed.pop();
+    const collapsed = dedupeRing(ring.map(resolve));
 
     doomedFaces.push(face);
     if (new Set(collapsed.map((vert) => vert.id)).size < 3) continue;
@@ -90,10 +86,28 @@ export function weldVerts(mesh: BMesh, mapping: ReadonlyMap<number, Vert>): numb
 }
 
 /**
+ * The key of the cube `cell` across that `co` falls in, shifted by whole cubes.
+ *
+ * Two vertices closer than `cell` always share a cube or sit in two that touch,
+ * so a neighbour search reads the cube around a point and the 26 beside it.
+ */
+function cellKey(co: Vec3, cell: number, offsetX = 0, offsetY = 0, offsetZ = 0): string {
+  return `${Math.floor(co.x / cell) + offsetX}:${Math.floor(co.y / cell) + offsetY}:${
+    Math.floor(co.z / cell) + offsetZ
+  }`;
+}
+
+function addToCell(buckets: Map<string, Vert[]>, key: string, vert: Vert): void {
+  const bucket = buckets.get(key);
+  if (bucket) bucket.push(vert);
+  else buckets.set(key, [vert]);
+}
+
+/**
  * Builds the weld mapping for `mergeByDistance` without touching the mesh.
  *
- * Exposed separately so the UI can show a live "N vertices will be removed"
- * count before the user commits.
+ * Kept apart from the weld so `countMergeByDistance` can give the UI a live
+ * "N vertices will be removed" count before the user commits.
  */
 function planMergeByDistance(verts: readonly Vert[], threshold: number): Map<number, Vert> {
   const mapping = new Map<number, Vert>();
@@ -103,11 +117,6 @@ function planMergeByDistance(verts: readonly Vert[], threshold: number): Map<num
   const buckets = new Map<string, Vert[]>();
   const thresholdSq = threshold * threshold;
 
-  const keyFor = (co: Vec3, offsetX: number, offsetY: number, offsetZ: number) =>
-    `${Math.floor(co.x / cell) + offsetX}:${Math.floor(co.y / cell) + offsetY}:${
-      Math.floor(co.z / cell) + offsetZ
-    }`;
-
   for (const vert of verts) {
     if (mapping.has(vert.id)) continue;
 
@@ -115,7 +124,7 @@ function planMergeByDistance(verts: readonly Vert[], threshold: number): Map<num
     for (let x = -1; x <= 1 && !target; x++) {
       for (let y = -1; y <= 1 && !target; y++) {
         for (let z = -1; z <= 1 && !target; z++) {
-          for (const candidate of buckets.get(keyFor(vert.co, x, y, z)) ?? []) {
+          for (const candidate of buckets.get(cellKey(vert.co, cell, x, y, z)) ?? []) {
             if (distanceSq(candidate.co, vert.co) <= thresholdSq) {
               target = candidate;
               break;
@@ -130,10 +139,7 @@ function planMergeByDistance(verts: readonly Vert[], threshold: number): Map<num
       continue;
     }
 
-    const key = keyFor(vert.co, 0, 0, 0);
-    const bucket = buckets.get(key);
-    if (bucket) bucket.push(vert);
-    else buckets.set(key, [vert]);
+    addToCell(buckets, cellKey(vert.co, cell), vert);
   }
 
   return mapping;
@@ -147,6 +153,11 @@ export function mergeByDistance(
 ): MergeByDistanceResult {
   const mapping = planMergeByDistance(verts, threshold);
   return { removed: weldVerts(mesh, mapping) };
+}
+
+/** Counts what `mergeByDistance` would remove, for the preview readout. */
+export function countMergeByDistance(verts: readonly Vert[], threshold: number): number {
+  return planMergeByDistance(verts, threshold).size;
 }
 
 /**
@@ -170,21 +181,12 @@ export function autoMergeVerts(
 
   const cell = Math.max(threshold, 1e-6);
   const thresholdSq = threshold * threshold;
-  const keyFor = (co: Vec3, offsetX: number, offsetY: number, offsetZ: number) =>
-    `${Math.floor(co.x / cell) + offsetX}:${Math.floor(co.y / cell) + offsetY}:${
-      Math.floor(co.z / cell) + offsetZ
-    }`;
 
   // Every vertex of the mesh is a candidate to land on, not only the moved
   // ones: the whole point is welding a moved loop onto the still one it was
   // slid into.
   const buckets = new Map<string, Vert[]>();
-  for (const vert of mesh.verts.values()) {
-    const key = keyFor(vert.co, 0, 0, 0);
-    const bucket = buckets.get(key);
-    if (bucket) bucket.push(vert);
-    else buckets.set(key, [vert]);
-  }
+  for (const vert of mesh.verts.values()) addToCell(buckets, cellKey(vert.co, cell), vert);
 
   const movedIds = new Set(moved.map((vert) => vert.id));
   const mapping = new Map<number, Vert>();
@@ -201,7 +203,7 @@ export function autoMergeVerts(
     for (let x = -1; x <= 1; x++) {
       for (let y = -1; y <= 1; y++) {
         for (let z = -1; z <= 1; z++) {
-          for (const candidate of buckets.get(keyFor(vert.co, x, y, z)) ?? []) {
+          for (const candidate of buckets.get(cellKey(vert.co, cell, x, y, z)) ?? []) {
             if (candidate === vert || mapping.has(candidate.id)) continue;
 
             const away = distanceSq(candidate.co, vert.co);
@@ -224,10 +226,6 @@ export function autoMergeVerts(
   }
 
   return { removed: weldVerts(mesh, mapping) };
-}
-/** Counts what `mergeByDistance` would remove, for the preview readout. */
-export function countMergeByDistance(verts: readonly Vert[], threshold: number): number {
-  return planMergeByDistance(verts, threshold).size;
 }
 
 export function mergeVerts(

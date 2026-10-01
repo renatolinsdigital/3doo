@@ -10,6 +10,7 @@ import {
   type ProjectDocument,
   type SceneObjectSnapshot,
   type Vec3,
+  type Vert,
   DEFAULT_PRIMITIVE_PARAMS,
   History,
   METRE_PARAMS,
@@ -204,13 +205,25 @@ function mergedAssets(
   return merged;
 }
 
+const DEFAULT_MATERIAL_COLOR = { r: 0.85, g: 0.84, b: 0.8 };
+
 function defaultMaterial(): Material {
   materialCounter += 1;
   return {
     id: `material-${SESSION}-${materialCounter}`,
     name: `Material ${materialCounter}`,
-    color: { r: 0.85, g: 0.84, b: 0.8 },
+    color: { ...DEFAULT_MATERIAL_COLOR },
   };
+}
+
+/** Whether a material still wears the colour it was created with. */
+function isUncoloured(material: Material): boolean {
+  const { r, g, b } = material.color;
+  return (
+    r === DEFAULT_MATERIAL_COLOR.r &&
+    g === DEFAULT_MATERIAL_COLOR.g &&
+    b === DEFAULT_MATERIAL_COLOR.b
+  );
 }
 
 /**
@@ -337,17 +350,10 @@ function foldInto(
       smooth: face.smooth,
     }));
 
-    // Slots are merged by identity, so merging a duplicate does not leave two
-    // slots pointing at one material.
-    const slots = source.materials.map((material) => {
-      const existing = materials.findIndex((candidate) => candidate.id === material.id);
-      if (existing !== -1) return existing;
-      materials.push(structuredClone(material));
-      return materials.length - 1;
-    });
+    const slots = mergeMaterialSlots(materials, source.materials);
 
     const matrix = composeMatrix(source.transform);
-    const map = new Map<number, ReturnType<typeof merged.addVert>>();
+    const map = new Map<number, Vert>();
     for (const vert of verts) {
       const world = transformPoint(matrix, vert.co);
       map.set(vert.id, merged.addVert(inverseTransformPoint(target.transform, world)));
@@ -355,8 +361,8 @@ function foldInto(
 
     for (const ring of rings) {
       const face = ring.vertIds.map((id) => map.get(id));
-      if (face.every(Boolean)) {
-        merged.addFace(face as NonNullable<(typeof face)[number]>[], {
+      if (face.every((vert): vert is Vert => vert !== undefined)) {
+        merged.addFace(face, {
           materialIndex: slots[ring.materialIndex] ?? 0,
           smooth: ring.smooth,
         });
@@ -384,6 +390,50 @@ function recenterOrigin(object: SceneObject): SceneObject {
   if (equals(offset, vec3())) return object;
 
   return moveOrigin(object, transformPoint(composeMatrix(object.transform), offset));
+}
+
+/**
+ * Adds the slots of `incoming` that `materials` does not hold yet, and says
+ * where each incoming slot ended up.
+ *
+ * Matched by identity, so bringing in a duplicate or a cutter wearing the
+ * target's own material does not leave two slots pointing at one material.
+ *
+ * With `uncoloured` given, a material nobody has coloured goes there instead
+ * of into a slot of its own. A boolean passes it: every primitive is added
+ * wearing a fresh default, so each cut used to leave one more grey slot
+ * behind, and the walls it opened came out grey in a target that was not.
+ */
+function mergeMaterialSlots(
+  materials: Material[],
+  incoming: readonly Material[],
+  uncoloured?: number,
+): number[] {
+  return incoming.map((material) => {
+    const existing = materials.findIndex((candidate) => candidate.id === material.id);
+    if (existing !== -1) return existing;
+    if (uncoloured !== undefined && isUncoloured(material)) return uncoloured;
+    materials.push(structuredClone(material));
+    return materials.length - 1;
+  });
+}
+
+/** What an edit that writes into vertices says when every target shares its mesh. */
+const LINKED_MESH_REFUSAL = 'Linked meshes have to be made single-user first';
+
+/**
+ * The objects among `targets` that are the only user of their mesh.
+ *
+ * A linked duplicate shares its mesh instance, so an edit written into one
+ * object's vertices would carry every other user of that mesh along with it.
+ */
+export function soleMeshUsers(
+  objects: readonly SceneObject[],
+  targets: readonly SceneObject[],
+): SceneObject[] {
+  return targets.filter(
+    (object) => objects.filter((other) => other.mesh === object.mesh).length === 1,
+  );
 }
 
 export interface SceneSlice {
@@ -565,7 +615,7 @@ export interface SceneSlice {
    */
   booleanWithSelected: (op: BooleanOp) => Promise<void>;
   separateLooseParts: () => void;
-  /** Deletes the selection, or the objects named. the outliner's row menu names one. */
+  /** Deletes the selection, or the objects named: the outliner's row menu names one. */
   deleteSelected: (ids?: readonly string[]) => void;
   /** Bakes the selection's transforms, or those of the objects named. */
   applyTransformToSelected: (ids?: readonly string[]) => void;
@@ -665,11 +715,11 @@ export interface SceneSlice {
    * session, which is what an undo wants.
    */
   loadProjectDocument: (
-    document: ReturnType<typeof serializeProject>,
+    document: ProjectDocument,
     restoreLayout?: boolean,
     assets?: readonly SceneAsset[],
   ) => void;
-  snapshotDocument: () => ReturnType<typeof serializeProject>;
+  snapshotDocument: () => ProjectDocument;
   setProjectName: (name: string) => void;
   resetScene: () => void;
 }
@@ -1383,14 +1433,8 @@ export const createSceneSlice: StateCreator<
     let mesh = target.mesh;
 
     for (const [index, tool] of tools.entries()) {
-      // Slots are merged by identity so a cutter's material does not arrive as
-      // a second slot pointing at the one the target already has.
-      const slots = tool.materials.map((material) => {
-        const existing = materials.findIndex((candidate) => candidate.id === material.id);
-        if (existing !== -1) return existing;
-        materials.push(structuredClone(material));
-        return materials.length - 1;
-      });
+      // An uncoloured cutter material takes the target's first slot.
+      const slots = mergeMaterialSlots(materials, tool.materials, 0);
 
       const matrix = composeMatrix(tool.transform);
       const inPlace = () =>
@@ -1487,7 +1531,7 @@ export const createSceneSlice: StateCreator<
     // Separating rewrites the mesh this object holds, which every other user of
     // a linked mesh would be dragged along by.
     if (objects.some((other) => other.id !== object.id && other.mesh === object.mesh)) {
-      set({ status: 'Linked meshes have to be made single-user first' });
+      set({ status: LINKED_MESH_REFUSAL });
       return;
     }
 
@@ -1561,8 +1605,8 @@ export const createSceneSlice: StateCreator<
    *
    * Position is deliberately left alone: the object stays exactly where it
    * sits, and only the numbers behind it change. Everything that reads the raw
-   * mesh rather than the world matrix (modifier thickness, bevel width, export
-   *) then works on the shape you actually see.
+   * mesh rather than the world matrix (modifier thickness, bevel width,
+   * export) then works on the shape you actually see.
    */
   applyTransformToSelected: (ids) => {
     const { objects, selectedObjectIds } = get();
@@ -1570,14 +1614,11 @@ export const createSceneSlice: StateCreator<
     const targets = objects.filter((object) => targetIds.includes(object.id) && !object.locked);
     if (targets.length === 0) return;
 
-    // A linked duplicate shares its mesh instance, so baking one object's
-    // rotation and scale into it would drag every other user of that mesh out
-    // of shape alongside it.
-    const single = targets.filter(
-      (object) => objects.filter((other) => other.mesh === object.mesh).length === 1,
-    );
+    // Baking one object's rotation and scale into a shared mesh would drag
+    // every other user of it out of shape alongside it.
+    const single = soleMeshUsers(objects, targets);
     if (single.length === 0) {
-      set({ status: 'Linked meshes have to be made single-user first' });
+      set({ status: LINKED_MESH_REFUSAL });
       return;
     }
 
@@ -1637,13 +1678,11 @@ export const createSceneSlice: StateCreator<
       return;
     }
 
-    // A linked duplicate shares its mesh instance, so shifting one object's
-    // vertices would carry every other user of that mesh off its own origin.
-    const single = targets.filter(
-      (object) => objects.filter((other) => other.mesh === object.mesh).length === 1,
-    );
+    // Shifting the vertices of a shared mesh would carry every other user of it
+    // off its own origin.
+    const single = soleMeshUsers(objects, targets);
     if (single.length === 0) {
-      set({ status: 'Linked meshes have to be made single-user first' });
+      set({ status: LINKED_MESH_REFUSAL });
       return;
     }
 
@@ -1848,13 +1887,11 @@ export const createSceneSlice: StateCreator<
       return;
     }
 
-    // A linked duplicate shares its mesh instance, so shifting one object's
-    // vertices would carry every other user of that mesh off its own origin.
-    const single = targets.filter(
-      (object) => objects.filter((other) => other.mesh === object.mesh).length === 1,
-    );
+    // Shifting the vertices of a shared mesh would carry every other user of it
+    // off its own origin.
+    const single = soleMeshUsers(objects, targets);
     if (single.length === 0) {
-      set({ status: 'Linked meshes have to be made single-user first' });
+      set({ status: LINKED_MESH_REFUSAL });
       return;
     }
 
@@ -2059,8 +2096,9 @@ export const createSceneSlice: StateCreator<
         lastOperator: { name, label: label ?? name, params },
       }));
     } catch (error) {
-      set({ status: `${name} failed: ${(error as Error).message}` });
-      get().pushToast('error', `${name} failed: ${(error as Error).message}`);
+      const message = `${name} failed: ${(error as Error).message}`;
+      set({ status: message });
+      get().pushToast('error', message);
     }
   },
 
@@ -2144,9 +2182,9 @@ export const createSceneSlice: StateCreator<
       objects,
       groups,
       // Bytes only arrive with a file being opened. An undo is a replay of the
-      // same session, so it keeps the
-      // assets already loaded and only takes on the description of any it has
-      // never seen, which is how an image survives being deleted and undone.
+      // same session, so it keeps the assets already loaded and only takes on
+      // the description of any it has never seen, which is how an image
+      // survives being deleted and undone.
       assets: assets
         ? Object.fromEntries(assets.map((asset) => [asset.id, asset]))
         : mergedAssets(state.assets, restored.assets),

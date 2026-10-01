@@ -114,6 +114,10 @@ function coerceColor(raw: unknown, fallback: string): string {
   return typeof raw === 'string' && HEX_COLOR.test(raw) ? raw.toLowerCase() : fallback;
 }
 
+function coerceBoolean(raw: unknown, fallback: boolean): boolean {
+  return typeof raw === 'boolean' ? raw : fallback;
+}
+
 /**
  * Every surface shown unless the stored blob says otherwise.
  *
@@ -126,8 +130,7 @@ function coercePanels(raw: unknown): PanelVisibility {
   const panels = { ...DEFAULT_PANELS };
 
   for (const id of Object.keys(panels) as PanelId[]) {
-    const stored = source[id];
-    if (typeof stored === 'boolean') panels[id] = stored;
+    panels[id] = coerceBoolean(source[id], panels[id]);
   }
 
   return panels;
@@ -145,10 +148,7 @@ export function coercePreferences(raw: unknown): Preferences {
   const source = (raw ?? {}) as Partial<Record<keyof Preferences, unknown>>;
 
   return {
-    tooltipsEnabled:
-      typeof source.tooltipsEnabled === 'boolean'
-        ? source.tooltipsEnabled
-        : DEFAULT_PREFERENCES.tooltipsEnabled,
+    tooltipsEnabled: coerceBoolean(source.tooltipsEnabled, DEFAULT_PREFERENCES.tooltipsEnabled),
     panels: coercePanels(source.panels),
     selectionLineWidth: coerceNumber(
       source.selectionLineWidth,
@@ -179,14 +179,11 @@ export function coercePreferences(raw: unknown): Preferences {
         DEFAULT_PREFERENCES.gridSubdivisions,
       ),
     ),
-    lockVerticalOrbit:
-      typeof source.lockVerticalOrbit === 'boolean'
-        ? source.lockVerticalOrbit
-        : DEFAULT_PREFERENCES.lockVerticalOrbit,
-    snapEnabled:
-      typeof source.snapEnabled === 'boolean'
-        ? source.snapEnabled
-        : DEFAULT_PREFERENCES.snapEnabled,
+    lockVerticalOrbit: coerceBoolean(
+      source.lockVerticalOrbit,
+      DEFAULT_PREFERENCES.lockVerticalOrbit,
+    ),
+    snapEnabled: coerceBoolean(source.snapEnabled, DEFAULT_PREFERENCES.snapEnabled),
     snapMode: source.snapMode === 'custom' ? 'custom' : DEFAULT_PREFERENCES.snapMode,
     snapStep: coerceNumber(
       source.snapStep,
@@ -203,10 +200,7 @@ export function coercePreferences(raw: unknown): Preferences {
         DEFAULT_PREFERENCES.historySize,
       ),
     ),
-    autosaveEnabled:
-      typeof source.autosaveEnabled === 'boolean'
-        ? source.autosaveEnabled
-        : DEFAULT_PREFERENCES.autosaveEnabled,
+    autosaveEnabled: coerceBoolean(source.autosaveEnabled, DEFAULT_PREFERENCES.autosaveEnabled),
     // One of the offered figures or the default: an interval read off a
     // hand-edited file has to be one the picker can show back.
     autosaveInterval: (AUTOSAVE_INTERVALS as readonly number[]).includes(

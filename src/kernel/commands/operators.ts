@@ -2,8 +2,8 @@ import { type Vec3, axisVector, degToRad, vec3 } from '../math';
 import type { BMesh } from '../mesh';
 import type { SelectMode } from '../mesh/types';
 import {
-  type FalloffCurve,
   type MergeMode,
+  type ProportionalOptions,
   type SlideWay,
   DISSOLVE_ANGLE_LIMIT_DEGREES,
   applySlideDistance,
@@ -58,7 +58,7 @@ export interface OperatorContext {
   mesh: BMesh;
   selectMode: SelectMode;
   cursor: Vec3;
-  proportional?: { enabled: boolean; radius: number; falloff: FalloffCurve };
+  proportional?: ProportionalOptions;
   /**
    * The scale of the object being edited, for the operators that work in
    * metres. The mesh is stored in the object's own space, so this is what
@@ -651,8 +651,6 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     return { status: 'Shrank selection' };
   },
 };
-
-export type OperatorName = keyof typeof OPERATORS;
 
 /**
  * Runs a named operator. This is the surface the spec's `app.exec(...)`

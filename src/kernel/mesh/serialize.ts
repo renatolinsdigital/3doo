@@ -213,6 +213,8 @@ export function splitLooseParts(mesh: BMesh): BMesh[] {
     const remap = new Map(vertices.map((index, position) => [index, position]));
     const inPart = (index: number): boolean => remap.has(index);
     const at = (index: number): number => remap.get(index) as number;
+    const pairsInPart = (pairs: readonly [number, number][]): [number, number][] =>
+      pairs.filter(([a]) => inPart(a)).map(([a, b]) => [at(a), at(b)]);
 
     const positions: number[] = [];
     for (const index of vertices) {
@@ -247,11 +249,11 @@ export function splitLooseParts(mesh: BMesh): BMesh[] {
       materialIndices,
       smooth,
       uvs,
-      wireEdges: data.wireEdges.filter(([a]) => inPart(a)).map(([a, b]) => [at(a), at(b)]),
-      sharpEdges: data.sharpEdges.filter(([a]) => inPart(a)).map(([a, b]) => [at(a), at(b)]),
+      wireEdges: pairsInPart(data.wireEdges),
+      sharpEdges: pairsInPart(data.sharpEdges),
       selection: {
         verts: data.selection.verts.filter(inPart).map(at),
-        edges: data.selection.edges.filter(([a]) => inPart(a)).map(([a, b]) => [at(a), at(b)]),
+        edges: pairsInPart(data.selection.edges),
         faces: data.selection.faces
           .filter((faceIndex) => facePosition.has(faceIndex))
           .map((faceIndex) => facePosition.get(faceIndex) as number),

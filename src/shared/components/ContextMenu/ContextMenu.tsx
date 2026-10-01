@@ -26,9 +26,7 @@ export interface ContextMenuCheckbox {
 }
 
 export type ContextMenuEntry =
-  | ContextMenuItem
-  | ContextMenuCheckbox
-  | { id: string; separator: true };
+  ContextMenuItem | ContextMenuCheckbox | { id: string; separator: true };
 
 export interface ContextMenuProps {
   /** Position within the menu's containing block, in pixels. */

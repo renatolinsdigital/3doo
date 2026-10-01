@@ -11,15 +11,12 @@ export {
   type SegmentedToggleProps,
 } from './SegmentedControl/SegmentedControl';
 export { TextField, type TextFieldProps } from './TextField/TextField';
+export { RenameField, type RenameFieldProps } from './RenameField/RenameField';
 export { Toggle, type ToggleProps } from './Toggle/Toggle';
 export { Select, type SelectOption, type SelectProps } from './Select/Select';
 export { Slider, type SliderProps } from './Slider/Slider';
 export { ColorField, type ColorFieldProps } from './ColorField/ColorField';
-export {
-  Vector3Field,
-  type Axis,
-  type Vector3FieldProps,
-} from './Vector3Field/Vector3Field';
+export { Vector3Field, type Axis, type Vector3FieldProps } from './Vector3Field/Vector3Field';
 export { Modal, type ModalProps } from './Modal/Modal';
 export { Toast, type ToastProps, type ToastVariant } from './Toast/Toast';
 export { ToastHost } from './ToastHost/ToastHost';

@@ -71,5 +71,3 @@ useEditorStore.subscribe(
     equalityFn: (a, b) => a.every((value, index) => value === b[index]),
   },
 );
-
-export const editorStore = useEditorStore;

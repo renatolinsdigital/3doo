@@ -129,8 +129,8 @@ what `C: "OO",<modelId>,0` connects each model to.
 
 ## Validating exports
 
-Kernel tests cover the writer's structure. The remaining step, listed in
-`TODO.txt`, is a Blender headless harness:
+Kernel tests cover the writer's structure. The remaining step, not built yet,
+is a Blender headless harness:
 
 ```bash
 blender --background --python validate.py

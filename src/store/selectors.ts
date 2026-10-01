@@ -8,7 +8,7 @@ import {
   hasConnectedEdges,
 } from '@kernel/index';
 
-import { activeObject } from './slices/scene';
+import { activeObject, soleMeshUsers } from './slices/scene';
 import type { SceneObject, SceneStats } from './types';
 import { type EditorStore, useEditorStore } from './useEditorStore';
 
@@ -262,12 +262,9 @@ function originToCursorState(state: EditorStore): OriginMoveState {
   const unlocked = targets.filter((object) => !object.locked);
   if (unlocked.length === 0) return 'locked';
 
-  // A linked duplicate shares its mesh instance, and the store refuses to move
-  // an origin that would carry every other user of that mesh off its own.
-  const single = unlocked.filter(
-    (object) => state.objects.filter((other) => other.mesh === object.mesh).length === 1,
-  );
-  return single.length === 0 ? 'linked' : 'ready';
+  // The same refusal the store makes: a shared mesh would carry every other
+  // user of it off its own origin.
+  return soleMeshUsers(state.objects, unlocked).length === 0 ? 'linked' : 'ready';
 }
 
 /**

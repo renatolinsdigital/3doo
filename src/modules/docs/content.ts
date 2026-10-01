@@ -56,7 +56,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: '3DOO is a mesh editor that runs entirely in the browser tab. Nothing is uploaded and nothing is installed: the modelling kernel, the renderer and your project all live on this machine. If you have used Blender, most of what follows is already in your fingers.',
+        text: '3DOO is a mesh editor that runs entirely in the browser tab. Nothing is uploaded and nothing is installed: the modelling kernel, the renderer and your project all live on this machine. If you have used a desktop 3D modelling package, most of what follows is already in your fingers.',
       },
       {
         kind: 'steps',
@@ -71,7 +71,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'A fresh tab opens on a cube, the way Blender does, so there is something to press keys at before you have added anything, and FILE > NEW starts the next project the same way. It is an ordinary object: one Ctrl+Z takes it away if you would rather start empty. Autosave is off until you turn it on with the AUTOSAVE switch in preferences. From then on every change is written as a numbered .3doo into a 3doo-auto-saves folder, in the location you choose there, so a closed or crashed tab costs you at most the changes since the last one, which FILE > OPEN brings back. Undo holds the last 50 steps, or however many the UNDO STEPS slider in preferences allows, and the ▤ button in the top bar opens the list to click straight back to one of them.',
+        text: 'A fresh tab opens on a cube, so there is something to press keys at before you have added anything, and FILE > NEW starts the next project the same way. It is an ordinary object: one Ctrl+Z takes it away if you would rather start empty. Autosave is off until you turn it on with the AUTOSAVE switch in preferences. From then on every change is written as a numbered .3doo into a 3doo-auto-saves folder, in the location you choose there, so a closed or crashed tab costs you at most the changes since the last one, which FILE > OPEN brings back. Undo holds the last 50 steps, or however many the UNDO STEPS slider in preferences allows, and the ▤ button in the top bar opens the list to click straight back to one of them.',
       },
     ],
   },
@@ -250,7 +250,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Which way a selection reaches',
-            'A selected vertex runs the selection colour out along every edge it owns, full at the vertex and gone by the far end, the way Blender draws it. A dot is a few pixels of red and says nothing about the geometry it holds, so the fade is what makes a growing selection readable at a glance. An edge with both ends selected is selected outright and drawn in flat red instead.',
+            'A selected vertex runs the selection colour out along every edge it owns, full at the vertex and gone by the far end. A dot is a few pixels of red and says nothing about the geometry it holds, so the fade is what makes a growing selection readable at a glance. An edge with both ends selected is selected outright and drawn in flat red instead.',
           ],
           ['Everything / nothing', 'A selects all, Alt+A deselects all, Ctrl+I inverts.'],
           [
@@ -304,7 +304,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Relax',
-            'Pulls the kinks out of a selected loop and evens out its spacing without changing the shape it runs over, the way the relax of LoopTools does in Blender. Each vertex is drawn onto the midpoint of its neighbours, the loop is then spread evenly along the line that leaves, and every vertex is dropped back onto the surface it came from, which is what KEEP SHAPE does, and why a relaxed loop slides across the mesh rather than sinking into it. Where the selection runs out, the vertex it ran out at holds still and the rest are spaced against it. A selection that is not a loop smooths against its whole neighbourhood instead, and an open border keeps its outline: there is no surface past a border to come back to, so its vertices only even out along it. FACTOR is how far each pass travels, ITERATIONS how many passes to take.',
+            'Pulls the kinks out of a selected loop and evens out its spacing without changing the shape it runs over. Each vertex is drawn onto the midpoint of its neighbours, the loop is then spread evenly along the line that leaves, and every vertex is dropped back onto the surface it came from, which is what KEEP SHAPE does, and why a relaxed loop slides across the mesh rather than sinking into it. Where the selection runs out, the vertex it ran out at holds still and the rest are spaced against it. A selection that is not a loop smooths against its whole neighbourhood instead, and an open border keeps its outline: there is no surface past a border to come back to, so its vertices only even out along it. FACTOR is how far each pass travels, ITERATIONS how many passes to take.',
           ],
           [
             'Circle',
@@ -498,7 +498,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Axis views',
-            "Shift and an odd number jumps the camera to a straight-on view: Shift+1, Shift+3 and Shift+7 are front, right and top, and Ctrl on top of that reaches their opposites, back, left and bottom. Blender's arrangement, so the numbers mean what they already mean in your hands.",
+            'Shift and an odd number jumps the camera to a straight-on view: Shift+1, Shift+3 and Shift+7 are front, right and top, and Ctrl on top of that reaches their opposites, back, left and bottom. The arrangement is the common numpad one, so the numbers mean what they already mean in your hands.',
           ],
           [
             'Orbiting from the keyboard',
@@ -510,11 +510,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'The step the orbit keys take',
-            "Fifteen degrees a press, which is Blender's, and chosen so a run of presses lands squarely rather than near the mark: six of them make a quarter turn, so orbiting up from the front view arrives at the top view. The four are named for where the camera goes, not for which way the scene appears to turn. A run aimed at straight up stops there instead of tipping past it, and the press after that carries on over, unless LOCK VERTICAL ORBIT is on.",
+            'Fifteen degrees a press, chosen so a run of presses lands squarely rather than near the mark: six of them make a quarter turn, so orbiting up from the front view arrives at the top view. The four are named for where the camera goes, not for which way the scene appears to turn. A run aimed at straight up stops there instead of tipping past it, and the press after that carries on over, unless LOCK VERTICAL ORBIT is on.',
           ],
           [
             'The camera turns, it does not snap',
-            'A view or a step takes about two tenths of a second to arrive, easing off at both ends. Blender does the same thing for the same reason: a view that snaps tells you where the camera ended up, while a view that turns tells you how the model you were looking at relates to the one you are looking at now. Going from the right side to the left is the case that makes the point, since the two pictures are mirror images and the turn between them is the only thing that says which way round the model went. Grab the camera with the mouse mid-turn and it comes away from wherever it has got to, and a second press of an orbit key stacks onto where the first was heading rather than being swallowed.',
+            'A view or a step takes about two tenths of a second to arrive, easing off at both ends, and for a reason: a view that snaps tells you where the camera ended up, while a view that turns tells you how the model you were looking at relates to the one you are looking at now. Going from the right side to the left is the case that makes the point, since the two pictures are mirror images and the turn between them is the only thing that says which way round the model went. Grab the camera with the mouse mid-turn and it comes away from wherever it has got to, and a second press of an orbit key stacks onto where the first was heading rather than being swallowed.',
           ],
           [
             'What a view or a step keeps',
@@ -653,11 +653,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'The bindings follow Blender defaults, because that is the muscle memory most people arrive with. The same table is available inside the editor at any time with Shift+?.',
+        text: 'The bindings follow the conventions of desktop modelling software, because that is the muscle memory most people arrive with. The same table is available inside the editor at any time with Shift+?.',
       },
       {
         kind: 'note',
-        text: "Where Blender needs the numpad, 3DOO takes either block. The camera keys under VIEW are Blender's numpad arrangement with Shift in front of it, and each one answers from the number row and the numpad alike, so a laptop reaches everything a full keyboard does. Grow and shrink selection are on the bracket keys rather than on numpad plus and minus. All of these match the physical key rather than the character it makes, so a shifted digit on a non-US layout and a numpad with NumLock off both land where they should.",
+        text: 'Where a desktop modeller needs the numpad, 3DOO takes either block. The camera keys under VIEW are the usual numpad arrangement with Shift in front of it, and each one answers from the number row and the numpad alike, so a laptop reaches everything a full keyboard does. Grow and shrink selection are on the bracket keys rather than on numpad plus and minus. All of these match the physical key rather than the character it makes, so a shifted digit on a non-US layout and a numpad with NumLock off both land where they should.',
       },
       ...shortcutTables(),
     ],

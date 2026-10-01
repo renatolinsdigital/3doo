@@ -70,10 +70,9 @@ interface GeometryData {
 
 function buildGeometry(mesh: BMesh, object: ExportObject, options: ExportOptions): GeometryData {
   const scale = options.scale * unitScaleFactor(options.unit);
-  const matrix = options.applyTransform
-    ? composeMatrix(object.transform)
-    : composeMatrix(createTransform());
-  const normals = normalMatrix(options.applyTransform ? object.transform : createTransform());
+  const transform = options.applyTransform ? object.transform : createTransform();
+  const matrix = composeMatrix(transform);
+  const normals = normalMatrix(transform);
 
   const positions: number[] = [];
   const vertIndex = new Map<number, number>();

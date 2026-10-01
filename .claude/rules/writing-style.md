@@ -33,5 +33,22 @@ the text worse rather than better.
 | `Two cuts — one each side — leave three`     | `Two cuts, one each side, leave three`       |
 | `It refuses: too big — the tab would die`    | `It refuses when the result is too big.`     |
 
+## Never mention Blender in the app
+
+3DOO is inspired by Blender, but the app never says so. Nothing the user
+reads inside the app names Blender: UI labels, hints, tooltips, status
+messages, dialog text, the home page and the in-app docs module
+(`src/modules/docs/content.ts`) included. Say what the feature does, not
+which program it copies. Write `A fresh tab opens on a cube`, not
+`A fresh tab opens on a cube, the way Blender does`.
+
+- The lineage belongs in the documentation: `README.md` and `docs/`. Mention
+  Blender there where it explains why something works the way it does.
+- The one exception inside the app is Blender as an export target: the
+  `BLENDER (Z-UP, M)` axis preset and lists of programs that import OBJ or
+  FBX. That names a destination for the user's file, not an inspiration.
+- Code comments, identifiers and test names are not app text and may name
+  Blender when it explains a decision.
+
 The `no-dashes` hook checks every file written or edited and says so when one
 gets through. Fix it in the same turn rather than leaving it for later.

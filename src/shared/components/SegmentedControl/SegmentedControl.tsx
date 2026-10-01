@@ -74,9 +74,7 @@ export function SegmentedToggle({
   const tooltip = useTooltipTrigger(hint);
 
   return (
-    <div
-      className={cx('segmented', 'segmented--single', iconOnly && 'segmented--icon', className)}
-    >
+    <div className={cx('segmented', 'segmented--single', iconOnly && 'segmented--icon', className)}>
       <button
         type="button"
         className={cx('segmented__item', pressed && 'segmented__item--active')}

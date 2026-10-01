@@ -1,4 +1,4 @@
-import { type Axis, type Vec3, dot, vec3 } from '@kernel/index';
+import { type Axis, type Vec3, AXES, dot, vec3 } from '@kernel/index';
 
 /**
  * The camera's own frame, in world space: the columns of its world matrix.
@@ -36,8 +36,6 @@ export interface AxisMark {
   /** 1 pointing straight at the viewer, -1 straight away from them. */
   depth: number;
 }
-
-const AXES: readonly Axis[] = ['x', 'y', 'z'];
 
 /** Looking down -Z with +Y up: three's own default, and what a fresh widget draws. */
 export const DEFAULT_BASIS: CameraBasis = {

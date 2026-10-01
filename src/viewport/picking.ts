@@ -50,28 +50,14 @@ function hidesItsFarSide(mesh: BMesh, eye: THREE.Vector3): boolean {
   if (mesh.faces.size === 0) return false;
   for (const edge of mesh.edges.values()) if (edge.loops.length !== 2) return false;
 
-  let minX = Infinity;
-  let minY = Infinity;
-  let minZ = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  let maxZ = -Infinity;
-  for (const vert of mesh.verts.values()) {
-    minX = Math.min(minX, vert.co.x);
-    minY = Math.min(minY, vert.co.y);
-    minZ = Math.min(minZ, vert.co.z);
-    maxX = Math.max(maxX, vert.co.x);
-    maxY = Math.max(maxY, vert.co.y);
-    maxZ = Math.max(maxZ, vert.co.z);
-  }
-
+  const { min, max } = mesh.boundingBox();
   return (
-    eye.x < minX ||
-    eye.x > maxX ||
-    eye.y < minY ||
-    eye.y > maxY ||
-    eye.z < minZ ||
-    eye.z > maxZ
+    eye.x < min.x ||
+    eye.x > max.x ||
+    eye.y < min.y ||
+    eye.y > max.y ||
+    eye.z < min.z ||
+    eye.z > max.z
   );
 }
 
@@ -166,6 +152,45 @@ function project(
   return new THREE.Vector2(((ndc.x + 1) / 2) * width, ((1 - ndc.y) / 2) * height);
 }
 
+/** Where vertex `i` of a view's pick buffers lands on the canvas, or null when it cannot. */
+function projectVert(
+  view: ObjectView,
+  i: number,
+  camera: THREE.Camera,
+  size: { width: number; height: number },
+): THREE.Vector2 | null {
+  const positions = view.vertPositions;
+  return project(
+    new THREE.Vector3(positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]),
+    view.group.matrix,
+    camera,
+    size.width,
+    size.height,
+  );
+}
+
+/** Where both ends of edge `i` of a view's pick buffers land, or null when either cannot. */
+function projectEdge(
+  view: ObjectView,
+  i: number,
+  camera: THREE.Camera,
+  size: { width: number; height: number },
+): [THREE.Vector2, THREE.Vector2] | null {
+  const positions = view.edgePositions;
+  const end = (at: number) =>
+    project(
+      new THREE.Vector3(positions[at], positions[at + 1], positions[at + 2]),
+      view.group.matrix,
+      camera,
+      size.width,
+      size.height,
+    );
+
+  const a = end(i * 6);
+  const b = end(i * 6 + 3);
+  return a && b ? [a, b] : null;
+}
+
 /**
  * Picks a vertex or edge in screen space rather than by raycast.
  *
@@ -185,8 +210,6 @@ export function pickElement(
   raycaster: THREE.Raycaster,
   facing: FacingElements | null,
 ): PickResult | null {
-  const matrix = view.group.matrix;
-
   if (mode === 'vertex') {
     let best: PickResult | null = null;
     let bestDistance = PICK_RADIUS_PIXELS;
@@ -194,12 +217,7 @@ export function pickElement(
     for (let i = 0; i < view.vertIds.length; i++) {
       if (facing && !facing.verts.has(view.vertIds[i])) continue;
 
-      const position = new THREE.Vector3(
-        view.vertPositions[i * 3],
-        view.vertPositions[i * 3 + 1],
-        view.vertPositions[i * 3 + 2],
-      );
-      const screen = project(position, matrix, camera, size.width, size.height);
+      const screen = projectVert(view, i, camera, size);
       if (!screen) continue;
 
       const distance = screen.distanceTo(pointer);
@@ -218,31 +236,10 @@ export function pickElement(
     for (let i = 0; i < view.edgeIds.length; i++) {
       if (facing && !facing.edges.has(view.edgeIds[i])) continue;
 
-      const a = project(
-        new THREE.Vector3(
-          view.edgePositions[i * 6],
-          view.edgePositions[i * 6 + 1],
-          view.edgePositions[i * 6 + 2],
-        ),
-        matrix,
-        camera,
-        size.width,
-        size.height,
-      );
-      const b = project(
-        new THREE.Vector3(
-          view.edgePositions[i * 6 + 3],
-          view.edgePositions[i * 6 + 4],
-          view.edgePositions[i * 6 + 5],
-        ),
-        matrix,
-        camera,
-        size.width,
-        size.height,
-      );
-      if (!a || !b) continue;
+      const ends = projectEdge(view, i, camera, size);
+      if (!ends) continue;
 
-      const distance = distanceToSegment(pointer, a, b);
+      const distance = distanceToSegment(pointer, ends[0], ends[1]);
       if (distance < bestDistance) {
         bestDistance = distance;
         best = { kind: 'edge', elementId: view.edgeIds[i] };
@@ -258,7 +255,9 @@ export function pickElement(
   const faceId = view.triangleFaceIds[hit.faceIndex];
   if (faceId === undefined || !mesh.faces.has(faceId)) return null;
 
-  const local = hit.point.clone().applyMatrix4(new THREE.Matrix4().copy(matrix).invert());
+  const local = hit.point
+    .clone()
+    .applyMatrix4(new THREE.Matrix4().copy(view.group.matrix).invert());
   return { kind: 'face', elementId: faceId, point: { x: local.x, y: local.y, z: local.z } };
 }
 
@@ -507,7 +506,6 @@ export function pickObjectsInRegion(
   const hits: string[] = [];
 
   for (const entry of entries) {
-    const matrix = entry.view.group.matrix;
     let touched = false;
 
     // One pass over the vertices does double duty: the exact test for most
@@ -518,17 +516,7 @@ export function pickObjectsInRegion(
     let maxY = -Infinity;
 
     for (let i = 0; i < entry.view.vertIds.length; i++) {
-      const point = project(
-        new THREE.Vector3(
-          entry.view.vertPositions[i * 3],
-          entry.view.vertPositions[i * 3 + 1],
-          entry.view.vertPositions[i * 3 + 2],
-        ),
-        matrix,
-        camera,
-        size.width,
-        size.height,
-      );
+      const point = projectVert(entry.view, i, camera, size);
       if (!point) continue;
 
       minX = Math.min(minX, point.x);
@@ -547,7 +535,7 @@ export function pickObjectsInRegion(
       minX <= bounds.maxX && maxX >= bounds.minX && minY <= bounds.maxY && maxY >= bounds.minY;
     if (!overlaps) continue;
 
-    if (anyEdgeCrosses(entry.view, matrix, region, camera, size)) hits.push(entry.id);
+    if (anyEdgeCrosses(entry.view, region, camera, size)) hits.push(entry.id);
   }
 
   return hits;
@@ -555,37 +543,13 @@ export function pickObjectsInRegion(
 
 function anyEdgeCrosses(
   view: ObjectView,
-  matrix: THREE.Matrix4,
   region: Region,
   camera: THREE.Camera,
   size: { width: number; height: number },
 ): boolean {
   for (let i = 0; i < view.edgeIds.length; i++) {
-    const a = project(
-      new THREE.Vector3(
-        view.edgePositions[i * 6],
-        view.edgePositions[i * 6 + 1],
-        view.edgePositions[i * 6 + 2],
-      ),
-      matrix,
-      camera,
-      size.width,
-      size.height,
-    );
-    const b = project(
-      new THREE.Vector3(
-        view.edgePositions[i * 6 + 3],
-        view.edgePositions[i * 6 + 4],
-        view.edgePositions[i * 6 + 5],
-      ),
-      matrix,
-      camera,
-      size.width,
-      size.height,
-    );
-    if (!a || !b) continue;
-
-    if (region.crosses(a, b)) return true;
+    const ends = projectEdge(view, i, camera, size);
+    if (ends && region.crosses(ends[0], ends[1])) return true;
   }
 
   return false;
@@ -623,17 +587,7 @@ export function pickInRegion(
     for (let i = 0; i < view.vertIds.length; i++) {
       if (facing && !facing.verts.has(view.vertIds[i])) continue;
 
-      const screen = project(
-        new THREE.Vector3(
-          view.vertPositions[i * 3],
-          view.vertPositions[i * 3 + 1],
-          view.vertPositions[i * 3 + 2],
-        ),
-        matrix,
-        camera,
-        size.width,
-        size.height,
-      );
+      const screen = projectVert(view, i, camera, size);
       if (screen && region.contains(screen)) hits.push(view.vertIds[i]);
     }
     return hits;

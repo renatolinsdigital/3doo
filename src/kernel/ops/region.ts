@@ -149,3 +149,14 @@ export function averageNormal(faces: readonly Face[]): Vec3 {
     ? vec3(0, 1, 0)
     : normalized;
 }
+
+/** `ring` with every run of one vertex collapsed to a single corner, wrapping around. */
+export function dedupeRing(ring: readonly Vert[]): Vert[] {
+  const result: Vert[] = [];
+  for (const vert of ring) {
+    if (result.length > 0 && result[result.length - 1] === vert) continue;
+    result.push(vert);
+  }
+  while (result.length > 1 && result[0] === result[result.length - 1]) result.pop();
+  return result;
+}

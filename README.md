@@ -4,6 +4,8 @@
 
 At the heart of 3DOO is a pure TypeScript BMesh kernel: a half-edge mesh data structure with real topological relationships between vertices, edges, and faces. This is what allows modeling operations such as extrude, bevel, loop cut, and dissolve to behave like they do in traditional desktop 3D modeling software.
 
+3DOO is inspired by Blender. Its keymap, camera navigation and much of how its tools behave follow Blender's, so anyone who models in Blender finds their way around quickly. The app itself never names Blender: this documentation is where that lineage is recorded.
+
 The modeling engine is completely independent from the browser UI and rendering layer. The kernel has no DOM or rendering dependencies, which makes it easy to test, reason about, and potentially reuse in different environments.
 
 ## Development Quick start
@@ -14,7 +16,7 @@ npm run dev      # http://localhost:5173
 ```
 
 ```bash
-npm test         # 363 tests
+npm test         # 1420 tests
 npm run build    # typecheck + production bundle
 npm run lint
 ```
@@ -38,23 +40,21 @@ Sculpting is the next module planned. See
 | Area | Included |
 | --- | --- |
 | Primitives | Cube, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule, torus, with live parameters |
-| Object mode | Transform gizmo, duplicate, linked duplicate, merge, apply transform, delete, outliner with rename / visibility / lock and Ctrl+G groups that rename, select, join, ungroup or delete as one |
-| Selection | Vertex, edge and face modes; click, box select, Alt+click edge loops, grow / shrink / invert |
-| Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, subdivide (Catmull-Clark), merge by distance, delete, dissolve, fill, bridge, triangulate, tris-to-quads |
+| Object mode | Transform gizmo, duplicate, linked duplicate, merge, separate, union / difference / intersect booleans, apply transform, delete, outliner with rename / visibility / lock and Ctrl+G groups that rename, select, join, ungroup or delete as one |
+| Selection | Vertex, edge and face modes; click and Shift+click, box / circle / lasso region select, Alt+click edge and face loops, grow / shrink / invert |
+| Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, subdivide (Catmull-Clark), vertex and edge slide, relax, circle, space, merge, merge by distance, connect, delete, dissolve, fill, bridge, triangulate, tris-to-quads |
 | Normals | Recalculate outside, flip, shade smooth / flat, face-orientation overlay |
 | Modifiers | Mirror, array, solidify, weld, subdivision, remesh. All non-destructive, reorderable, with Apply |
 | Remesh | A modifier with three methods: voxel quad shell (signed distance field, surface nets, crease and corner constraints), blocks straight off the lattice, and quadric error decimation |
 | 3D cursor | Right-click to place it on a point, vertex, edge or face; snap it to the selection or the selection to it; use it as the transform pivot or as a mirror plane |
 | Proportional editing | Six falloff curves, with a viewport ring showing how far the falloff reaches. Scroll to resize it mid-transform, or Ctrl+scroll any time |
 | Viewport | Orbit / pan / zoom (Blender and Maya presets), solid / wireframe / x-ray / matcap, adaptive grid, normals overlay |
-| Files | Save and load JSON projects, OBJ import, PNG / JPG / BMP import as a plane at the origin |
-| Autosave | To this browser (scene in IndexedDB, images in OPFS), with crash recovery. Switchable, every 30s to 5 minutes |
-| Opening scene | A fresh tab starts on a cube, as Blender does; a tab with a session to come back to loads that instead |
-| Preferences | Tooltips, selection outline thickness and colour, kept in localStorage per device, with import / export |
+| Files | Save and load `.3doo` projects (JSON, with imported images inside), OBJ import, PNG / JPG / BMP import as a plane at the origin |
+| Autosave | Off until turned on. Writes numbered `.3doo` copies into a `3doo-auto-saves` folder in a location you choose, every 30 seconds to 15 minutes, and only when the scene has changed. Nothing of the project is kept in the browser. Needs a browser with a folder picker (Chrome, Edge) |
+| Opening scene | A fresh tab starts on a cube, as Blender does, and so does FILE > NEW. One Ctrl+Z takes it away |
+| Preferences | Tooltips, panel visibility, viewport background, grid, snapping, undo depth, autosave and the selection outline, kept in localStorage per browser, with import / export as a `.pref` file |
 | Export | OBJ + MTL, **ASCII FBX 7.4**, with Unity / Unreal / Blender / Maya axis and unit presets |
-| Undo | Snapshot history capped at 64 steps |
-
-Everything deliberately left out of the MVP is listed in [TODO.txt](TODO.txt).
+| Undo | Whole-scene snapshot history, 50 steps by default and 10 to 100 under UNDO STEPS, with a history list to click straight back to any of them |
 
 ## Architecture
 
@@ -66,7 +66,7 @@ Four responsibilities, kept strictly apart:
               └──────────┬───────────┘
                          ▼
               ┌──────────────────────┐
-              │       Zustand        │   scene · tool · viewport · ui slices
+              │       Zustand        │   scene · tool · viewport · ui · preferences slices
               └───────┬───────┬──────┘
                       │       │
         ┌─────────────┘       └──────────────┐
@@ -93,14 +93,15 @@ Four responsibilities, kept strictly apart:
 ```text
 /src
   /kernel          pure TypeScript, zero Three.js imports
-    math/  mesh/  primitives/  ops/  modifiers/  io/  commands/
+    math/  mesh/  primitives/  ops/  modifiers/  remesh/  io/  commands/
   /bridge          kernel mesh → GPU buffers → Three.js objects
   /viewport        renderer, camera controller, picking, grid
   /store           Zustand slices
   /shared          brutalist component library (presentation only)
   /domain          panels, hooks, services, keymap
   /global-styles   Sass design system
-  /app             application shell
+  /modules         home, modeling and docs, one per path
+  /app             application shell: module registry, router, brand switcher
 /docs              architecture and subsystem documentation
 ```
 
@@ -190,7 +191,7 @@ their lists from. What follows is that table, in full.
 | `Shift+C` | 3D cursor to the world origin |
 | `Ctrl+Shift+C` | 3D cursor to the selection |
 | `Shift+V` | Selection to the 3D cursor |
-| `Ctrl+.` | Toggle the pivot between median and 3D cursor |
+| `Ctrl+.` | Cycle the pivot: origin, median, 3D cursor |
 
 The mouse carries a few of its own: <kbd>Alt</kbd>+click selects an edge loop,
 right-click opens the 3D cursor menu, and <kbd>Ctrl</kbd>+scroll resizes the
@@ -296,6 +297,19 @@ vertex lying along a path rather than at a corner (the midpoint left by
 subdividing an edge) merges nothing and always dissolves, whatever angle its
 faces meet at.
 
+Because the keys cover both, no panel has a Delete or Dissolve button. Merge
+lives in the TOPOLOGY panel instead, welding the selected vertices at their
+centre, at the 3D cursor, or onto the first or last one selected. Every
+operation in the edit-mode panels disables itself when the current selection
+cannot feed it. Merge and Connect are vertex-only and want two or more and
+exactly two vertices respectively, Fill wants three edges and Bridge four,
+Bevel and Loop Cut want edges, Inset wants faces. Each keeps its hint while
+disabled, saying what to select instead. Only Merge by Distance, Triangulate
+and Tris to Quads are always available, because each falls back to the whole
+mesh. The OBJECT panel likewise has no Delete button (the same two keys cover
+it) and carries Recalculate Normals instead, which is most often wanted right
+after a merge.
+
 ### Object origins
 
 Every object carries an origin: the zero its vertex coordinates are measured
@@ -324,7 +338,7 @@ source, and neither of the other two moves the geometry relative to its zero.
 
 ### The 3D cursor
 
-The amber crosshair is where new primitives are born and, when you want it to
+The red and white ring is where new primitives are born and, when you want it to
 be, what transforms turn around. Right-click anywhere in the viewport for its
 menu: **Place here** drops it on the surface under the pointer (over empty
 space, on the view plane it is already on), while **To vertex**, **To edge
@@ -334,28 +348,16 @@ on hover, so the menu keeps the same shape every time.
 
 The same menu moves the cursor **to selection**, moves the **selection here**
 (the group travels as a unit and lands on the point the gizmo is showing), and
-sends it back **to the world origin**. Hide the crosshair from
+sends it back **to the world origin**. Hide the ring from
 **Overlays → 3D cursor**; hiding it does not move it or stop anything using it.
 
-Two things read the cursor once it is somewhere useful. **Transform → Pivot**
-switches move, rotate and scale between the median of the selection and the
-cursor, in both object and edit mode. The status bar carries the current
-choice. And the Mirror modifier's **Origin** chooses whether its plane passes
+Two things read the cursor once it is somewhere useful. The **PIVOT** picker in
+the top bar sets what rotate and scale turn around: the object's origin, the
+median of the selection, or the cursor, in both object and edit mode. The gizmo
+sits on whichever is in force, and the status bar flags any choice other than
+median. And the Mirror modifier's **Origin** chooses whether its plane passes
 through the object's own origin or through the cursor, which is how you mirror
 a limb about a point that is not the object's centre.
-
-Because the keys cover both, the Operations panel has no Delete or Dissolve
-section; it offers Merge instead, which welds the selected vertices together at
-their center, or onto the first or last one selected. Every operation in that
-panel disables itself when the current selection cannot feed it. Merge and
-Connect are vertex-only and want two or more and exactly two vertices
-respectively, Bevel and Loop Cut want edges, Inset wants faces. Each keeps
-its hint while disabled, saying what to select instead. Only Merge by Distance,
-Triangulate and Tris to Quads are always available, because each falls back to
-the whole mesh. Object mode's panel likewise drops its Delete
-button (the same two keys cover it) and carries Recalculate Normals instead,
-which is otherwise unreachable outside edit mode and is most often wanted right
-after a Join.
 
 Navigation is <kbd>MMB</kbd> to orbit and <kbd>Shift</kbd>+<kbd>MMB</kbd> to pan
 by default; a Maya preset (<kbd>Alt</kbd>-based) is also available.

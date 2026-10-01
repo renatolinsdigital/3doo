@@ -47,10 +47,9 @@ export function exportOBJ(
 
   for (const object of objects) {
     const mesh = prepareMesh(object, resolved);
-    const matrix = resolved.applyTransform
-      ? composeMatrix(object.transform)
-      : composeMatrix(createTransform());
-    const normals = normalMatrix(resolved.applyTransform ? object.transform : createTransform());
+    const transform = resolved.applyTransform ? object.transform : createTransform();
+    const matrix = composeMatrix(transform);
+    const normals = normalMatrix(transform);
 
     lines.push(`o ${object.name.replace(/\s+/g, '_')}`);
 
@@ -63,12 +62,12 @@ export function exportOBJ(
       vertIndex.set(vert.id, localIndex++);
     }
 
-    const uvIndices: number[] = [];
+    let uvCount = 0;
     if (resolved.includeUVs) {
       for (const face of mesh.faces.values()) {
         for (const loop of mesh.faceLoops(face)) {
           lines.push(`vt ${format(loop.uv.u)} ${format(loop.uv.v)}`);
-          uvIndices.push(uvIndices.length);
+          uvCount++;
         }
       }
     }
@@ -107,7 +106,7 @@ export function exportOBJ(
     }
 
     vertexOffset += mesh.verts.size;
-    uvOffset += uvIndices.length;
+    uvOffset += uvCount;
     normalOffset += normalCount;
     lines.push('');
   }

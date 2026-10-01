@@ -6,7 +6,7 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 
-import { type ContextMenuEntry, ContextMenu, Panel, TextField } from '@shared/components';
+import { type ContextMenuEntry, ContextMenu, Panel, RenameField } from '@shared/components';
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
 import { cx } from '@shared/utils/cx';
 import { useEditorStore } from '@store/index';
@@ -471,16 +471,7 @@ function OutlinerGroupRow({
       </button>
 
       {isEditing ? (
-        <TextField
-          label={`Rename ${group.name}`}
-          defaultValue={group.name}
-          autoFocus
-          onBlur={(event) => onFinishRename(event.target.value.trim() || group.name)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') event.currentTarget.blur();
-            if (event.key === 'Escape') onCancelRename();
-          }}
-        />
+        <RenameField name={group.name} onRename={onFinishRename} onCancel={onCancelRename} />
       ) : (
         <button
           type="button"
@@ -613,16 +604,7 @@ function OutlinerRow({
       }}
     >
       {isEditing ? (
-        <TextField
-          label={`Rename ${object.name}`}
-          defaultValue={object.name}
-          autoFocus
-          onBlur={(event) => onFinishRename(event.target.value.trim() || object.name)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') event.currentTarget.blur();
-            if (event.key === 'Escape') onCancelRename();
-          }}
-        />
+        <RenameField name={object.name} onRename={onFinishRename} onCancel={onCancelRename} />
       ) : (
         <button
           type="button"

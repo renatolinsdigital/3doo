@@ -45,7 +45,7 @@ export function ShortcutOverlay() {
           <dl className="shortcuts__list">
             <div className="shortcuts__row">
               <dt className="shortcuts__keys">MMB</dt>
-              <dd className="shortcuts__action">Orbit (Blender preset)</dd>
+              <dd className="shortcuts__action">Orbit</dd>
             </div>
             <div className="shortcuts__row">
               <dt className="shortcuts__keys">Shift + MMB</dt>

@@ -1,22 +1,25 @@
 import {
   type Vec3,
+  addScaled,
   basisFromNormal,
   centroid,
   cross,
   degToRad,
   distanceSq,
   dot,
+  length,
   lengthSq,
   lerp,
   normalize,
   polygonArea,
   polygonNormal,
   sub,
+  vec3,
 } from '../math';
 import { BMesh, triangulatePolygon } from '../mesh';
 import type { Edge, Face, Loop, Vert } from '../mesh/types';
 
-import { dissolveVerts } from './dissolve';
+import { connectedRegions, dissolveVerts } from './dissolve';
 import { trisToQuads } from './subdivide';
 
 export type BooleanOp = 'union' | 'difference' | 'intersect';
@@ -106,7 +109,8 @@ interface Poly {
   plane: Plane;
   materialIndex: number;
   /**
-   * The input face this is a piece of, unique across both operands.
+   * The input face this is a piece of, unique across both operands. A face
+   * that is not flat is a source per triangle instead; see `meshToPolys`.
    *
    * A BSP splits a face by every plane in the tree, not only by the ones that
    * end up bounding the solid, so the surface arrives carved along lines the
@@ -151,10 +155,7 @@ function usablePlane(plane: Plane): boolean {
  * more and the two rings the split writes back would be nonsense.
  */
 function isSplittable(points: readonly Vec3[], normal: Vec3, epsilon: number): boolean {
-  const offset = dot(normal, centroid(points));
-  for (const point of points) {
-    if (Math.abs(dot(normal, point) - offset) > epsilon) return false;
-  }
+  if (!isFlat(points, normal, epsilon)) return false;
 
   for (let i = 0; i < points.length; i++) {
     const a = points[i];
@@ -166,6 +167,11 @@ function isSplittable(points: readonly Vec3[], normal: Vec3, epsilon: number): b
   }
 
   return true;
+}
+
+function isFlat(points: readonly Vec3[], normal: Vec3, epsilon: number): boolean {
+  const offset = dot(normal, centroid(points));
+  return points.every((point) => Math.abs(dot(normal, point) - offset) <= epsilon);
 }
 
 function flipPlane(plane: Plane): Plane {
@@ -372,14 +378,6 @@ function treeFrom(polys: readonly Poly[], epsilon: number): Node {
 }
 
 /**
- * Constructive solid geometry over two triangle soups.
- *
- * The classic BSP formulation: each solid is clipped against the other, the
- * inversions decide which side survives, and what comes back is the boundary
- * of the combined solid. It assumes both inputs are closed: an open shell has
- * no inside for the tests to answer about, and the result will show it.
- */
-/**
  * Runs a staged operation straight through, ignoring the progress it reports.
  *
  * The stages exist so a caller that wants to paint between them can; one that
@@ -392,7 +390,19 @@ function drain<T>(steps: Generator<number, T>): T {
 }
 
 /**
- * The CSG itself, pausing where it can afford to.
+ * Constructive solid geometry over two polygon soups, pausing where it can
+ * afford to.
+ *
+ * The classic BSP formulation: each solid is clipped against the other, the
+ * inversions decide which side survives, and what comes back is the boundary
+ * of the combined solid.
+ *
+ * An operand that is a surface rather than a solid (`solid` false) is never
+ * clipped against. Its tree would answer anyway: every leaf behind a plane
+ * reads as inside, so a filled circle stands for the whole half-space under
+ * it, and a union with one sliced the other object off along its plane. With
+ * nothing inside it, a surface removes nothing from the other operand and
+ * keeps whatever part of itself the other one's inside does not claim.
  *
  * The fractions are measured, not guessed: building the two BSP trees is about
  * sixty per cent of the work and the final rebuild most of the rest, while the
@@ -405,6 +415,7 @@ function* csgStaged(
   a: readonly Poly[],
   b: readonly Poly[],
   epsilon = PLANE_EPSILON * extentOf([...a, ...b]),
+  solid: { a: boolean; b: boolean } = { a: true, b: true },
 ): Generator<number, Poly[]> {
   const left = treeFrom(a, epsilon);
   yield 0.34;
@@ -412,11 +423,13 @@ function* csgStaged(
   yield 0.68;
 
   if (op === 'union') {
-    clipTo(left, right, epsilon);
-    clipTo(right, left, epsilon);
-    invert(right);
-    clipTo(right, left, epsilon);
-    invert(right);
+    if (solid.b) clipTo(left, right, epsilon);
+    if (solid.a) {
+      clipTo(right, left, epsilon);
+      invert(right);
+      clipTo(right, left, epsilon);
+      invert(right);
+    }
     yield 0.69;
     build(left, allPolys(right), epsilon);
     return allPolys(left);
@@ -424,16 +437,26 @@ function* csgStaged(
 
   if (op === 'difference') {
     invert(left);
-    clipTo(left, right, epsilon);
-    clipTo(right, left, epsilon);
-    invert(right);
-    clipTo(right, left, epsilon);
-    invert(right);
-    yield 0.69;
-    build(left, allPolys(right), epsilon);
+    if (solid.b) clipTo(left, right, epsilon);
+    // The tool's surface only ever comes back as the wall of the cavity it
+    // made, and a surface on either side makes no cavity.
+    if (solid.a && solid.b) {
+      clipTo(right, left, epsilon);
+      invert(right);
+      clipTo(right, left, epsilon);
+      invert(right);
+      yield 0.69;
+      build(left, allPolys(right), epsilon);
+    }
     invert(left);
     return allPolys(left);
   }
+
+  // Each operand keeps only what lies inside the other, and a surface has no
+  // inside to keep anything in.
+  if (!solid.a && !solid.b) return [];
+  if (!solid.a) return surfaceInside(left, right, epsilon);
+  if (!solid.b) return surfaceInside(right, left, epsilon);
 
   invert(left);
   clipTo(right, left, epsilon);
@@ -444,6 +467,20 @@ function* csgStaged(
   build(left, allPolys(right), epsilon);
   invert(left);
   return allPolys(left);
+}
+
+/**
+ * The part of a surface that lies inside a solid.
+ *
+ * Both are turned inside out first, as the full intersect does, so a stretch of
+ * the surface lying flat on one of the solid's faces counts as inside it.
+ */
+function surfaceInside(surface: Node, solid: Node, epsilon: number): Poly[] {
+  invert(surface);
+  invert(solid);
+  clipTo(surface, solid, epsilon);
+  invert(surface);
+  return allPolys(surface);
 }
 
 /**
@@ -475,6 +512,37 @@ function isClosed(mesh: BMesh): boolean {
 }
 
 /**
+ * How far a mesh's faces may lean one way and it still count as a solid: their
+ * areas summed as vectors, as a fraction of their areas summed as sizes.
+ *
+ * A closed surface faces every way at once and sums to nothing, while a filled
+ * circle or a plane faces one way and sums to all of itself. Read off the
+ * geometry rather than the topology, because a boolean's own output is not
+ * always watertight: a dropped sliver leaves a crack, and a seam left unwelded
+ * leaves two, yet the surface still closes and sums to next to nothing. Read
+ * as a surface on that account, a solid would stop cutting anything.
+ */
+const OPENING_LIMIT = 0.01;
+
+/**
+ * Whether a mesh encloses something, rather than being a surface with no inside.
+ *
+ * A tube with no caps passes, its two open ends cancelling, and is cut as a
+ * solid tube.
+ */
+function isSolid(mesh: BMesh): boolean {
+  let lean = vec3();
+  let total = 0;
+  for (const face of mesh.faces.values()) {
+    const points = mesh.facePoints(face);
+    const area = polygonArea(points);
+    lean = addScaled(lean, polygonNormal(points), area);
+    total += area;
+  }
+  return length(lean) <= total * OPENING_LIMIT;
+}
+
+/**
  * Reads a mesh out as triangles in the target's space.
  *
  * `toTarget` carries each point through the source object's transform and back
@@ -498,6 +566,8 @@ function meshToPolys(
   base = 0,
   /** Filled with the area each input face came in with; see `untouchedSources`. */
   areaOf?: Map<number, number>,
+  /** Filled with the triangle sources of each face that is not flat; see `restoreWarped`. */
+  warped?: number[][],
   epsilon = PLANE_EPSILON,
 ): Poly[] {
   const polys: Poly[] = [];
@@ -509,8 +579,6 @@ function meshToPolys(
 
     const normal = polygonNormal(points);
     const slot = slotFor(face);
-    source += 1;
-    areaOf?.set(source, polygonArea(points));
 
     // A face the boolean never touches should come out the far side as the
     // same face. Triangulating everything on the way in is what left a plain
@@ -518,11 +586,24 @@ function meshToPolys(
     if (isSplittable(points, normal, epsilon)) {
       const plane = planeFrom(points);
       if (usablePlane(plane)) {
+        source += 1;
+        areaOf?.set(source, polygonArea(points));
         polys.push({ points, plane, materialIndex: slot, source });
         continue;
       }
     }
 
+    // The triangles of a face that is not flat lie in planes of their own, and
+    // stitching their pieces back into one ring after a cut bends it across
+    // all of them. Drawn flat, a ring like that folds over the hole the cut
+    // left and paints a flap across it, so each triangle is a source of its own.
+    const flat = isFlat(points, normal, epsilon);
+    if (flat) {
+      source += 1;
+      areaOf?.set(source, polygonArea(points));
+    }
+
+    const parts: number[] = [];
     const indices = triangulatePolygon(points, normal);
     for (let i = 0; i < indices.length; i += 3) {
       const tri = [points[indices[i]], points[indices[i + 1]], points[indices[i + 2]]];
@@ -530,8 +611,14 @@ function meshToPolys(
       // A degenerate triangle has no usable plane, and one bad plane in the
       // tree misroutes every polygon sorted against it.
       if (!usablePlane(plane)) continue;
+      if (!flat) {
+        source += 1;
+        areaOf?.set(source, polygonArea(tri));
+        parts.push(source);
+      }
       polys.push({ points: tri, plane, materialIndex: slot, source });
     }
+    if (parts.length > 1) warped?.push(parts);
   }
 
   // Only for a closed mesh: an open shell encloses nothing, so the sign of its
@@ -1310,36 +1397,6 @@ function mergeSourceFragments(mesh: BMesh, sourceOf: Map<number, number>): numbe
   return merged;
 }
 
-/** Groups faces into islands joined through shared edges. */
-function connectedRegions(mesh: BMesh, faces: readonly Face[]): Face[][] {
-  const pool = new Map(
-    faces.filter((face) => mesh.faces.has(face.id)).map((face) => [face.id, face]),
-  );
-  const regions: Face[][] = [];
-
-  while (pool.size > 0) {
-    const seed = pool.values().next().value as Face;
-    pool.delete(seed.id);
-
-    const region: Face[] = [];
-    const queue: Face[] = [seed];
-    while (queue.length > 0) {
-      const current = queue.pop() as Face;
-      region.push(current);
-      for (const edge of mesh.faceEdges(current)) {
-        for (const neighbour of mesh.edgeFaces(edge)) {
-          if (!pool.has(neighbour.id)) continue;
-          pool.delete(neighbour.id);
-          queue.push(neighbour);
-        }
-      }
-    }
-    regions.push(region);
-  }
-
-  return regions;
-}
-
 /**
  * Drops the stranded vertices, keeping every face's provenance across the pass.
  *
@@ -1439,6 +1496,45 @@ function untouchedSources(
 }
 
 /**
+ * Puts back together each face that is not flat and that the cut never reached.
+ *
+ * Such a face went in as triangles, each a source of its own, so the merge pass
+ * leaves it as triangles. That is right for one the cut went through and wrong
+ * for one it missed: the user modelled a quad, and a boolean on the far side
+ * of the mesh has no business handing it back as two triangles.
+ *
+ * Judged after the merge pass rather than on the raw output, because the BSP
+ * also splits along planes that bound nothing, and a triangle carved up that
+ * way and put back together is as untouched as one that was never split.
+ */
+function restoreWarped(
+  mesh: BMesh,
+  sourceOf: Map<number, number>,
+  areaOf: Map<number, number>,
+  warped: readonly (readonly number[])[],
+): void {
+  const intact = untouchedSources(mesh, sourceOf, areaOf);
+  const faceOf = new Map<number, Face>();
+  for (const face of mesh.faces.values()) {
+    const source = sourceOf.get(face.id);
+    if (source !== undefined && intact.has(source)) faceOf.set(source, face);
+  }
+
+  let restored = 0;
+  for (const parts of warped) {
+    const faces = parts.map((part) => faceOf.get(part));
+    if (faces.some((face) => face === undefined)) continue;
+    for (const face of mergeRegionGreedy(mesh, faces as Face[])) {
+      sourceOf.set(face.id, parts[0]);
+      restored += 1;
+    }
+  }
+
+  // A point the split left on a diagonal that is now gone.
+  if (restored > 0) mesh.removeLooseVerts();
+}
+
+/**
  * Puts the raw boolean output back into a shape someone could model with.
  *
  * A BSP splits every polygon by every plane in the tree, not only by the ones
@@ -1457,6 +1553,7 @@ function resolve(
   epsilon: number,
   sourceOf: Map<number, number>,
   areaOf: Map<number, number>,
+  warped: readonly (readonly number[])[],
 ): void {
   const whole = untouchedSources(mesh, sourceOf, areaOf);
 
@@ -1472,6 +1569,9 @@ function resolve(
 
     if (merged === 0 && stranded.length === 0) break;
   }
+
+  // After the merge pass, so nothing dissolves a vertex of the face restored.
+  restoreWarped(mesh, sourceOf, areaOf, warped);
 
   // What the cut actually broke. A face that came through whole is left out of
   // the pass below entirely: it is the face the user modelled, down to its
@@ -1491,12 +1591,11 @@ function resolve(
 /**
  * One boolean, mesh in and mesh out, in the target's local space.
  *
- * The quad pass at the end is what makes a union or an intersect workable
- * rather than merely correct: those keep both solids' surfaces, and pairing the
- * coplanar triangles back up gives edge loops that run where the shape actually
- * turns. The angle limit is tight on purpose: merging across a real crease
- * would flatten the very edges the boolean just created. A difference skips
- * that pass and keeps its cut faces whole; see `resolve`.
+ * The raw cut is tidied the same way whichever operation made it: every input
+ * face is put back together from the fragments the BSP carved it into, and the
+ * coplanar triangles left along the seam are paired back into quads. The
+ * pairing limit is tight on purpose: merging across a real crease would
+ * flatten the very edges the boolean just created. See `resolve`.
  */
 export function booleanMesh(
   op: BooleanOp,
@@ -1527,10 +1626,13 @@ export function* booleanMeshStaged(
   toolSlot: (face: Face) => number = (face) => face.materialIndex,
 ): Generator<number, BMesh> {
   const areaOf = new Map<number, number>();
-  const a = meshToPolys(target, (point) => point, undefined, 0, areaOf);
-  // Past every id the target could have used, so a face of one operand is
-  // never mistaken for a face of the other.
-  const b = meshToPolys(tool, toTarget, toolSlot, target.faces.size + 1, areaOf);
+  const warped: number[][] = [];
+  const a = meshToPolys(target, (point) => point, undefined, 0, areaOf, warped);
+  // Past every id the target used, so a face of one operand is never mistaken
+  // for a face of the other. Not its face count: a warped face takes an id per
+  // triangle.
+  const base = a.reduce((last, poly) => Math.max(last, poly.source), 0);
+  const b = meshToPolys(tool, toTarget, toolSlot, base, areaOf, warped);
 
   // One scale for the whole operation, taken from both solids together: a
   // small tool cutting a large target has to be measured against the pair,
@@ -1539,7 +1641,10 @@ export function* booleanMeshStaged(
 
   // The CSG carries most of the cost, so its own stages are passed straight
   // through; rebuilding the mesh and resolving it share what is left.
-  const steps = csgStaged(op, a, b, PLANE_EPSILON * scale);
+  const steps = csgStaged(op, a, b, PLANE_EPSILON * scale, {
+    a: isSolid(target),
+    b: isSolid(tool),
+  });
   let step = steps.next();
   while (!step.done) {
     yield step.value * CSG_SHARE;
@@ -1549,7 +1654,7 @@ export function* booleanMeshStaged(
   const { mesh, sourceOf } = polysToMesh(step.value, WELD_EPSILON * scale);
   yield CSG_SHARE + REBUILD_SHARE;
 
-  resolve(mesh, PLANE_EPSILON, sourceOf, areaOf);
+  resolve(mesh, PLANE_EPSILON, sourceOf, areaOf, warped);
   mesh.computeNormals();
   return mesh;
 }

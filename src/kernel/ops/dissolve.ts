@@ -1,6 +1,8 @@
 import { degToRad, dot } from '../math';
 import type { BMesh } from '../mesh';
-import type { Edge, Face, Vert } from '../mesh/types';
+import type { Edge, Face, Loop, Vert } from '../mesh/types';
+
+import { dedupeRing } from './region';
 
 /**
  * Removes an edge shared by exactly two faces, merging them into one n-gon.
@@ -114,7 +116,7 @@ export function dissolveFaces(mesh: BMesh, faces: readonly Face[]): Face[] {
 
     // Boundary loops always belong to a region face, so chaining them by
     // winding order gives a correctly oriented ring for free.
-    const boundary = new Map<number, ReturnType<BMesh['faceLoops']>[number]>();
+    const boundary = new Map<number, Loop>();
     const interiorEdges = new Set<Edge>();
     for (const face of region) {
       for (const loop of mesh.faceLoops(face)) {
@@ -162,7 +164,7 @@ export function dissolveFaces(mesh: BMesh, faces: readonly Face[]): Face[] {
 }
 
 /** Groups faces into islands connected through shared edges. */
-function connectedRegions(mesh: BMesh, faces: readonly Face[]): Face[][] {
+export function connectedRegions(mesh: BMesh, faces: readonly Face[]): Face[][] {
   const pool = new Map(faces.filter((face) => mesh.faces.has(face.id)).map((f) => [f.id, f]));
   const regions: Face[][] = [];
 
@@ -247,13 +249,7 @@ export function dissolveVerts(mesh: BMesh, verts: readonly Vert[]): void {
  * so consecutive duplicates are collapsed as well.
  */
 function trimVertFromFace(mesh: BMesh, face: Face, vert: Vert): void {
-  const ring: Vert[] = [];
-  for (const candidate of mesh.faceVerts(face)) {
-    if (candidate === vert) continue;
-    if (ring.length > 0 && ring[ring.length - 1] === candidate) continue;
-    ring.push(candidate);
-  }
-  while (ring.length > 1 && ring[0] === ring[ring.length - 1]) ring.pop();
+  const ring = dedupeRing(mesh.faceVerts(face).filter((candidate) => candidate !== vert));
   if (ring.length < 3) return;
 
   const { materialIndex, smooth } = face;

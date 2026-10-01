@@ -127,5 +127,5 @@ The status string is user-visible: `Extruded 1 face(s) by 1` is useful,
 
 ## Not yet exposed
 
-A `window.app.exec` global for driving the running app from the browser console
-is listed in `TODO.txt`. The registry it would call is already in place.
+There is no `window.app.exec` global for driving the running app from the
+browser console yet. The registry it would call is already in place.

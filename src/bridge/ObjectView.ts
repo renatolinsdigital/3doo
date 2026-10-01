@@ -24,7 +24,10 @@ import {
   disposeMaterial,
 } from './materials';
 import {
+  type EdgeBuffers,
   type EdgeCull,
+  type PointBuffers,
+  type SolidBuffers,
   buildEdgeCull,
   buildMeshBuffers,
   buildNormalLines,
@@ -367,8 +370,8 @@ export class ObjectView {
 
   private updateSolid(
     object: SceneObject,
-    solid: ReturnType<typeof buildMeshBuffers>['solid'],
-    cage: ReturnType<typeof buildMeshBuffers>['solid'],
+    solid: SolidBuffers,
+    cage: SolidBuffers,
     state: ObjectViewState,
   ): void {
     const geometry = new THREE.BufferGeometry();
@@ -427,10 +430,7 @@ export class ObjectView {
    * on the stack the cage is the mesh already on screen, and the solid answers
    * for it rather than this carrying a second copy of the same geometry.
    */
-  private updateCage(
-    cage: ReturnType<typeof buildMeshBuffers>['solid'],
-    state: ObjectViewState,
-  ): void {
+  private updateCage(cage: SolidBuffers, state: ObjectViewState): void {
     const geometry = new THREE.BufferGeometry();
     if (this.picksCage) {
       geometry.setAttribute('position', new THREE.BufferAttribute(cage.positions, 3));
@@ -449,7 +449,7 @@ export class ObjectView {
   }
 
   private updateWireframe(
-    edges: ReturnType<typeof buildMeshBuffers>['edges'],
+    edges: EdgeBuffers,
     state: ObjectViewState,
     cageMesh: BMesh,
     object: SceneObject,
@@ -515,11 +515,7 @@ export class ObjectView {
    * moving them changes nothing else about the picture, so without this edit
    * mode gives no sign the modifier is there at all.
    */
-  private updatePreviewWire(
-    edges: ReturnType<typeof buildMeshBuffers>['edges'],
-    object: SceneObject,
-    state: ObjectViewState,
-  ): void {
+  private updatePreviewWire(edges: EdgeBuffers, object: SceneObject, state: ObjectViewState): void {
     if (!this.picksCage) {
       this.setLinePositions(this.previewWire, new Float32Array(0), false);
       return;
@@ -654,10 +650,7 @@ export class ObjectView {
     this.outline.visible = positions.length > 0;
   }
 
-  private updatePoints(
-    points: ReturnType<typeof buildMeshBuffers>['points'],
-    state: ObjectViewState,
-  ): void {
+  private updatePoints(points: PointBuffers, state: ObjectViewState): void {
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(points.positions, 3));
 
@@ -687,10 +680,7 @@ export class ObjectView {
    * Kept separate from `points` rather than recoloured inside it, because it
    * has to show in edge and face mode too, where that object is hidden.
    */
-  private updateRecentPoints(
-    points: ReturnType<typeof buildMeshBuffers>['points'],
-    state: ObjectViewState,
-  ): void {
+  private updateRecentPoints(points: PointBuffers, state: ObjectViewState): void {
     const recent = state.recentVerts;
     this.recentPoints.visible = state.mode === 'edit' && state.isActive && !!recent?.size;
     if (!this.recentPoints.visible || !recent) return;
@@ -698,7 +688,11 @@ export class ObjectView {
     const positions: number[] = [];
     for (let i = 0; i < points.vertIds.length; i++) {
       if (!recent.has(points.vertIds[i])) continue;
-      positions.push(points.positions[i * 3], points.positions[i * 3 + 1], points.positions[i * 3 + 2]);
+      positions.push(
+        points.positions[i * 3],
+        points.positions[i * 3 + 1],
+        points.positions[i * 3 + 2],
+      );
     }
 
     const geometry = new THREE.BufferGeometry();

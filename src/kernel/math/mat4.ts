@@ -10,26 +10,8 @@ export interface Transform {
   scale: Vec3;
 }
 
-export function identity(): Mat4 {
-  return [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
-}
-
 export function createTransform(): Transform {
   return { position: vec3(), rotation: vec3(), scale: vec3(1, 1, 1) };
-}
-
-export function multiply(a: Mat4, b: Mat4): Mat4 {
-  const out = new Array<number>(16);
-  for (let column = 0; column < 4; column++) {
-    for (let row = 0; row < 4; row++) {
-      let sum = 0;
-      for (let k = 0; k < 4; k++) {
-        sum += a[k * 4 + row] * b[column * 4 + k];
-      }
-      out[column * 4 + row] = sum;
-    }
-  }
-  return out;
 }
 
 export function composeMatrix(transform: Transform): Mat4 {

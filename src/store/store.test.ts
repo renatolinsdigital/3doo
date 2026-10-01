@@ -918,6 +918,29 @@ describe('editor store', () => {
     expect(box.max.x).toBeCloseTo(0.25);
   });
 
+  it.each([
+    ['folds an uncoloured cutter material into the first slot', null, 1],
+    ['keeps a slot for a cutter material given a colour', { r: 0, g: 0, b: 1 }, 2],
+  ] as const)('%s', async (_, cutterColor, slots) => {
+    // Every primitive arrives wearing a fresh default, so each cut used to
+    // leave one more grey slot on the target and grey walls in the hole.
+    store().addPrimitive('cube');
+    const target = activeObject().id;
+    store().updateMaterial(0, { color: { r: 1, g: 1, b: 0 } });
+    store().addPrimitive('cube');
+    const cutter = activeObject().id;
+    if (cutterColor) store().updateMaterial(0, { color: cutterColor });
+    store().setObjectTransform(cutter, { position: { x: 0.5, y: 0, z: 0 } });
+    useEditorStore.setState({ selectedObjectIds: [target, cutter], activeObjectId: target });
+
+    await store().booleanWithSelected('difference');
+
+    const object = activeObject();
+    expect(object.materials).toHaveLength(slots);
+    const worn = new Set([...object.mesh.faces.values()].map((face) => face.materialIndex));
+    expect(worn).toEqual(new Set(Array.from({ length: slots }, (_, slot) => slot)));
+  });
+
   it('says so rather than acting when the mesh is one piece', () => {
     store().addPrimitive('cube');
     const before = store().objects.length;

@@ -16,8 +16,6 @@ import type { BMesh } from '../mesh';
 import type { Edge, Vert } from '../mesh/types';
 import { MIN_OBJECT_SIZE } from '../primitives';
 
-export type PivotMode = 'origin' | 'median' | 'cursor';
-
 export type FalloffCurve = 'smooth' | 'sphere' | 'root' | 'linear' | 'sharp' | 'constant';
 
 export interface ProportionalOptions {

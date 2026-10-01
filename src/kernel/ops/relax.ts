@@ -1,6 +1,7 @@
 import { type Vec3, addScaled, centroid, clamp, distanceSq, dot, lerp, sub } from '../math';
 import type { BMesh } from '../mesh';
 import type { Vert } from '../mesh/types';
+import { closestOnTriangle } from '../remesh/surface';
 
 import {
   type Chain,
@@ -41,40 +42,6 @@ function chainTargets(chain: Chain): Vec3[] {
   });
 
   return spreadAlong(smoothed, closed, chain.verts.length);
-}
-
-/** The point of triangle `abc` closest to `p`. */
-function closestOnTriangle(p: Vec3, a: Vec3, b: Vec3, c: Vec3): Vec3 {
-  const ab = sub(b, a);
-  const ac = sub(c, a);
-  const ap = sub(p, a);
-  const d1 = dot(ab, ap);
-  const d2 = dot(ac, ap);
-  if (d1 <= 0 && d2 <= 0) return a;
-
-  const bp = sub(p, b);
-  const d3 = dot(ab, bp);
-  const d4 = dot(ac, bp);
-  if (d3 >= 0 && d4 <= d3) return b;
-
-  const vc = d1 * d4 - d3 * d2;
-  if (vc <= 0 && d1 >= 0 && d3 <= 0) return addScaled(a, ab, d1 / (d1 - d3));
-
-  const cp = sub(p, c);
-  const d5 = dot(ab, cp);
-  const d6 = dot(ac, cp);
-  if (d6 >= 0 && d5 <= d6) return c;
-
-  const vb = d5 * d2 - d1 * d6;
-  if (vb <= 0 && d2 >= 0 && d6 <= 0) return addScaled(a, ac, d2 / (d2 - d6));
-
-  const va = d3 * d6 - d5 * d4;
-  if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
-    return addScaled(b, sub(c, b), (d4 - d3) / (d4 - d3 + (d5 - d6)));
-  }
-
-  const denominator = 1 / (va + vb + vc);
-  return addScaled(addScaled(a, ab, vb * denominator), ac, vc * denominator);
 }
 
 /** The point of `path` closest to `p`. */
@@ -159,7 +126,7 @@ function surfaceAnchor(
       if (!ring) continue;
 
       for (let i = 2; i < ring.length; i++) {
-        const candidate = closestOnTriangle(point, ring[0], ring[i - 1], ring[i]);
+        const candidate = closestOnTriangle(point, ring[0], ring[i - 1], ring[i]).point;
         const away = distanceSq(point, candidate);
         if (away < found) {
           found = away;

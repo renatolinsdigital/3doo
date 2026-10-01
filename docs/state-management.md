@@ -172,14 +172,16 @@ exec: (name, params, label) => {
 ```
 
 Undo pops the past stack, pushes the *current* document onto the redo stack, and
-restores. The stack is capped at 64 entries, so memory stays bounded.
+restores. The stack is capped by the UNDO STEPS preference, 50 entries by
+default and anywhere from 10 to 100, so memory stays bounded.
 
 The `History` instance lives at module scope, not in the store. It is not render
-state. Only `canUndo` and `canRedo` are mirrored into the store, because those
-drive button disabled states.
+state. Only `canUndo`, `canRedo` and the label of each step are mirrored into
+the store, because those drive the buttons and the history dialog.
 
 Cost: one `serializeMesh` per operation. That is the accepted trade for
-correctness; per-operation inverse commands are listed in `TODO.txt`.
+correctness; per-operation inverse commands would be the way past it, and are
+not built.
 
 ## One serialization format, four jobs
 

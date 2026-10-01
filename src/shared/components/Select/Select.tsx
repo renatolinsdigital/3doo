@@ -35,10 +35,7 @@ export function Select<T extends string>({
 
   return (
     <div className={cx('select', hideLabel && 'select--bare')} {...tooltip}>
-      <label
-        className={hideLabel ? 'u-visually-hidden' : 'select__label'}
-        htmlFor={id}
-      >
+      <label className={hideLabel ? 'u-visually-hidden' : 'select__label'} htmlFor={id}>
         {label}
       </label>
       <select

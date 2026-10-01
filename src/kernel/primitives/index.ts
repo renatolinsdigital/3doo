@@ -279,14 +279,47 @@ export function createGrid(size = 1, segments = 8): BMesh {
   return mesh;
 }
 
+/** A horizontal ring of `columns` vertices at height `y`, starting on +X. */
+function addRing(mesh: BMesh, columns: number, y: number, radius: number): Vert[] {
+  const ring: Vert[] = [];
+  for (let column = 0; column < columns; column++) {
+    const theta = (column / columns) * Math.PI * 2;
+    ring.push(mesh.addVert(vec3(Math.cos(theta) * radius, y, Math.sin(theta) * radius)));
+  }
+  return ring;
+}
+
+/**
+ * Closes a stack of rings, top to bottom, into a surface: a fan of triangles
+ * to each pole and a band of quads between neighbouring rings.
+ */
+function skinRings(mesh: BMesh, top: Vert, rings: readonly Vert[][], bottom: Vert): void {
+  const columns = rings[0].length;
+  const last = rings[rings.length - 1];
+
+  for (let column = 0; column < columns; column++) {
+    const next = (column + 1) % columns;
+    mesh.addFace([top, rings[0][next], rings[0][column]]);
+    mesh.addFace([bottom, last[column], last[next]]);
+  }
+
+  for (let row = 0; row < rings.length - 1; row++) {
+    for (let column = 0; column < columns; column++) {
+      const next = (column + 1) % columns;
+      mesh.addFace([
+        rings[row][column],
+        rings[row][next],
+        rings[row + 1][next],
+        rings[row + 1][column],
+      ]);
+    }
+  }
+}
+
 export function createCircle(radius = 0.5, segments = 24, fill = true): BMesh {
   const mesh = new BMesh();
   const count = Math.max(3, Math.floor(segments));
-  const ring: Vert[] = [];
-  for (let i = 0; i < count; i++) {
-    const angle = (i / count) * Math.PI * 2;
-    ring.push(mesh.addVert(vec3(Math.cos(angle) * radius, 0, Math.sin(angle) * radius)));
-  }
+  const ring = addRing(mesh, count, 0, radius);
 
   if (fill) {
     mesh.addFace([...ring].reverse());
@@ -331,12 +364,7 @@ export function createCone(radius = 0.5, height = 1, segments = 24, cap = true):
   const mesh = new BMesh();
   const count = Math.max(3, Math.floor(segments));
   const h = height / 2;
-  const ring: Vert[] = [];
-
-  for (let i = 0; i < count; i++) {
-    const angle = (i / count) * Math.PI * 2;
-    ring.push(mesh.addVert(vec3(Math.cos(angle) * radius, -h, Math.sin(angle) * radius)));
-  }
+  const ring = addRing(mesh, count, -h, radius);
   const apex = mesh.addVert(vec3(0, h, 0));
 
   for (let i = 0; i < count; i++) {
@@ -361,46 +389,24 @@ export function createCapsule(radius = 0.5, height = 2, segments = 24, rings = 1
   const capRows = Math.max(1, Math.floor(Math.max(2, Math.floor(rings)) / 2));
   const straightHalf = Math.max(0, height / 2 - radius);
 
-  const addRing = (y: number, ringRadius: number): Vert[] => {
-    const ring: Vert[] = [];
-    for (let column = 0; column < columns; column++) {
-      const theta = (column / columns) * Math.PI * 2;
-      ring.push(mesh.addVert(vec3(Math.cos(theta) * ringRadius, y, Math.sin(theta) * ringRadius)));
-    }
-    return ring;
-  };
-
   const top = mesh.addVert(vec3(0, straightHalf + radius, 0));
   const bottom = mesh.addVert(vec3(0, -straightHalf - radius, 0));
   const grid: Vert[][] = [];
 
   for (let row = 1; row <= capRows; row++) {
     const phi = (row / capRows) * (Math.PI / 2);
-    grid.push(addRing(straightHalf + Math.cos(phi) * radius, Math.sin(phi) * radius));
+    grid.push(
+      addRing(mesh, columns, straightHalf + Math.cos(phi) * radius, Math.sin(phi) * radius),
+    );
   }
   for (let row = capRows; row >= 1; row--) {
     const phi = (row / capRows) * (Math.PI / 2);
-    grid.push(addRing(-straightHalf - Math.cos(phi) * radius, Math.sin(phi) * radius));
+    grid.push(
+      addRing(mesh, columns, -straightHalf - Math.cos(phi) * radius, Math.sin(phi) * radius),
+    );
   }
 
-  for (let column = 0; column < columns; column++) {
-    const next = (column + 1) % columns;
-    mesh.addFace([top, grid[0][next], grid[0][column]]);
-    mesh.addFace([bottom, grid[grid.length - 1][column], grid[grid.length - 1][next]]);
-  }
-
-  for (let row = 0; row < grid.length - 1; row++) {
-    for (let column = 0; column < columns; column++) {
-      const next = (column + 1) % columns;
-      mesh.addFace([
-        grid[row][column],
-        grid[row][next],
-        grid[row + 1][next],
-        grid[row + 1][column],
-      ]);
-    }
-  }
-
+  skinRings(mesh, top, grid, bottom);
   mesh.computeNormals();
   return mesh;
 }
@@ -416,34 +422,10 @@ export function createUVSphere(radius = 0.5, segments = 24, rings = 12): BMesh {
 
   for (let row = 1; row < rows; row++) {
     const phi = (row / rows) * Math.PI;
-    const y = Math.cos(phi) * radius;
-    const ringRadius = Math.sin(phi) * radius;
-    const ring: Vert[] = [];
-    for (let column = 0; column < columns; column++) {
-      const theta = (column / columns) * Math.PI * 2;
-      ring.push(mesh.addVert(vec3(Math.cos(theta) * ringRadius, y, Math.sin(theta) * ringRadius)));
-    }
-    grid.push(ring);
+    grid.push(addRing(mesh, columns, Math.cos(phi) * radius, Math.sin(phi) * radius));
   }
 
-  for (let column = 0; column < columns; column++) {
-    const next = (column + 1) % columns;
-    mesh.addFace([top, grid[0][next], grid[0][column]]);
-    mesh.addFace([bottom, grid[grid.length - 1][column], grid[grid.length - 1][next]]);
-  }
-
-  for (let row = 0; row < grid.length - 1; row++) {
-    for (let column = 0; column < columns; column++) {
-      const next = (column + 1) % columns;
-      mesh.addFace([
-        grid[row][column],
-        grid[row][next],
-        grid[row + 1][next],
-        grid[row + 1][column],
-      ]);
-    }
-  }
-
+  skinRings(mesh, top, grid, bottom);
   mesh.computeNormals();
   return mesh;
 }

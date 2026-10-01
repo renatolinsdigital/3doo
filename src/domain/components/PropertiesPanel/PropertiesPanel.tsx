@@ -19,7 +19,7 @@ import {
   FieldRow,
   NumberField,
   Panel,
-  TextField,
+  RenameField,
   Toggle,
   Vector3Field,
 } from '@shared/components';
@@ -417,16 +417,7 @@ function MaterialRow({
       }}
     >
       {isEditing ? (
-        <TextField
-          label={`Rename ${name}`}
-          defaultValue={name}
-          autoFocus
-          onBlur={(event) => onFinishRename(event.target.value.trim() || name)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') event.currentTarget.blur();
-            if (event.key === 'Escape') onCancelRename();
-          }}
-        />
+        <RenameField name={name} onRename={onFinishRename} onCancel={onCancelRename} />
       ) : (
         <button
           type="button"

@@ -25,8 +25,7 @@ export function BooleanPanel() {
       state.objects
         .filter(
           (object) =>
-            (object.id === state.activeObjectId ||
-              state.selectedObjectIds.includes(object.id)) &&
+            (object.id === state.activeObjectId || state.selectedObjectIds.includes(object.id)) &&
             object.modifiers.some((modifier) => modifier.enabled),
         )
         .map((object) => object.name),

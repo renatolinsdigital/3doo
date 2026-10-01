@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-import { activeObject, useEditorStore } from '@store/index';
+import { type EditorStore, activeObject, useEditorStore } from '@store/index';
 import type { PivotMode, SelectMode, ShadingMode } from '@store/types';
 
 import { matchBinding, reloadShortcut } from '../keymap/keymap';
@@ -41,6 +41,12 @@ function isTypingTarget(target: HTMLElement | null): boolean {
   if (target.isContentEditable) return true;
   if (target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return true;
   return target.tagName === 'INPUT' && TEXT_INPUT_TYPES.has((target as HTMLInputElement).type);
+}
+
+/** Whether a keyboard rotate or scale has anything to act on: objects, or vertices in edit mode. */
+function hasTransformTarget(state: EditorStore): boolean {
+  if (state.mode === 'object') return state.selectedObjectIds.length > 0;
+  return (activeObject(state)?.mesh.selectedVerts().length ?? 0) > 0;
 }
 
 /** Wires the keymap table to store actions. */
@@ -110,30 +116,16 @@ export function useKeymap(): void {
         case 'move':
           state.setActiveTool('move');
           break;
-        case 'rotate': {
+        // Blender's R and S: the turn or the drag starts on the keypress, with
+        // no handle to grab first. The viewport picks the modal up from here.
+        case 'rotate':
           state.setActiveTool('rotate');
-          // Blender's R, like S: the turn starts on the keypress with no handle
-          // to grab first. The viewport picks the modal up from here.
-          const object = activeObject(state);
-          const ready =
-            state.mode === 'object'
-              ? state.selectedObjectIds.length > 0
-              : (object?.mesh.selectedVerts().length ?? 0) > 0;
-          if (ready) state.beginModal('rotate');
+          if (hasTransformTarget(state)) state.beginModal('rotate');
           break;
-        }
-        case 'scale': {
+        case 'scale':
           state.setActiveTool('scale');
-          // Blender's S: the drag starts on the keypress, with no handle to
-          // find first. The viewport picks the modal up from here.
-          const object = activeObject(state);
-          const ready =
-            state.mode === 'object'
-              ? state.selectedObjectIds.length > 0
-              : (object?.mesh.selectedVerts().length ?? 0) > 0;
-          if (ready) state.beginModal('scale');
+          if (hasTransformTarget(state)) state.beginModal('scale');
           break;
-        }
 
         case 'slide':
           // Every check the slide needs is a question about the selection, so

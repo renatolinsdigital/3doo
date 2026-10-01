@@ -82,6 +82,26 @@
   font-variant-numeric: tabular-nums;
 }
 
+/// Small print beside a control or under a question: what it does, what it costs.
+@mixin hint-text {
+  @include mono-value;
+
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+
+/// The question a confirmation dialog asks, set large on amber so it is read
+/// before the buttons under it.
+@mixin dialog-question {
+  @include mono-value;
+
+  padding: var(--space-3);
+  background: var(--amber);
+  border: var(--border-thin) solid var(--void);
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+}
+
 /// A field row: a label cell of a shared width and the control filling the
 /// rest, the two sharing one hard border between them. Number, colour and
 /// select rows all wear it, so a panel of mixed fields lines its values up on

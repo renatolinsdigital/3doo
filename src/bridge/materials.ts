@@ -362,7 +362,7 @@ export interface OutlineMaterialOptions {
  * Depth-tested as well, so a contour behind another object goes away with it
  * rather than being drawn across it.
  *
- * That costs a fight with the surface the line lies on, and and a silhouette is
+ * That costs a fight with the surface the line lies on, and a silhouette is
  * the worst place to have it, being where the surface is most edge-on and its
  * depth swings fastest across a pixel. Hence the bias towards the camera here,
  * against the `SURFACE_DEPTH_OFFSET` pushing the fills the other way: between
@@ -384,6 +384,14 @@ export function createOutlineMaterial({ color, width }: OutlineMaterialOptions):
   });
 }
 
+const POINT_SIZE = 3;
+
+/** How much the vertex under the pointer grows over an idle one. */
+const HOVER_POINT_SCALE = 1.8;
+
+/** Bigger than a vertex dot: one object has one, and it has to read at a glance. */
+const ORIGIN_POINT_SIZE = 8;
+
 /**
  * The vertex dots of edit mode.
  *
@@ -396,14 +404,6 @@ export function createOutlineMaterial({ color, width }: OutlineMaterialOptions):
  * Nothing is hidden in x-ray or wireframe shading even so: neither writes any
  * depth for this to test against.
  */
-const POINT_SIZE = 3;
-
-/** How much the vertex under the pointer grows over an idle one. */
-const HOVER_POINT_SCALE = 1.8;
-
-/** Bigger than a vertex dot: one object has one, and it has to read at a glance. */
-const ORIGIN_POINT_SIZE = 8;
-
 export function createPointMaterial(): THREE.PointsMaterial {
   return new THREE.PointsMaterial({
     size: POINT_SIZE,

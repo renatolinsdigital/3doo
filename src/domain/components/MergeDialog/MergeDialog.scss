@@ -15,9 +15,6 @@
   }
 
   &__hint {
-    @include mono-value;
-
-    font-size: var(--text-xs);
-    color: var(--ink-muted);
+    @include hint-text;
   }
 }
