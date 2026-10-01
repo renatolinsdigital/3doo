@@ -2,14 +2,18 @@ import { useCallback } from 'react';
 
 import {
   type ExportObject,
-  exportFBXAscii,
+  type ExportTexture,
+  exportFBX,
   exportOBJ,
   importOBJ,
   parseProject,
 } from '@kernel/index';
 import { evaluatedMesh, useEditorStore } from '@store/index';
+import type { SceneAsset, SceneObject } from '@store/types';
 
 import {
+  blobBytes,
+  exportFileName,
   hydrateAssets,
   imageDimensions,
   imageTypeFor,
@@ -22,7 +26,7 @@ import {
   IMAGE_FILE,
   MESH_FILE,
   PROJECT_FILE,
-  downloadText,
+  downloadFile,
   overwriteTextFile,
   pickFile,
   pickTextFile,
@@ -69,6 +73,39 @@ async function writeProject(write: (contents: string) => Promise<SaveResult>): P
   const toast = saveResultToast(result);
   if (toast) state.pushToast(toast.variant, toast.message);
   return result;
+}
+
+interface ExportPicture extends ExportTexture {
+  blob: Blob;
+  type: string;
+}
+
+/**
+ * The pictures on the image planes being exported, by asset id: one file per
+ * picture however many planes show it, each named once for the whole export.
+ *
+ * A plane whose image went missing on load goes out bare, which is also how
+ * the viewport draws it.
+ */
+async function exportPictures(
+  objects: readonly SceneObject[],
+  assets: Record<string, SceneAsset>,
+): Promise<Map<string, ExportPicture>> {
+  const pictures = new Map<string, ExportPicture>();
+  const taken = new Set<string>();
+
+  for (const object of objects) {
+    const asset = object.image ? assets[object.image.assetId] : undefined;
+    if (!asset?.blob || pictures.has(asset.id)) continue;
+    pictures.set(asset.id, {
+      fileName: exportFileName(asset, taken),
+      data: await blobBytes(asset.blob),
+      blob: asset.blob,
+      type: asset.type,
+    });
+  }
+
+  return pictures;
 }
 
 /** New / save / load / import / export, kept out of the components that trigger them. */
@@ -204,57 +241,64 @@ export function useProjectFiles() {
     }
   }, []);
 
-  const collectExportObjects = useCallback((selectionOnly: boolean): ExportObject[] => {
+  const exportModel = useCallback(async (format: 'obj' | 'fbx', selectionOnly = false) => {
     const state = useEditorStore.getState();
-    return state.objects
+    const chosen = state.objects
       .filter((object) => object.visible)
-      .filter((object) => !selectionOnly || state.selectedObjectIds.includes(object.id))
-      .map((object) => ({
+      .filter((object) => !selectionOnly || state.selectedObjectIds.includes(object.id));
+
+    if (chosen.length === 0) {
+      // Hidden objects are filtered out too, so "nothing to export" on a scene
+      // that visibly has objects in it is otherwise baffling.
+      state.pushToast(
+        'warning',
+        selectionOnly
+          ? 'Nothing selected to export'
+          : 'Nothing to export: the scene is empty or every object is hidden',
+      );
+      return;
+    }
+
+    const name = state.projectName || 'model';
+    try {
+      const pictures = await exportPictures(chosen, state.assets);
+      const objects: ExportObject[] = chosen.map((object) => ({
         name: object.name.replace(/\s+/g, '_'),
         // Export the evaluated mesh so modifiers are baked into the output.
         mesh: evaluatedMesh(object),
         transform: object.transform,
         materials: object.materials,
+        texture: object.image ? pictures.get(object.image.assetId) : undefined,
       }));
-  }, []);
 
-  const exportModel = useCallback(
-    (format: 'obj' | 'fbx', selectionOnly = false) => {
-      const state = useEditorStore.getState();
-      const objects = collectExportObjects(selectionOnly);
-
-      if (objects.length === 0) {
-        // Hidden objects are filtered out too, so "nothing to export" on a scene
-        // that visibly has objects in it is otherwise baffling.
-        state.pushToast(
-          'warning',
-          selectionOnly
-            ? 'Nothing selected to export'
-            : 'Nothing to export: the scene is empty or every object is hidden',
-        );
+      if (format === 'obj') {
+        // The .obj names its material file, so the name has to be one an OBJ
+        // reader takes whole: it stops at the first space.
+        const library = `${name.replace(/\s+/g, '_')}.mtl`;
+        const { obj, mtl } = exportOBJ(objects, state.exportOptions, library);
+        downloadFile(`${name}.obj`, obj, 'text/plain');
+        downloadFile(library, mtl, 'text/plain');
+        // The material file points at the pictures by name, so they go beside it.
+        for (const picture of pictures.values()) {
+          downloadFile(picture.fileName, picture.blob, picture.type);
+        }
+        // Every file is named: an OBJ arrives with the others beside it, and
+        // someone who only knows about the .obj leaves the rest behind.
+        const images = [...pictures.values()].map((picture) => picture.fileName);
+        state.pushToast('success', savedToDownloads(`${name}.obj`, library, ...images));
         return;
       }
 
-      const name = state.projectName || 'model';
-      try {
-        if (format === 'obj') {
-          const { obj, mtl } = exportOBJ(objects, state.exportOptions);
-          downloadText(`${name}.obj`, obj, 'text/plain');
-          downloadText(`${name}.mtl`, mtl, 'text/plain');
-          // Both files are named: an OBJ arrives with a material file beside it,
-          // and someone who only knows about the .obj leaves the .mtl behind.
-          state.pushToast('success', savedToDownloads(`${name}.obj`, `${name}.mtl`));
-          return;
-        }
-
-        downloadText(`${name}.fbx`, exportFBXAscii(objects, state.exportOptions), 'text/plain');
-        state.pushToast('success', savedToDownloads(`${name}.fbx`));
-      } catch (error) {
-        state.pushToast('error', `Export failed: ${(error as Error).message}`);
-      }
-    },
-    [collectExportObjects],
-  );
+      downloadFile(
+        `${name}.fbx`,
+        exportFBX(objects, state.exportOptions),
+        'application/octet-stream',
+      );
+      state.pushToast('success', savedToDownloads(`${name}.fbx`));
+    } catch (error) {
+      state.pushToast('error', `Export failed: ${(error as Error).message}`);
+    }
+  }, []);
 
   return {
     newProject,

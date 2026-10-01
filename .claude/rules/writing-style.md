@@ -45,7 +45,7 @@ which program it copies. Write `A fresh tab opens on a cube`, not
 - The lineage belongs in the documentation: `README.md` and `docs/`. Mention
   Blender there where it explains why something works the way it does.
 - The one exception inside the app is Blender as an export target: the
-  `BLENDER (Z-UP, M)` axis preset and lists of programs that import OBJ or
+  `BLENDER (Y-UP, M)` axis preset and lists of programs that import OBJ or
   FBX. That names a destination for the user's file, not an inspiration.
 - Code comments, identifiers and test names are not app text and may name
   Blender when it explains a decision.

@@ -21,6 +21,7 @@ import {
   createCone,
   createCylinder,
   createGrid,
+  createImagePlane,
   createPlane,
   createUVSphere,
 } from '../primitives';
@@ -929,6 +930,24 @@ describe('subdivide', () => {
     trisToQuads(cube, [...cube.faces.values()]);
     expect(cube.faces.size).toBe(6);
     expect(cube.validate()).toEqual([]);
+  });
+
+  it('keeps every corner on its UV through a triangulation', () => {
+    const plane = createImagePlane(2, 1);
+    const before = new Map(
+      [...plane.faces.values()].flatMap((face) =>
+        plane.faceLoops(face).map((loop) => [loop.vert.id, { ...loop.uv }]),
+      ),
+    );
+
+    triangulateFaces(plane, [...plane.faces.values()]);
+
+    expect(plane.faces.size).toBe(2);
+    for (const face of plane.faces.values()) {
+      for (const loop of plane.faceLoops(face)) {
+        expect(loop.uv).toEqual(before.get(loop.vert.id));
+      }
+    }
   });
 });
 

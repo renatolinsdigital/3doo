@@ -581,7 +581,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Export (Ctrl+E)',
-            'Writes OBJ with a matching MTL, or ASCII FBX 7.4, which Unity, Unreal, Blender, Maya and 3ds Max all import.',
+            'Writes OBJ with a matching MTL, or binary FBX 7.4, which Unity, Unreal, Blender, Maya and 3ds Max all import.',
           ],
         ],
       },
@@ -591,11 +591,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'Modifiers are always applied on the way out. Applying transforms, triangulating, writing per-vertex normals and including UVs are each optional, and SELECTION ONLY exports just what you have picked.',
+        text: 'Modifiers are always applied on the way out. Applying transforms, triangulating and writing per-vertex normals are each optional, and SELECTION ONLY exports just what you have picked. An image plane takes its picture along, mapped the way you see it: an OBJ gets the image file beside its material file, and an FBX carries the picture inside it. Other objects go out without UVs, since nothing in the editor unwraps a mesh.',
       },
       {
         kind: 'prose',
-        text: 'An imported image arrives as an ordinary object: a plane with its own proportions, one metre on its longer side, which you select, move, rotate and scale like anything else. That is what makes it useful as a reference to model against. Line it up, then build against it. It takes modifiers and booleans too, because there is nothing special about it beyond the picture on its surface, and the picture is the one thing an OBJ or FBX export leaves behind: they carry the plane, not the texture. The shading menu passes it by: an image stays solid with its picture showing while the rest of the scene goes to wireframe or x-ray, since a rectangle of edges is not what you put the reference there for.',
+        text: 'An imported image arrives as an ordinary object: a plane with its own proportions, one metre on its longer side, which you select, move, rotate and scale like anything else. That is what makes it useful as a reference to model against. Line it up, then build against it. It takes modifiers and booleans too, because there is nothing special about it beyond the picture on its surface, and it exports with its picture on it. The shading menu passes it by: an image stays solid with its picture showing while the rest of the scene goes to wireframe or x-ray, since a rectangle of edges is not what you put the reference there for.',
       },
       {
         kind: 'note',

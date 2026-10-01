@@ -71,6 +71,43 @@ export function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+/** A blob's bytes, through `FileReader` like `blobToBase64`. */
+export function blobBytes(blob: Blob): Promise<Uint8Array> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
+    reader.onerror = () => reject(new Error('Could not read the image'));
+    reader.readAsArrayBuffer(blob);
+  });
+}
+
+const IMAGE_EXTENSIONS: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/bmp': 'bmp',
+};
+
+/**
+ * The name an image goes out under beside an exported model, unique among
+ * `taken`, which it joins.
+ *
+ * Spaces become underscores, since an OBJ material file reads up to the first
+ * one, and a name with no extension gets one from its type so the importer
+ * knows what it is reading. Uniqueness ignores case, as Windows does.
+ */
+export function exportFileName(asset: SceneAsset, taken: Set<string>): string {
+  let name = asset.name.trim().replace(/\s+/g, '_') || 'image';
+  if (!/\.[a-z0-9]+$/i.test(name)) name = `${name}.${IMAGE_EXTENSIONS[asset.type] ?? 'png'}`;
+
+  const dot = name.lastIndexOf('.');
+  let candidate = name;
+  for (let copy = 2; taken.has(candidate.toLowerCase()); copy++) {
+    candidate = `${name.slice(0, dot)}_${copy}${name.slice(dot)}`;
+  }
+  taken.add(candidate.toLowerCase());
+  return candidate;
+}
+
 export function base64ToBlob(data: string, type: string): Blob {
   const binary = atob(data);
   const bytes = new Uint8Array(binary.length);

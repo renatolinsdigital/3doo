@@ -46,7 +46,7 @@ Pure TypeScript. See [mesh-kernel.md](mesh-kernel.md).
 - `primitives/` holds the parametric shape constructors.
 - `ops/` holds extrude, inset, bevel, loop cut, subdivide, merge, dissolve, …
 - `modifiers/` holds the non-destructive stack and its evaluator.
-- `io/` holds OBJ, ASCII FBX, project files, UV projection.
+- `io/` holds OBJ, binary FBX, project files.
 - `commands/` holds undo history and the operator registry.
 
 ### `/src/bridge`

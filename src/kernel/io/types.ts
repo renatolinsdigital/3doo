@@ -8,11 +8,30 @@ export interface Material {
   color: { r: number; g: number; b: number };
 }
 
+/** The picture on an image plane, which travels with the plane. */
+export interface ExportTexture {
+  /** The name the image file goes out under, unique within one export. */
+  fileName: string;
+  /** The image file's bytes as imported: PNG, JPEG or BMP. */
+  data: Uint8Array;
+}
+
 export interface ExportObject {
   name: string;
   mesh: BMesh;
   transform: Transform;
   materials: Material[];
+  /**
+   * Set on an image plane. It then goes out with its UVs and a single material
+   * carrying the picture, which is how the editor draws it: the image covers
+   * every face, whatever the material slots say.
+   */
+  texture?: ExportTexture;
+}
+
+/** The material a picture travels in, named after its file. */
+export function textureMaterialName(texture: ExportTexture): string {
+  return texture.fileName.replace(/\.[^.]*$/, '');
 }
 
 export type UpAxis = 'y' | 'z';
@@ -25,7 +44,6 @@ export interface ExportOptions {
   triangulate: boolean;
   /** Emit per-polygon-vertex normals rather than one normal per face. */
   perVertexNormals: boolean;
-  includeUVs: boolean;
   upAxis: UpAxis;
   unit: UnitPreset;
   scale: number;
@@ -38,7 +56,7 @@ export const AXIS_PRESETS: Record<
 > = {
   unity: { upAxis: 'y', unit: 'meters', scale: 1 },
   unreal: { upAxis: 'z', unit: 'centimeters', scale: 1 },
-  blender: { upAxis: 'z', unit: 'meters', scale: 1 },
+  blender: { upAxis: 'y', unit: 'meters', scale: 1 },
   maya: { upAxis: 'y', unit: 'centimeters', scale: 1 },
 };
 
@@ -46,7 +64,6 @@ export const DEFAULT_EXPORT_OPTIONS: ExportOptions = {
   applyTransform: true,
   triangulate: false,
   perVertexNormals: true,
-  includeUVs: true,
   upAxis: 'y',
   unit: 'meters',
   scale: 1,

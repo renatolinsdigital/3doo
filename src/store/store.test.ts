@@ -7,7 +7,7 @@ import {
   add,
   dot,
   edgeLength,
-  exportFBXAscii,
+  exportFBX,
   exportOBJ,
   parseProject,
   stringifyProject,
@@ -1508,10 +1508,10 @@ describe('editor store', () => {
     ];
 
     const { obj } = exportOBJ(exportable);
-    const fbx = exportFBXAscii(exportable);
+    const fbx = exportFBX(exportable);
 
     expect(obj.split('\n').filter((line) => line.startsWith('f '))).toHaveLength(18);
-    expect(fbx).toContain('FBXVersion: 7400');
+    expect(new TextDecoder().decode(fbx.subarray(0, 18))).toBe('Kaydara FBX Binary');
   });
 
   it('carries the selection across select-mode changes', () => {

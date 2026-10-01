@@ -1055,6 +1055,7 @@ export function triangulateFaces(mesh: BMesh, faces: readonly Face[]): Face[] {
       face.normal,
     );
     const { materialIndex, smooth, selected } = face;
+    const uvs = new Map(mesh.faceLoops(face).map((loop) => [loop.vert.id, loop.uv]));
     mesh.removeFace(face);
 
     for (let i = 0; i < indices.length; i += 3) {
@@ -1062,6 +1063,11 @@ export function triangulateFaces(mesh: BMesh, faces: readonly Face[]): Face[] {
         [verts[indices[i]], verts[indices[i + 1]], verts[indices[i + 2]]],
         { materialIndex, smooth },
       );
+      // Each corner keeps the UV it had in the polygon, or an image plane
+      // comes out of a triangulation with its picture gone.
+      for (const loop of mesh.faceLoops(triangle)) {
+        loop.uv = { ...(uvs.get(loop.vert.id) ?? loop.uv) };
+      }
       triangle.selected = selected;
       created.push(triangle);
     }

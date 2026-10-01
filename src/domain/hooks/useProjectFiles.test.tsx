@@ -12,7 +12,7 @@ function fakeHandle(name: string): FileSystemFileHandle {
   return { name } as FileSystemFileHandle;
 }
 
-const downloads: { filename: string; contents: string }[] = [];
+const downloads: { filename: string; contents: BlobPart }[] = [];
 const saves: { suggestedName: string; contents: string; kind: FileKind }[] = [];
 const overwrites: { handle: FileSystemFileHandle; contents: string }[] = [];
 /** What the picker hands back. Leaving `handle` out is the file input route. */
@@ -34,7 +34,7 @@ vi.mock('../services/download', async () => {
     await vi.importActual<typeof import('../services/download')>('../services/download');
   return {
     ...actual,
-    downloadText: (filename: string, contents: string) => downloads.push({ filename, contents }),
+    downloadFile: (filename: string, contents: BlobPart) => downloads.push({ filename, contents }),
     pickTextFile: () => Promise.resolve(picked && { handle: null, ...picked }),
     pickFile: () => Promise.resolve(pickedFile),
     saveTextFile: (suggestedName: string, contents: string, kind: FileKind) => {
@@ -170,7 +170,7 @@ describe('project actions announce themselves', () => {
     expect(saves[0].suggestedName).toBe('untitled.3doo');
   });
 
-  it('names both files an OBJ export writes, not just the mesh', () => {
+  it('names both files an OBJ export writes, not just the mesh', async () => {
     const project = files();
     act(() => {
       const state = useEditorStore.getState();
@@ -178,7 +178,7 @@ describe('project actions announce themselves', () => {
       state.addPrimitive('cube');
     });
 
-    act(() => project.current.exportModel('obj'));
+    await act(() => project.current.exportModel('obj'));
 
     expect(downloads.map((entry) => entry.filename)).toEqual(['CRATE.obj', 'CRATE.mtl']);
     // The .mtl arrives beside the .obj; a message naming only the mesh is how
@@ -186,10 +186,10 @@ describe('project actions announce themselves', () => {
     expect(lastToast().message).toBe('Saved CRATE.obj and CRATE.mtl to your downloads');
   });
 
-  it('says why there was nothing to export', () => {
+  it('says why there was nothing to export', async () => {
     const project = files();
 
-    act(() => project.current.exportModel('obj'));
+    await act(() => project.current.exportModel('obj'));
     expect(lastToast()).toMatchObject({ variant: 'warning' });
     expect(lastToast().message).toMatch(/empty or every object is hidden/);
 
@@ -198,8 +198,64 @@ describe('project actions announce themselves', () => {
       useEditorStore.setState({ selectedObjectIds: [] });
     });
 
-    act(() => project.current.exportModel('obj', true));
+    await act(() => project.current.exportModel('obj', true));
     expect(lastToast().message).toBe('Nothing selected to export');
+  });
+
+  it('sends an image plane to OBJ with its picture beside it, named in the material file', async () => {
+    const project = files();
+    act(() => useEditorStore.getState().setProjectName('MOOD BOARD'));
+    pickedFile = imageFile('my ref.png');
+    await act(() => project.current.importImage());
+
+    await act(() => project.current.exportModel('obj'));
+
+    // No spaces in what the .obj and .mtl name: an OBJ reader stops at the first.
+    expect(downloads.map((entry) => entry.filename)).toEqual([
+      'MOOD BOARD.obj',
+      'MOOD_BOARD.mtl',
+      'my_ref.png',
+    ]);
+    expect(String(downloads[0].contents)).toContain('mtllib MOOD_BOARD.mtl');
+    expect(String(downloads[1].contents)).toContain('map_Kd my_ref.png');
+    expect(lastToast().message).toBe(
+      'Saved MOOD BOARD.obj, MOOD_BOARD.mtl and my_ref.png to your downloads',
+    );
+  });
+
+  it('gives two pictures that share a name a file each', async () => {
+    const project = files();
+    act(() => useEditorStore.getState().setProjectName('BOARD'));
+    pickedFile = imageFile();
+    await act(() => project.current.importImage());
+    pickedFile = imageFile();
+    await act(() => project.current.importImage());
+
+    await act(() => project.current.exportModel('obj'));
+
+    expect(downloads.map((entry) => entry.filename)).toEqual([
+      'BOARD.obj',
+      'BOARD.mtl',
+      'ref.png',
+      'ref_2.png',
+    ]);
+  });
+
+  it('embeds the picture in the FBX, so the one file carries it', async () => {
+    const project = files();
+    pickedFile = imageFile();
+    await act(() => project.current.importImage());
+
+    await act(() => project.current.exportModel('fbx'));
+
+    expect(downloads).toHaveLength(1);
+    const bytes = downloads[0].contents as Uint8Array;
+    // A raw property: type R, a four-byte length, then the image's own bytes.
+    const content = [0x52, 4, 0, 0, 0, 1, 2, 3, 4];
+    const found = bytes.findIndex((_, start) =>
+      content.every((value, offset) => bytes[start + offset] === value),
+    );
+    expect(found).toBeGreaterThan(0);
   });
 
   it('reports a new project instead of clearing the scene in silence', async () => {

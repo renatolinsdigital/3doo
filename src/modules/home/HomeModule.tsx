@@ -19,7 +19,7 @@ const CAPABILITIES = [
   },
   {
     title: 'GAME-READY EXPORT',
-    body: 'OBJ with a matching MTL, or ASCII FBX 7.4, with axis and unit presets for Unity, Unreal, Blender and Maya. Projects save as JSON, and autosave keeps numbered copies in a folder you choose.',
+    body: 'OBJ with a matching MTL, or binary FBX 7.4, with axis and unit presets for Unity, Unreal, Blender and Maya. Projects save as JSON, and autosave keeps numbered copies in a folder you choose.',
   },
 ];
 

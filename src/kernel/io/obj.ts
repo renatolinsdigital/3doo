@@ -14,12 +14,13 @@ import { triangulateFaces } from '../ops/subdivide';
 import {
   type ExportObject,
   type ExportOptions,
+  type Material,
   convertDirection,
   convertPoint,
   resolveExportOptions,
+  textureMaterialName,
   unitScaleFactor,
 } from './types';
-import { boxProjectUVs } from './uv';
 
 function format(value: number): string {
   return Number(value.toFixed(6)).toString();
@@ -35,11 +36,12 @@ function format(value: number): string {
 export function exportOBJ(
   objects: readonly ExportObject[],
   options: Partial<ExportOptions> = {},
+  materialLibrary = 'model.mtl',
 ): { obj: string; mtl: string } {
   const resolved = resolveExportOptions(options);
   const scale = resolved.scale * unitScaleFactor(resolved.unit);
 
-  const lines: string[] = ['# Exported by 3DOO', 'mtllib model.mtl', ''];
+  const lines: string[] = ['# Exported by 3DOO', `mtllib ${materialLibrary}`, ''];
 
   let vertexOffset = 1;
   let uvOffset = 1;
@@ -62,16 +64,6 @@ export function exportOBJ(
       vertIndex.set(vert.id, localIndex++);
     }
 
-    let uvCount = 0;
-    if (resolved.includeUVs) {
-      for (const face of mesh.faces.values()) {
-        for (const loop of mesh.faceLoops(face)) {
-          lines.push(`vt ${format(loop.uv.u)} ${format(loop.uv.v)}`);
-          uvCount++;
-        }
-      }
-    }
-
     const faceNormalIndex = new Map<number, number>();
     let normalCount = 0;
     for (const face of mesh.faces.values()) {
@@ -83,11 +75,21 @@ export function exportOBJ(
       faceNormalIndex.set(face.id, normalCount++);
     }
 
+    const { texture } = object;
+    let uvCount = 0;
+    if (texture) {
+      for (const face of mesh.faces.values()) {
+        for (const loop of mesh.faceLoops(face)) {
+          lines.push(`vt ${format(loop.uv.u)} ${format(loop.uv.v)}`);
+        }
+      }
+      lines.push(`usemtl ${textureMaterialName(texture)}`);
+    }
+
     let currentMaterial = -1;
-    let loopCursor = 0;
 
     for (const face of mesh.faces.values()) {
-      if (face.materialIndex !== currentMaterial) {
+      if (!texture && face.materialIndex !== currentMaterial) {
         currentMaterial = face.materialIndex;
         const material = object.materials[currentMaterial];
         const name = material ? material.name.replace(/\s+/g, '_') : `material_${currentMaterial}`;
@@ -97,9 +99,9 @@ export function exportOBJ(
       const corners = mesh.faceLoops(face).map((loop) => {
         const v = (vertIndex.get(loop.vert.id) ?? 0) + vertexOffset;
         const vn = (faceNormalIndex.get(face.id) ?? 0) + normalOffset;
-        if (!resolved.includeUVs) return `${v}//${vn}`;
-        const vt = loopCursor++ + uvOffset;
-        return `${v}/${vt}/${vn}`;
+        if (!texture) return `${v}//${vn}`;
+        // The UVs were written in this same face and loop order.
+        return `${v}/${uvOffset + uvCount++}/${vn}`;
       });
 
       lines.push(`f ${corners.join(' ')}`);
@@ -118,20 +120,29 @@ function buildMTL(objects: readonly ExportObject[]): string {
   const lines: string[] = ['# Exported by 3DOO', ''];
   const seen = new Set<string>();
 
+  const add = (name: string, color: Material['color'], map?: string) => {
+    if (seen.has(name)) return;
+    seen.add(name);
+    lines.push(
+      `newmtl ${name}`,
+      `Kd ${format(color.r)} ${format(color.g)} ${format(color.b)}`,
+      'Ka 0.0 0.0 0.0',
+      'Ks 0.0 0.0 0.0',
+      'd 1.0',
+      'illum 2',
+      ...(map ? [`map_Kd ${map}`] : []),
+      '',
+    );
+  };
+
   for (const object of objects) {
+    if (object.texture) {
+      // White, so an importer that tints the picture by the colour leaves it as it is.
+      add(textureMaterialName(object.texture), { r: 1, g: 1, b: 1 }, object.texture.fileName);
+      continue;
+    }
     for (const material of object.materials) {
-      const name = material.name.replace(/\s+/g, '_');
-      if (seen.has(name)) continue;
-      seen.add(name);
-      lines.push(
-        `newmtl ${name}`,
-        `Kd ${format(material.color.r)} ${format(material.color.g)} ${format(material.color.b)}`,
-        'Ka 0.0 0.0 0.0',
-        'Ks 0.0 0.0 0.0',
-        'd 1.0',
-        'illum 2',
-        '',
-      );
+      add(material.name.replace(/\s+/g, '_'), material.color);
     }
   }
 
@@ -145,7 +156,6 @@ function buildMTL(objects: readonly ExportObject[]): string {
 export function prepareMesh(object: ExportObject, options: ExportOptions): BMesh {
   const mesh = cloneMesh(object.mesh);
   if (options.triangulate) triangulateFaces(mesh, [...mesh.faces.values()]);
-  if (options.includeUVs) boxProjectUVs(mesh);
   mesh.computeNormals();
   return mesh;
 }

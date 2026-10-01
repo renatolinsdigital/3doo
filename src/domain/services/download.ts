@@ -1,5 +1,5 @@
 /** Triggers a browser download for generated text, then releases the blob URL. */
-export function downloadText(filename: string, contents: string, mimeType = 'text/plain'): void {
+export function downloadFile(filename: string, contents: BlobPart, mimeType = 'text/plain'): void {
   const blob = new Blob([contents], { type: mimeType });
   const url = URL.createObjectURL(blob);
 
@@ -25,7 +25,9 @@ export function downloadText(filename: string, contents: string, mimeType = 'tex
  * Shared so that every file the app hands over is announced the same way.
  */
 export function savedToDownloads(...filenames: readonly string[]): string {
-  return `Saved ${filenames.join(' and ')} to your downloads`;
+  const last = filenames[filenames.length - 1];
+  const list = filenames.length > 1 ? `${filenames.slice(0, -1).join(', ')} and ${last}` : last;
+  return `Saved ${list} to your downloads`;
 }
 
 /** A kind of file the app reads or writes, named once so nothing drifts. */
@@ -225,7 +227,7 @@ export async function saveTextFile(
 ): Promise<SaveResult> {
   const picker = saveFilePicker();
   if (!picker) {
-    downloadText(suggestedName, contents, mimeType);
+    downloadFile(suggestedName, contents, mimeType);
     return { status: 'downloaded', filename: suggestedName };
   }
 
@@ -244,7 +246,7 @@ export async function saveTextFile(
     }
     // Any other refusal from the picker (a suffix it dislikes, a blocked
     // permission) must not cost the user the save, so take the plain route.
-    downloadText(suggestedName, contents, mimeType);
+    downloadFile(suggestedName, contents, mimeType);
     return { status: 'downloaded', filename: suggestedName };
   }
 

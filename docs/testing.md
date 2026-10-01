@@ -46,15 +46,15 @@ Good operation tests check four things, not just one:
 | --- | --- | --- |
 | `kernel/math` | 8 | Inverting a transform for a point, an offset and a direction, including a zeroed scale axis |
 | `kernel/mesh` | 31 | BMesh structure, radial sets, cascade deletion, primitives, triangulation, serialization, normals after a move |
-| `kernel/ops` | 223 | Every modelling operation (extrude, inset, bevel, loop cut, subdivide, relax, circle, space, slide, merge, connect, delete, dissolve, fill, bridge, normals, transforms), the mesh budget, selection walks, pivot arithmetic, and booleans: the result, what they must not touch, what they cost |
+| `kernel/ops` | 224 | Every modelling operation (extrude, inset, bevel, loop cut, subdivide, relax, circle, space, slide, merge, connect, delete, dissolve, fill, bridge, normals, transforms), the mesh budget, selection walks, pivot arithmetic, and booleans: the result, what they must not touch, what they cost |
 | `kernel/modifiers` | 46 | Mirror (seam merge, bisect, wire edges, mirroring about the 3D cursor), array, solidify, weld (split seams, array joints, non-transitivity), subdivision, remesh, stack ordering, non-destructiveness |
 | `kernel/remesh` | 34 | Surface sampling, voxel and blocks remeshing, sharp features, decimation, settings |
-| `kernel/io` | 40 | OBJ and FBX export, UV projection, project files and imported images, undo history, the operator registry |
+| `kernel/io` | 48 | OBJ and FBX export (the FBX read back byte by byte), image planes with their UVs and pictures, project files and imported images, undo history, the operator registry |
 | `bridge` | 74 | Materials (depth offsets, stencil, outline, overlays), silhouette and front-edge buffers, and `ObjectView`: image planes, selection outline, hover mark, modifier previews, origin marker |
 | `store` | 244 | Add, duplicate, merge, exec, undo and the history timeline, modifiers, booleans and their worker, cursor snaps, outliner groups, imported images, what counts as a change, panel and toast state, viewport requests, and the preference set: storage round trip, coercion of a bad blob, import rejection |
 | `viewport` | 239 | Camera orbit, zoom, axis views and pose handover, the TransformControls drag contract and disposal, gizmo colours and guides, grid and snapping, region and click selection, occlusion, picking under a modifier, the modal rotate, slide and offset drags, the proportional ring, the axis widget |
 | `shared/components` | 73 | Rendering and behaviour of every shared component |
-| `domain` | 330 | Keymap resolution (including which shifted keys actually reach the handler), the autosave and project-file hooks and services, and dedicated suites for the outliner, the properties, operations, loop operations and topology panels, the tool rail, status bar, cursor menu, axis widget and the confirmation and history dialogs |
+| `domain` | 333 | Keymap resolution (including which shifted keys actually reach the handler), the autosave and project-file hooks and services, and dedicated suites for the outliner, the properties, operations, loop operations and topology panels, the tool rail, status bar, cursor menu, axis widget and the confirmation and history dialogs |
 | `app` | 78 | Full shell mounted with the viewport mocked: modelling end to end, the top bar, right-click, the reload keys, autosave in preferences, and module routing |
 
 ## Two traps worth knowing

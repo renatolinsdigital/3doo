@@ -236,7 +236,7 @@ export function TopBar({ brand }: TopBarProps) {
     {
       id: 'export',
       label: 'EXPORT',
-      hint: 'Export the scene as OBJ or ASCII FBX (Ctrl+E)',
+      hint: 'Export the scene as OBJ or FBX (Ctrl+E)',
       onSelect: () => openDialog('export'),
     },
   ];

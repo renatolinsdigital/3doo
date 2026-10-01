@@ -5,11 +5,10 @@ import { execOperator } from '../commands/operators';
 import { createTransform, dot, vec3 } from '../math';
 import { createBox, createImagePlane, createPlane, imagePlaneSize } from '../primitives';
 
-import { exportFBXAscii } from './fbx-ascii';
+import { exportFBX } from './fbx';
 import { exportOBJ, importOBJ } from './obj';
 import { deserializeProject, parseProject, serializeProject, stringifyProject } from './project';
-import type { ExportObject } from './types';
-import { boxProjectUVs } from './uv';
+import type { AxisPreset, ExportObject } from './types';
 
 function cubeExport(): ExportObject {
   return {
@@ -17,6 +16,16 @@ function cubeExport(): ExportObject {
     mesh: createBox(2),
     transform: createTransform(),
     materials: [{ id: 'm1', name: 'Base', color: { r: 0.8, g: 0.2, b: 0.2 } }],
+  };
+}
+
+function pictureExport(): ExportObject {
+  return {
+    name: 'Ref',
+    mesh: createImagePlane(2, 1),
+    transform: createTransform(),
+    materials: [{ id: 'm2', name: 'Base', color: { r: 0.8, g: 0.2, b: 0.2 } }],
+    texture: { fileName: 'ref.png', data: new Uint8Array([1, 2, 3, 4]) },
   };
 }
 
@@ -30,6 +39,38 @@ describe('OBJ export', () => {
     expect(lines.filter((line) => line.startsWith('vn '))).toHaveLength(6);
     expect(obj).toContain('o Cube');
     expect(obj).toContain('usemtl Base');
+  });
+
+  it('writes an image plane with its UVs and a material that maps the picture', () => {
+    const { obj, mtl } = exportOBJ([cubeExport(), pictureExport()], {}, 'board.mtl');
+    const lines = obj.split('\n');
+
+    expect(lines[1]).toBe('mtllib board.mtl');
+    expect(lines.filter((line) => line.startsWith('vt '))).toEqual([
+      'vt 0 0',
+      'vt 1 0',
+      'vt 1 1',
+      'vt 0 1',
+    ]);
+    // The cube ahead of it has no UVs, so the plane's count from the first.
+    expect(lines.filter((line) => line.startsWith('f ')).at(-1)).toBe(
+      'f 9/1/7 10/2/7 11/3/7 12/4/7',
+    );
+    expect(obj).toContain('usemtl ref');
+    // White, so an importer that tints the picture by the colour leaves it be.
+    expect(mtl).toContain('newmtl ref\nKd 1 1 1');
+    expect(mtl).toContain('map_Kd ref.png');
+    expect(mtl).toContain('newmtl Base');
+  });
+
+  it('writes positions and normals but no UVs', () => {
+    const { obj } = exportOBJ([cubeExport()]);
+    const lines = obj.split('\n');
+
+    expect(lines.filter((line) => line.startsWith('vt '))).toHaveLength(0);
+    for (const face of lines.filter((line) => line.startsWith('f '))) {
+      expect(face).toMatch(/^f( \d+\/\/\d+)+$/);
+    }
   });
 
   it('uses 1-based indices', () => {
@@ -46,11 +87,11 @@ describe('OBJ export', () => {
     expect(Math.max(...indices)).toBeLessThanOrEqual(8);
   });
 
-  it('converts to Z-up for Blender and Unreal presets', () => {
+  it('converts to Z-up for the Unreal preset', () => {
     const object = cubeExport();
     object.mesh = createPlane(2);
 
-    const { obj } = exportOBJ([object], { preset: 'blender' });
+    const { obj } = exportOBJ([object], { preset: 'unreal' });
     const vertices = obj
       .split('\n')
       .filter((line) => line.startsWith('v '))
@@ -103,26 +144,141 @@ describe('OBJ export', () => {
   });
 });
 
-describe('FBX ASCII export', () => {
-  const fbx = exportFBXAscii([cubeExport()]);
+interface ParsedNode {
+  name: string;
+  props: unknown[];
+  children: ParsedNode[];
+}
 
-  it('declares the 7400 header', () => {
-    expect(fbx).toContain('FBXVersion: 7400');
-    expect(fbx).toContain('FBXHeaderVersion: 1003');
-    expect(fbx).toContain('Creator: "3DOO"');
+const decoder = new TextDecoder();
+
+/**
+ * Reads a binary FBX back into a node tree, checking every end offset,
+ * property length and closing record on the way, so getting a tree at all
+ * means the file is well formed.
+ */
+function readFBX(bytes: Uint8Array): ParsedNode {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let offset = 27;
+
+  const readProperty = (): unknown => {
+    const type = String.fromCharCode(bytes[offset]);
+    offset += 1;
+    switch (type) {
+      case 'C':
+        offset += 1;
+        return bytes[offset - 1] !== 0;
+      case 'I':
+        offset += 4;
+        return view.getInt32(offset - 4, true);
+      case 'L':
+        offset += 8;
+        return Number(view.getBigInt64(offset - 8, true));
+      case 'D':
+        offset += 8;
+        return view.getFloat64(offset - 8, true);
+      case 'S':
+      case 'R': {
+        const length = view.getUint32(offset, true);
+        const data = bytes.subarray(offset + 4, offset + 4 + length);
+        offset += 4 + length;
+        return type === 'S' ? decoder.decode(data) : data;
+      }
+      case 'i':
+      case 'd': {
+        const count = view.getUint32(offset, true);
+        const size = type === 'i' ? 4 : 8;
+        expect(view.getUint32(offset + 4, true)).toBe(0);
+        expect(view.getUint32(offset + 8, true)).toBe(count * size);
+        offset += 12;
+        const values = Array.from({ length: count }, (_, index) =>
+          type === 'i'
+            ? view.getInt32(offset + index * 4, true)
+            : view.getFloat64(offset + index * 8, true),
+        );
+        offset += count * size;
+        return values;
+      }
+      default:
+        throw new Error(`Unknown property type ${type} at ${offset - 1}`);
+    }
+  };
+
+  const readNode = (): ParsedNode | null => {
+    const end = view.getUint32(offset, true);
+    if (end === 0) {
+      offset += 13;
+      return null;
+    }
+    const count = view.getUint32(offset + 4, true);
+    const propsLength = view.getUint32(offset + 8, true);
+    const nameLength = bytes[offset + 12];
+    const name = decoder.decode(bytes.subarray(offset + 13, offset + 13 + nameLength));
+    offset += 13 + nameLength;
+
+    const propsStart = offset;
+    const props = Array.from({ length: count }, readProperty);
+    expect(offset - propsStart).toBe(propsLength);
+
+    const children: ParsedNode[] = [];
+    while (offset < end) {
+      const child = readNode();
+      if (child) children.push(child);
+    }
+    expect(offset).toBe(end);
+    return { name, props, children };
+  };
+
+  const children: ParsedNode[] = [];
+  for (let next = readNode(); next; next = readNode()) children.push(next);
+  return { name: '', props: [], children };
+}
+
+function child(parent: ParsedNode | undefined, name: string): ParsedNode | undefined {
+  return parent?.children.find((node) => node.name === name);
+}
+
+function childrenNamed(parent: ParsedNode | undefined, name: string): ParsedNode[] {
+  return parent?.children.filter((node) => node.name === name) ?? [];
+}
+
+/** The value of a `Properties70` entry: everything after name, type, label and flags. */
+function property(owner: ParsedNode | undefined, name: string): unknown[] | undefined {
+  const entry = child(owner, 'Properties70')?.children.find((node) => node.props[0] === name);
+  return entry?.props.slice(4);
+}
+
+describe('FBX export', () => {
+  const bytes = exportFBX([cubeExport()]);
+  const root = readFBX(bytes);
+  const objects = child(root, 'Objects');
+  const geometry = child(objects, 'Geometry');
+  const model = child(objects, 'Model');
+  const material = child(objects, 'Material');
+
+  const settings = (preset: AxisPreset) =>
+    child(readFBX(exportFBX([cubeExport()], { preset })), 'GlobalSettings');
+
+  it('is binary 7400, with the header and footer importers check', () => {
+    expect(decoder.decode(bytes.subarray(0, 23))).toBe('Kaydara FBX Binary  \0\x1a\0');
+    expect(new DataView(bytes.buffer).getUint32(23, true)).toBe(7400);
+    expect(child(child(root, 'FBXHeaderExtension'), 'FBXVersion')?.props).toEqual([7400]);
+    expect(child(root, 'Creator')?.props).toEqual(['3DOO']);
+    expect([...bytes.subarray(-16)]).toEqual([
+      0xf8, 0x5a, 0x8c, 0x6a, 0xde, 0xf5, 0xd9, 0x7e, 0xec, 0xe9, 0x0c, 0xe3, 0x75, 0x8f, 0x29,
+      0x0b,
+    ]);
+  });
+
+  it('names objects the binary way: name, separator, class', () => {
+    expect(geometry?.props.slice(1)).toEqual(['Cube\0\x01Geometry', 'Mesh']);
+    expect(model?.props.slice(1)).toEqual(['Cube\0\x01Model', 'Mesh']);
+    expect(material?.props[1]).toBe('Base\0\x01Material');
   });
 
   it('encodes the last index of every polygon as -(index + 1)', () => {
-    const match = fbx.match(/PolygonVertexIndex: \*(\d+) \{\s*a: ([^}]+)\}/);
-    expect(match).not.toBeNull();
-
-    const values = (match?.[2] ?? '')
-      .split(/[\s,]+/)
-      .filter((token) => token.length > 0)
-      .map(Number);
-
+    const values = child(geometry, 'PolygonVertexIndex')?.props[0] as number[];
     expect(values).toHaveLength(24);
-    expect(Number(match?.[1])).toBe(24);
 
     // Six quads: every fourth index closes a polygon and must be negative.
     for (let i = 0; i < values.length; i++) {
@@ -132,67 +288,160 @@ describe('FBX ASCII export', () => {
   });
 
   it('pairs mapping and reference types on every layer element', () => {
-    expect(fbx).toContain('MappingInformationType: "ByPolygonVertex"');
-    expect(fbx).toContain('MappingInformationType: "ByPolygon"');
-    expect(fbx).toContain('ReferenceInformationType: "IndexToDirect"');
-    expect(fbx.match(/ReferenceInformationType: "Direct"/g)).toHaveLength(2);
+    const normals = child(geometry, 'LayerElementNormal');
+    const materials = child(geometry, 'LayerElementMaterial');
+
+    expect(child(normals, 'MappingInformationType')?.props).toEqual(['ByPolygonVertex']);
+    expect(child(normals, 'ReferenceInformationType')?.props).toEqual(['Direct']);
+    expect(child(materials, 'MappingInformationType')?.props).toEqual(['ByPolygon']);
+    expect(child(materials, 'ReferenceInformationType')?.props).toEqual(['IndexToDirect']);
   });
 
-  it('emits one normal and one UV pair per polygon vertex', () => {
-    const normals = fbx.match(/Normals: \*(\d+)/);
-    const uvs = fbx.match(/UV: \*(\d+)/);
+  it('emits one normal per polygon vertex and one material index per polygon', () => {
+    const normals = child(child(geometry, 'LayerElementNormal'), 'Normals');
+    const materials = child(child(geometry, 'LayerElementMaterial'), 'Materials');
 
-    expect(Number(normals?.[1])).toBe(24 * 3);
-    expect(Number(uvs?.[1])).toBe(24 * 2);
+    expect(normals?.props[0]).toHaveLength(24 * 3);
+    expect(materials?.props[0]).toHaveLength(6);
   });
 
-  it('emits one material index per polygon', () => {
-    const materials = fbx.match(/Materials: \*(\d+)/);
-    expect(Number(materials?.[1])).toBe(6);
+  it('writes no UV layer', () => {
+    expect(child(geometry, 'LayerElementUV')).toBeUndefined();
   });
 
   it('connects geometry and material to the model, and the model to the root', () => {
-    const geometryId = fbx.match(/Geometry: (\d+),/)?.[1];
-    const modelId = fbx.match(/Model: (\d+),/)?.[1];
-    const materialId = fbx.match(/Material: (\d+),/)?.[1];
+    const [geometryId, modelId, materialId] = [geometry, model, material].map(
+      (node) => node?.props[0],
+    );
 
-    expect(fbx).toContain(`C: "OO",${modelId},0`);
-    expect(fbx).toContain(`C: "OO",${geometryId},${modelId}`);
-    expect(fbx).toContain(`C: "OO",${materialId},${modelId}`);
+    expect(childrenNamed(child(root, 'Connections'), 'C').map((node) => node.props)).toEqual([
+      ['OO', modelId, 0],
+      ['OO', geometryId, modelId],
+      ['OO', materialId, modelId],
+    ]);
   });
 
   it('declares accurate object counts', () => {
-    expect(fbx).toMatch(/ObjectType: "Geometry" \{\s*Count: 1/);
-    expect(fbx).toMatch(/ObjectType: "Model" \{\s*Count: 1/);
-    expect(fbx).toMatch(/ObjectType: "Material" \{\s*Count: 1/);
+    const definitions = child(root, 'Definitions');
+    const counts = Object.fromEntries(
+      childrenNamed(definitions, 'ObjectType').map((type) => [
+        type.props[0],
+        child(type, 'Count')?.props[0],
+      ]),
+    );
+
+    expect(counts).toEqual({ GlobalSettings: 1, Geometry: 1, Model: 1, Material: 1 });
+    expect(child(definitions, 'Count')?.props).toEqual([4]);
   });
 
-  it('switches the up axis for Z-up presets', () => {
-    const zUp = exportFBXAscii([cubeExport()], { preset: 'blender' });
-    expect(zUp).toContain('P: "UpAxis", "int", "Integer", "",2');
-    expect(exportFBXAscii([cubeExport()], { preset: 'unity' })).toContain(
-      'P: "UpAxis", "int", "Integer", "",1',
-    );
+  it('declares a right-handed axis system for either up axis', () => {
+    const axes = (preset: AxisPreset) => {
+      const global = settings(preset);
+      return [
+        'UpAxis',
+        'UpAxisSign',
+        'FrontAxis',
+        'FrontAxisSign',
+        'CoordAxis',
+        'CoordAxisSign',
+      ].map((name) => property(global, name)?.[0]);
+    };
+
+    expect(axes('unity')).toEqual([1, 1, 2, 1, 0, 1]);
+    // A front sign of +1 here would be left-handed, and importers mirror the model.
+    expect(axes('unreal')).toEqual([2, 1, 1, -1, 0, 1]);
+  });
+
+  it('declares the unit the coordinates are written in', () => {
+    // UnitScaleFactor counts centimetres per file unit.
+    expect(property(settings('unity'), 'UnitScaleFactor')).toEqual([100]);
+    expect(property(settings('unreal'), 'UnitScaleFactor')).toEqual([1]);
+  });
+
+  it('keeps the transform on the node when transforms are not applied', () => {
+    const object = cubeExport();
+    object.transform = { position: vec3(1, 2, 3), rotation: vec3(0, 0, 0), scale: vec3(1, 2, 3) };
+    const exported = exportFBX([object], { preset: 'unreal', applyTransform: false });
+    const node = child(child(readFBX(exported), 'Objects'), 'Model');
+
+    // Z-up in centimetres: our (x, y, z) becomes (x, -z, y), times 100.
+    expect(property(node, 'Lcl Translation')).toEqual([100, -300, 200]);
+    // Scale swaps axes with the conversion but never changes sign.
+    expect(property(node, 'Lcl Scaling')).toEqual([1, 3, 2]);
+    // The rotation order changes with the axes, and only counts when active.
+    expect(property(node, 'RotationOrder')).toEqual([2]);
+    expect(property(node, 'RotationActive')).toEqual([1]);
   });
 
   it('triangulates when asked', () => {
-    const triangulated = exportFBXAscii([cubeExport()], { triangulate: true });
-    const count = Number(triangulated.match(/PolygonVertexIndex: \*(\d+)/)?.[1]);
-    expect(count).toBe(36);
+    const triangulated = readFBX(exportFBX([cubeExport()], { triangulate: true }));
+    const indices = child(child(child(triangulated, 'Objects'), 'Geometry'), 'PolygonVertexIndex');
+    expect(indices?.props[0]).toHaveLength(36);
   });
 });
 
-describe('UV projection', () => {
-  it('gives every loop a UV', () => {
-    const mesh = createBox(2);
-    boxProjectUVs(mesh);
+describe('FBX export of an image plane', () => {
+  const twin = { ...pictureExport(), name: 'Twin' };
+  const root = readFBX(exportFBX([cubeExport(), pictureExport(), twin]));
+  const objects = child(root, 'Objects');
+  const material = childrenNamed(objects, 'Material').find(
+    (node) => node.props[1] === 'ref\0\x01Material',
+  );
+  const texture = child(objects, 'Texture');
+  const video = child(objects, 'Video');
 
-    for (const face of mesh.faces.values()) {
-      for (const loop of mesh.faceLoops(face)) {
-        expect(Number.isFinite(loop.uv.u)).toBe(true);
-        expect(Number.isFinite(loop.uv.v)).toBe(true);
-      }
-    }
+  it("writes the plane's UVs, and none for ordinary geometry", () => {
+    const [cube, plane] = childrenNamed(objects, 'Geometry');
+    const uv = child(plane, 'LayerElementUV');
+
+    expect(child(cube, 'LayerElementUV')).toBeUndefined();
+    expect(child(uv, 'UV')?.props[0]).toEqual([0, 0, 1, 0, 1, 1, 0, 1]);
+    expect(child(uv, 'UVIndex')?.props[0]).toEqual([0, 1, 2, 3]);
+    expect(child(uv, 'MappingInformationType')?.props).toEqual(['ByPolygonVertex']);
+    expect(child(uv, 'ReferenceInformationType')?.props).toEqual(['IndexToDirect']);
+    expect(
+      childrenNamed(child(plane, 'Layer'), 'LayerElement').map(
+        (element) => child(element, 'Type')?.props[0],
+      ),
+    ).toEqual(['LayerElementNormal', 'LayerElementUV', 'LayerElementMaterial']);
+  });
+
+  it('embeds each picture once, however many planes show it', () => {
+    expect(childrenNamed(objects, 'Video')).toHaveLength(1);
+    expect([...(child(video, 'Content')?.props[0] as Uint8Array)]).toEqual([1, 2, 3, 4]);
+    expect(child(video, 'RelativeFilename')?.props).toEqual(['ref.png']);
+  });
+
+  it('wires the picture to a texture on the material both planes share', () => {
+    const links = childrenNamed(child(root, 'Connections'), 'C').map((node) => node.props);
+    const [, plane, other] = childrenNamed(objects, 'Model');
+
+    expect(links).toContainEqual(['OP', texture?.props[0], material?.props[0], 'DiffuseColor']);
+    expect(links).toContainEqual(['OO', video?.props[0], texture?.props[0]]);
+    expect(links).toContainEqual(['OO', material?.props[0], plane.props[0]]);
+    expect(links).toContainEqual(['OO', material?.props[0], other.props[0]]);
+    // White, so the picture is not tinted by the plane's own colour.
+    expect(property(material, 'DiffuseColor')).toEqual([1, 1, 1]);
+  });
+
+  it("counts the picture's objects in the definitions", () => {
+    const definitions = child(root, 'Definitions');
+    const counts = Object.fromEntries(
+      childrenNamed(definitions, 'ObjectType').map((type) => [
+        type.props[0],
+        child(type, 'Count')?.props[0],
+      ]),
+    );
+
+    expect(counts).toEqual({
+      GlobalSettings: 1,
+      Geometry: 3,
+      Model: 3,
+      Material: 2,
+      Texture: 1,
+      Video: 1,
+    });
+    expect(child(definitions, 'Count')?.props).toEqual([11]);
   });
 });
 

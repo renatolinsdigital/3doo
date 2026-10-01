@@ -53,7 +53,7 @@ Sculpting is the next module planned. See
 | Autosave | Off until turned on. Writes numbered `.3doo` copies into a `3doo-auto-saves` folder in a location you choose, every 30 seconds to 15 minutes, and only when the scene has changed. Nothing of the project is kept in the browser. Needs a browser with a folder picker (Chrome, Edge) |
 | Opening scene | A fresh tab starts on a cube, as Blender does, and so does FILE > NEW. One Ctrl+Z takes it away |
 | Preferences | Tooltips, panel visibility, viewport background, grid, snapping, undo depth, autosave and the selection outline, kept in localStorage per browser, with import / export as a `.pref` file |
-| Export | OBJ + MTL, **ASCII FBX 7.4**, with Unity / Unreal / Blender / Maya axis and unit presets |
+| Export | OBJ + MTL, **binary FBX 7.4**, with Unity / Unreal / Blender / Maya axis and unit presets; image planes keep their picture |
 | Undo | Whole-scene snapshot history, 50 steps by default and 10 to 100 under UNDO STEPS, with a history list to click straight back to any of them |
 
 ## Architecture
@@ -114,7 +114,7 @@ Four responsibilities, kept strictly apart:
 | [docs/math.md](docs/math.md) | Coordinate system, winding, normals, mitering, triangulation |
 | [docs/state-management.md](docs/state-management.md) | Zustand slices, mesh versioning, undo |
 | [docs/rendering.md](docs/rendering.md) | The display bridge, buffers, picking, camera |
-| [docs/export.md](docs/export.md) | OBJ and ASCII FBX, axis presets, and the FBX pitfalls |
+| [docs/export.md](docs/export.md) | OBJ and binary FBX, axis presets, and the FBX pitfalls |
 | [docs/saving.md](docs/saving.md) | Autosave, project files, and where a project lives in the browser |
 | [docs/design-system.md](docs/design-system.md) | Brutalist tokens, mixins, and usability guardrails |
 | [docs/scripting.md](docs/scripting.md) | The operator registry / `exec` API |

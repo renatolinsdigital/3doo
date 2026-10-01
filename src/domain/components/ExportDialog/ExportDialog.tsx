@@ -11,7 +11,7 @@ import './ExportDialog.scss';
 const PRESET_OPTIONS = [
   { value: 'unity', label: 'UNITY (Y-UP, M)' },
   { value: 'unreal', label: 'UNREAL (Z-UP, CM)' },
-  { value: 'blender', label: 'BLENDER (Z-UP, M)' },
+  { value: 'blender', label: 'BLENDER (Y-UP, M)' },
   { value: 'maya', label: 'MAYA (Y-UP, CM)' },
   { value: 'custom', label: 'CUSTOM' },
 ] as const;
@@ -36,7 +36,7 @@ export function ExportDialog() {
           <Button
             label="EXPORT OBJ"
             onClick={() => {
-              exportModel('obj', selectionOnly);
+              void exportModel('obj', selectionOnly);
               closeDialog();
             }}
           />
@@ -44,7 +44,7 @@ export function ExportDialog() {
             label="EXPORT FBX"
             variant="primary"
             onClick={() => {
-              exportModel('fbx', selectionOnly);
+              void exportModel('fbx', selectionOnly);
               closeDialog();
             }}
           />
@@ -60,7 +60,7 @@ export function ExportDialog() {
         />
         <p className="export-dialog__hint">
           The editor models in metres: one unit is one metre. Presets set the axis and unit
-          conventions for you; pick the engine you are importing into.
+          conventions for you; pick the program you are importing into.
         </p>
       </FieldRow>
 
@@ -96,7 +96,6 @@ export function ExportDialog() {
       ) : null}
 
       <FieldRow legend="GEOMETRY" columns={1}>
-        <Toggle label="APPLY MODIFIERS" checked disabled onChange={() => {}} />
         <Toggle
           label="APPLY TRANSFORMS"
           checked={options.applyTransform}
@@ -112,17 +111,13 @@ export function ExportDialog() {
           checked={options.perVertexNormals}
           onChange={(perVertexNormals) => setExportOptions({ perVertexNormals })}
         />
-        <Toggle
-          label="INCLUDE UVS"
-          checked={options.includeUVs}
-          onChange={(includeUVs) => setExportOptions({ includeUVs })}
-        />
         <Toggle label="SELECTION ONLY" checked={selectionOnly} onChange={setSelectionOnly} />
       </FieldRow>
 
       <p className="export-dialog__note">
-        OBJ writes a matching .mtl alongside the mesh. FBX is ASCII 7.4, which Unity, Unreal,
-        Blender, Maya and 3ds Max all import.
+        Modifiers are always applied on the way out. OBJ writes a matching .mtl alongside the mesh,
+        and the picture of any image plane beside them. FBX is binary 7.4 and carries those pictures
+        inside it; Unity, Unreal, Blender, Maya and 3ds Max all import it.
       </p>
     </Modal>
   );

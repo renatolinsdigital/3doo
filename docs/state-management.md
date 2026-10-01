@@ -91,7 +91,7 @@ means preferences do not persist, never that the editor refuses to start.
 ### Import and export
 
 The preferences dialog writes `currentPreferences()` out with the same
-`downloadText` / `pickTextFile` pair the project files use, so a settings file is
+`downloadFile` / `pickTextFile` pair the project files use, so a settings file is
 just JSON the user can carry to another browser.
 
 Each of those takes a `FileKind` (`.pref` here, `.3doo` for projects,
