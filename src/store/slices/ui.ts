@@ -3,7 +3,14 @@ import type { StateCreator } from 'zustand';
 import { type ExportOptions, DEFAULT_EXPORT_OPTIONS } from '@kernel/index';
 
 import type { EditorStore } from '../useEditorStore';
-import type { CursorMenuState, DialogId, HintState, OperationProgress, Toast } from '../types';
+import type {
+  CursorMenuState,
+  DeleteMenuState,
+  DialogId,
+  HintState,
+  OperationProgress,
+  Toast,
+} from '../types';
 
 export interface UiSlice {
   toasts: Toast[];
@@ -15,6 +22,8 @@ export interface UiSlice {
   hint: HintState | null;
   /** The viewport's right-click cursor menu, or null when it is closed. */
   cursorMenu: CursorMenuState | null;
+  /** The edit-mode Delete key's menu, or null when it is closed. */
+  deleteMenu: DeleteMenuState | null;
   /** Panels folded away, keyed by title. Missing means open, so a new scene is all open. */
   collapsedPanels: Record<string, boolean>;
   /** The long operation under way, or null. Drawn as a bar in the status bar. */
@@ -40,6 +49,8 @@ export interface UiSlice {
   hideHint: () => void;
   openCursorMenu: (menu: CursorMenuState) => void;
   closeCursorMenu: () => void;
+  openDeleteMenu: (menu: DeleteMenuState) => void;
+  closeDeleteMenu: () => void;
   togglePanel: (title: string) => void;
   setCollapsedPanels: (collapsed: Record<string, boolean>) => void;
   /**
@@ -92,6 +103,7 @@ export const createUiSlice: StateCreator<
   mergePreview: null,
   hint: null,
   cursorMenu: null,
+  deleteMenu: null,
   collapsedPanels: {},
   progress: null,
   busy: false,
@@ -138,10 +150,15 @@ export const createUiSlice: StateCreator<
   hideHint: () => set({ hint: null }),
 
   // The hint is dismissed alongside: the pointer is about to be over a menu,
-  // and a tooltip left hanging behind it never clears.
-  openCursorMenu: (cursorMenu) => set({ cursorMenu, hint: null }),
+  // and a tooltip left hanging behind it never clears. Either menu closes the
+  // other, since both open where the pointer is and one would sit on the other.
+  openCursorMenu: (cursorMenu) => set({ cursorMenu, deleteMenu: null, hint: null }),
 
   closeCursorMenu: () => set({ cursorMenu: null }),
+
+  openDeleteMenu: (deleteMenu) => set({ deleteMenu, cursorMenu: null, hint: null }),
+
+  closeDeleteMenu: () => set({ deleteMenu: null }),
 
   togglePanel: (title) =>
     set((state) => ({

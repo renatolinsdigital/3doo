@@ -775,6 +775,36 @@ describe('App shell', () => {
       expect(useEditorStore.getState().cursorSnapRequest?.kind).toBe(kind);
     }
   });
+
+  it('opens the delete menu on Delete in edit mode instead of dissolving straight away', () => {
+    render(<App />);
+    act(() => {
+      useEditorStore.getState().addPrimitive('cube');
+      useEditorStore.getState().setMode('edit');
+      useEditorStore.getState().exec('selectAll', {}, 'Select all');
+    });
+    const before = useEditorStore.getState().deleteMenuRequest;
+
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(useEditorStore.getState().deleteMenuRequest).not.toBe(before);
+    expect(useEditorStore.getState().objects[0].mesh.faces.size).toBe(6);
+
+    // The stub viewport has no pointer to answer with, so the menu is opened
+    // here the way the real one would open it.
+    act(() => useEditorStore.getState().openDeleteMenu({ x: 40, y: 40 }));
+    expect(screen.getByRole('menu', { name: 'DELETE MENU' })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(screen.queryByRole('menu', { name: 'DELETE MENU' })).toBeNull();
+  });
+
+  it('still deletes the selected object on Delete in object mode', () => {
+    render(<App />);
+    act(() => useEditorStore.getState().addPrimitive('cube'));
+
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(useEditorStore.getState().objects).toHaveLength(0);
+  });
   it('steps the pivot through all three from the keyboard', () => {
     // The pivot outlives resetScene, so the test before this one leaves it
     // wherever it finished.

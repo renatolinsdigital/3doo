@@ -332,3 +332,55 @@ export function useCursorActions(): CursorActions {
     }),
   );
 }
+
+export interface DeleteActions {
+  /** Selected vertices, edges and faces: what each delete entry would remove. */
+  verts: number;
+  edges: number;
+  faces: number;
+  /** Whether a selected edge has a face on each side, the only kind that dissolves. */
+  innerEdge: boolean;
+  /** Whether two selected faces share an edge, which is what dissolving faces merges. */
+  touchingFaces: boolean;
+}
+
+const NOTHING_TO_DELETE: DeleteActions = {
+  verts: 0,
+  edges: 0,
+  faces: 0,
+  innerEdge: false,
+  touchingFaces: false,
+};
+
+/**
+ * What the delete menu's entries can act on right now.
+ *
+ * The refusals the delete and dissolve operators make, asked before the click
+ * rather than after it, so an entry that would report nothing to do sits
+ * disabled instead. The 40° fold rule is left to the operator: it skips some
+ * of a selection and keeps the rest, and the status bar counts what it skipped.
+ *
+ * Only worked out while the menu is open. The adjacency walk is cheap, but not
+ * worth running on every store change for a menu nobody is looking at.
+ */
+export function useDeleteActions(): DeleteActions {
+  return useEditorStore(
+    useShallow((state): DeleteActions => {
+      void state.meshVersion;
+
+      const object = state.deleteMenu && state.mode === 'edit' ? activeObject(state) : null;
+      if (!object) return NOTHING_TO_DELETE;
+
+      const { mesh } = object;
+      const edges = mesh.selectedEdges();
+      const faces = mesh.selectedFaces();
+      return {
+        verts: mesh.selectedVerts().length,
+        edges: edges.length,
+        faces: faces.length,
+        innerEdge: edges.some((edge) => mesh.edgeFaces(edge).length === 2),
+        touchingFaces: faces.length >= 2 && hasAdjacentFaces(mesh, faces),
+      };
+    }),
+  );
+}

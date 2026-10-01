@@ -223,17 +223,21 @@ These are separate paths because they answer different questions:
 - **Dissolve** removes topology but keeps the surrounding surface: the faces
   around what was removed merge into one.
 
-#### How the keys pick a mode
+#### How the UI picks a mode
 
-The UI exposes both only as keys: <kbd>X</kbd> deletes and <kbd>Delete</kbd>
-dissolves. Neither asks which element type to act on. `useKeymap` maps the
-active select mode onto the operator's `mode` param (vertex → `verts`, edge →
-`edges`, face → `faces`), so the keys always act on what the user sees
-highlighted.
+<kbd>Delete</kbd> in edit mode opens the delete menu (`DeleteMenu`), whose six
+entries each pass their own `mode`: `verts`, `edges` or `faces`, to `delete` or
+to `dissolve`. The entry names the type, so the select mode plays no part.
+`useDeleteActions` disables the entries the operators would refuse: one with no
+element of its type selected, a face dissolve without two selected faces that
+share an edge, and an edge dissolve whose edges all lie on an open border.
 
-Only the keyboard path is constrained this way. The operators still take every
-mode they support, and `exec('delete', { mode: 'onlyFaces' })` remains
-available to scripts.
+<kbd>X</kbd> is the quick path and asks nothing. `useKeymap` maps the active
+select mode onto the operator's `mode` param (vertex → `verts`, edge →
+`edges`, face → `faces`), so it always acts on what the user sees highlighted.
+
+The operators still take every mode they support, and
+`exec('delete', { mode: 'onlyFaces' })` remains available to scripts.
 
 #### Dissolving faces
 

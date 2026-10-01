@@ -244,3 +244,20 @@ describe('toast queue', () => {
     expect(toasts[0].issued).toBe(1);
   });
 });
+
+describe('viewport menus', () => {
+  beforeEach(() => {
+    useEditorStore.setState({ cursorMenu: null, deleteMenu: null });
+  });
+
+  it('keeps one menu open at a time, since both open where the pointer is', () => {
+    const targets = { point: null, vertex: null, edge: null, face: null };
+
+    useEditorStore.getState().openCursorMenu({ x: 0, y: 0, targets });
+    useEditorStore.getState().openDeleteMenu({ x: 0, y: 0 });
+    expect(useEditorStore.getState().cursorMenu).toBeNull();
+
+    useEditorStore.getState().openCursorMenu({ x: 0, y: 0, targets });
+    expect(useEditorStore.getState().deleteMenu).toBeNull();
+  });
+});

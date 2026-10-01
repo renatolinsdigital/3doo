@@ -206,6 +206,12 @@ export interface CursorMenuState {
   targets: CursorSnapTargets;
 }
 
+/** Where the edit-mode delete menu opened, in canvas-relative pixels. */
+export interface DeleteMenuState {
+  x: number;
+  y: number;
+}
+
 /**
  * Where the orbit camera is standing.
  *

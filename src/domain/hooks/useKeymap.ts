@@ -13,11 +13,12 @@ const SHADING_CYCLE: ShadingMode[] = ['solid', 'solidWire', 'wireframe', 'xray',
 const PIVOT_CYCLE: PivotMode[] = ['origin', 'median', 'cursor'];
 
 /**
- * Which element type X (delete) and Delete (dissolve) act on.
+ * Which element type X deletes.
  *
- * Both operators take an explicit mode, and the active select mode is the only
+ * The operator takes an explicit mode, and the active select mode is the only
  * honest answer to "whatever is selected": picking anything else would delete
- * elements the user cannot currently see highlighted.
+ * elements the user cannot currently see highlighted. The Delete key's menu
+ * names the type on each entry instead, so it needs no such guess.
  */
 const ELEMENT_FOR_SELECT_MODE: Record<SelectMode, 'verts' | 'edges' | 'faces'> = {
   vertex: 'verts',
@@ -176,11 +177,12 @@ export function useKeymap(): void {
             state.exec('delete', { mode: ELEMENT_FOR_SELECT_MODE[state.selectMode] }, 'Delete');
           }
           break;
-        case 'dissolve':
-          if (state.mode === 'object') state.deleteSelected();
-          else {
-            state.exec('dissolve', { mode: ELEMENT_FOR_SELECT_MODE[state.selectMode] }, 'Dissolve');
-          }
+        // A second press closes it, like the shortcut overlay. Reopening would
+        // land somewhere else: the pointer is over the menu by then, and the
+        // viewport counts that as having left the canvas.
+        case 'deleteMenu':
+          if (state.deleteMenu) state.closeDeleteMenu();
+          else state.openDeleteMenuAtPointer();
           break;
         case 'duplicate':
           if (state.mode === 'object') state.duplicateSelected(false);

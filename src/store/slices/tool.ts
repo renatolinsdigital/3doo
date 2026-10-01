@@ -116,9 +116,12 @@ export const createToolSlice: StateCreator<
     // flagged. Either way what lit up on the way in was nothing the user chose.
     if (mode === 'edit' && object) object.mesh.deselectAll();
 
+    // The delete menu goes too: its entries are edit-mode operations, and one
+    // left open across the switch would come back on the next visit.
     set((state) => ({
       mode,
       modal: null,
+      deleteMenu: null,
       meshVersion: state.meshVersion + 1,
       status: mode === 'edit' ? 'Edit mode' : 'Object mode',
     }));
