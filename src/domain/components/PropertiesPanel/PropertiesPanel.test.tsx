@@ -400,3 +400,67 @@ describe('PropertiesPanel selected edge(s)', () => {
     expect(useEditorStore.getState().historyUndo).toHaveLength(steps);
   });
 });
+
+describe('PropertiesPanel sharp edges', () => {
+  /** A box in edit mode with the edges `pick` chooses selected. */
+  function boxWith(pick: (edge: Edge, index: number) => boolean) {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    store.addPrimitive('cube');
+    store.setMode('edit');
+    store.setSelectMode('edge');
+
+    const mesh = useEditorStore.getState().objects[0].mesh;
+    mesh.deselectAll();
+    [...mesh.edges.values()].forEach((edge, index) => (edge.selected = pick(edge, index)));
+    mesh.flushSelection('edge');
+    store.touchMesh();
+    return mesh;
+  }
+
+  const sharpCount = () =>
+    [...useEditorStore.getState().objects[0].mesh.edges.values()].filter((edge) => edge.sharp)
+      .length;
+
+  const markButton = () => screen.getByRole('button', { name: 'MARK SHARP' });
+  const clearButton = () => screen.getByRole('button', { name: 'CLEAR SHARP' });
+
+  it('has nothing to do with no edge selected', () => {
+    boxWith(() => false);
+
+    render(<PropertiesPanel />);
+
+    expect(markButton()).toHaveAttribute('aria-disabled', 'true');
+    expect(clearButton()).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('marks the selected edges, and then offers to clear them instead', async () => {
+    boxWith((_, index) => index < 3);
+    render(<PropertiesPanel />);
+    expect(clearButton()).toHaveAttribute('aria-disabled', 'true');
+
+    await userEvent.click(markButton());
+
+    expect(sharpCount()).toBe(3);
+    expect(markButton()).toHaveAttribute('aria-disabled', 'true');
+    expect(clearButton()).not.toHaveAttribute('aria-disabled');
+    expect(useEditorStore.getState().historyUndo[0]).toBe('Mark sharp');
+
+    await userEvent.click(clearButton());
+
+    expect(sharpCount()).toBe(0);
+    expect(useEditorStore.getState().historyUndo[0]).toBe('Clear sharp');
+  });
+
+  it('offers both on a selection that is partly sharp', () => {
+    const mesh = boxWith((_, index) => index < 2);
+    const [first] = mesh.edges.values();
+    first.sharp = true;
+    useEditorStore.getState().touchMesh();
+
+    render(<PropertiesPanel />);
+
+    expect(markButton()).not.toHaveAttribute('aria-disabled');
+    expect(clearButton()).not.toHaveAttribute('aria-disabled');
+  });
+});

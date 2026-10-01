@@ -1,7 +1,8 @@
-# Export
+# Export and import
 
-OBJ first, then binary FBX. Both live in `src/kernel/io/` and import nothing from
-the browser.
+OBJ first, then binary FBX, out and back in. Both live in `src/kernel/io/` and
+import nothing from the browser. [Importing meshes](#importing-meshes) covers
+the way back.
 
 ## Why OBJ was built first
 
@@ -56,28 +57,28 @@ export: triangulating for a game engine must not alter what the user is editing.
 
 ## UVs and pictures
 
-Only image planes carry UVs. The editor has no way to unwrap a mesh, so any UVs
-written for ordinary geometry would be invented rather than the user's. Exports
-used to box-project a layer onto every face for that reason, which only gave the
-next program coordinates it would have to throw away. Importers take a mesh
-without UVs, and the engines that need them for lightmaps generate their own.
+**Ordinary geometry is exported without UVs.** The editor has no way to unwrap
+a mesh, so any UVs it wrote would be invented, and the next program would have
+to throw them away. (An earlier build box-projected a layer onto every face for
+exactly that result.) Importers accept a mesh without UVs, and the engines that
+need them for lightmaps generate their own.
 
-An image plane is the exception: its UVs are exact, set corner by corner when
-the image is imported, and the picture is the point of it. So an image plane
-goes out the way the viewport draws it:
+**Image planes are the exception.** Their UVs are exact, set corner by corner
+when the image is imported, and the picture is the whole point. So an image
+plane exports the way the viewport draws it:
 
-- with its UVs, exactly as the editor holds them, kept through triangulation.
-  Mirror, array and solidify only carry them on the original faces, and
-  subdivide and remesh drop them, so a plane under those modifiers looks wrong
-  in the viewport and exports the same way;
-- with **one material**, named after the picture's file, holding the picture on
-  its base colour. The viewport puts the image on every face whatever the
-  material slots say, so the export does too. The colour is white so an
-  importer that tints the picture by it leaves the picture as it is;
-- with the picture itself: beside an OBJ as its own file, inside an FBX.
+- **Its UVs**, exactly as the editor holds them, kept through triangulation.
+  Some modifiers do not carry them everywhere: mirror, array and solidify keep
+  them on the original faces only, and subdivide and remesh drop them. A plane
+  under those modifiers looks wrong in the viewport and exports the same way.
+- **One material**, named after the picture's file, with the picture on its
+  base colour. The viewport puts the image on every face whatever the material
+  slots say, so the export does too. The base colour is white, so an importer
+  that tints the picture by it leaves the picture unchanged.
+- **The picture itself**: beside an OBJ as its own file, inside an FBX.
 
 The picture keeps its imported name, with spaces turned to underscores (an OBJ
-reader stops at the first space), and a suffix (`ref_2.png`) when two pictures
+reader stops at the first space), plus a suffix (`ref_2.png`) when two pictures
 share a name. Several planes showing the same picture share one file.
 
 ## OBJ
@@ -104,11 +105,12 @@ file rather than the current group.
 The highest-risk part of the build. Three.js has no FBX exporter, so the writer
 is our own: **binary FBX version 7400**.
 
-It started as ASCII, on the theory that every importer reads it. Blender's does
-not: its stock importer refuses any ASCII FBX outright, and the newer native one
-rejected ours over a missing comma between wrapped array rows. Binary is what
-Blender's exporter and the FBX SDK write, so it is what everything reads. Arrays
-are stored uncompressed, which the format allows, so no zlib is needed.
+**Why binary, not ASCII.** The writer started as ASCII, on the theory that every
+importer reads it. Blender's does not: its stock importer refuses any ASCII FBX
+outright, and the newer native one rejected ours over a missing comma between
+wrapped array rows. Binary is what Blender's exporter and the FBX SDK write, so
+it is what everything reads. Arrays are stored uncompressed, which the format
+allows, so no zlib is needed.
 
 ### Structure emitted
 
@@ -177,10 +179,16 @@ mis-assigns data:
 | `LayerElementUV` (image planes) | `ByPolygonVertex` | `IndexToDirect` |
 | `LayerElementMaterial` | `ByPolygon` | `IndexToDirect` |
 
-`ByPolygonVertex` + `Direct` means one entry per polygon corner, in order, with
-no index array. UVs are written `IndexToDirect` because that is how every other
-exporter writes them, with each corner pointing at its own entry.
-`ByPolygon` + `IndexToDirect` means one material index per polygon. Tests assert the array lengths match: for a cube, 24 normals × 3 floats
+What the pairs mean:
+
+- `ByPolygonVertex` + `Direct`: one entry per polygon corner, in order, with no
+  index array.
+- `ByPolygonVertex` + `IndexToDirect` for UVs: an index array as well, with each
+  corner pointing at its own entry. It carries no extra information, but it is
+  how every other exporter writes UVs.
+- `ByPolygon` + `IndexToDirect`: one material index per polygon.
+
+Tests assert that the array lengths match: for a cube, 24 normals × 3 floats
 and 6 material indices.
 
 ### Axis and unit metadata
@@ -193,8 +201,8 @@ form a **right-handed** system, or importers mirror the model:
 | Y | 1, +1 | 2, +1 | 0, +1 |
 | Z | 2, +1 | 1, −1 | 0, +1 |
 
-The Z-up row is Blender's own system. A front sign of `+1` there is the
-left-handed mistake the ASCII writer made.
+The Z-up row is Blender's own system. Writing its front sign as `+1` makes the
+system left-handed, which is the mistake the ASCII writer made.
 
 `UnitScaleFactor` is **centimetres per file unit**: 100 when the coordinates are
 in metres, 1 when they are in centimetres. Declaring 1 for a metre file makes
@@ -219,30 +227,123 @@ instead of into the vertices, and has to be converted too:
 Ids must be unique and non-zero. `0` is reserved for the scene root, which is
 what `C: "OO",<modelId>,0` connects each model to.
 
+## Importing meshes
+
+FILE > IMPORT MESH reads `.obj` and `.fbx`. Both come in through
+`meshFromPolygons` in `obj.ts`, and both add their objects through one store
+action, `addImportedObjects`: one step to undo, named after the file, every
+object selected, at the 3D cursor.
+
+Only geometry comes in. Materials, UVs, normals, animation and skinning stay
+behind, since an OBJ's material file is a second file the picker never sees,
+and the FBX reader matches the OBJ one rather than half a material pipeline.
+Normals are recomputed from the faces.
+
+### Polygons a mesh cannot hold
+
+Files carry polygons a half-edge mesh refuses: a corner repeated in place, a
+ring that touches itself, a polygon that collapses to a line. `addFace` throws
+on the first of those, and it used to fail the whole OBJ with it. They are now
+dropped, and the rest of the file comes in.
+
+A mesh past `MESH_BUDGET` is refused by name ("Scan has 400,000 faces, past
+the 250,000 a browser tab can hold") before a single vertex is built, because
+past that size the tab dies building it.
+
+### Which FBX files
+
+Binary and ASCII, version 7 onwards, which is every file a current exporter
+writes:
+
+- From 7500 on, the three lengths that open a binary record are 64-bit, and
+  the record that closes a list is 25 bytes rather than 13.
+- Binary arrays are usually deflated. They are inflated through
+  `DecompressionStream`, which is a web standard Node provides too, the same as
+  the `TextEncoder` the writer uses, so the kernel tests still run it in Node.
+  Arrays are inflated only when read: a file carries normals, UVs and animation
+  curves an import never looks at.
+- Object ids are 64-bit and kept as text. Two ids rounded to the same double
+  would wire one model's mesh to another.
+- FBX 6 is refused by name, since its geometry lives inside the model and none
+  of the above applies.
+
+### Where an FBX object lands
+
+Every model holding a `Mesh` geometry becomes an object. Its whole placement is
+baked into the vertices, as the FBX SDK documents it:
+
+```text
+world = parent · T · Roff · Rp · Rpre · R · Rpost⁻¹ · Rp⁻¹ · Soff · Sp · S · Sp⁻¹
+mesh  = axes · world · Tg · Rg · Sg
+```
+
+- `RotationActive` gates `RotationOrder` and the pre and post rotations, which
+  are otherwise ignored. Blender's importer reads them the same way. Pre and
+  post rotations always turn XYZ.
+- The geometric transform (`Tg · Rg · Sg`) moves the mesh without moving the
+  model or its children. 3ds Max writes one on nearly everything.
+- `axes` is the inverse of the export conversion: the file's coord, up and
+  front axes become the editor's X, Y and Z, and `UnitScaleFactor / 100` turns
+  the file's units into metres. A file that names no unit is in centimetres,
+  the format's default.
+- Where the model's origin lands is kept apart, as the object's position, so
+  the object still pivots where it did in the program that wrote it.
+- A placement that mirrors (a negative scale, or a left-handed axis triple)
+  turns every face inside out once baked in, so each polygon's corners are put
+  back in the other order.
+
+### Checked against real files
+
+Seven FBX files from Character Creator, 3ds Max, Blender and others, including
+a 7.7 file with 64-bit records and a 28 MB character, were read by both this
+importer and Blender 3.6's, and compared in the same space. All 37 meshes came
+in with the same face counts, and 36 with bounds that agree within 0.0004%. A
+scene Blender built for the purpose (a parented Suzanne turning ZXY, a cube
+mirrored by a negative scale, a 7-sided n-gon) landed within a micrometre per
+vertex.
+
+The odd one out is a 3ds Max prop with a rotated, non-uniformly scaled geometric
+offset, where the two importers part by 3.6 mm. Evaluating the SDK formula
+above independently, in Blender's own Python, put this importer within 0.4
+micrometres of it and Blender's importer 3.6 mm away.
+
 ## Validating exports
+
+### Automated
 
 Kernel tests read the binary back node by node, checking every end offset,
 property length and closing record, then assert the structure above.
 
-The writer was also checked in Blender 4.5 and 5.0, through both the stock and
-the native FBX importer, by exporting three objects (an asymmetric marker, a
-rotated and non-uniformly scaled sphere, a rotated torus) under every preset,
-with transforms applied and left on the node. Every vertex landed within 1e-6 of
-where it should.
+### By hand, in Blender
 
-Image planes were checked the same way, with a 4 by 2 picture whose halves and
-rows differ in colour, exported as OBJ and as FBX, triangulated or not. The FBX
-files sat in a folder without the image, so the picture had to come from inside
-them. In every importer the picture loaded, every corner kept its UV, the pixel
-under each corner was the one the editor shows there, and the unturned plane
-faced the front view upright and unmirrored. A deliberately flipped export
-failed the same check. These checks are not in the repository yet. The next step is to
-make it a Blender headless harness:
+These checks were run manually and are not in the repository.
+
+**Geometry and transforms.** In Blender 4.5 and 5.0, through both the stock and
+the native FBX importer: three objects (an asymmetric marker, a rotated and
+non-uniformly scaled sphere, a rotated torus), exported under every preset, with
+transforms both applied and left on the node. Every vertex landed within 1e-6
+of where it should.
+
+**Image planes.** A 4 by 2 picture whose halves and rows differ in colour,
+exported as OBJ and as FBX, triangulated and not. The FBX files sat in a folder
+without the image, so the picture had to come from inside them. In every
+importer:
+
+- the picture loaded,
+- every corner kept its UV,
+- the pixel under each corner was the one the editor shows there,
+- the unrotated plane faced the front view, upright and unmirrored.
+
+A deliberately flipped export failed the same check, so the check can fail.
+
+### Next step
+
+Turn the manual check into a Blender headless harness:
 
 ```bash
 blender --background --python validate.py
 ```
 
-importing exported fixtures and asserting vertex positions, face counts,
-material slots and object count, turning "does the FBX work?" into an automated
+It would import exported fixtures and assert vertex positions, face counts,
+material slots and object count, so "does the FBX work?" becomes an automated
 test rather than a manual inspection.

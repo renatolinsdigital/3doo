@@ -18,6 +18,7 @@ import {
   createPreviewWireMaterial,
   createRecentPointMaterial,
   createSelectionOverlayMaterial,
+  createSharpWireMaterial,
   createSurfaceMaterial,
   createVertexHighlightMaterial,
   createWireMaterial,
@@ -33,6 +34,7 @@ import {
   buildNormalLines,
   buildSilhouetteEdges,
   frontEdgePositions,
+  frontSharpPositions,
 } from './meshBuffers';
 
 /**
@@ -165,6 +167,7 @@ export class ObjectView {
   private readonly previewWire = new LineSegments2();
   private readonly vertexHighlight = new THREE.LineSegments();
   private readonly selectedFaces = new THREE.Mesh();
+  private readonly sharpEdges = new LineSegments2();
   private readonly selectedEdges = new LineSegments2();
   private readonly points = new THREE.Points();
   private readonly hoverPoint = new THREE.Points();
@@ -183,6 +186,9 @@ export class ObjectView {
   private readonly hoverPosition = new Float32Array(3);
   /** Whether the current mode has vertices to hover at all. */
   private hoverable = false;
+
+  /** Whether the sharp edges are drawn, which only edit mode does. */
+  private marksSharp = false;
 
   /** Held for `refreshForCamera`, which re-traces the silhouette as the camera moves. */
   private outlined: { mesh: BMesh; object: SceneObject } | null = null;
@@ -222,6 +228,7 @@ export class ObjectView {
     this.cage.userData.objectId = objectId;
     this.outline.name = `${objectId}:outline`;
     this.origin.name = `${objectId}:origin`;
+    this.sharpEdges.name = `${objectId}:sharp`;
 
     // Never drawn: the modifier result is what the user looks at, and this is
     // only here for the ray to hit. Three raycasts a mesh it is handed whether
@@ -234,6 +241,7 @@ export class ObjectView {
     this.wire.material = createWireMaterial(false);
     this.previewWire.material = createPreviewWireMaterial();
     this.vertexHighlight.material = createVertexHighlightMaterial();
+    this.sharpEdges.material = createSharpWireMaterial();
     this.selectedEdges.material = createWireMaterial(true);
     this.selectedFaces.material = createSelectionOverlayMaterial();
     this.points.material = createPointMaterial();
@@ -251,17 +259,20 @@ export class ObjectView {
     this.previewWire.renderOrder = -1;
     this.outline.renderOrder = 1;
     this.selectedFaces.renderOrder = 2;
+    // Under every mark of the selection, so a sharp edge that is picked, or
+    // has a picked end, reads as picked first.
+    this.sharpEdges.renderOrder = 3;
     // Over the plain wire it lies on and under the fully selected edges, which
     // are the same red without the fade and have to win where the two meet.
-    this.vertexHighlight.renderOrder = 3;
-    this.selectedEdges.renderOrder = 4;
-    this.points.renderOrder = 5;
+    this.vertexHighlight.renderOrder = 4;
+    this.selectedEdges.renderOrder = 5;
+    this.points.renderOrder = 6;
     // Over the dots, so the mark wins at the depth it shares with the vertex
     // it marks, and over a second vertex sitting in exactly the same place.
-    this.hoverPoint.renderOrder = 6;
-    this.recentPoints.renderOrder = 7;
+    this.hoverPoint.renderOrder = 7;
+    this.recentPoints.renderOrder = 8;
     // Last of all, over every mark on the geometry as well as the geometry.
-    this.origin.renderOrder = 8;
+    this.origin.renderOrder = 9;
 
     // One point, rewritten in place: a hover follows the pointer, and building
     // a geometry per move would churn a buffer a frame. Never culled, since a
@@ -287,6 +298,7 @@ export class ObjectView {
       this.wire,
       this.vertexHighlight,
       this.selectedFaces,
+      this.sharpEdges,
       this.selectedEdges,
       this.points,
       this.hoverPoint,
@@ -489,6 +501,21 @@ export class ObjectView {
       state.mode === 'edit' && state.isActive,
     );
 
+    // Edit mode alone, on the cage: the mark is there to be edited, and out of
+    // edit mode the break in the shading is what shows it. Culled like the
+    // wire it lies on rather than like the selection, since it is a property
+    // of the mesh and not something the user just picked round the back.
+    this.marksSharp = state.mode === 'edit' && state.isActive;
+    this.setLinePositions(
+      this.sharpEdges,
+      !this.marksSharp
+        ? new Float32Array(0)
+        : this.culled
+          ? this.frontSharp(this.culled.cage, object, state.eye)
+          : edges.sharpPositions,
+      this.marksSharp,
+    );
+
     const highlight = new THREE.BufferGeometry();
     highlight.setAttribute('position', new THREE.BufferAttribute(edges.partialPositions, 3));
     highlight.setAttribute(
@@ -574,10 +601,16 @@ export class ObjectView {
    * preference, given in the CSS pixels the preference is written in.
    */
   setResolution(width: number, height: number, pixelRatio: number): void {
-    for (const line of [this.outline, this.wire, this.selectedEdges, this.previewWire]) {
+    for (const line of [
+      this.outline,
+      this.wire,
+      this.sharpEdges,
+      this.selectedEdges,
+      this.previewWire,
+    ]) {
       (line.material as LineMaterial).resolution.set(width, height);
     }
-    for (const line of [this.wire, this.selectedEdges, this.previewWire]) {
+    for (const line of [this.wire, this.sharpEdges, this.selectedEdges, this.previewWire]) {
       (line.material as LineMaterial).linewidth = WIRE_WIDTH_DEVICE_PX / Math.max(1, pixelRatio);
     }
   }
@@ -601,11 +634,19 @@ export class ObjectView {
     if (preview) {
       this.setLinePositions(this.previewWire, this.frontEdges(preview, object, eye), true);
     }
+    if (this.marksSharp) {
+      this.setLinePositions(this.sharpEdges, this.frontSharp(cage, object, eye), true);
+    }
   }
 
   /** The mesh's edges minus the ones lying on its far side, in object space. */
   private frontEdges(cull: EdgeCull, object: SceneObject, eye: Vec3): Float32Array {
     return frontEdgePositions(cull, inverseTransformPoint(object.transform, eye));
+  }
+
+  /** The same for the sharp edges alone. */
+  private frontSharp(cull: EdgeCull, object: SceneObject, eye: Vec3): Float32Array {
+    return frontSharpPositions(cull, inverseTransformPoint(object.transform, eye));
   }
 
   /** The cull table for a mesh, flattened again only once the mesh has moved on. */

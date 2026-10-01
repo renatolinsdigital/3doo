@@ -8,7 +8,8 @@ import {
   transformPoint,
   vec3,
 } from '../math';
-import { BMesh, cloneMesh } from '../mesh';
+import { BMesh, type Vert, cloneMesh } from '../mesh';
+import { MESH_BUDGET } from '../ops/budget';
 import { triangulateFaces } from '../ops/subdivide';
 
 import {
@@ -163,6 +164,69 @@ export function prepareMesh(object: ExportObject, options: ExportOptions): BMesh
 export interface ImportedObject {
   name: string;
   mesh: BMesh;
+  /** Where the object's origin sits in the file, in editor space. The mesh is relative to it. */
+  position: Vec3;
+}
+
+/**
+ * Builds a mesh from polygons that index into `positions`, creating only the
+ * vertices some polygon uses.
+ *
+ * Files carry polygons a half-edge mesh cannot hold: a corner repeated, or a
+ * polygon that collapses to a line. Those are dropped, since a single one would
+ * otherwise fail the whole import. A corner pointing past the end of
+ * `positions` is dropped from its polygon.
+ */
+export function meshFromPolygons(
+  name: string,
+  positions: readonly Vec3[],
+  polygons: readonly (readonly number[])[],
+): BMesh {
+  const rings: number[][] = [];
+  const used = new Set<number>();
+  for (const polygon of polygons) {
+    const ring: number[] = [];
+    for (const index of polygon) {
+      if (!positions[index] || ring[ring.length - 1] === index) continue;
+      ring.push(index);
+    }
+    if (ring.length > 1 && ring[0] === ring[ring.length - 1]) ring.pop();
+    if (ring.length < 3 || new Set(ring).size !== ring.length) continue;
+    rings.push(ring);
+    for (const index of ring) used.add(index);
+  }
+
+  // Checked before a single vertex is made: past the budget the tab dies
+  // building the mesh, long before anything could refuse it.
+  if (rings.length > MESH_BUDGET.faces) {
+    throw new Error(
+      `${name} has ${count(rings.length)} faces, past the ${count(MESH_BUDGET.faces)} a browser tab can hold`,
+    );
+  }
+  if (used.size > MESH_BUDGET.verts) {
+    throw new Error(
+      `${name} has ${count(used.size)} vertices, past the ${count(MESH_BUDGET.verts)} a browser tab can hold`,
+    );
+  }
+
+  const mesh = new BMesh();
+  const verts = new Map<number, Vert>();
+  const vertAt = (index: number): Vert => {
+    let vert = verts.get(index);
+    if (!vert) {
+      vert = mesh.addVert(positions[index]);
+      verts.set(index, vert);
+    }
+    return vert;
+  };
+  for (const ring of rings) mesh.addFace(ring.map(vertAt));
+
+  mesh.computeNormals();
+  return mesh;
+}
+
+function count(value: number): string {
+  return value.toLocaleString('en-US');
 }
 
 interface ObjGroup {
@@ -174,7 +238,8 @@ interface ObjGroup {
  * Parses OBJ geometry into one mesh per `o`/`g` group.
  *
  * Positions are collected globally first because OBJ face indices address the
- * whole file, not the current group.
+ * whole file, not the current group. An OBJ has no origins, so every object
+ * keeps the file's.
  */
 export function importOBJ(text: string): ImportedObject[] {
   const positions: Vec3[] = [];
@@ -216,32 +281,11 @@ export function importOBJ(text: string): ImportedObject[] {
     if (polygon.length >= 3) currentGroup().polygons.push(polygon);
   }
 
-  const objects: ImportedObject[] = [];
-  for (const group of groups) {
-    if (group.polygons.length === 0) continue;
-
-    const mesh = new BMesh();
-    const local = new Map<number, number>();
-
-    for (const polygon of group.polygons) {
-      const ring = [];
-      for (const index of polygon) {
-        const source = positions[index];
-        if (!source) continue;
-        let vertId = local.get(index);
-        if (vertId === undefined) {
-          vertId = mesh.addVert(source).id;
-          local.set(index, vertId);
-        }
-        const vert = mesh.verts.get(vertId);
-        if (vert) ring.push(vert);
-      }
-      if (ring.length >= 3) mesh.addFace(ring);
-    }
-
-    mesh.computeNormals();
-    objects.push({ name: group.name, mesh });
-  }
-
-  return objects;
+  return groups
+    .map((group) => ({
+      name: group.name,
+      mesh: meshFromPolygons(group.name, positions, group.polygons),
+      position: vec3(),
+    }))
+    .filter((object) => object.mesh.faces.size > 0);
 }

@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { createBox, createPlane, vec3, BMesh } from '@kernel/index';
+import { type Edge, createBox, createPlane, vec3, BMesh } from '@kernel/index';
 
 import {
   buildEdgeCull,
   buildMeshBuffers,
   buildSilhouetteEdges,
   frontEdgePositions,
+  frontSharpPositions,
 } from './meshBuffers';
 
 /** Silhouette buffers are pairs of points, so two vertices per edge. */
@@ -154,5 +155,57 @@ describe('vertex selection fade', () => {
     mesh.selectAll();
 
     expect(buildMeshBuffers(mesh).edges.partialPositions.length).toBe(0);
+  });
+});
+
+describe('sharp edges', () => {
+  /** A cube shaded smooth with the edges `pick` chooses marked sharp. */
+  function sharpBox(pick: (edge: Edge) => boolean = () => true): BMesh {
+    const mesh = createBox(1);
+    for (const face of mesh.faces.values()) face.smooth = true;
+    for (const edge of mesh.edges.values()) edge.sharp = pick(edge);
+    return mesh;
+  }
+
+  /** Whether every component of every normal is one of `sizes`, of either sign. */
+  const allAt = (normals: Float32Array, ...sizes: number[]) =>
+    [...normals].every((value) => sizes.some((size) => Math.abs(Math.abs(value) - size) < 1e-6));
+
+  it('lists the sharp edges, selected or not', () => {
+    const mesh = sharpBox((edge) => edge.v0.co.y > 0 && edge.v1.co.y > 0);
+    const [first] = mesh.edges.values();
+    first.selected = true;
+
+    expect(edgeCount(buildMeshBuffers(mesh).edges.sharpPositions)).toBe(4);
+  });
+
+  it('breaks the smooth shading along them', () => {
+    const smooth = buildMeshBuffers(sharpBox(() => false)).solid.normals;
+    const sharp = buildMeshBuffers(sharpBox()).solid.normals;
+
+    // Smooth, a cube's corners lean out along the diagonals; cut along every
+    // edge, each face shades flat on its own axis.
+    expect(allAt(smooth, 1 / Math.sqrt(3))).toBe(true);
+    expect(allAt(sharp, 0, 1)).toBe(true);
+  });
+
+  it('leaves out the sharp edges on the far side, like the wire', () => {
+    const cull = buildEdgeCull(sharpBox());
+
+    expect(edgeCount(frontSharpPositions(cull, vec3(0, 0, 10)))).toBe(4);
+    expect(edgeCount(frontSharpPositions(cull, vec3(10, 10, 10)))).toBe(9);
+  });
+
+  it('draws none when every sharp edge is round the back', () => {
+    const behind = (edge: Edge) => edge.v0.co.z < 0 && edge.v1.co.z < 0;
+
+    expect(edgeCount(frontSharpPositions(buildEdgeCull(sharpBox(behind)), vec3(0, 0, 10)))).toBe(0);
+  });
+
+  it('keeps them all where the cull does not hold', () => {
+    const plane = createPlane(1);
+    for (const edge of plane.edges.values()) edge.sharp = true;
+
+    expect(edgeCount(frontSharpPositions(buildEdgeCull(plane), vec3(0, 10, 0)))).toBe(4);
   });
 });

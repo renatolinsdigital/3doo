@@ -12,6 +12,7 @@ import {
   sub,
   vec3,
 } from '../math';
+import { execOperator } from '../commands/operators';
 import { BMesh } from '../mesh';
 import type { Edge, Face, Vert } from '../mesh/types';
 import {
@@ -46,7 +47,7 @@ import { relaxVerts } from './relax';
 import { circleVerts } from './circle';
 import { spaceVerts } from './space';
 import { countMergeByDistance, mergeByDistance, mergeVerts } from './merge';
-import { flipNormals, recalculateNormals } from './normals';
+import { flipNormals, markSharp, recalculateNormals } from './normals';
 import { budgetRefusal, vertsAfterEdgeSubdivide, worthWarning } from './budget';
 import {
   subdivideEdges,
@@ -1528,6 +1529,170 @@ describe('normals', () => {
         center.x * face.normal.x + center.y * face.normal.y + center.z * face.normal.z;
       expect(outward).toBeLessThan(0);
     }
+  });
+});
+
+describe('sharp edges', () => {
+  const sharpCount = (mesh: BMesh) => [...mesh.edges.values()].filter((edge) => edge.sharp).length;
+
+  /** A cube shaded smooth, so a sharp edge has shading to split. */
+  function smoothBox(): BMesh {
+    const cube = createBox(2);
+    for (const face of cube.faces.values()) face.smooth = true;
+    return cube;
+  }
+
+  /** The four edges around the face whose normal is `normal`. */
+  const edgesOf = (mesh: BMesh, normal: Vec3) => mesh.faceEdges(faceAt(mesh, normal));
+
+  it('marks and clears, counting only the edges that change', () => {
+    const cube = createBox(2);
+    const top = edgesOf(cube, vec3(0, 1, 0));
+
+    expect(markSharp(top, true)).toBe(4);
+    expect(markSharp(top, true)).toBe(0);
+    expect(sharpCount(cube)).toBe(4);
+
+    expect(markSharp([...cube.edges.values()], false)).toBe(4);
+    expect(sharpCount(cube)).toBe(0);
+  });
+
+  it('leaves every corner on its vertex normal while nothing is sharp', () => {
+    expect(smoothBox().cornerNormals().size).toBe(0);
+  });
+
+  it('splits the fan at a sharp edge and averages each side on its own', () => {
+    const cube = smoothBox();
+    markSharp(edgesOf(cube, vec3(0, 1, 0)), true);
+    const normals = cube.cornerNormals();
+    const top = faceAt(cube, vec3(0, 1, 0));
+    const front = faceAt(cube, vec3(0, 0, 1));
+
+    // The top is cut off from the sides all round, so it shades flat.
+    for (const loop of cube.faceLoops(top)) {
+      expect(normals.get(loop.id)).toEqual(top.normal);
+    }
+
+    // A side still blends into the side next to it, just not into the top.
+    for (const loop of cube.faceLoops(front)) {
+      if (loop.vert.co.y < 0) {
+        expect(normals.has(loop.id)).toBe(false);
+        continue;
+      }
+      const normal = normals.get(loop.id);
+      expect(normal?.y).toBeCloseTo(0);
+      expect(normal?.z).toBeCloseTo(Math.SQRT1_2);
+      expect(Math.abs(normal?.x ?? 0)).toBeCloseTo(Math.SQRT1_2);
+    }
+  });
+
+  it('leaves the fan whole at a crease that stops partway across a surface', () => {
+    const grid = createGrid(2, 4);
+    for (const face of grid.faces.values()) face.smooth = true;
+    // Both ends inside the grid: there is a way round each of them that does
+    // not cross the edge, so nothing is cut off.
+    const inside = (vert: Vert) => vert.edges.every((edge) => edge.loops.length === 2);
+    const interior = [...grid.edges.values()].find((edge) => inside(edge.v0) && inside(edge.v1));
+    markSharp(interior ? [interior] : [], true);
+
+    expect(interior).toBeDefined();
+    expect(grid.cornerNormals().size).toBe(0);
+  });
+
+  it('cuts a border vertex in two, having no way round the other side', () => {
+    const grid = createGrid(2, 4);
+    for (const face of grid.faces.values()) face.smooth = true;
+    const border = (vert: Vert) => vert.edges.some((edge) => edge.loops.length === 1);
+    const spoke = [...grid.edges.values()].find(
+      (edge) => edge.loops.length === 2 && border(edge.v0) !== border(edge.v1),
+    );
+    markSharp(spoke ? [spoke] : [], true);
+
+    // The border end has one face either side of it, now shading apart; the
+    // inner end stays whole.
+    expect(grid.cornerNormals().size).toBe(2);
+  });
+
+  it('gives a flat face nothing, since it never reads a vertex normal', () => {
+    const cube = createBox(2);
+    markSharp([...cube.edges.values()], true);
+
+    expect(cube.cornerNormals().size).toBe(0);
+  });
+
+  it('is an operator that refuses what it has nothing to change on', () => {
+    const cube = createBox(2);
+    const context = { mesh: cube, selectMode: 'edge' as const, cursor: vec3() };
+
+    expect(execOperator(context, 'markSharp').refused).toBe(true);
+
+    for (const edge of edgesOf(cube, vec3(0, 1, 0))) edge.selected = true;
+    expect(execOperator(context, 'markSharp')).toEqual({ status: 'Marked 4 edge(s) sharp' });
+    expect(execOperator(context, 'markSharp').refused).toBe(true);
+
+    expect(execOperator(context, 'markSharp', { clear: true })).toEqual({
+      status: 'Cleared sharp from 4 edge(s)',
+    });
+    expect(execOperator(context, 'markSharp', { clear: true }).refused).toBe(true);
+    expect(sharpCount(cube)).toBe(0);
+  });
+
+  it('survives an edge being split in two', () => {
+    const cube = createBox(2);
+    const [edge] = cube.edges.values();
+    markSharp([edge], true);
+
+    subdivideEdges(cube, [edge], 3);
+
+    expect(sharpCount(cube)).toBe(4);
+    expect(cube.validate()).toEqual([]);
+  });
+
+  it('runs on through a subdivision, onto the edges that follow the old ones', () => {
+    const cube = createBox(2);
+    markSharp([...cube.edges.values()], true);
+
+    subdivideFaces(cube, [...cube.faces.values()], { cuts: 1 });
+
+    // Each of the twelve edges is now two, and the cuts across the faces
+    // between them are new and smooth.
+    expect(cube.edges.size).toBe(48);
+    expect(sharpCount(cube)).toBe(24);
+  });
+
+  it('runs on through a loop cut across it', () => {
+    const cube = createBox(2);
+    const top = faceAt(cube, vec3(0, 1, 0));
+    const start = cube.faceEdges(top)[0];
+    // The ring runs across `start` and the three edges parallel to it.
+    markSharp([start], true);
+
+    loopCut(cube, start, { cuts: 2 });
+
+    expect(sharpCount(cube)).toBe(3);
+    expect(cube.validate()).toEqual([]);
+  });
+
+  it('stays on an edge whose end is welded onto another vertex', () => {
+    const mesh = new BMesh();
+    const a = mesh.addVert(vec3(0, 0, 0));
+    const b = mesh.addVert(vec3(1, 0, 0));
+    const c = mesh.addVert(vec3(1, 0, 1));
+    const d = mesh.addVert(vec3(0, 0, 1));
+    const near = mesh.addVert(vec3(1.0001, 0, 0));
+    mesh.addFace([a, b, c, d]);
+    // A second quad meeting the first along b-c, but through a twin of b.
+    const e = mesh.addVert(vec3(2, 0, 0));
+    const f = mesh.addVert(vec3(2, 0, 1));
+    mesh.addFace([near, e, f, c]);
+    const welded = mesh.findEdge(near, e);
+    if (welded) welded.sharp = true;
+
+    mergeByDistance(mesh, [...mesh.verts.values()], 0.001);
+
+    expect(mesh.verts.size).toBe(6);
+    expect(sharpCount(mesh)).toBe(1);
+    expect(mesh.findEdge(b, e)?.sharp).toBe(true);
   });
 });
 

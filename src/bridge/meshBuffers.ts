@@ -22,6 +22,8 @@ export interface EdgeBuffers {
   partialPositions: Float32Array;
   /** 1 at the selected end of each `partialPositions` segment, 0 at the other. */
   partialWeights: Float32Array;
+  /** Edges marked sharp, selected or not. */
+  sharpPositions: Float32Array;
 }
 
 export interface PointBuffers {
@@ -88,6 +90,10 @@ function buildSolid(mesh: BMesh): SolidBuffers {
   const triangleFaceIds = new Int32Array(triangles);
   const selectedTriangles = new Float32Array(selectedTriangleCount * 9);
 
+  // Empty on a mesh with no sharp edges, which is most of them, and then every
+  // smooth corner reads its vertex normal below.
+  const splitNormals = mesh.cornerNormals();
+
   const groups: SolidBuffers['groups'] = [];
   let vertex = 0;
   let uv = 0;
@@ -120,7 +126,9 @@ function buildSolid(mesh: BMesh): SolidBuffers {
 
         for (let corner = 0; corner < 3; corner++) {
           const loop = loops[indices[i + corner]];
-          const normal = face.smooth ? loop.vert.normal : face.normal;
+          const normal = face.smooth
+            ? (splitNormals.get(loop.id) ?? loop.vert.normal)
+            : face.normal;
           const co = loop.vert.co;
 
           positions[vertex] = co.x;
@@ -157,7 +165,9 @@ function buildEdges(mesh: BMesh): EdgeBuffers {
   // reason `buildSolid` gives.
   let selectedCount = 0;
   let partialCount = 0;
+  let sharpCount = 0;
   for (const edge of mesh.edges.values()) {
+    if (edge.sharp) sharpCount++;
     if (edge.selected) selectedCount++;
     else if (edge.v0.selected !== edge.v1.selected) partialCount++;
   }
@@ -167,11 +177,13 @@ function buildEdges(mesh: BMesh): EdgeBuffers {
   const selectedPositions = new Float32Array(selectedCount * 6);
   const partialPositions = new Float32Array(partialCount * 6);
   const partialWeights = new Float32Array(partialCount * 2);
+  const sharpPositions = new Float32Array(sharpCount * 6);
 
   let e = 0;
   let selected = 0;
   let partial = 0;
   let weight = 0;
+  let sharp = 0;
 
   for (const edge of mesh.edges.values()) {
     const a = edge.v0.co;
@@ -185,6 +197,16 @@ function buildEdges(mesh: BMesh): EdgeBuffers {
     positions[at + 5] = b.z;
     edgeIds[e] = edge.id;
     e++;
+
+    if (edge.sharp) {
+      sharpPositions[sharp] = a.x;
+      sharpPositions[sharp + 1] = a.y;
+      sharpPositions[sharp + 2] = a.z;
+      sharpPositions[sharp + 3] = b.x;
+      sharpPositions[sharp + 4] = b.y;
+      sharpPositions[sharp + 5] = b.z;
+      sharp += 6;
+    }
 
     if (edge.selected) {
       selectedPositions[selected] = a.x;
@@ -215,7 +237,14 @@ function buildEdges(mesh: BMesh): EdgeBuffers {
     }
   }
 
-  return { positions, edgeIds, selectedPositions, partialPositions, partialWeights };
+  return {
+    positions,
+    edgeIds,
+    selectedPositions,
+    partialPositions,
+    partialWeights,
+    sharpPositions,
+  };
 }
 
 /**
@@ -279,6 +308,8 @@ export interface EdgeCull {
   closed: boolean;
   /** The mesh's extent in its own space, as `[minX, minY, minZ, maxX, maxY, maxZ]`. */
   bounds: Float32Array;
+  /** The sharp edges, as indices into `ends` and `sides`. */
+  sharp: Int32Array;
 }
 
 export function buildEdgeCull(mesh: BMesh): EdgeCull {
@@ -316,10 +347,12 @@ export function buildEdgeCull(mesh: BMesh): EdgeCull {
   const ends = new Float32Array(mesh.edges.size * 6);
   const sides = new Int32Array(mesh.edges.size * 2).fill(-1);
   const bounds = new Float32Array([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
+  const sharp: number[] = [];
   let closed = mesh.faces.size > 0;
 
   let e = 0;
   for (const edge of mesh.edges.values()) {
+    if (edge.sharp) sharp.push(e);
     ends[e * 6] = edge.v0.co.x;
     ends[e * 6 + 1] = edge.v0.co.y;
     ends[e * 6 + 2] = edge.v0.co.z;
@@ -343,7 +376,16 @@ export function buildEdgeCull(mesh: BMesh): EdgeCull {
     e++;
   }
 
-  return { ends, sides, normals, centres, facing: new Uint8Array(mesh.faces.size), closed, bounds };
+  return {
+    ends,
+    sides,
+    normals,
+    centres,
+    facing: new Uint8Array(mesh.faces.size),
+    closed,
+    bounds,
+    sharp: Int32Array.from(sharp),
+  };
 }
 
 /**
@@ -365,6 +407,31 @@ function withinBounds(bounds: Float32Array, eye: Vec3): boolean {
     eye.y <= bounds[4] &&
     eye.z <= bounds[5]
   );
+}
+
+/**
+ * Records in `cull.facing` which faces are turned towards the camera, or says
+ * the cull does not hold from here (see `frontEdgePositions`).
+ */
+function faceCamera(cull: EdgeCull, eye: Vec3): boolean {
+  const { normals, centres, facing, closed, bounds } = cull;
+  if (!closed || withinBounds(bounds, eye)) return false;
+
+  for (let f = 0; f < facing.length; f++) {
+    const towards =
+      normals[f * 3] * (eye.x - centres[f * 3]) +
+      normals[f * 3 + 1] * (eye.y - centres[f * 3 + 1]) +
+      normals[f * 3 + 2] * (eye.z - centres[f * 3 + 2]);
+    facing[f] = towards > 0 ? 1 : 0;
+  }
+  return true;
+}
+
+/** Whether an edge has a face towards the camera, or no far side to be on. */
+function onNearSide(cull: EdgeCull, edge: number): boolean {
+  const a = cull.sides[edge * 2];
+  const b = cull.sides[edge * 2 + 1];
+  return a < 0 || b < 0 || cull.facing[a] === 1 || cull.facing[b] === 1;
 }
 
 /**
@@ -390,34 +457,54 @@ function withinBounds(bounds: Float32Array, eye: Vec3): boolean {
  * is the point (see `ObjectView`).
  */
 export function frontEdgePositions(cull: EdgeCull, eye: Vec3): Float32Array {
-  const { ends, sides, normals, centres, facing, closed, bounds } = cull;
+  const { ends, sides } = cull;
 
-  if (!closed || withinBounds(bounds, eye)) return ends;
-
-  for (let f = 0; f < facing.length; f++) {
-    const towards =
-      normals[f * 3] * (eye.x - centres[f * 3]) +
-      normals[f * 3 + 1] * (eye.y - centres[f * 3 + 1]) +
-      normals[f * 3 + 2] * (eye.z - centres[f * 3 + 2]);
-    facing[f] = towards > 0 ? 1 : 0;
-  }
+  if (!faceCamera(cull, eye)) return ends;
 
   const edges = sides.length / 2;
-  const drawn = (edge: number): boolean => {
-    const a = sides[edge * 2];
-    const b = sides[edge * 2 + 1];
-    return a < 0 || b < 0 || facing[a] === 1 || facing[b] === 1;
-  };
 
   // Counted before it is filled, so the buffer handed on is exactly the size it
   // needs and nothing has to be copied out of a larger one afterwards.
   let kept = 0;
-  for (let edge = 0; edge < edges; edge++) if (drawn(edge)) kept++;
+  for (let edge = 0; edge < edges; edge++) if (onNearSide(cull, edge)) kept++;
 
   const positions = new Float32Array(kept * 6);
   let n = 0;
   for (let edge = 0; edge < edges; edge++) {
-    if (!drawn(edge)) continue;
+    if (!onNearSide(cull, edge)) continue;
+    const from = edge * 6;
+    positions[n] = ends[from];
+    positions[n + 1] = ends[from + 1];
+    positions[n + 2] = ends[from + 2];
+    positions[n + 3] = ends[from + 3];
+    positions[n + 4] = ends[from + 4];
+    positions[n + 5] = ends[from + 5];
+    n += 6;
+  }
+
+  return positions;
+}
+
+/**
+ * The sharp edges worth drawing over an opaque surface, left out on the far
+ * side the way `frontEdgePositions` leaves out the wireframe.
+ *
+ * They need it more than the wire does. A far-side edge comes through at a
+ * contour as a stub a pixel or two long, which in the faint wire is easy to
+ * miss and in cyan is not.
+ */
+export function frontSharpPositions(cull: EdgeCull, eye: Vec3): Float32Array {
+  const { ends, sharp } = cull;
+  if (sharp.length === 0) return new Float32Array(0);
+
+  const culls = faceCamera(cull, eye);
+  let kept = 0;
+  for (const edge of sharp) if (!culls || onNearSide(cull, edge)) kept++;
+
+  const positions = new Float32Array(kept * 6);
+  let n = 0;
+  for (const edge of sharp) {
+    if (culls && !onNearSide(cull, edge)) continue;
     const from = edge * 6;
     positions[n] = ends[from];
     positions[n + 1] = ends[from + 1];

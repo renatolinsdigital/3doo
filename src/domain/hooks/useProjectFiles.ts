@@ -5,6 +5,7 @@ import {
   type ExportTexture,
   exportFBX,
   exportOBJ,
+  importFBX,
   importOBJ,
   parseProject,
 } from '@kernel/index';
@@ -184,7 +185,9 @@ export function useProjectFiles() {
 
   const importMesh = useCallback(async () => {
     const state = useEditorStore.getState();
-    const file = await pickTextFile(MESH_FILE);
+    // The file itself rather than its text: a binary FBX does not survive
+    // being decoded as text.
+    const file = await pickFile(MESH_FILE);
     if (!file) return;
 
     const wrongKind = wrongKindMessage(file.name, MESH_FILE);
@@ -194,24 +197,16 @@ export function useProjectFiles() {
     }
 
     try {
-      const imported = importOBJ(file.text);
+      const bytes = await blobBytes(file);
+      const imported = file.name.toLowerCase().endsWith('.fbx')
+        ? await importFBX(bytes)
+        : importOBJ(new TextDecoder().decode(bytes));
       if (imported.length === 0) {
         state.pushToast('warning', `No geometry found in ${file.name}`);
         return;
       }
 
-      state.recordHistory('Import OBJ');
-      for (const entry of imported) {
-        // Reuse the primitive path to get a fully formed scene object, then
-        // swap in the imported mesh.
-        state.addPrimitive('plane');
-        const current = useEditorStore.getState();
-        const object = current.objects[current.objects.length - 1];
-        object.mesh = entry.mesh;
-        object.name = entry.name.toUpperCase();
-        object.primitive = null;
-      }
-      useEditorStore.getState().touchMesh();
+      state.addImportedObjects(imported, file.name);
       state.pushToast('success', `Imported ${imported.length} object(s) from ${file.name}`);
     } catch (error) {
       state.pushToast('error', `Could not import ${file.name}: ${(error as Error).message}`);

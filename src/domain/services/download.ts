@@ -63,10 +63,12 @@ export const PREFERENCES_FILE: FileKind = {
   accepts: ['.pref', '.pref.json'],
   label: 'a preferences file',
 };
+/** The mesh formats IMPORT MESH reads. `extension` goes unused, since a mesh is only ever read here. */
 export const MESH_FILE: FileKind = {
   extension: '.obj',
-  accepts: ['.obj'],
-  label: 'an OBJ mesh',
+  accepts: ['.obj', '.fbx'],
+  label: 'an OBJ or FBX mesh',
+  expected: '.obj or .fbx',
 };
 /**
  * The picture formats the importer reads.

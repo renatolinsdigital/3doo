@@ -151,6 +151,40 @@ export function useEdgeLengthTarget(): EdgeLengthTarget {
   );
 }
 
+export interface SharpSelection {
+  /** Selected edges marked sharp. */
+  sharp: number;
+  /** Selected edges that are not. */
+  smooth: number;
+}
+
+/**
+ * How the selected edges split between sharp and not, in edit mode.
+ *
+ * Marking sharp has nothing to do when every selected edge is sharp already,
+ * and clearing has nothing to do when none is, so this is what both buttons
+ * ask before they are pressed.
+ */
+export function useSharpSelection(): SharpSelection {
+  return useEditorStore(
+    useShallow((state): SharpSelection => {
+      void state.meshVersion;
+
+      const object = state.mode === 'edit' ? activeObject(state) : null;
+      if (!object) return { sharp: 0, smooth: 0 };
+
+      let sharp = 0;
+      let smooth = 0;
+      for (const edge of object.mesh.edges.values()) {
+        if (!edge.selected) continue;
+        if (edge.sharp) sharp++;
+        else smooth++;
+      }
+      return { sharp, smooth };
+    }),
+  );
+}
+
 export interface SelectionCounts {
   verts: number;
   edges: number;

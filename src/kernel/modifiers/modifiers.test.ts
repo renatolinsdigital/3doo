@@ -713,3 +713,77 @@ describe('remesh modifier', () => {
     expect(result.faces.size).toBeGreaterThan(50);
   });
 });
+
+describe('sharp edges through the stack', () => {
+  const sharpCount = (mesh: BMesh) => [...mesh.edges.values()].filter((edge) => edge.sharp).length;
+
+  /** A plane with its four border edges marked sharp. */
+  function sharpPlane(): BMesh {
+    const plane = createPlane(2);
+    for (const edge of plane.edges.values()) edge.sharp = true;
+    return plane;
+  }
+
+  it('marks the mirrored copy of every sharp edge', () => {
+    const plane = sharpPlane();
+    for (const vert of plane.verts.values()) vert.co = { ...vert.co, x: vert.co.x + 2 };
+
+    const result = evaluateModifiers(plane, [mirror({ merge: false })]);
+
+    expect(sharpCount(result)).toBe(8);
+  });
+
+  it('keeps the copies that meet the seam sharp once it is welded', () => {
+    const plane = sharpPlane();
+    for (const vert of plane.verts.values()) {
+      vert.co = { ...vert.co, x: Math.max(0, vert.co.x) };
+    }
+
+    const result = evaluateModifiers(plane, [mirror({ merge: true, mergeThreshold: 0.01 })]);
+
+    // The two copies with an end on the seam come back as new edges once the
+    // seam is welded: every edge of the outline stays sharp.
+    expect(result.edges.size).toBe(7);
+    expect(sharpCount(result)).toBe(7);
+  });
+
+  it('keeps both halves of a sharp edge the bisect cuts, but not the cut', () => {
+    const result = evaluateModifiers(sharpPlane(), [
+      mirror({ bisect: true, merge: true, mergeThreshold: 0.001 }),
+    ]);
+
+    // The new edge along the plane is where the bisect cut, not a crease of the
+    // original; the six around it are halves of the original outline.
+    expect(result.edges.size).toBe(7);
+    expect(sharpCount(result)).toBe(6);
+    expect(result.validate()).toEqual([]);
+  });
+
+  it('marks every arrayed copy', () => {
+    const result = evaluateModifiers(sharpPlane(), [
+      { ...(createModifier('array') as ArrayModifier), count: 3, merge: false },
+    ]);
+
+    expect(sharpCount(result)).toBe(12);
+  });
+
+  it('marks the inner shell of a solidify and leaves the rim smooth', () => {
+    const result = evaluateModifiers(sharpPlane(), [
+      { ...(createModifier('solidify') as SolidifyModifier), thickness: 0.5 },
+    ]);
+
+    expect(sharpCount(result)).toBe(8);
+  });
+
+  it('carries a crease through every level of a subdivision', () => {
+    const cube = createBox(2);
+    for (const edge of cube.edges.values()) edge.sharp = true;
+
+    const result = evaluateModifiers(cube, [
+      { ...(createModifier('subdivide') as SubdivideModifier), levels: 2 },
+    ]);
+
+    // Each original edge is cut in two, and each half in two again.
+    expect(sharpCount(result)).toBe(12 * 4);
+  });
+});

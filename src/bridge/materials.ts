@@ -291,6 +291,26 @@ export function createWireMaterial(selected: boolean): LineMaterial {
 }
 
 /**
+ * The edges marked sharp, drawn over the plain wire in edit mode.
+ *
+ * Cyan, the palette's blue: red already means selected, and a selected sharp
+ * edge is drawn red over the top of this, since what is picked is the more
+ * pressing thing to read. Quads, lift and depth test as the wire under it, for
+ * the same reasons.
+ */
+export function createSharpWireMaterial(): LineMaterial {
+  return liftWire(
+    new LineMaterial({
+      color: VIEWPORT_COLORS.cyan,
+      linewidth: 1,
+      transparent: true,
+      depthTest: true,
+      depthWrite: false,
+    }),
+  );
+}
+
+/**
  * The modifier preview's own edges, under the cage in edit mode.
  *
  * Fainter than the cage, which is the mesh you are actually holding: the
@@ -422,8 +442,9 @@ export function createPointMaterial(): THREE.PointsMaterial {
  * the one underneath changed nothing anyone could see. A square larger than the
  * dot it sits on shows through whichever of them is drawn on top.
  *
- * Cyan, the palette's blue: it is nothing else on the geometry, and the red of
- * a selected vertex stays the colour that means selected.
+ * Cyan, the palette's blue: on the geometry it otherwise marks only sharp
+ * edges, which are lines rather than squares, and the red of a selected vertex
+ * stays the colour that means selected.
  *
  * Depth-tested like the dots themselves, and drawn after them, so it wins at
  * equal depth without showing through the far side of a solid surface.

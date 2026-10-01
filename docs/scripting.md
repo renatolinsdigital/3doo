@@ -81,6 +81,7 @@ Unknown operator "extrud". Available: bevel, bridge, delete, deselectAll, ...
 | `recalculateNormals` | `outside` |
 | `flipNormals` | none |
 | `shade` | `smooth` |
+| `markSharp` | `clear` (marks the selected edges sharp, or with `clear: true` takes the mark off) |
 
 ### Transform and selection
 

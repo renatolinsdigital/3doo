@@ -224,7 +224,7 @@ export function TopBar({ brand }: TopBarProps) {
     {
       id: 'import',
       label: 'IMPORT MESH',
-      hint: 'Import geometry from an OBJ file as a new object',
+      hint: 'Import geometry from an OBJ or FBX file as new objects at the 3D cursor',
       onSelect: () => void importMesh(),
     },
     {

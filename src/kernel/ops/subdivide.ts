@@ -22,6 +22,8 @@ import type { BMesh } from '../mesh';
 import { triangulatePolygon } from '../mesh';
 import type { Edge, Face, Loop, Vert } from '../mesh/types';
 
+import { carrySharp } from './normals';
+
 export interface SubdivideOptions {
   /** Cuts taken out of every edge: 1 leaves a quad as four, 3 as sixteen. */
   cuts?: number;
@@ -122,6 +124,10 @@ export function subdivideEdges(mesh: BMesh, edges: readonly Edge[], cuts = 1): V
     const chain = [edge.v0, ...(points.get(edge.id) ?? []), edge.v1];
     mesh.removeEdge(edge);
     for (let i = 0; i < chain.length - 1; i++) mesh.addEdge(chain[i], chain[i + 1]);
+  }
+
+  for (const edge of live) {
+    carrySharp(mesh, edge, [edge.v0, ...(points.get(edge.id) ?? []), edge.v1]);
   }
 
   for (const edge of stale) {
@@ -1020,6 +1026,10 @@ function subdividePass(mesh: BMesh, faces: readonly Face[], cuts: number, smooth
       face.selected = true;
       result.push(face);
     }
+  }
+
+  for (const [edge, inserted] of edgePoints) {
+    carrySharp(mesh, edge, [edge.v0, ...inserted, edge.v1]);
   }
 
   for (const edge of staleEdges) {

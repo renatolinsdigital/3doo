@@ -708,3 +708,89 @@ describe('ObjectView vertex fade', () => {
     expect(fadeOf(view).visible).toBe(false);
   });
 });
+
+describe('ObjectView sharp edges', () => {
+  function sharpOf(view: ObjectView, id: string): LineSegments2 {
+    return view.group.getObjectByName(`${id}:sharp`) as LineSegments2;
+  }
+
+  // Instanced quads, one per segment, as the outline above.
+  function segmentCount(line: LineSegments2): number {
+    return line.geometry.getAttribute('instanceStart')?.count ?? 0;
+  }
+
+  function state(settings: ViewportSettings, mode: 'object' | 'edit') {
+    return {
+      mode,
+      selectMode: 'edge' as const,
+      isActive: true,
+      isSelected: true,
+      eye: vec3(0, 0, 10),
+      selectionLine: SELECTION_LINE,
+      meshVersion: 1,
+      settings,
+    };
+  }
+
+  /** The scene's cube with every edge marked sharp. */
+  function sharpScene() {
+    const built = scene();
+    for (const edge of built.object.mesh.edges.values()) edge.sharp = true;
+    return built;
+  }
+
+  it('draws them in cyan in edit mode, and leaves object mode to the shading', () => {
+    const { object, settings } = sharpScene();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), state(settings, 'edit'));
+    const sharp = sharpOf(view, object.id);
+    expect(sharp.visible).toBe(true);
+    expect((sharp.material as LineMaterial).color.getHexString()).toBe('3de0d0');
+
+    view.update(object, evaluatedMesh(object), state(settings, 'object'));
+    expect(sharp.visible).toBe(false);
+  });
+
+  it('draws nothing on a mesh with no sharp edge', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), state(settings, 'edit'));
+
+    expect(sharpOf(view, object.id).visible).toBe(false);
+  });
+
+  it('sits under the selection, so a picked sharp edge still reads as picked', () => {
+    const { object } = sharpScene();
+    const view = new ObjectView(object.id);
+    const lines = view.group.children.filter(
+      (child): child is LineSegments2 => child instanceof LineSegments2,
+    );
+    // The selected edges are the red line set drawn last of the quads.
+    const selected = lines.reduce((top, line) => (line.renderOrder > top.renderOrder ? line : top));
+
+    expect(sharpOf(view, object.id).renderOrder).toBeLessThan(selected.renderOrder);
+    expect(sharpOf(view, object.id).renderOrder).toBeGreaterThan(0);
+  });
+
+  it('leaves out the far side, and re-culls from a new camera without a rebuild', () => {
+    const { object, settings } = sharpScene();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), state(settings, 'edit'));
+    expect(segmentCount(sharpOf(view, object.id))).toBe(4);
+
+    view.refreshForCamera(vec3(10, 10, 10));
+    expect(segmentCount(sharpOf(view, object.id))).toBe(9);
+  });
+
+  it('keeps every one in x-ray, which is for seeing through the model', () => {
+    const { object, settings } = sharpScene();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), state({ ...settings, shading: 'xray' }, 'edit'));
+
+    expect(segmentCount(sharpOf(view, object.id))).toBe(12);
+  });
+});

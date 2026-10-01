@@ -30,6 +30,7 @@ import {
   limitedDissolve,
   canLoopCut,
   loopCut,
+  markSharp,
   medianPoint,
   mergeByDistance,
   mergeVerts,
@@ -519,6 +520,30 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     const faces = mesh.selectedFaces();
     setShading(faces.length > 0 ? faces : [...mesh.faces.values()], smooth);
     return { status: smooth ? 'Shade smooth' : 'Shade flat' };
+  },
+
+  markSharp: ({ mesh }, params) => {
+    const clear = readBoolean(params, 'clear', false);
+    const edges = mesh.selectedEdges();
+    if (edges.length === 0) {
+      return {
+        status: clear ? 'Select the edges to clear sharp from' : 'Select the edges to mark sharp',
+        refused: true,
+      };
+    }
+
+    const changed = markSharp(edges, !clear);
+    if (changed === 0) {
+      return {
+        status: clear
+          ? 'None of the selected edges is sharp'
+          : 'The selected edges are all sharp already',
+        refused: true,
+      };
+    }
+    return {
+      status: clear ? `Cleared sharp from ${changed} edge(s)` : `Marked ${changed} edge(s) sharp`,
+    };
   },
 
   triangulate: ({ mesh }) => {

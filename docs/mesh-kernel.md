@@ -143,37 +143,52 @@ shrink its bounding box; what shrinks is the corners.
 
 ### Subdivide edges (`subdivide.ts`)
 
-`subdivideEdges` puts `cuts` evenly spaced vertices along each edge. The points
-cannot simply be dropped onto the edge: a face's ring is its own list of corners,
-so every face touching a split edge is rebuilt with the new points spliced into
-its ring. Otherwise the face would still span the old corners and the vertex
-would sit on a seam nothing references. A loop traverses its edge from
-`loop.vert` onwards, which is `v1 -> v0` for one of the two faces sharing it, so
-that side takes the points reversed. Wire edges have no face to rebuild and are
-replaced by their own chain of segments instead.
+`subdivideEdges` puts `cuts` evenly spaced vertices along each edge.
+
+The new points cannot just be dropped onto the edge. A face's ring is its own
+list of corners, so a face left alone would still span the old corners, and the
+new vertex would sit on a seam nothing references. Every face touching a split
+edge is therefore rebuilt with the new points spliced into its ring.
+
+Direction matters when splicing. A loop traverses its edge starting from
+`loop.vert`, which runs `v1 -> v0` for one of the two faces sharing the edge, so
+that face takes the points in reverse order.
+
+Wire edges have no face to rebuild, so each is replaced by its own chain of
+segments.
 
 ### Loop chains (`chains.ts`, `relax.ts`, `circle.ts`, `space.ts`)
 
-Three operators reshape a loop that is already in the mesh, and all three start
-from the same reading of the selection. `findChains` asks, of each selected
-vertex, how many of its neighbours are selected too: two makes it part of a
-chain, one makes it the end the chain is measured against, and anything else
-makes it a loose vertex with no loop through it. Walking the links from either
-side gives each chain in order, along with whether it closes on itself and which
-vertices pin its ends. A chain running along an open border keeps a copy of that
-border as it was, since there is no surface past a border to come back to.
+Three operators reshape a loop that is already in the mesh: relax, space and
+circle. All three start from `findChains`, which reads the selection by
+counting, for each selected vertex, how many of its neighbours are selected:
 
-`relaxVerts` pulls each vertex onto the midpoint of its neighbours, spreads the
-chain evenly along the line that leaves, and drops every vertex back onto the
-faces it came from, so the loop slides across the shape instead of sinking into
-it. `spaceVerts` takes only the spreading, so the loop keeps every bend it has.
-`circleVerts` fits a plane and a circle instead: Newell's normal over a unit
-sized copy of the loop gives the plane, an algebraic least squares fit gives the
-centre and radius on it, and each vertex is carried to that radius along the
-direction it already sits in. The fit is least squares rather than the centroid
-and a mean radius because an arc, or a loop crowded down one side, sits off its
-own centroid, and a circle drawn from there would swing the whole selection
-sideways.
+| Selected neighbours | The vertex is |
+| --- | --- |
+| Two | Part of a chain |
+| One | An end, which the chain is measured against |
+| Any other number | Loose, with no loop through it |
+
+Walking the links from either end gives each chain in order, whether it closes
+on itself, and which vertices pin its ends. A chain along an open border also
+keeps a copy of that border as it was, since there is no surface past a border
+to project back onto.
+
+Each operator then does one thing with the chains:
+
+- **`relaxVerts`** pulls each vertex to the midpoint of its neighbours, spreads
+  the chain evenly along the resulting line, and drops every vertex back onto
+  the faces it came from. The loop slides across the shape instead of sinking
+  into it.
+- **`spaceVerts`** does only the spreading, so the loop keeps every bend.
+- **`circleVerts`** fits a plane and a circle. Newell's normal over a
+  unit-sized copy of the loop gives the plane, and an algebraic least squares
+  fit gives the centre and radius on it. Each vertex then moves to that radius
+  along the direction it already sits in.
+
+The circle is a least squares fit, not the centroid plus a mean radius, because
+an arc, or a loop crowded down one side, sits off its own centroid. A circle
+centred there would swing the whole selection sideways.
 
 ### Merge by distance (`merge.ts`)
 
@@ -201,73 +216,96 @@ since consecutive corners of a face always already have the edge between them.
 
 ### Delete and dissolve (`delete.ts`, `dissolve.ts`)
 
-Kept as separate paths because they answer different questions.
+These are separate paths because they answer different questions:
 
-- **Delete** removes geometry outright, in five modes.
-- **Dissolve** removes topology while preserving the surrounding surface.
-  Dissolving *faces* merges a connected region into one n-gon, which means a
-  single selected face is a no-op: the region is torn down and rebuilt from the
-  same boundary ring. The operator guards that case rather than reporting
-  success, and otherwise reports counts taken from the mesh before and after, so
-  a status line never claims work the mesh did not actually do.
+- **Delete** removes geometry outright, in five modes: `verts`, `edges`,
+  `faces`, `onlyFaces`, `edgesAndFaces`.
+- **Dissolve** removes topology but keeps the surrounding surface: the faces
+  around what was removed merge into one.
 
-The UI exposes them only as keys, not as panel sections: <kbd>X</kbd> deletes and
-<kbd>Delete</kbd> dissolves. Neither asks which element type to act on: the
-handler in `useKeymap` maps the active select mode onto the operator's `mode`
-param (vertex → `verts`, edge → `edges`, face → `faces`), so the keys always
-act on the elements the user can currently see highlighted. The operators still
-take every mode they support; only the two keyboard paths are constrained this
-way, and `exec('delete', { mode: 'onlyFaces' })` remains available to scripts.
+#### How the keys pick a mode
 
-Dissolve is a *topology* edit, not a geometry one: the merged n-gon keeps every
-vertex exactly where it was. Merging two faces that meet at a sharp angle
-therefore produces a **folded** face, and nothing downstream can represent one.
-It gets a single averaged normal matching neither half, ear-clipping projects it
-onto a plane it does not lie near, and OBJ/FBX record it as one flat polygon.
-Dissolving a cube edge that way used to yield exactly that: a valid but folded
-six-vertex face whose shading looked broken.
+The UI exposes both only as keys: <kbd>X</kbd> deletes and <kbd>Delete</kbd>
+dissolves. Neither asks which element type to act on. `useKeymap` maps the
+active select mode onto the operator's `mode` param (vertex → `verts`, edge →
+`edges`, face → `faces`), so the keys always act on what the user sees
+highlighted.
 
-The same fold happens when dissolving a *vertex*, and more easily, since a
-corner gathers three or more faces at once: a cube corner's three mutually
-perpendicular faces collapse into one badly folded n-gon. `isDissolvableVert`
-applies the same limit across every pair in the fan.
+Only the keyboard path is constrained this way. The operators still take every
+mode they support, and `exec('delete', { mode: 'onlyFaces' })` remains
+available to scripts.
 
-It exempts vertices with two edges or fewer, though, and that distinction is the
-whole point: a vertex only forces a merge when it sits at a *corner*, where
-dropping it would leave a hole. One lying along a path (the midpoint left by
-subdividing an edge) merges nothing. Every face using it simply drops it and
-keeps its own shape, so however sharply those faces meet is irrelevant. Guarding
-it by angle refused the most ordinary case there is: undoing an edge subdivision
+#### Dissolving faces
+
+Dissolving faces merges each connected region into one n-gon. A single selected
+face is therefore a no-op: the region is torn down and rebuilt from the same
+boundary ring. The operator guards that case instead of reporting success.
+Otherwise it reports counts taken from the mesh before and after, so the status
+line never claims work the mesh did not do.
+
+#### The fold problem, and the angle limit
+
+Dissolve edits topology, not geometry: the merged n-gon keeps every vertex
+exactly where it was. Merging two faces that meet at a sharp angle therefore
+makes a **folded** face, which nothing downstream can represent:
+
+- it gets one averaged normal that matches neither half,
+- ear clipping projects it onto a plane it does not lie near,
+- OBJ and FBX record it as one flat polygon.
+
+Dissolving a cube edge, unguarded, gives exactly that: a valid but folded
+six-vertex face whose shading looks broken. A vertex folds even more easily,
+since a corner gathers three or more faces at once: a cube corner's three
+perpendicular faces collapse into one badly folded n-gon.
+
+So the operator filters the selection first:
+
+- edges through `isDissolvableEdge`,
+- vertices through `isDissolvableVert`, which checks every pair of faces in the
+  vertex's fan.
+
+Anything whose faces fold past `DISSOLVE_ANGLE_LIMIT_DEGREES` (40°, or the
+`angle` param) is skipped, and the status line says how many. Gentle curvature
+still passes: a 24-segment cylinder's 15° side seams dissolve fine, which is
+what the operation is for.
+
+The limit lives at the operator boundary, not in the kernel, on purpose. The
+kernel primitives must merge whatever they are handed, since removing a vertex
+*means* merging its fan. A script calling them directly still gets the
+unconditional merge.
+
+#### Vertices along a path are exempt
+
+`isDissolvableVert` exempts vertices with two edges or fewer. A vertex only
+forces a merge when it sits at a *corner*, where dropping it would leave a
+hole. A vertex lying along a path, such as the midpoint left by subdividing an
+edge, merges nothing: every face using it drops it from its ring and keeps its
+own shape, so the angle between those faces does not matter. An angle guard
+there would refuse the most ordinary case there is, undoing an edge subdivision
 on a cube. `dissolveVerts` takes the matching path, trimming the vertex out of
-each face's ring instead of merging the faces together.
+each face's ring instead of merging the faces.
 
-So the *operator* filters selected edges through `isDissolvableEdge` and
-selected vertices through `isDissolvableVert` first,
-skipping any whose faces fold past `DISSOLVE_ANGLE_LIMIT_DEGREES` (40°, or the
-`angle` param) and saying how many it skipped. The limit sits at the operator
-boundary rather than in the kernel deliberately: the kernel primitives have to
-merge whatever they are handed, since removing a vertex *means* merging its whole
-fan, and a script calling them directly still gets the unconditional merge.
-Gentle curvature stays mergeable: a 24-segment cylinder's 15° side seams
-dissolve fine, which is what the operation is actually for.
+#### Implementation
 
-`dissolveEdge` merges the two faces sharing an edge by rotating both rings and
-splicing them. `dissolveFaces` does *not* dissolve interior edges one by one:
-the last interior edge of a fan always ends up with both loops on the same face,
-which no pairwise merge can resolve. Instead it rebuilds each connected region's
-outline directly, chaining boundary loops in winding order so the result is
-correctly oriented for free. `dissolveVerts` routes a vertex's fan through the
-same path for the same reason, and an interior vertex is not on the outline, so
-merging drops it from the ring for free; a vertex on an open boundary survives
-the merge and is trimmed out of the one face left instead.
+- **`dissolveEdge`** merges the two faces sharing an edge by rotating both rings
+  and splicing them.
+- **`dissolveFaces`** does *not* dissolve interior edges one at a time. The last
+  interior edge of a fan always ends up with both loops on the same face, which
+  no pairwise merge can resolve. Instead it rebuilds each connected region's
+  outline directly, chaining boundary loops in winding order, so the result is
+  correctly oriented for free.
+- **`dissolveVerts`** routes a corner vertex's fan through the same path, for
+  the same reason. An interior vertex is not on the outline, so the merge drops
+  it for free. A vertex on an open boundary survives the merge and is then
+  trimmed out of the one face left.
 
-When pruning the region's now-unused edges, only the ones *interior* to it may
-go, since its boundary edges are the merged face's own ring. Removing every edge left
-without a loop also took those whenever no face outside the region shared them,
-which on an open mesh (a grid, a plane) deleted the ring's vertices out from
-under the face about to be built from them, leaving edges pointing at dead
-vertices. The rebuilt face is added before loose vertices are swept, so the ring
-is never briefly orphaned.
+When pruning edges the region no longer uses, only edges *interior* to the
+region may go: the boundary edges are the merged face's own ring. Pruning every
+edge left without a loop would also take boundary edges that no outside face
+shares. On an open mesh (a grid, a plane) that deletes the ring's vertices out
+from under the new face, leaving edges pointing at dead vertices. The rebuilt
+face is also added before loose vertices are swept, so the ring is never
+briefly orphaned.
 
 ### Normals (`normals.ts`)
 
@@ -279,6 +317,42 @@ is never briefly orphaned.
 2. Compute the shell's signed volume and flip the whole shell if it is inside
    out. Consistency alone still permits a uniformly inverted shell, which is
    exactly the case that ruins an export.
+
+### Sharp edges (`normals.ts`, `BMesh.cornerNormals`)
+
+`edge.sharp` marks where smooth shading should break. It is Blender's Mark
+Sharp: a shading flag that moves no geometry. `markSharp` sets or clears it, and
+the `markSharp` operator runs that over the selected edges, refusing when
+nothing would change.
+
+**How a sharp edge changes shading.** A smooth face normally shades through
+`vert.normal`, the area-weighted average of every face around the vertex.
+`cornerNormals` splits that fan of faces wherever it crosses a sharp edge,
+averages each side on its own, and returns a normal for each corner that
+differs, keyed by loop id. The display buffers and the FBX exporter read it in
+place of the vertex normal.
+
+**A crease has to run through a vertex to split it.** The sides of a fan are
+found by joining faces across every edge that is *not* sharp. So:
+
+- At the last vertex of a crease that stops partway across a surface, the faces
+  can still be joined the long way round, and the fan stays whole. The shading
+  break fades out over the crease's last edge. Blender behaves the same way.
+- A border vertex has no long way round, so a single sharp edge running in from
+  the border does split it.
+
+**Cost.** Only vertices on a sharp edge are visited, and a fan that comes out
+whole writes nothing. A mesh with no sharp edges pays one pass over its edges
+and nothing else.
+
+**Keeping the mark through edits.** A new edge starts out smooth, so every
+operation that cuts or rebuilds edges has to pass the mark on:
+
+| Mechanism | Used by |
+| --- | --- |
+| `carrySharp` | Subdivide (edges and faces, and through it the subdivision modifier), loop cut, the mirror's bisect |
+| `weldVerts` re-marks the edges it rebuilds around a welded vertex | Merge by distance, auto merge, the mirror and array seams |
+| `copySharp` | Mirror, array and solidify (see [Modifiers](#modifiers)) |
 
 ### Fill and bridge (`fill.ts`)
 
@@ -301,23 +375,35 @@ edge.
 modifier. The object being edited is never touched, which is what makes the stack
 non-destructive. `applyModifier` bakes a single one into the mesh.
 
-Mirror reflects and reverses winding (reflection inverts handedness), and copies
-wire edges by hand since they carry no loop for the face pass to follow. Its
-plane passes through the object's own origin unless `origin` is `'cursor'`, in
-which case it passes through the 3D cursor, handed in through `ModifierContext`
-already converted to the object's local frame, because that is the only
-coordinate system the kernel knows. Clipping, bisect and the seam weld all
-measure from that same plane rather than from zero. Its
-merge limit is a distance from the *mirror plane*, not a general weld: only a
-vertex sitting on the seam absorbs its own reflection, so geometry that happens
-to be dense elsewhere is left intact. Bisect cuts the faces that straddle the
-plane instead of dropping them whole, otherwise the reflection lands back on top
-of the uncut half and the result is doubled geometry with opposing winding.
+### Mirror
 
-Array repeats the mesh along an offset built from the bounding box, a constant,
-or the two added together. Solidify offsets a shell along vertex normals,
-reverses it, and fills rim quads along boundary edges captured *before* the shell
-was added. Subdivision runs `subdivideFaces` across every face.
+- **Reflection** reverses winding, because a reflection inverts handedness.
+  Wire edges are copied by hand, since they carry no loop for the face pass to
+  follow.
+- **The plane** passes through the object's own origin, or through the 3D
+  cursor when `origin` is `'cursor'`. The cursor arrives through
+  `ModifierContext` already converted to the object's local frame, because that
+  is the only coordinate system the kernel knows. Clipping, bisect and the seam
+  weld all measure from that plane, not from zero.
+- **The merge limit** is a distance from the *mirror plane*, not a general
+  weld. Only a vertex sitting on the seam absorbs its own reflection, so
+  geometry that happens to be dense elsewhere is left intact.
+- **Bisect** cuts the faces that straddle the plane instead of dropping them
+  whole. Without it, the reflection lands back on top of the uncut half, and the
+  result is doubled geometry with opposing winding.
+
+### Array, solidify and subdivision
+
+- **Array** repeats the mesh along an offset built from the bounding box, a
+  constant, or the two added together.
+- **Solidify** offsets a shell along vertex normals, reverses it, and fills rim
+  quads along the boundary edges, which it captures *before* the shell is added.
+- **Subdivision** runs `subdivideFaces` across every face.
+
+Mirror, array and solidify build their copies a face at a time, and the edges
+those faces bring start out smooth. So each one marks the copy of every sharp
+edge afterwards (`copySharp`). Solidify's rim stays smooth: it is new geometry,
+not a copy of a crease.
 
 ### Weld
 

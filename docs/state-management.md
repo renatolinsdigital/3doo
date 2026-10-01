@@ -54,13 +54,13 @@ not repaint your viewport.
 
 They live in `slices/preferences.ts` and persist to a single localStorage key:
 
-```
+```text
 3doo:preferences → {"tooltipsEnabled":true,"selectionLineWidth":2.0,"selectionLineColor":"#e5342a"}
 ```
 
-One key holding one JSON object, rather than a key per setting. That is what
-makes export and import a one-liner, and what stops a half-written settings
-change from leaving the app in a state no version ever shipped.
+It is one key holding one JSON object, not a key per setting. That makes export
+and import a one-liner, and it stops a half-written settings change from leaving
+the app in a state no version ever shipped.
 
 The fields sit **flat on the store**, not nested under a `preferences` object, so
 a component still selects one value and re-renders on one value:
@@ -70,7 +70,7 @@ const width = useEditorStore((state) => state.selectionLineWidth);
 ```
 
 `currentPreferences()` gathers just those fields back up when the whole set is
-needed, which is writing to storage and the export button.
+needed: for writing to storage, and for the export button.
 
 ### Every write goes through `coercePreferences`
 
@@ -81,44 +81,52 @@ validator:
 setPreferences: (patch) => apply(coercePreferences({ ...get().currentPreferences(), ...patch })),
 ```
 
-Each field falls back to its own default independently, so a hand-edited blob or
-a file from an older build cannot cost the user the rest of their settings, and a
-width outside the slider's range cannot reach the renderer as a hairline or a
-slab. Storage access is wrapped in `try`/`catch` throughout, because private
-browsing throws on `localStorage` rather than returning `null`; a blocked read
-means preferences do not persist, never that the editor refuses to start.
+Each field falls back to its own default independently. So:
+
+- a hand-edited blob, or a file from an older build, cannot cost the user the
+  rest of their settings,
+- a width outside the slider's range cannot reach the renderer as a hairline or
+  a slab.
+
+Storage access is wrapped in `try`/`catch` throughout, because private browsing
+throws on `localStorage` instead of returning `null`. A blocked read means
+preferences do not persist. It never stops the editor from starting.
 
 ### Import and export
 
 The preferences dialog writes `currentPreferences()` out with the same
 `downloadFile` / `pickTextFile` pair the project files use, so a settings file is
-just JSON the user can carry to another browser.
+plain JSON the user can carry to another browser.
 
-Each of those takes a `FileKind` (`.pref` here, `.3doo` for projects,
-`.obj` for meshes), which is both what the picker filters on and what the
-selection is checked against afterwards. `accept` only filters the dialog; every
-browser offers a route around it, and one that does not recognise a compound
-suffix may not filter on it at all. Checking the name again on the way back is
-what turns "unexpected token" into a sentence naming the extension expected.
+Both functions take a `FileKind`: `.pref` here, `.3doo` for projects, `.obj` for
+meshes. The kind is used twice:
 
-Validation lives in the store, presentation in the dialog:
+1. The picker filters on it (`accept`).
+2. The chosen file's name is checked against it afterwards.
+
+The second check is needed because `accept` only filters the dialog. Every
+browser offers a way around it, and one that does not recognise a compound
+suffix may not filter on it at all. Checking the name turns a baffling
+"unexpected token" into a message naming the extension expected.
+
+Validation lives in the store and presentation in the dialog:
 `importPreferences(text)` throws with a message worth showing, and the dialog
-turns it into a toast. A file with none of the known keys is rejected rather than
-silently applied as "all defaults", which is what stops dropping the wrong JSON
-in from quietly wiping your settings.
+turns it into a toast. A file with none of the known keys is rejected instead of
+being applied as "all defaults", so dropping in the wrong JSON cannot quietly
+wipe your settings.
 
 ## `meshVersion`, and why it exists
 
 Meshes are mutated **in place**. `extrudeFaces(mesh, faces)` rewrites the same
 `BMesh` instance rather than returning a new one.
 
-That is the right call for the kernel, since rebuilding a half-edge graph immutably on
-every drag frame would be slow and would invalidate every element reference an
-operation is holding, but it means Zustand has no new reference to compare, so
-nothing would re-render.
+That is the right call for the kernel. Rebuilding a half-edge graph immutably on
+every drag frame would be slow, and would invalidate every element reference an
+operation is holding. But it leaves Zustand with no new reference to compare,
+so nothing would re-render.
 
-`meshVersion` is a counter bumped by every mutation. Anything that depends on
-geometry reads it:
+`meshVersion` fixes that. It is a counter bumped by every mutation, and anything
+that depends on geometry reads it:
 
 ```ts
 useEditorStore(
@@ -179,9 +187,8 @@ The `History` instance lives at module scope, not in the store. It is not render
 state. Only `canUndo`, `canRedo` and the label of each step are mirrored into
 the store, because those drive the buttons and the history dialog.
 
-Cost: one `serializeMesh` per operation. That is the accepted trade for
-correctness; per-operation inverse commands would be the way past it, and are
-not built.
+The cost is one `serializeMesh` per operation. That is the accepted trade for
+correctness. Per-operation inverse commands would remove it, and are not built.
 
 ## One serialization format, four jobs
 
@@ -198,14 +205,15 @@ format is caught by the operation tests, not just the file tests.
 ## Assets sit beside the objects, not inside them
 
 An imported image is held once in `state.assets`, keyed by id, and an object
-that draws one carries `image: { assetId }`. Undo replays the object list, so a
-picture stored on the object would be copied into every history step: fifty
-steps of a scene holding a 4MB photograph is 200MB of history. Keeping it out
-of the replay also means an image object can be deleted and undone with its
-bytes still loaded.
+that draws one carries `image: { assetId }`. The bytes never enter a history
+step: they live in the store, and are inlined as base64 only when a `.3doo` is
+written.
 
-The bytes themselves never enter a history step. They live in the store, and
-are inlined as base64 only when a `.3doo` is written. See [saving.md](saving.md).
+The reason is cost. Undo replays the object list, so a picture stored on the
+object would be copied into every history step: fifty steps of a scene holding
+a 4MB photograph is 200MB of history. Keeping it out of the replay also means an
+image object can be deleted and undone with its bytes still loaded. See
+[saving.md](saving.md#images).
 
 ## Store actions are the only mutation path
 

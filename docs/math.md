@@ -40,7 +40,7 @@ or inverted normal.
 
 Because the ground plane is XZ, a ring ordered "+X then +Z" faces **−Y**, not +Y.
 Reading clockwise/counter-clockwise off a top-down sketch gets this backwards
-about half the time. The reliable check is the parametric one:
+about half the time. Use the parametric check instead:
 
 For a surface `P(u, v)`, a face wound first along `+u` then along `+v` has normal
 `∂P/∂u × ∂P/∂v`. Worked out for the primitives:
@@ -137,7 +137,7 @@ correct transform is the inverse transpose of the upper 3×3. For `M = R · S`:
 ```
 
 since `R` is orthogonal and `S` is diagonal. So `normalMatrix` composes the same
-rotation with a *reciprocal* scale, so no general 4×4 inversion is needed.
+rotation with a *reciprocal* scale, and no general 4×4 inversion is needed.
 
 ## Proportional editing falloff
 

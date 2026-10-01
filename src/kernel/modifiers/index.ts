@@ -1,8 +1,9 @@
 import { type Axis, type Vec3, add, lerp, mul, sub, vec3 } from '../math';
 import { BMesh, cloneMesh } from '../mesh';
-import type { Face, Vert } from '../mesh/types';
+import type { Edge, Face, Vert } from '../mesh/types';
 import { mergeByDistance, weldVerts } from '../ops/merge';
 import { MESH_BUDGET } from '../ops/budget';
+import { carrySharp } from '../ops/normals';
 import { subdivideFaces } from '../ops/subdivide';
 import { remeshMesh } from '../remesh';
 
@@ -95,6 +96,7 @@ function applyMirror(mesh: BMesh, modifier: MirrorModifier, context: ModifierCon
     const originalWires = [...mesh.edges.values()]
       .filter((edge) => edge.loops.length === 0)
       .map((edge) => [edge.v0, edge.v1] as const);
+    const originalSharp = sharpEnds(mesh);
     const reflection = new Map<number, Vert>();
 
     for (const vert of originals) {
@@ -118,6 +120,7 @@ function applyMirror(mesh: BMesh, modifier: MirrorModifier, context: ModifierCon
       const to = reflection.get(v1.id);
       if (from && to && from !== to) mesh.addEdge(from, to);
     }
+    copySharp(mesh, originalSharp, reflection);
 
     if (modifier.merge) {
       // The merge limit is a distance from the mirror plane, not a general
@@ -135,6 +138,34 @@ function applyMirror(mesh: BMesh, modifier: MirrorModifier, context: ModifierCon
 
   mesh.computeNormals();
   return mesh;
+}
+
+/** Both ends of every sharp edge, read before a modifier adds its copies. */
+function sharpEnds(mesh: BMesh): (readonly [Vert, Vert])[] {
+  const ends: (readonly [Vert, Vert])[] = [];
+  for (const edge of mesh.edges.values()) if (edge.sharp) ends.push([edge.v0, edge.v1]);
+  return ends;
+}
+
+/**
+ * Marks sharp the copy of every sharp edge, through the map from a vertex to
+ * its copy.
+ *
+ * A copy is built a face at a time, and the edges a face brings with it start
+ * out smooth, so a crease on the original would be missing from every copy a
+ * mirror, an array or a solidify shell makes of it.
+ */
+function copySharp(
+  mesh: BMesh,
+  sharp: readonly (readonly [Vert, Vert])[],
+  copies: ReadonlyMap<number, Vert>,
+): void {
+  for (const [v0, v1] of sharp) {
+    const a = copies.get(v0.id);
+    const b = copies.get(v1.id);
+    const edge = a && b && a !== b ? mesh.findEdge(a, b) : null;
+    if (edge) edge.sharp = true;
+  }
 }
 
 /**
@@ -165,6 +196,7 @@ function bisectHalf(mesh: BMesh, axis: Axis, at: number, threshold: number): voi
   // Cached per edge so both faces sharing it land on the same split vertex and
   // the cut seam stays welded.
   const splits = new Map<number, Vert>();
+  const sharpSplits: [Edge, Vert][] = [];
   const splitOn = (a: Vert, b: Vert): Vert => {
     const edge = mesh.findEdge(a, b);
     const cached = edge ? splits.get(edge.id) : undefined;
@@ -172,6 +204,7 @@ function bisectHalf(mesh: BMesh, axis: Axis, at: number, threshold: number): voi
     const t = signedDistance(a) / (signedDistance(a) - signedDistance(b));
     const vert = mesh.addVert({ ...lerp(a.co, b.co, t), [axis]: at });
     if (edge) splits.set(edge.id, vert);
+    if (edge?.sharp) sharpSplits.push([edge, vert]);
     return vert;
   };
 
@@ -212,6 +245,9 @@ function bisectHalf(mesh: BMesh, axis: Axis, at: number, threshold: number): voi
     keptWires.add(mesh.addEdge(side0 > 0 ? edge.v0 : edge.v1, split).id);
   }
 
+  // Both halves are marked, and the one on the far side goes with its vertex.
+  for (const [edge, split] of sharpSplits) carrySharp(mesh, edge, [edge.v0, split, edge.v1]);
+
   for (const vert of [...mesh.verts.values()]) {
     if (sideOf(vert) < 0) mesh.removeVert(vert);
   }
@@ -247,6 +283,7 @@ function applyArray(mesh: BMesh, modifier: ArrayModifier): BMesh {
   const originalWires = [...mesh.edges.values()]
     .filter((edge) => edge.loops.length === 0)
     .map((edge) => [edge.v0, edge.v1] as const);
+  const originalSharp = sharpEnds(mesh);
 
   for (let copy = 1; copy < count; copy++) {
     const offset = mul(step, copy);
@@ -262,6 +299,7 @@ function applyArray(mesh: BMesh, modifier: ArrayModifier): BMesh {
       const to = clones.get(b.id);
       if (from && to) mesh.addEdge(from, to);
     }
+    copySharp(mesh, originalSharp, clones);
   }
 
   if (modifier.merge) {
@@ -289,6 +327,7 @@ function applySolidify(mesh: BMesh, modifier: SolidifyModifier): BMesh {
   const rimLoops = [...mesh.edges.values()]
     .filter((edge) => edge.loops.length === 1)
     .map((edge) => edge.loops[0]);
+  const originalSharp = sharpEnds(mesh);
 
   const shell = new Map<number, Vert>();
   for (const vert of originals) {
@@ -301,6 +340,7 @@ function applySolidify(mesh: BMesh, modifier: SolidifyModifier): BMesh {
     const ring = spec.ring.map((vert) => shell.get(vert.id) ?? vert).reverse();
     mesh.addFace(ring, { materialIndex: spec.materialIndex, smooth: spec.smooth });
   }
+  copySharp(mesh, originalSharp, shell);
 
   if (modifier.rimFill) {
     for (const loop of rimLoops) {

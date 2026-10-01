@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createModifier, vec3 } from '@kernel/index';
-import type { RemeshModifier } from '@kernel/index';
+import { createBox, createModifier, vec3 } from '@kernel/index';
+import type { ImportedObject, RemeshModifier } from '@kernel/index';
 
 import { useEditorStore } from '../useEditorStore';
 
@@ -738,6 +738,54 @@ describe('imported images', () => {
     useEditorStore.getState().resetScene();
 
     expect(useEditorStore.getState().assets).toEqual({});
+  });
+});
+
+describe('imported meshes', () => {
+  const chair = (): ImportedObject[] => [
+    { name: 'Seat', mesh: createBox(1), position: vec3() },
+    { name: 'Leg', mesh: createBox(0.2), position: vec3(0, -1, 0) },
+  ];
+
+  it('arrives as one step to undo, named after the file', () => {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    const before = useEditorStore.getState().historyUndo.length;
+
+    store.addImportedObjects(chair(), 'chair.fbx');
+
+    const state = useEditorStore.getState();
+    expect(state.historyUndo).toHaveLength(before + 1);
+    expect(state.historyUndo[0]).toBe('Import chair.fbx');
+    expect(state.status).toBe('Imported chair.fbx');
+
+    state.undo();
+    expect(useEditorStore.getState().objects).toHaveLength(0);
+  });
+
+  it('selects everything the file held, so it moves as one', () => {
+    const store = useEditorStore.getState();
+    store.resetScene();
+
+    store.addImportedObjects(chair(), 'chair.fbx');
+
+    const state = useEditorStore.getState();
+    expect(state.objects.map((object) => object.name)).toEqual(['SEAT', 'LEG']);
+    expect(state.selectedObjectIds).toEqual(state.objects.map((object) => object.id));
+    expect(state.activeObjectId).toBe(state.objects[1].id);
+    expect(state.objects.every((object) => object.primitive === null)).toBe(true);
+  });
+
+  it('lands at the 3D cursor, each object keeping its place', () => {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    store.setCursor(vec3(3, 4, 5));
+
+    store.addImportedObjects(chair(), 'chair.fbx');
+
+    const [seat, leg] = useEditorStore.getState().objects;
+    expect(seat.transform.position).toEqual({ x: 3, y: 4, z: 5 });
+    expect(leg.transform.position).toEqual({ x: 3, y: 3, z: 5 });
   });
 });
 

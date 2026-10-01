@@ -3,6 +3,7 @@ import type { StateCreator } from 'zustand';
 import {
   type BMesh,
   type BooleanOp,
+  type ImportedObject,
   type Modifier,
   type PrimitiveKind,
   type PrimitiveParams,
@@ -559,6 +560,13 @@ export interface SceneSlice {
    * was left is a nuisance rather than a convenience.
    */
   addImage: (asset: SceneAsset) => void;
+  /**
+   * Adds what a mesh file held, as one step to undo, named after the file.
+   *
+   * At the 3D cursor like a primitive, each object keeping its place relative
+   * to the others, and all of them selected so they move as one.
+   */
+  addImportedObjects: (imported: readonly ImportedObject[], source: string) => void;
   updatePrimitiveParams: (params: Partial<PrimitiveParams>) => void;
   patchActiveObject: (
     patch: Partial<SceneObject> | ((object: SceneObject) => Partial<SceneObject> | null),
@@ -869,6 +877,37 @@ export const createSceneSlice: StateCreator<
       meshVersion: state.meshVersion + 1,
       activeTool: 'move',
       status: `Imported ${name}`,
+    }));
+  },
+
+  addImportedObjects: (imported, source) => {
+    if (imported.length === 0) return;
+    get().recordHistory(`Import ${source}`);
+
+    const { cursor } = get();
+    const objects: SceneObject[] = imported.map((entry) => ({
+      id: nextObjectId(),
+      name: entry.name.toUpperCase(),
+      mesh: entry.mesh,
+      transform: { ...createTransform(), position: add(cursor, entry.position) },
+      visible: true,
+      locked: false,
+      parentId: null,
+      groupId: null,
+      materials: [defaultMaterial()],
+      modifiers: [],
+      activeMaterial: 0,
+      primitive: null,
+      image: null,
+    }));
+
+    set((state) => ({
+      objects: [...state.objects, ...objects],
+      activeObjectId: objects[objects.length - 1].id,
+      selectedObjectIds: objects.map((object) => object.id),
+      meshVersion: state.meshVersion + 1,
+      activeTool: 'move',
+      status: `Imported ${source}`,
     }));
   },
 

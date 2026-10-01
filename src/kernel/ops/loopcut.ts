@@ -2,6 +2,8 @@ import { clamp, lerp } from '../math';
 import type { BMesh } from '../mesh';
 import type { Edge, Face, Loop, Vert } from '../mesh/types';
 
+import { carrySharp } from './normals';
+
 export interface LoopCutOptions {
   cuts?: number;
   /** -1..1 slide across the ring; 0 keeps the cuts evenly spaced. */
@@ -135,6 +137,11 @@ export function loopCut(mesh: BMesh, start: Edge, options: LoopCutOptions = {}):
   for (const step of steps) mesh.removeFace(step.face);
   for (const spec of rebuilt) {
     mesh.addFace(spec.ring, { materialIndex: spec.materialIndex, smooth: spec.smooth });
+  }
+
+  for (const edge of consumedEdges) {
+    const cut = cutVerts.get(edge.id);
+    if (cut) carrySharp(mesh, edge, [cut.from, ...cut.verts, mesh.edgeOther(edge, cut.from)]);
   }
 
   // The original ring edges were replaced by their split segments.

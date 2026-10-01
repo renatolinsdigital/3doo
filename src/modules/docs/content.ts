@@ -56,22 +56,30 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: '3DOO is a mesh editor that runs entirely in the browser tab. Nothing is uploaded and nothing is installed: the modelling kernel, the renderer and your project all live on this machine. If you have used a desktop 3D modelling package, most of what follows is already in your fingers.',
+        text: '3DOO is a mesh editor that runs entirely in your browser tab. Nothing is uploaded and nothing is installed: the modelling kernel, the renderer and your project all stay on this machine. If you have used a desktop 3D package before, most of what follows will feel familiar.',
       },
       {
         kind: 'steps',
         items: [
           'Open the MODELING module from the plate in the top-left corner. A cube is already waiting in the scene.',
-          'In the PRIMITIVES panel on the left, click a primitive. It drops into the scene already selected, at the 3D cursor. A fresh tab already has a CUBE waiting, so there is something to try the tools on before you add anything.',
-          'While it is still freshly added, the PROPERTIES panel lets you change its parameters (size, segments, rings) and the mesh is rebuilt each time.',
-          'Press Tab to enter edit mode. The left panels swap to SELECT, OPERATIONS, LOOP OPERATIONS and TOPOLOGY, and the tool rail switches to vertex, edge and face selection.',
+          'To add another shape, click one in the PRIMITIVES panel on the left. It appears at the 3D cursor, already selected.',
+          'While the shape is freshly added, change its parameters (size, segments, rings) in the PROPERTIES panel. The mesh rebuilds each time.',
+          'Press Tab to enter edit mode. The left panels change to SELECT, OPERATIONS, LOOP OPERATIONS and TOPOLOGY, and the tool rail switches to vertex, edge and face selection.',
           'Select some geometry and run an operation: E extrudes, I insets, Ctrl+R cuts a loop.',
-          'Press Ctrl+E to export as OBJ or FBX, or Ctrl+S to save the project as a file you can reopen later.',
+          'Press Ctrl+S to save the project as a file you can reopen, or Ctrl+E to export it as OBJ or FBX.',
         ],
       },
       {
         kind: 'note',
-        text: 'A fresh tab opens on a cube, so there is something to press keys at before you have added anything, and FILE > NEW starts the next project the same way. It is an ordinary object: one Ctrl+Z takes it away if you would rather start empty. Autosave is off until you turn it on with the AUTOSAVE switch in preferences. From then on every change is written as a numbered .3doo into a 3doo-auto-saves folder, in the location you choose there, so a closed or crashed tab costs you at most the changes since the last one, which FILE > OPEN brings back. Undo holds the last 50 steps, or however many the UNDO STEPS slider in preferences allows, and the ▤ button in the top bar opens the list to click straight back to one of them.',
+        text: 'The starting cube is an ordinary object: one Ctrl+Z removes it if you would rather start empty. FILE > NEW starts the next project on a cube too.',
+      },
+      {
+        kind: 'note',
+        text: 'Undo holds the last 50 steps, or as many as UNDO STEPS in preferences allows. The ▤ button in the top bar lists them, so you can click straight back to any one.',
+      },
+      {
+        kind: 'note',
+        text: 'Your work is only kept once it is in a file. Save with Ctrl+S, or turn on AUTOSAVE in preferences: it then writes a numbered .3doo at a regular interval into a 3doo-auto-saves folder, in a location you choose. A closed or crashed tab then costs you at most the changes since the last copy, and FILE > OPEN brings any copy back.',
       },
     ],
   },
@@ -90,7 +98,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Top bar',
-            'FILE, PREFS and the project name on the left; then the object/edit mode switch, the snap, proportional, auto merge, orthographic and smooth-shading flags, the pivot picker, and the SHADING and OVERLAYS menus; the history list, the two framing buttons and the shortcut list on the right.',
+            'Left: FILE, PREFS and the project name. Middle: the object/edit mode switch; the snap, proportional, auto merge, orthographic and smooth-shading flags; the pivot picker; the SHADING and OVERLAYS menus. Right: the history list, the two framing buttons and the shortcut list.',
           ],
           [
             'Tool rail, far left',
@@ -98,29 +106,29 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Left panels',
-            'PRIMITIVES, OBJECT and BOOLEAN in object mode. SELECT, OPERATIONS, LOOP OPERATIONS and TOPOLOGY replace them in edit mode.',
+            'PRIMITIVES, OBJECT and BOOLEAN in object mode. SELECT, OPERATIONS, LOOP OPERATIONS and TOPOLOGY in edit mode.',
           ],
           [
             'Panel titles',
-            'Every panel folds away when its title is clicked. Which ones are folded is saved with the project. To take one off the screen altogether, use the PANELS VISIBILITY section of PREFS.',
+            'Click a title to fold its panel away. Which panels are folded is saved with the project. To remove a panel from the screen altogether, use PANELS VISIBILITY in PREFS.',
           ],
           [
             'Viewport',
-            'The scene. Orbit, pan and zoom here; right-click places the 3D cursor. The axis widget rides in its top right corner.',
+            'The scene. Orbit, pan and zoom here; right-click for the 3D cursor menu. The axis widget sits in its top right corner.',
           ],
           [
             'Right column',
-            'OUTLINER for the object list, PROPERTIES for the active object, MODIFIERS for its stack.',
+            'OUTLINER lists the objects, PROPERTIES shows the active object, MODIFIERS holds its modifier stack.',
           ],
           [
             'Status bar',
-            'Scene and selection counts, the last operation that ran, the hint line during a modal transform, and a floppy disk that turns once each time your work is autosaved.',
+            'Scene and selection counts, the last operation that ran, and the hint line during a modal transform. A small floppy disk turns once each time autosave writes a copy.',
           ],
         ],
       },
       {
         kind: 'note',
-        text: 'Hovering almost any control for a moment raises a one-line hint explaining it. If they get in the way, turn them off under PREFS.',
+        text: 'Rest the pointer on almost any control for a moment to see a one-line hint explaining it. If the hints get in the way, turn them off under PREFS.',
       },
     ],
   },
@@ -131,7 +139,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'Object mode treats each mesh as a single thing you place in the scene. Ten primitives are available (cube, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule and torus), and each stays parametric until you touch its geometry, so segments and radius can still be adjusted after adding it.',
+        text: 'In object mode each mesh is one thing you place in the scene. There are ten primitives: cube, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule and torus. Each stays parametric until you edit its geometry, so you can still change its segments and radius after adding it.',
       },
       {
         kind: 'table',
@@ -139,11 +147,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'Move, rotate, scale',
-            'G, R and S, or drag the gizmo handles. Type X, Y or Z mid-drag to constrain to an axis.',
+            'G picks the move tool: drag the gizmo handles. R and S start a rotate or scale straight away, following the pointer. Press X, Y or Z during a rotate or scale to lock it to that axis.',
           ],
           [
             'Duplicate',
-            'Shift+D for an independent copy, Alt+D for a linked one that shares the same mesh data.',
+            'Shift+D makes an independent copy. Alt+D makes a linked copy that shares the same mesh data.',
           ],
           ['Join objects', 'Select several and press M to merge them into the active one.'],
           ['Separate', 'P splits the loose parts of a mesh into an object each.'],
@@ -153,53 +161,66 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Origin to geometry',
-            'The ⊙ button at the foot of the tool rail moves the origin onto the middle of the mesh, taking the gizmo with it. Run it whenever an edit has left the origin behind.',
+            'The ⊙ button at the foot of the tool rail moves the origin to the middle of the mesh, and the gizmo with it. Use it whenever an edit has left the origin behind.',
           ],
-          [
-            'Rename, hide, lock',
-            'All in the OUTLINER, per row, alongside the visibility and lock toggles.',
-          ],
+          ['Rename, hide, lock', "In the OUTLINER, on each object's row."],
           [
             'Group',
-            'Ctrl+G puts the selected objects in a folder in the OUTLINER. Objects that were in another folder move across: each object belongs to one folder at a time.',
+            'Ctrl+G puts the selected objects in a folder in the OUTLINER. An object belongs to one folder at a time, so objects already in another folder move across.',
           ],
           [
             'Select from the outliner',
-            'Click a row. Shift+click works the whole run from the active row to the one clicked, the way a list of files does: a row outside the selection takes its run in, a row already in it drops the run back out. Ctrl+click works the one row clicked, the same way round, so a selection can be built from rows that are nowhere near each other. Rows inside a folded folder are not on screen, so a run steps over them.',
+            'Click a row to select it. Shift+click works on the whole run of rows from the active row to the one clicked, like a file list: clicking a row outside the selection adds the run, clicking one inside removes it. Ctrl+click does the same for the clicked row alone, so you can pick rows that are far apart. Rows inside a folded folder are skipped.',
           ],
           [
             'The row menu',
-            'Right-click a row in the OUTLINER for SELECT, RENAME, GROUP, APPLY TRANSFORMS and DELETE. The first entry reads DESELECT on a row that is already selected, and drops just that row from the selection. A row inside a folder also offers REMOVE FROM GROUP, which leaves that one object loose and the folder otherwise intact. Every entry acts on the row it was opened on (the name in the header) and not on whatever else happens to be selected, GROUP aside: it folds the whole selection into a folder, so it stays off until two objects or more are selected and every one of them is loose.',
+            'Right-click a row in the OUTLINER for SELECT (DESELECT on a row already selected), RENAME, GROUP, APPLY TRANSFORMS and DELETE. A row inside a folder also offers REMOVE FROM GROUP, which takes that one object out and leaves the folder intact. Every entry acts on the row you opened the menu on (named in its header), not on the rest of the selection. GROUP is the exception: it puts the whole selection in a folder, so it is only available when two or more objects are selected and none of them is in a folder.',
           ],
           [
             'The folder menu',
-            'Right-click a folder title for RENAME, SELECT ALL, JOIN (fold everything in the folder into one object), UNGROUP (drop the folder and leave its objects loose) and DELETE (the folder and everything in it).',
+            'Right-click a folder title for RENAME, SELECT ALL, JOIN (merge everything in the folder into one object), UNGROUP (remove the folder and leave its objects loose) and DELETE (the folder and everything in it).',
           ],
         ],
       },
       {
         kind: 'prose',
-        text: 'A folder is its objects: its own row carries a visibility and a lock toggle that set every object under it at once, and it folds shut on the chevron to get a finished assembly out of the way. Clicking the title selects everything inside, which is how a group of parts is moved, turned or scaled as one. Take the last object out of a folder, or delete them all, and the folder goes with them, since there is nothing left to put back in it.',
+        text: 'A folder acts on all its objects at once. Its row has a visibility and a lock toggle that set every object inside, and its chevron folds it shut to get a finished assembly out of the way. Click the folder title to select everything inside, then move, rotate or scale the group as one. When the last object leaves a folder, or is deleted, the folder goes too.',
       },
       {
         kind: 'prose',
-        text: 'Every object carries an origin: the zero every one of its vertex coordinates is measured from. It is the point LOCATION names, the point a rotation or a scale turns about on the ORIGIN pivot, and the plane a mirror modifier reflects across. The amber square on a selected object is where it is, drawn over the geometry rather than behind it since an origin usually sits inside the mesh. ORIGINS under OVERLAYS hides it.',
+        text: 'Every object has an origin: the point its vertex coordinates are measured from. LOCATION is where the origin is. On the ORIGIN pivot, rotation and scale turn about it, and a mirror modifier reflects across it. A selected object shows its origin as an amber square, drawn on top of the geometry because an origin usually sits inside the mesh. ORIGINS under OVERLAYS hides the square.',
       },
       {
-        kind: 'note',
-        text: 'An object-mode move carries the origin along with the mesh. An edit-mode move does not: vertex coordinates change and the zero they are measured from stays put, so geometry dragged across the scene leaves its origin and its square behind. ORIGIN TO GEOMETRY brings both back onto the shape. Nothing moves on screen, since the vertices give up exactly what the origin gains.',
-      },
-      {
-        kind: 'note',
-        text: 'ORIGIN TO GEOMETRY picks the middle of the mesh for you. To put an origin somewhere of your own choosing, place the 3D cursor there and pick ORIGIN OF SELECTED TO CURSOR from the viewport right-click menu. Every selected object lands its origin on that one point, which is how a set of parts is given a shared hinge to turn about.',
-      },
-      {
-        kind: 'prose',
-        text: 'MERGE, SEPARATE and the three booleans each hand back geometry the old origin has no claim on: a merge spans everything that came in, a separated part is one piece of what used to be a whole, and a cut can take away the very corner the origin was sitting in. So each of them re-centres the origin of every object it leaves behind, exactly as ORIGIN TO GEOMETRY would. Nothing moves on screen; the LOCATION numbers change to say where the shape now is.',
-      },
-      {
-        kind: 'prose',
-        text: 'The rest of the OBJECT panel leaves the origin where it is. DUPLICATE and LINKED DUPLICATE give the copy the origin its source has, so the two behave alike under a rotation. APPLY TRANSFORM bakes rotation and scale into the vertices and deliberately keeps the position, and RECALCULATE NORMALS only turns faces around. ORIGIN TO GEOMETRY is the button for the rest, on any object at any time, and it wants a single-user mesh: linked copies share their vertices, so moving one origin would drag every other copy off its own.',
+        kind: 'table',
+        head: ['ACTION', 'THE ORIGIN'],
+        rows: [
+          ['Move in object mode', 'Moves with the mesh.'],
+          [
+            'Move in edit mode',
+            'Stays where it is. Geometry dragged across the scene leaves its origin and its amber square behind.',
+          ],
+          [
+            'ORIGIN TO GEOMETRY',
+            'Moves to the middle of the mesh. Nothing moves on screen, because the vertices give up exactly what the origin gains. It needs a mesh that is not shared: linked copies share their vertices, so moving one origin would drag every other copy off its own.',
+          ],
+          [
+            'ORIGIN OF SELECTED TO CURSOR',
+            'Moves to the 3D cursor, for every selected object. Use it to give a set of parts one shared point to turn about. It is in the viewport right-click menu.',
+          ],
+          [
+            'MERGE, SEPARATE, the booleans',
+            'Moves to the middle of the result, as ORIGIN TO GEOMETRY would. The geometry these hand back has no relation to the old origin: a merge spans everything that came in, a separated part is one piece of the old whole, and a cut can remove the corner the origin sat in. Nothing moves on screen; the LOCATION numbers change to say where the shape now is.',
+          ],
+          [
+            'DUPLICATE, LINKED DUPLICATE',
+            'Copied from the source, so the copy behaves like the original under a rotation.',
+          ],
+          [
+            'APPLY TRANSFORM',
+            'Stays where it is. Rotation and scale are baked into the vertices, and the position is deliberately kept.',
+          ],
+          ['RECALCULATE NORMALS', 'Stays where it is. It only turns faces around.'],
+        ],
       },
     ],
   },
@@ -210,7 +231,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'Press Tab to enter edit mode, then 1, 2 and 3 to switch between vertex, edge and face selection. Edit mode opens with nothing picked every time, so whatever is highlighted was picked on this trip in. Switching between 1, 2 and 3 never loses what you had picked: the selection propagates from the elements you chose to the ones the new mode works with.',
+        text: 'Press Tab to enter edit mode, then 1, 2 or 3 to select vertices, edges or faces. Edit mode always opens with nothing selected. Switching between 1, 2 and 3 keeps your selection: it carries over from the elements you picked to the ones the new mode works with.',
       },
       {
         kind: 'table',
@@ -218,54 +239,62 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'One element',
-            'Click it. Shift+click toggles it: one outside the selection joins it, one already in it drops out. The same goes for a vertex, an edge, a face and, in object mode, a whole object.',
+            'Click it. Shift+click toggles it: an element outside the selection joins it, one already in it drops out. This works the same for a vertex, an edge, a face and, in object mode, a whole object.',
           ],
           [
-            'More, without losing what you have',
-            'Hold Shift as you press. The pointer says which way a click will go before you make it: a plus over anything the click would add, and over empty space, and a minus over anything already selected, which the click would drop. The sign flips the moment a click lands, so it always answers for the next one. A Shift+drag adds everything the region touches, and the pointer keeps the plus for as long as the region is being drawn. Hold Alt as well, in edge or face select, and a ring joins the sign above it: the sign at the foot of the pointer says which way the pick goes, the ring at the head says how much it takes. The marks follow whichever tool is in hand, since a click picks things up under MOVE, ROTATE and SCALE as readily as under SELECT, and a click on a gizmo handle reaches whatever is under it, so Shift+clicking a selected object where its handles stand drops it. Whether the keys were down when the gesture began is what decides it, so a region drag can let go of Shift halfway to free its oval without turning the addition back into a replacement.',
+            'Add to the selection',
+            'Hold Shift while you click or drag. A Shift+drag adds everything the region touches. What counts is whether Shift was down when the click or drag began, so you can let go of Shift partway through a CIRCLE drag to free its shape and it still adds.',
           ],
           [
-            'Less, without losing the rest',
-            'Shift+click anything already selected and it drops out. Shift+Ctrl only ever takes away, which is what it is for with a region drag: it drops everything the region touched and leaves the rest of the selection standing, whichever shape the drag draws. On a Mac it is Shift+Cmd: Ctrl+click is a right-click there, and opens the cursor menu instead.',
+            'Remove from the selection',
+            'Shift+click anything already selected. To remove a whole region, drag with Shift+Ctrl: it drops everything the region touches and keeps the rest, whichever region shape you use. On a Mac use Shift+Cmd, because Ctrl+click is a right-click there and opens the cursor menu.',
+          ],
+          [
+            'What the pointer tells you',
+            'While Shift is held, the pointer shows what a click would do: a plus over anything a click would add (and over empty space), a minus over anything already selected. It updates the moment a click lands, so it always describes the next click. With Alt held as well, in edge or face select, a ring appears above the sign: the sign says whether the pick adds or removes, the ring says it takes a whole loop.',
+          ],
+          [
+            'Selecting with other tools',
+            'Clicks select under MOVE, ROTATE and SCALE just as under SELECT, and the pointer marks follow whichever tool is active. A click on a gizmo handle reaches whatever is under it, so Shift+clicking a selected object where its handles stand drops it from the selection.',
           ],
           [
             'A region of elements',
-            'Drag across empty space. The region is a rectangle until you say otherwise: V steps the select tool through SQUARE, CIRCLE and LASSO, drawn freehand around what you want. Clicking the tool in the rail offers the same three, and its icon shows which one a drag would draw. A drag takes whatever it touches, whether it covers the whole thing or clips one corner: an edge the region reaches the tip of, a face it reaches any part of, and in object mode the object itself.',
+            'Drag across empty space. The region is a rectangle by default. Press V to step the select tool through SQUARE, CIRCLE and LASSO (drawn freehand), or click the tool in the rail for the same three; its icon shows the current shape. A region takes anything it touches, even partly: an edge it reaches the tip of, a face it covers any part of, and in object mode the whole object.',
           ],
           [
             'An oval region',
-            'CIRCLE grows from where the drag began rather than corner to corner, and takes each of its two radii from how far the pointer has travelled along that axis, so it follows the pointer into whatever oval the drag asks for. Hold Shift while dragging and both radii become the distance to the pointer, which is the circle that grows evenly whichever way you go. A drag straight up, down or across opens no oval at all, since one of the two radii never leaves zero.',
+            'With CIRCLE, the region grows from where the drag began rather than corner to corner. Each of its two radii follows how far the pointer has moved along that axis, so the shape follows the pointer into any oval. Hold Shift for a true circle, with both radii set to the distance to the pointer. A drag straight up, down or across makes no oval, since one radius stays at zero.',
           ],
           [
             'An edge loop',
-            'Alt+click an edge. The pointer takes a ring the moment Alt goes down, which is how you know the click is about to take the whole loop rather than the one edge under it. The loop runs on until it meets a pole. Shift+Alt+click an edge left out of the selection and its loop stacks onto what is already picked, or an edge already picked and its whole loop drops back out. EDGE LOOP, in the TOPOLOGY panel, names one from edges already picked instead: select two that meet and it extends the selection along the whole loop they sit in, one loop per edge that named it.',
+            'Alt+click an edge. The pointer shows a ring as soon as Alt is held, meaning the click takes the whole loop rather than one edge. The loop runs on until it meets a pole. Shift+Alt+click an unselected edge to add its loop, or a selected edge to remove its whole loop. From edges already selected, EDGE LOOP in the TOPOLOGY panel does the same: select two edges that meet, and it extends the selection along the loop each of them runs in.',
           ],
           [
             'A face loop',
-            'Alt+click a face, near the edge you want the loop to run across: that edge is what says which of the two loops through the face you meant, so point at the side you are heading for rather than the middle. Shift+Alt+click adds a loop instead of replacing the selection, so bands stack up one click at a time, and the same click on a face already picked takes its whole loop back out: the pointer shows both marks together, the ring over the sign. Vertex select has no loops to name, so Alt puts no ring up there. Alt+L still names one from two faces already picked.',
+            'Alt+click a face near the edge you want the loop to run across. That edge decides which of the two loops through the face you get, so point at the side you are heading for, not the middle. Shift+Alt+click adds a loop instead of replacing the selection, so you can build up bands one click at a time; on a face already selected, it removes the whole loop. Vertex select has no loops, so Alt shows no ring there. Alt+L selects the loop through two faces already selected.',
           ],
           [
             'What a click would take',
-            'In vertex select the vertex under the pointer is marked with a larger cyan square before you click it, and only ever one a click could actually take. That is what tells two vertices left in the same place apart, and it doubles as a check on whether what you are aiming at is reachable from where the camera is standing.',
+            'In vertex select, the vertex under the pointer is marked with a larger cyan square before you click, and only when a click could actually take it. That tells apart two vertices in the same place, and shows whether the vertex you are aiming at can be reached from where the camera is.',
           ],
           [
             'Which way a selection reaches',
-            'A selected vertex runs the selection colour out along every edge it owns, full at the vertex and gone by the far end. A dot is a few pixels of red and says nothing about the geometry it holds, so the fade is what makes a growing selection readable at a glance. An edge with both ends selected is selected outright and drawn in flat red instead.',
+            'A selected vertex shades the edges it owns in the selection colour, strongest at the vertex and fading to nothing at the far end. A dot alone says little about the geometry around it, so the fade makes a growing selection readable at a glance. An edge with both ends selected is selected itself, and is drawn in solid red.',
           ],
           ['Everything / nothing', 'A selects all, Alt+A deselects all, Ctrl+I inverts.'],
           [
-            'Out of a selection',
-            'Esc clears it (objects in object mode, vertices, edges or faces in edit mode) and puts the transform gizmo away with it. It leaves no undo entry of its own.',
+            'Clear the selection',
+            'Esc clears it (objects in object mode, elements in edit mode) and puts the transform gizmo away. It adds no undo step of its own.',
           ],
           [
             'Wider or narrower',
-            '] grows the selection to the neighbouring ring, [ shrinks it back from its border.',
+            '] grows the selection by one ring of neighbours, [ shrinks it back from its border.',
           ],
         ],
       },
       {
         kind: 'note',
-        text: 'Selection is stored on the mesh elements themselves, which is where the modelling operators look for it. That is why an operation always acts on exactly what the viewport is highlighting.',
+        text: 'Selection is stored on the mesh elements themselves, which is where the modelling operations look for it. So an operation always acts on exactly what the viewport highlights.',
       },
     ],
   },
@@ -276,7 +305,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'Every operator below lives in one of the three edit-mode panels: OPERATIONS holds the ones that add geometry (extrude, inset, bevel), LOOP OPERATIONS the ones that run along an edge loop (loop cut, subdivide, relax, circle, space), and TOPOLOGY the ones that join, weld, clean up or widen the selection. Most have a shortcut. A button is disabled whenever the current selection cannot feed it, and its hint says what to select instead, so the panels double as a guide to what each one needs.',
+        text: 'The edit-mode operations live in three panels. OPERATIONS adds geometry (extrude, inset, bevel). LOOP OPERATIONS works along edge loops (loop cut, subdivide, relax, circle, space). TOPOLOGY joins, welds, cleans up or widens the selection. Most operations have a shortcut. A button is disabled when the current selection cannot feed it, and its hint says what to select instead.',
       },
       {
         kind: 'table',
@@ -284,47 +313,47 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'Extrude (E)',
-            'Pulls the selected faces or edges out into new geometry. INDIVIDUAL extrudes each face along its own normal instead of as one region. Started with E, the distance comes from the pointer instead of the field.',
+            'Pulls the selected faces or edges out into new geometry. INDIVIDUAL extrudes each face along its own normal instead of as one region.',
           ],
           [
             'Inset (I)',
-            'Shrinks faces inward, leaving a border ring. DEPTH pushes the inset face along the normal at the same time. Started with I, the thickness comes from the pointer instead of the field.',
+            'Shrinks faces inward, leaving a border ring. DEPTH also pushes the inset face along its normal.',
           ],
           [
             'Bevel (Ctrl+B)',
-            'Chamfers the selected edges. More SEGMENTS round the chamfer instead of leaving it flat. Started with Ctrl+B, the width comes from the pointer instead of the field.',
+            'Chamfers the selected edges. More SEGMENTS round the chamfer instead of leaving it flat.',
           ],
           [
             'Loop cut (Ctrl+R)',
-            'Inserts edge loops across the quad ring the selected edge passes through. The new loop is left selected, ready to scale or move. Quads are what the ring is made of, so an edge with triangles or an n-gon on both sides (every edge of a cone) has nothing to cut across, and the button stays unavailable until one does.',
+            'Adds edge loops across the ring of quads the selected edge runs through, and leaves the new loop selected, ready to move or scale. It needs quads: an edge with a triangle or an n-gon on both sides (every edge of a cone) has nothing to cut across, so the button stays unavailable.',
           ],
           [
             'Subdivide (Ctrl+D)',
-            'In face mode, cuts every edge of the face CUTS times and fills it with the grid that leaves (one cut gives four faces, three gives sixteen) with optional Catmull-Clark smoothing. Every cut then runs on as a loop: through the face across each quad it reaches, and the next, until the loop closes or meets a face that is not a quad. That is what keeps the mesh in quads, and what keeps the faces around the selection cut rather than left carrying a stray vertex nothing can be cut against. In edge mode, adds that many vertices along each selected edge.',
+            'In face mode, cuts every edge of the selected faces CUTS times and fills each face with the resulting grid: one cut makes four faces, three make sixteen. SMOOTH adds Catmull-Clark smoothing. Each cut then runs on as a loop through the neighbouring quads, until it closes or meets a face that is not a quad. That keeps the mesh in quads, and leaves no stray vertex on the faces around the selection. In edge mode, adds CUTS vertices along each selected edge.',
           ],
           [
             'Relax',
-            'Pulls the kinks out of a selected loop and evens out its spacing without changing the shape it runs over. Each vertex is drawn onto the midpoint of its neighbours, the loop is then spread evenly along the line that leaves, and every vertex is dropped back onto the surface it came from, which is what KEEP SHAPE does, and why a relaxed loop slides across the mesh rather than sinking into it. Where the selection runs out, the vertex it ran out at holds still and the rest are spaced against it. A selection that is not a loop smooths against its whole neighbourhood instead, and an open border keeps its outline: there is no surface past a border to come back to, so its vertices only even out along it. FACTOR is how far each pass travels, ITERATIONS how many passes to take.',
+            'Takes the kinks out of a selected loop and evens its spacing, without changing the shape it lies on. Each pass draws every vertex toward the midpoint of its neighbours, spreads the loop out evenly, and drops each vertex back onto the surface (that last part is KEEP SHAPE). So a relaxed loop slides across the mesh instead of sinking into it. Where the selection ends, the end vertex holds still. A selection that is not a loop is smoothed against its whole neighbourhood. An open border keeps its outline and is only evened out along it. FACTOR sets how far each pass moves, ITERATIONS how many passes run.',
           ],
           [
             'Circle',
-            'Rounds the selected loop out onto the circle that fits it best. The loop is flattened onto its own average plane and every vertex is carried in or out to the one radius, keeping the direction it already sits in from the centre, so the loop comes back round without being reshuffled. The circle is a least squares fit rather than the middle of the selection, which is what lets half a ring be rounded as accurately as a whole one. Each loop in the selection is fitted on its own, so both ends of a cylinder can be rounded in one go. FACTOR is how far to go: 1 lands on the circle, less rounds the loop off part of the way.',
+            'Rounds the selected loop onto the circle that fits it best. The loop is flattened onto its average plane, and each vertex moves to one shared radius while keeping its direction from the centre, so the vertices stay in order. The circle is fitted to the points rather than centred on the middle of the selection, so half a ring rounds as accurately as a whole one. Each loop in the selection is fitted separately, so both ends of a cylinder round in one go. FACTOR 1 lands on the circle; less goes part of the way.',
           ],
           [
             'Space',
-            'Slides the selected vertices along the loop they lie on until the gaps between them are even, leaving every bend of that loop where it is. It is the half of relax that only evens out spacing, and it is what to reach for on a loop whose shape is right and whose spacing is not, where a relax would round off the corners as it went. A loop that closes on itself is spaced right round; one that stops is spaced between the two vertices it stopped at, which hold still so the loop stays joined to the mesh. The spacing is measured along the loop, so on a coarse one the gaps across it can still differ by a few percent: a second click closes that. Follow a circle with a space to turn any ring into a regular one.',
+            'Slides the selected vertices along their loop until the gaps between them are even, keeping every bend where it is. Use it when the shape of a loop is right and only the spacing is wrong, where relax would round off the corners. A closed loop is spaced all the way round. An open one is spaced between its two end vertices, which hold still so the loop stays joined to the mesh. Spacing is measured along the loop, so on a coarse loop the gaps can still differ by a few percent: click again to even them. Run CIRCLE, then SPACE, to turn any ring into a regular one.',
           ],
           [
             'Slide (Shift+G)',
-            'Moves the selection along the geometry it already sits on, without adding any. In vertex select each vertex runs down one of the edges leaving it; in edge select the whole selection runs across the faces to either side, which is how a loop is nudged into place after a loop cut. Face select has no single rail to run along, so it asks you to switch to 1 or 2 first. VERTEX SLIDE and EDGE SLIDE, in the SLIDE row of the TOPOLOGY panel, run the same travel to an exact figure in metres.',
+            'Moves the selection along the geometry it sits on, adding nothing. In vertex select, each vertex runs down one of its edges. In edge select, the selection runs across the faces on either side, which is how you nudge a loop into place after a loop cut. Face select has no single rail to run along, so switch to 1 or 2 first. For an exact distance, use the SLIDE row of the TOPOLOGY panel.',
           ],
           [
-            'Merge (M) and merge by distance',
-            'Welds vertices together: either the selection onto one point, or every pair closer than a threshold, with a live preview count.',
+            'Merge and merge by distance (M)',
+            'MERGE, in the TOPOLOGY panel, welds the selected vertices onto one point: their centre, the 3D cursor, or the first or last one selected. MERGE BY DISTANCE (M) welds every pair closer than a threshold, with a live count of how many vertices will go.',
           ],
           [
             'Delete (X) vs dissolve (Del)',
-            'Delete removes the geometry and leaves a hole. Dissolve removes it while keeping the surrounding surface intact.',
+            'Both act on what the select mode targets: vertices, edges or faces. Delete removes the geometry and leaves a hole. Dissolve removes it but keeps the surface closed, merging the faces around it into one. Dissolve skips an edge or corner whose faces meet at more than 40°, since merging them would fold the face, and the status bar says how many it skipped.',
           ],
           [
             'Fill (F) and bridge',
@@ -336,45 +365,100 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Triangulate (Alt+T) / tris to quads (Alt+J)',
-            'Convert the whole mesh either way, with Alt+T and Alt+J. Tris-to-quads merges adjacent, near-coplanar triangle pairs back into quads.',
+            'Converts the whole mesh one way or the other. Tris to quads merges adjacent, near-coplanar triangle pairs back into quads.',
           ],
         ],
       },
       {
         kind: 'prose',
-        text: 'Normals have their own operations: recalculate outward (Shift+N) and flip. Smooth shading is the ◐ flag in the top bar, next to the orthographic one: it blends the normals across faces rather than faceting them, and in edit mode it applies to the selected faces alone. It belongs to the object, so a REMESH carries it across rather than deciding it. The face-orientation overlay draws backfaces in red, so anywhere red shows you are looking at the inside of the surface, worth checking before an export.',
+        text: 'E, I and Ctrl+B take their distance from the pointer, so you see the shape before you commit to it:',
+      },
+      {
+        kind: 'steps',
+        items: [
+          'Press the key. A dashed guide appears.',
+          'Move the pointer. The mesh follows live, and the status bar shows the distance.',
+          'Click or press Enter to confirm, or press Esc to put the mesh back. You can also hold the mouse button down and drag: letting go confirms.',
+        ],
+      },
+      {
+        kind: 'table',
+        head: ['KEY', 'MOVE THE POINTER'],
+        rows: [
+          [
+            'Extrude (E)',
+            'Along the dashed line drawn through the selection. Only travel along that line counts, so the pointer can wander off it. Pull back past the start to sink the region into the surface instead of raising it.',
+          ],
+          [
+            'Inset (I)',
+            'In toward the selection. The ring keeps widening as you sweep on past the middle. Pull back the way you came to close it.',
+          ],
+          [
+            'Bevel (Ctrl+B)',
+            'Out from the selection, in any direction: the length of the dashed line sets the width. Bring the pointer back in to close it, down to nothing.',
+          ],
+        ],
       },
       {
         kind: 'note',
-        text: 'Subdivision multiplies rather than adds: four cuts turn one face into twenty-five, and running it again turns each of those into twenty-five more. A quarter of a million faces is about as much as a browser tab can hold, so SUBDIVIDE says what a heavy run would leave before it takes it, refuses outright past that ceiling, and the SUBDIVISION modifier drops a level rather than take the window down with it.',
+        text: 'Pressing the key and confirming without moving changes nothing and records no undo step, so a stray E or I costs nothing. When you know the exact figure, type it into the OFFSET, THICKNESS, DEPTH, WIDTH or SEGMENTS field of the OPERATIONS panel instead.',
       },
       {
         kind: 'note',
-        text: 'Proportional editing, at the bottom of the TOPOLOGY panel, spreads a transform into the unselected geometry around it through one of six falloff curves. Turn it on, set a radius, and a single vertex drags the surface with it.',
+        text: 'Slide has two ways in. Shift+G runs it from the pointer with no button held, and the mouse carries the distance: move it and the selection slides; click or press Enter to confirm, Esc to cancel. The rails each vertex can travel along are drawn while it runs, and the status bar shows how far it has gone. A vertex slides down the edge that reaches toward the pointer at the moment you press the key, so aim before you press.',
+      },
+      {
+        kind: 'prose',
+        text: 'For an exact slide, use the SLIDE row of the TOPOLOGY panel:',
+      },
+      {
+        kind: 'steps',
+        items: [
+          'Switch ENABLE on.',
+          'Pick a DIRECTION: 1, 2 or 3 for a vertex slide, 1 or 2 for an edge slide.',
+          'Set TRAVEL in metres. A cyan preview shows where the selection will land, and the track ends where the first selected vertex would reach its neighbour.',
+          'Press VERTEX SLIDE or EDGE SLIDE.',
+        ],
       },
       {
         kind: 'note',
-        text: 'Extrude, inset and bevel take their distance from the pointer when they are started from the keyboard. E, I or Ctrl+B puts a dashed guide up and the mesh follows the pointer from there: draw the guide line out from the selection to open a bevel, push the pointer in toward the selection to open an inset, and travel along the line an extrude draws through the selection to raise the region. Either hand works: move the pointer with no button held and click to confirm, or hold the button down and drag the distance out, which confirms when you let go. The status bar reads the distance out as it goes, Enter confirms as a click does, and Esc puts the mesh back as it was.',
+        text: 'A slide adds nothing and never leaves the surface, which makes it the way to adjust where a loop sits without changing the shape. Slide all the way and the selection lands exactly on the neighbouring vertices. Auto merge then collapses the two. With auto merge off they stay, one on top of the other, and the hover mark shows which one a click would take.',
       },
       {
         kind: 'note',
-        text: 'A bevel is driven the way a modal scale is: the dashed line runs from the selection out to the pointer, and the length of that line is the cut. Draw it out and the chamfer widens with it, whichever way round the selection the pointer travels, and bring the pointer back in to close it again, down to nothing at the length the line had when the drag started. An inset runs the other way about, because the border ring it cuts grows into the face rather than out of it: push the pointer in toward the selection and the ring opens with the travel. The way in is fixed when the drag starts, running from wherever the pointer was to the selection, and it keeps reading past the far end, so sweeping the pointer on across the model goes on widening the ring rather than closing it. An extrude reads only travel along the normal, so the pointer can wander off that line without dragging the distance with it, and pulling back past the start sinks the region into the surface rather than raising it off.',
+        text: 'Auto merge, the ⋈ flag in the top bar, welds vertices that a transform has left on top of each other, within the distance set in the AUTO MERGE row of the TOPOLOGY panel. It turns a slide all the way onto the next loop into a collapse of the two, instead of two loops in the same place. Only the vertices that just moved can be welded away, so geometry that was already that close is left alone. The weld shares one undo step with the transform that caused it.',
+      },
+      {
+        kind: 'prose',
+        text: 'To give edges an exact length, select them and type the length in metres into SELECTED EDGE(S) in the PROPERTIES panel. The field shows their current length, and the new one applies as soon as you press Enter or leave the field.',
       },
       {
         kind: 'note',
-        text: 'The OPERATIONS panel stays exact, running at whatever the OFFSET, THICKNESS, DEPTH, WIDTH and SEGMENTS fields say, which is the way in when the figure is one you already know. Pressing the key and confirming without moving the pointer leaves the mesh alone and records no undo step, so a stray E or I costs nothing.',
+        text: "Each selected edge is set to that length, stretched about its own midpoint, so it keeps its position and direction while the faces around it follow. The length is measured in the world, with the object's scale applied, which is the size an export writes. Drag the LENGTH label to stretch the edges live; the whole drag is one undo step. Edges that share a vertex cannot be sized together, because the second would move a vertex the first had just placed. The field stays unavailable until no two selected edges touch, and its hint says what is holding it back.",
+      },
+      {
+        kind: 'prose',
+        text: 'Normals say which way each face points. Recalculate them outward with Shift+N, or flip them. The face-orientation overlay draws backfaces in red: wherever red shows, you are looking at the inside of the surface, which is worth fixing before an export.',
+      },
+      {
+        kind: 'prose',
+        text: 'Smooth shading is the ◐ flag in the top bar, next to the orthographic one. It blends normals across faces instead of faceting them. In edit mode it applies to the selected faces only. It belongs to the object, so REMESH keeps whatever it was set to.',
+      },
+      {
+        kind: 'prose',
+        text: 'To keep a hard edge on a smooth surface, select the edges and press MARK SHARP in the NORMALS row of the PROPERTIES panel. Shading breaks along them instead of blending across, and edit mode draws them in cyan. CLEAR SHARP removes the mark.',
       },
       {
         kind: 'note',
-        text: 'SELECTED EDGE(S), in the PROPERTIES panel, is how the edge(s) you have picked are given an exact size. Select one or several and type the figure in metres: the field shows what they already measure, and what you type lands as soon as you leave the field or press Enter, with no button to reach for. Every selected edge is set to that one length, each stretched about its own midpoint, so it keeps where it sits and the direction it runs in while the faces around it follow. The figure is measured out in the world with the object scale applied, which is the size an export writes out. Drag the LENGTH label to stretch the edge(s) live, the way every field here scrubs: the whole drag is one step to undo back to rather than one per pixel. Two edges that meet at a vertex cannot both be sized, because the second would drag a vertex the first had just placed, so the field stays unavailable until nothing in the selection touches, and its hint says which of those is holding it.',
+        text: 'A sharp edge only breaks the shading at a vertex the crease runs through. A single sharp edge in the middle of a surface therefore changes nothing, and a longer crease fades out over its last edge at each end. Run it to the border of an open surface, or all the way round, and it holds right to the end. The mark survives subdivide, loop cut, merge and the modifiers, and an FBX export with per-vertex normals keeps the hard edges.',
       },
       {
         kind: 'note',
-        text: 'Slide has two ways in. Shift+G in edit mode runs it off the bare pointer with no button held, and the mouse carries the distance: move it and the selection travels, a click or Enter confirms, Esc puts everything back. The rails each vertex may travel along are drawn while it runs and the status bar reads out how far it has got. Which edge a vertex takes is decided by where the pointer is when you press the key: the edge reaching toward the cursor is the one it slides down, so aim before you press. The SLIDE row of the TOPOLOGY panel is the other way, for when the figure is the point rather than the feel: switch ENABLE on, pick DIRECTION 1, 2 or 3 for a vertex slide, 1 or 2 for an edge slide, set TRAVEL in metres, and press VERTEX SLIDE or EDGE SLIDE. While the row is on, the selection is drawn over the mesh in cyan where that direction and travel would leave it, so where it lands is settled before the click, and the track ends where the first vertex of the selection would land on its neighbour. Either way nothing is added and nothing leaves the surface, which is what makes a slide the way to adjust where a loop sits without changing the shape it runs over. Run it all the way to the end and the selection lands exactly on the neighbouring vertices, which is the case auto merge is there to collapse. With auto merge off the two stay as they are, one sitting on the other: the hover mark is what says which of them a click has hold of.',
+        text: 'Subdivision multiplies rather than adds: four cuts turn one face into twenty-five, and running it again turns each of those into twenty-five more. About a quarter of a million faces is as much as a browser tab can hold. So SUBDIVIDE warns you what a heavy run would leave before it runs, refuses outright past that limit, and the SUBDIVISION modifier drops a level instead of taking the tab down.',
       },
       {
         kind: 'note',
-        text: 'Auto merge, the ⋈ flag in the top bar, welds vertices that a transform has left on top of each other, at the distance set in the AUTO MERGE row of the TOPOLOGY panel. It is what turns a slide run all the way onto the next loop into a collapse of the two rather than two loops in the same place. Only the vertices that just moved can be welded away, so geometry that was already sitting that close together is left alone, and the weld goes into the same undo step as the transform that caused it.',
+        text: 'Proportional editing, at the bottom of the TOPOLOGY panel, spreads a transform into the unselected geometry around it, through one of six falloff curves. Turn it on, set a radius, and dragging a single vertex pulls the surface along with it.',
       },
     ],
   },
@@ -385,7 +469,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'A modifier changes what an object looks like without changing the mesh you are editing. The stack is evaluated top to bottom every time the viewport draws, so you keep editing the cage underneath while seeing the result. Edit mode shows both: the result is shaded as it always is and its edges are drawn faintly behind the cage, while the cage keeps the full wireframe, its vertices and its selection, since the cage is what a click picks and what the operators run on.',
+        text: 'A modifier changes what an object looks like without changing the mesh you edit. The stack runs top to bottom every time the viewport draws, so you keep editing the cage underneath while you see the result.',
+      },
+      {
+        kind: 'note',
+        text: 'In edit mode you see both. The result is shaded as usual, with its edges drawn faintly behind the cage. The cage keeps the full wireframe, its vertices and its selection, because the cage is what a click picks and what operations run on.',
       },
       {
         kind: 'table',
@@ -393,7 +481,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'Mirror',
-            'Reflects the mesh across an axis, optionally merging the seam or bisecting what crosses the plane. It can mirror about the 3D cursor rather than the object origin.',
+            'Reflects the mesh across an axis, optionally merging the seam or bisecting what crosses the plane. It can mirror about the 3D cursor instead of the object origin.',
           ],
           [
             'Array',
@@ -407,29 +495,29 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ['Subdivision', 'Catmull-Clark smoothing at a display level you choose.'],
           [
             'Remesh',
-            'Rebuilds the topology outright, by one of three methods. VOXEL samples the shape into a signed distance grid and contours an even quad shell back out of it. BLOCKS reads that same grid straight off the lattice with every face axis-aligned, a voxel study of the shape rather than a surface to carry on working. REDUCE rebuilds nothing: it collapses the edges that cost the least to lose, leaving every other vertex exactly where it was, and it is the only one that keeps material slots.',
+            'Rebuilds the topology outright, by one of three methods. VOXEL samples the shape into a signed distance grid and builds an even quad shell back out of it. BLOCKS reads the same grid straight off the lattice, every face axis-aligned: a voxel study of the shape rather than a surface to keep working on. REDUCE rebuilds nothing: it collapses the edges that cost least to lose and leaves every other vertex exactly where it was. REDUCE is the only method that keeps material slots.',
           ],
         ],
       },
       {
         kind: 'note',
-        text: 'Reorder the stack to change the outcome: mirroring after an array is not the same shape as arraying after a mirror. APPLY bakes a modifier into the real mesh when you are ready to commit to it.',
+        text: 'Order matters: mirroring after an array is not the same shape as arraying after a mirror, so reorder the stack to change the outcome. APPLY bakes a modifier into the real mesh when you are ready to commit to it.',
       },
       {
         kind: 'prose',
-        text: 'REMESH answers one question: the shape is right but the topology is not: a boolean left a mess of slivers, an import arrived as one dense triangle soup, or a sculpt needs an even cage to work on. Because it throws away the geometry it was handed, it belongs at the end of a stack rather than the middle. Density is the control to reach for first: TARGET FACES names the count you want and solves the voxel size out of it, or turn it off and set VOXEL SIZE (or KEEP, the fraction of triangles REDUCE holds on to) by hand.',
+        text: 'REMESH is for when the shape is right but the topology is not: a boolean left slivers, an import arrived as one dense triangle soup, or a sculpt needs an even cage to work on. It throws away the geometry it is given, so put it at the end of a stack, not the middle. Set the density first. TARGET FACES names the face count you want and works out the voxel size from it. Turn it off to set VOXEL SIZE by hand, or KEEP, the fraction of triangles REDUCE holds on to.',
       },
       {
         kind: 'prose',
-        text: 'SHARP EDGE is what makes the voxel method usable on a hard surface. A grid has no way to hold an edge that does not run along it, so a cube comes back with every edge chamfered unless it is told otherwise. Set an angle and the edges of the original that turn by more than it are read off as creases: the corners where they meet are pinned, and a vertex may slide along a crease but never off it. Turn it down to zero for organic work, where holding a crease a sculpt is about to move is worse than rounding it off.',
+        text: 'SHARP EDGE makes the voxel method usable on hard surfaces. A grid cannot hold an edge that does not run along it, so without it a cube comes back with every edge chamfered. Set an angle, and edges of the original that turn by more than it are kept as creases: the corners where they meet are pinned, and a vertex may slide along a crease but never off it. Set it to zero for organic work, where holding a crease that a sculpt is about to move does more harm than rounding it off.',
       },
       {
         kind: 'note',
-        text: 'The voxel methods always produce a closed solid: an open surface is closed over, and holes finer than the grid disappear. REDUCE is the one that leaves an open mesh open. Apply the object transform first if the object is scaled, so the voxel size means what it says.',
+        text: 'The voxel methods always produce a closed solid: an open surface is closed over, and holes finer than the grid disappear. REDUCE is the one that leaves an open mesh open. If the object is scaled, apply its transform first, so VOXEL SIZE means what it says.',
       },
       {
         kind: 'note',
-        text: 'REMESH is far and away the dearest thing the stack can run, so its result is held and only rebuilt when the mesh or the settings actually change: selecting, orbiting and switching modes cost nothing. Reach for a coarse density while you are still deciding.',
+        text: 'REMESH is by far the most expensive modifier, so its result is kept and only rebuilt when the mesh or its settings change: selecting, orbiting and switching modes cost nothing. Use a coarse density while you are still deciding.',
       },
     ],
   },
@@ -440,7 +528,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'The 3D cursor is a movable point in space. Right-click in the viewport and a menu offers to place it on the exact point under the pointer, or to snap it to the nearest vertex, edge midpoint or face centre, whichever the click found.',
+        text: 'The 3D cursor is a point you place in space. New objects appear at it, and it can be the pivot that rotation and scale turn around. Right-click in the viewport for its menu: place it exactly on the surface under the pointer, or snap it to the vertex, edge midpoint or face centre the click found.',
       },
       {
         kind: 'table',
@@ -448,34 +536,59 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'Origin',
-            "The object's own origin, so it turns and scales where it stands. Across several objects it is the active one's origin, the last you clicked. In edit mode, the origin of the object being edited.",
+            "The object's own origin, so it turns and scales in place. With several objects, the active one's origin (the one you clicked last). In edit mode, the origin of the object being edited.",
           ],
           [
             'Median',
-            'The middle of what the selection draws: the picked vertices in edit mode, the shape itself in object mode. Where an origin has been left behind the geometry, this is the one that stays on the shape. The default.',
+            'The middle of the selection: the selected vertices in edit mode, the shape itself in object mode. If an origin has been left away from its geometry, this one still turns about the shape. This is the default.',
           ],
           ['3D cursor', 'Wherever you placed the cursor.'],
         ],
       },
       {
         kind: 'note',
-        text: 'The PIVOT box in the top bar picks between the three, and Ctrl+. steps through them in that order. The gizmo is always seated on the pivot in force, so the point a turn is measured about is the point you grab it by, and moving the pivot moves the handles with it.',
+        text: 'Pick the pivot in the PIVOT box in the top bar, or press Ctrl+. to step through the three in order. The gizmo always sits on the pivot in force, so the point you grab a turn by is the point it turns about.',
+      },
+      {
+        kind: 'table',
+        head: ['KEY', 'DOES'],
+        rows: [
+          ['C', 'Places the cursor on the surface under the pointer.'],
+          [
+            'Alt+V, Alt+E, Alt+F',
+            'Snaps the cursor to the vertex, edge centre or face centre under the pointer.',
+          ],
+          ['Shift+C', 'Sends the cursor back to the world origin.'],
+          [
+            'Ctrl+Shift+C',
+            'CURSOR TO SELECTION: moves the cursor to the middle of the selected geometry, the shape you see.',
+          ],
+          [
+            'Alt+Shift+C',
+            "CURSOR TO SELECTION ORIGIN: moves the cursor to the origin, the amber square. With several objects, the median of their origins; in edit mode, the edited object's own.",
+          ],
+          [
+            'Shift+V',
+            'SELECTION TO CURSOR: carries the geometry to the cursor and leaves the origins where they were.',
+          ],
+          [
+            'Alt+Shift+V',
+            'ORIGIN OF SELECTED TO CURSOR: brings the origins to the cursor and leaves the geometry where it is. Nothing moves on screen; the LOCATION numbers change to say where the shape now is.',
+          ],
+          ['Alt+C', 'Hides or shows the cursor.'],
+        ],
       },
       {
         kind: 'note',
-        text: 'The cursor is more than a pivot: Shift+C sends it to the world origin, Ctrl+Shift+C snaps it to the selection, Shift+V snaps the selection to it, and the mirror modifier can use it as its plane. Placing it is an edit of its own, so Ctrl+Z puts the cursor back where it was and leaves the model alone.',
+        text: 'The right-click menu prints each key beside its entry. The keys aim at wherever the pointer is resting, so keep the pointer over the viewport. Placing the cursor is an edit of its own: Ctrl+Z puts the cursor back and leaves the model alone.',
       },
       {
         kind: 'note',
-        text: 'Every entry of that menu answers to a key too, and the menu prints it beside the description. C places the cursor under the pointer, and Alt+V, Alt+E and Alt+F snap it to the vertex, edge or face there: from the keyboard they aim at wherever the pointer is resting, so the pointer has to be over the viewport. Alt+Shift over C or V works on origins rather than on the geometry, and Alt+C puts the cursor away and brings it back.',
+        text: 'CURSOR TO SELECTION and CURSOR TO SELECTION ORIGIN land on the same point until an edit-mode move pulls the geometry away from its origin. After that, the first follows the shape and the second follows the amber square.',
       },
       {
         kind: 'note',
-        text: "CURSOR TO SELECTION and CURSOR TO SELECTION ORIGIN in the right-click menu are two different points, and an edit-mode move is what pulls them apart. The first goes to the middle of the geometry, which is the shape you are looking at. The second goes to the origin, which is the amber square: the median of them across several objects, and the edited object's own in edit mode.",
-      },
-      {
-        kind: 'note',
-        text: 'SELECTION TO CURSOR and ORIGIN OF SELECTED TO CURSOR move opposite halves of the same object. The first carries the geometry over and leaves the origins where they were. The second leaves the geometry exactly where it stands and brings the origins over, so nothing moves on screen and the LOCATION numbers change to say where the shape now is.',
+        text: 'The mirror modifier can use the cursor as its mirror plane instead of the object origin, which is how you mirror a part about a point other than its centre.',
       },
     ],
   },
@@ -490,62 +603,62 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'Orbit, pan, zoom',
-            'Middle-drag orbits, Shift+middle-drag pans, the wheel zooms. A Maya preset is available if that is the muscle memory you have. A vertical drag rolls over the top and comes down the far side upside down, which LOCK VERTICAL ORBIT under PREFS stops it doing.',
+            'Middle-drag orbits, Shift+middle-drag pans, the wheel zooms. A vertical drag can carry the view over the top and down the far side, upside down. Turn on LOCK VERTICAL ORBIT under PREFS to stop at the poles instead.',
           ],
           [
             'Frame the selection',
-            '. frames what is selected, Home frames the whole scene. Both have a button in the top bar.',
+            '. frames what is selected, Home frames the whole scene. Both also have a button in the top bar.',
           ],
           [
             'Axis views',
-            'Shift and an odd number jumps the camera to a straight-on view: Shift+1, Shift+3 and Shift+7 are front, right and top, and Ctrl on top of that reaches their opposites, back, left and bottom. The arrangement is the common numpad one, so the numbers mean what they already mean in your hands.',
+            'Shift with an odd number jumps to a straight-on view: Shift+1 front, Shift+3 right, Shift+7 top. Add Ctrl for the opposite view: back, left, bottom. This is the common numpad layout, so the numbers mean what they usually do.',
           ],
           [
             'Orbiting from the keyboard',
-            'Shift and an even number turns the camera by a step: Shift+4 and Shift+6 orbit left and right, Shift+8 and Shift+2 orbit up and down. Shift+9 looks from the opposite side, and Shift+5 toggles orthographic, as plain 5 also does.',
+            'Shift with an even number turns the camera one step: Shift+4 and Shift+6 orbit left and right, Shift+8 and Shift+2 orbit up and down. Shift+9 looks from the opposite side. Shift+5, like plain 5, toggles orthographic.',
           ],
           [
-            'Either block of numbers',
-            'Every one of those answers from the number row and from the numpad, because neither block is always there: a laptop has no numpad, and a hand already resting on one should not have to travel up to the row. Shift is what keeps the whole arrangement clear of the select modes on 1, 2 and 3.',
+            'Number row or numpad',
+            'All of these work from both. A laptop has no numpad, and a hand already resting on the numpad should not have to reach up to the row. Shift keeps them clear of the select modes on 1, 2 and 3.',
           ],
           [
-            'The step the orbit keys take',
-            'Fifteen degrees a press, chosen so a run of presses lands squarely rather than near the mark: six of them make a quarter turn, so orbiting up from the front view arrives at the top view. The four are named for where the camera goes, not for which way the scene appears to turn. A run aimed at straight up stops there instead of tipping past it, and the press after that carries on over, unless LOCK VERTICAL ORBIT is on.',
+            'Orbit steps',
+            'Each press turns fifteen degrees, so six presses make an exact quarter turn: orbiting up from the front view lands on the top view. The directions name where the camera goes, not which way the scene seems to turn. A run of presses stops at straight up. The next press carries on over the top, unless LOCK VERTICAL ORBIT is on.',
           ],
           [
             'The camera turns, it does not snap',
-            'A view or a step takes about two tenths of a second to arrive, easing off at both ends, and for a reason: a view that snaps tells you where the camera ended up, while a view that turns tells you how the model you were looking at relates to the one you are looking at now. Going from the right side to the left is the case that makes the point, since the two pictures are mirror images and the turn between them is the only thing that says which way round the model went. Grab the camera with the mouse mid-turn and it comes away from wherever it has got to, and a second press of an orbit key stacks onto where the first was heading rather than being swallowed.',
+            'A view takes about a fifth of a second to arrive, easing in and out. A snap only shows where the camera ended up; a turn shows how the new view relates to the old one. That matters most between right and left, which are mirror images: the turn is the only clue to which way round the model went. Grab the camera with the mouse mid-turn and you take over from where it is. A second orbit press adds to the first instead of being lost.',
           ],
           [
-            'What a view or a step keeps',
-            'Only the direction changes. The pivot the camera orbits and the distance it stands at are both left alone, so a view or a step turns the scene around without moving you nearer or further, and a mouse orbit afterwards carries on from where the keyboard left off. The status bar names what you pressed.',
+            'What a view keeps',
+            'Only the direction changes. The point the camera orbits and its distance stay the same, so a view never moves you nearer or further, and a mouse orbit afterwards carries on from there. The status bar names the view you pressed.',
           ],
           [
             'The axis widget',
-            'The six coloured ends in the top right corner turn with the camera, so it always says which way the world is facing. Click one to look from that side: the lettered ends are +X, +Y and +Z, and the hollow ones are their negatives.',
+            'The six coloured ends in the top right corner turn with the camera, so they always show which way the world is facing. Click one to look from that side: the lettered ends are +X, +Y and +Z, and the hollow ones are their negatives.',
           ],
         ],
       },
       {
         kind: 'note',
-        text: 'The widget doubles as a readout for a transform in progress. Pin a move, a turn or a scale to an axis, or grab one handle of the gizmo, and the two axes it is leaving alone fade back so the corner says what is about to move. A drag that starts anywhere in that corner other than on an end still orbits the scene, so the widget costs no viewport.',
+        text: 'The widget also shows what a transform will affect. Lock a move, rotation or scale to an axis, or grab one gizmo handle, and the other two axes fade, so the corner shows what is about to move. A drag that starts in that corner but not on an end still orbits the scene, so the widget takes no space from the viewport.',
       },
       {
         kind: 'table',
         head: ['SHADING', 'SHOWS'],
         rows: [
-          ['Solid', 'Lit surfaces. Solid + wire draws the edge set over the top.'],
+          ['Solid', 'Lit surfaces. Solid + wire draws the edges on top.'],
           ['Wireframe', 'Edges only.'],
           [
             'X-ray',
-            'Transparent surfaces, so box-select reaches the geometry behind what you can see.',
+            'Transparent surfaces, so a region select reaches the geometry behind what you can see.',
           ],
-          ['Matcap', 'Flat, high-contrast shading that reads form without a lighting setup.'],
+          ['Matcap', 'Flat, high-contrast shading that shows form without a lighting setup.'],
         ],
       },
       {
         kind: 'note',
-        text: 'Shading is picked from the menu in the top bar, and Shift+Z cycles the modes. The grid adapts its spacing as you zoom, and the OVERLAYS menu beside it ticks the grid, axes, cursor, normals, face orientation and statistics independently.',
+        text: 'Pick the shading from the SHADING menu in the top bar, or cycle through the modes with Shift+Z. The grid adapts its spacing as you zoom. The OVERLAYS menu beside it turns the grid, axes, cursor, normals, face orientation and statistics on and off independently.',
       },
     ],
   },
@@ -560,21 +673,24 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'Save (Ctrl+S)',
-            "Writes the project straight back over the .3doo it was opened from or last saved to, with no dialog. The first time after an open, the browser asks whether the editor may write to that file. The project name in the top bar is that file's name: change it and the project is on its way to a new file, so the menu entry is greyed out and Ctrl+S does a Save as instead, until the old name is put back. The same goes while there is no file to write over yet. A browser that cannot write back to a file keeps it greyed out, and every save there is a Save as.",
+            "Writes the project straight back over the .3doo it came from, with no dialog. The first time after opening a file, the browser asks permission to write to it. SAVE only writes while the project name in the top bar matches the file's name. If you rename the project, or it has no file yet, SAVE is greyed out and Ctrl+S does a Save as instead; put the old name back to save over the file again. In a browser that cannot write back to files, SAVE stays greyed out and every save is a Save as.",
           ],
           [
             'Save as (Ctrl+Shift+S)',
-            'Writes the whole project (objects, transforms, modifiers, materials) to a new .3doo file (JSON inside, whatever the suffix says), which Save writes over from then on, and the top bar takes the name you gave the file. It will not replace a file that is already there.',
+            'Writes the whole project (objects, transforms, modifiers, materials) to a new .3doo file, which is JSON inside. From then on SAVE writes to that file, and the top bar takes its name. It will not replace a file that already exists.',
           ],
           [
             'Open (Ctrl+O)',
-            "Loads one of those files back over the current scene, and the top bar takes the file's name. It offers to save that scene to a file first, since whatever is in no file goes when the file arrives. The numbered copies in 3doo-auto-saves stay.",
+            "Loads a .3doo in place of the current scene, and the top bar takes the file's name. If the current scene has changes in no file, it offers to save them first. The numbered copies in 3doo-auto-saves are not touched.",
           ],
           [
             'New',
-            'Clears the scene and starts again on a cube. It offers the same save first: what you were working on goes, undo steps and all. The numbered copies in 3doo-auto-saves stay.',
+            'Clears the scene and starts again on a cube, offering the same save first, since the current scene and its undo steps go. The numbered copies in 3doo-auto-saves are not touched.',
           ],
-          ['Import mesh', 'Reads an OBJ file in as new objects alongside what is already there.'],
+          [
+            'Import mesh',
+            'Reads an OBJ or FBX file in as new objects at the 3D cursor, alongside what is already there, all of them selected and one Ctrl+Z from gone. An FBX arrives the right way up and the right size, each object pivoting where it did. Only the geometry comes in: materials and UVs stay behind.',
+          ],
           [
             'Import image',
             'Reads a PNG, JPG or BMP in as a plane at the world origin, standing upright and facing the front view, with the picture drawn on it.',
@@ -587,19 +703,19 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'prose',
-        text: 'The export dialog carries axis and unit presets for Unity, Unreal, Blender and Maya, so the model arrives the right way up and the right size without a round of trial and error. The editor models in metres: one unit is one metre. Choose CUSTOM to set the up axis, units and scale yourself.',
+        text: 'The export dialog has axis and unit presets for Unity, Unreal, Blender and Maya, so the model arrives the right way up and the right size without trial and error. The editor models in metres: one unit is one metre. Choose CUSTOM to set the up axis, units and scale yourself.',
       },
       {
         kind: 'note',
-        text: 'Modifiers are always applied on the way out. Applying transforms, triangulating and writing per-vertex normals are each optional, and SELECTION ONLY exports just what you have picked. An image plane takes its picture along, mapped the way you see it: an OBJ gets the image file beside its material file, and an FBX carries the picture inside it. Other objects go out without UVs, since nothing in the editor unwraps a mesh.',
+        text: 'Modifiers are always applied on export. APPLY TRANSFORMS, TRIANGULATE and PER-VERTEX NORMALS are optional, and SELECTION ONLY exports just what you have selected. An image plane takes its picture along, mapped the way you see it: an OBJ gets the image file beside its material file, and an FBX carries the picture inside it. Other objects export without UVs, since nothing in the editor unwraps a mesh.',
       },
       {
         kind: 'prose',
-        text: 'An imported image arrives as an ordinary object: a plane with its own proportions, one metre on its longer side, which you select, move, rotate and scale like anything else. That is what makes it useful as a reference to model against. Line it up, then build against it. It takes modifiers and booleans too, because there is nothing special about it beyond the picture on its surface, and it exports with its picture on it. The shading menu passes it by: an image stays solid with its picture showing while the rest of the scene goes to wireframe or x-ray, since a rectangle of edges is not what you put the reference there for.',
+        text: "An imported image is an ordinary object: a plane in the image's proportions, one metre along its longer side. Select, move, rotate and scale it like anything else, which makes it a good reference to model against: line it up, then build. It takes modifiers and booleans, and exports with its picture. The shading menu leaves it alone: when the rest of the scene goes to wireframe or x-ray, an image stays solid with its picture showing, since a rectangle of edges is no use as a reference.",
       },
       {
         kind: 'note',
-        text: 'With autosave on, your work is written as you go into numbered .3doo files in the 3doo-auto-saves folder of the location you chose, and nowhere else. This browser keeps no copy of the project, so a reload opens a fresh scene, and FILE > OPEN brings back any file you saved or autosave wrote. Nothing is uploaded. A .3doo, saved with Ctrl+S or written by autosave, carries its images inside it, so a project sent to someone opens as what you saved.',
+        text: 'With autosave on, your work is written as numbered .3doo files into the 3doo-auto-saves folder of the location you chose, and nowhere else. The browser keeps no copy of the project, so a reload opens a fresh scene, and FILE > OPEN brings back any file you or autosave wrote. Nothing is uploaded. A .3doo carries its images inside it, so a project you send someone opens exactly as you saved it.',
       },
     ],
   },
@@ -610,39 +726,52 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'PREFS in the top bar holds the settings that belong to you rather than to a scene: whether hint tooltips appear, the viewport background, whether a vertical orbit stops at the poles, the scale, colour and opacity of the grid, whether the scene is autosaved, and how thick and what colour the outline around selected objects is drawn. They are stored on this device and deliberately kept out of project files, so opening a scene someone sent you never repaints your viewport.',
+        text: "PREFS in the top bar holds the settings that belong to you rather than to a scene: hint tooltips, the viewport background, whether a vertical orbit stops at the poles, the grid's scale, colour and opacity, autosave, and the thickness and colour of the outline around selected objects. They are stored on this device and kept out of project files, so opening a scene someone sent you never changes your viewport.",
       },
       {
         kind: 'prose',
-        text: 'The PANELS VISIBILITY section is a switch per surface: the tool rail down the far left, each of the panels on either side, and the status bar along the foot. Turning one off only takes it off the screen. Everything it holds still runs from the keyboard, and nothing about the scene changes, so it is the way to clear room for the model without giving anything up. Folding a panel by its title is the lighter version of the same idea, and that one travels with the project rather than with you.',
+        text: 'PANELS VISIBILITY has a switch for each part of the screen: the tool rail on the far left, each panel on either side, and the status bar along the foot. Turning one off only hides it: everything it holds still works from the keyboard, and the scene does not change. Use it to make room for the model. Folding a panel by its title is the lighter version, and that one is saved with the project rather than with you.',
       },
       {
         kind: 'prose',
-        text: 'The AUTOSAVE section decides whether the editor keeps copies of the scene as you work, where, and how often. It is off until you turn it on. LOCATION is the folder the copies go in: CHOOSE opens a folder picker, and a 3doo-auto-saves folder is made inside whatever you pick, or used as it is if you pick one called that. Turning autosave on with no location chosen yet asks for one first. The browser only writes where you allow it, so choosing a location asks your permission, and it will not hand over the Desktop, Documents or Downloads themselves: pick a folder inside one of them, or anywhere else.',
+        text: 'AUTOSAVE keeps numbered copies of your scene as you work. It is off until you turn it on. To set it up:',
+      },
+      {
+        kind: 'steps',
+        items: [
+          'Under AUTOSAVE, press CHOOSE next to LOCATION and pick a folder. The browser will not hand over the Desktop, Documents or Downloads themselves, so pick a folder inside one of them, or anywhere else.',
+          'Allow the browser to write there when it asks.',
+          'Turn AUTOSAVE on. If no location is chosen yet, turning it on asks for one first.',
+          'Set EVERY to how often a copy is written: from 30 seconds to 15 minutes, 3 minutes by default. Shorter loses less when a tab dies; longer leaves fewer copies and writes a heavy scene out less often.',
+        ],
       },
       {
         kind: 'prose',
-        text: 'From then on each write leaves a new file in that folder, NAME_01.3doo, then NAME_02.3doo and on, never over one already there. NAME is the .3doo you saved as or opened, or the project name in the top bar until there is one, so a project nobody has named writes untitled_01.3doo. The numbers carry on from the highest one in the folder, so a project reopened tomorrow picks up where it left off. EVERY sets the gap between writes, from 30 seconds to 15 minutes, 3 minutes by default: shorter costs you less when a tab dies, longer leaves fewer copies and stops a heavy scene being written out so often.',
+        text: 'A 3doo-auto-saves folder is made inside the location you picked, or the folder itself is used if it already has that name. Each write adds a new file there and never overwrites one: NAME_01.3doo, NAME_02.3doo and so on. NAME is the .3doo you saved as or opened, or the project name in the top bar if there is no file yet, so an unnamed project writes untitled_01.3doo. Numbering carries on from the highest number in the folder, so a project reopened tomorrow picks up where it left off.',
       },
       {
         kind: 'prose',
-        text: 'Nothing else is kept. The browser holds no copy of the project, so every tab opens on a new scene with a cube in it, and the latest numbered copy is where the work of a closed or crashed tab comes back from, with FILE > OPEN. After the browser restarts it asks once for permission to write to the location again, and allowing it on every visit, where the browser offers that, stops the question coming back. Until you allow it, nothing is written. Turning autosave off keeps the location for next time. Each write that lands turns a small floppy disk once in the status bar, so you can see the copies being kept rather than having to take them on trust. Only a write that fails raises a message.',
+        text: 'Autosave only writes when something has changed: adding, moving, renaming, regrouping or deleting, anything that would be different in the file. Selecting an object and looking around are not changes, and neither is an edit you undo before the next write, because the scene is compared with the last one kept, by autosave or by your own Ctrl+S. So a tab left open on a finished scene stops writing, and one you never touched never writes at all.',
+      },
+      {
+        kind: 'prose',
+        text: 'Each write that lands turns a small floppy disk once in the status bar, so you can see the copies being kept. Only a write that fails shows a message. Nothing else is kept: the browser holds no copy of the project, so every new tab opens on a fresh cube, and the newest numbered copy is where the work of a closed or crashed tab comes back from, with FILE > OPEN.',
       },
       {
         kind: 'note',
-        text: 'Autosave needs a browser that can hand a page a folder, which today means Chrome, Edge and the other Chromium browsers. Elsewhere the switch is greyed out, and Ctrl+S is how work is kept.',
-      },
-      {
-        kind: 'prose',
-        text: 'Nothing is written until you change something, and a change means adding, moving, renaming, regrouping or deleting: anything that would be different in the file. Selecting an object and looking around are not changes, and neither is an edit you undo before the next write: the scene is compared with the last one kept, by autosave or by your own Ctrl+S, and one that matches it is not written again. So a tab left open on a scene you have finished with stops writing, and one you opened and never touched never writes at all.',
+        text: 'After the browser restarts, it asks once more for permission to write to the location, and nothing is written until you allow it. Where the browser offers to allow it on every visit, choosing that stops the question coming back. Turning autosave off keeps the location for next time.',
       },
       {
         kind: 'note',
-        text: 'FILE > NEW and FILE > OPEN both ask before they run, because either one replaces the scene on screen and every undo step behind it. The prompt offers to write a .3doo first, waiting for the file before it discards anything. It only asks when you have something to lose: on a scene already saved to a file and untouched since, it just gets on with it. The numbered copies in 3doo-auto-saves are files like any other, so neither one touches them, and nothing is ever sent to a server.',
+        text: 'Autosave needs a browser that can hand a page a folder, which today means Chrome, Edge and the other Chromium browsers. Elsewhere the switch is greyed out, and Ctrl+S is how you keep your work.',
       },
       {
         kind: 'note',
-        text: 'EXPORT writes your preferences to a .pref file and IMPORT reads one back, which is how you carry them to another browser or machine. RESET puts everything back to the defaults and forgets the autosave LOCATION, so turning autosave on asks for one again.',
+        text: 'FILE > NEW and FILE > OPEN both ask before they run, because either replaces the scene on screen and every undo step behind it. The prompt offers to save a .3doo first, and waits for the file before discarding anything. It only asks when you have something to lose: a scene saved to its file and untouched since goes without a prompt. Neither touches the numbered copies in 3doo-auto-saves, and nothing is ever sent to a server.',
+      },
+      {
+        kind: 'note',
+        text: 'EXPORT writes your preferences to a .pref file and IMPORT reads one back, which is how you carry them to another browser or machine. RESET restores every default and forgets the autosave LOCATION, so turning autosave on asks for one again.',
       },
     ],
   },
@@ -653,11 +782,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'The bindings follow the conventions of desktop modelling software, because that is the muscle memory most people arrive with. The same table is available inside the editor at any time with Shift+?.',
+        text: 'The bindings follow the conventions of desktop modelling software, because that is the muscle memory most people arrive with. Press Shift+? in the editor to see the same table at any time.',
       },
       {
         kind: 'note',
-        text: 'Where a desktop modeller needs the numpad, 3DOO takes either block. The camera keys under VIEW are the usual numpad arrangement with Shift in front of it, and each one answers from the number row and the numpad alike, so a laptop reaches everything a full keyboard does. Grow and shrink selection are on the bracket keys rather than on numpad plus and minus. All of these match the physical key rather than the character it makes, so a shifted digit on a non-US layout and a numpad with NumLock off both land where they should.',
+        text: 'Where a desktop modeller needs the numpad, 3DOO takes either block. The camera keys under VIEW use the usual numpad layout with Shift in front, and each works from the number row and the numpad alike, so a laptop reaches everything a full keyboard does. Grow and shrink selection sit on the bracket keys instead of numpad plus and minus. Keys match the physical key rather than the character it types, so a shifted digit on a non-US layout and a numpad with NumLock off both work.',
       },
       ...shortcutTables(),
     ],

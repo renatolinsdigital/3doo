@@ -1,6 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { type ExportObject, createBox, createTransform, exportFBX } from '@kernel/index';
 import { useEditorStore } from '@store/index';
 
 import { useProjectFiles } from './useProjectFiles';
@@ -57,6 +58,8 @@ vi.mock('../services/assets', async () => {
     imageDimensions: () => Promise.resolve(pixels),
   };
 });
+
+const TRIANGLE_OBJ = 'v 0 0 0\nv 1 0 0\nv 1 1 0\nf 1 2 3\n';
 
 function imageFile(name = 'ref.png', type = 'image/png') {
   return new File([new Uint8Array([1, 2, 3, 4])], name, { type });
@@ -432,15 +435,15 @@ describe('project actions announce themselves', () => {
     expect(useEditorStore.getState().objects).toHaveLength(0);
   });
 
-  it('refuses a mesh import that is not an OBJ', async () => {
+  it('refuses a mesh import that is neither OBJ nor FBX', async () => {
     const project = files();
 
-    picked = { name: 'chair.fbx', text: 'v 0 0 0\n' };
+    pickedFile = new File(['solid chair\n'], 'chair.stl');
     await act(() => project.current.importMesh());
 
     expect(lastToast()).toMatchObject({
       variant: 'error',
-      message: 'chair.fbx is not an OBJ mesh, expected .obj',
+      message: 'chair.stl is not an OBJ or FBX mesh, expected .obj or .fbx',
     });
     expect(useEditorStore.getState().objects).toHaveLength(0);
   });
@@ -448,7 +451,7 @@ describe('project actions announce themselves', () => {
   it('accepts the extension whatever its case', async () => {
     const project = files();
 
-    picked = { name: 'CHAIR.OBJ', text: 'v 0 0 0\nv 1 0 0\nv 1 1 0\nf 1 2 3\n' };
+    pickedFile = new File([TRIANGLE_OBJ], 'CHAIR.OBJ');
     await act(() => project.current.importMesh());
 
     expect(lastToast()).toMatchObject({ variant: 'success' });
@@ -458,6 +461,7 @@ describe('project actions announce themselves', () => {
     const project = files();
 
     picked = null;
+    pickedFile = null;
     await act(() => project.current.openProject());
     await act(() => project.current.importMesh());
 
@@ -467,17 +471,51 @@ describe('project actions announce themselves', () => {
   it('names the file geometry was imported from', async () => {
     const project = files();
 
-    picked = { name: 'chair.obj', text: 'v 0 0 0\nv 1 0 0\nv 1 1 0\nf 1 2 3\n' };
+    pickedFile = new File([TRIANGLE_OBJ], 'chair.obj');
     await act(() => project.current.importMesh());
 
     expect(lastToast()).toMatchObject({ variant: 'success' });
     expect(lastToast().message).toBe('Imported 1 object(s) from chair.obj');
   });
 
+  it('reads a binary FBX, whose bytes would not survive being read as text', async () => {
+    const project = files();
+    const box: ExportObject = {
+      name: 'Crate',
+      mesh: createBox(2),
+      transform: createTransform(),
+      materials: [],
+    };
+
+    pickedFile = new File([exportFBX([box])], 'crate.fbx');
+    await act(() => project.current.importMesh());
+
+    const state = useEditorStore.getState();
+    expect(state.objects.map((object) => object.name)).toEqual(['CRATE']);
+    expect(state.objects[0].mesh.faces.size).toBe(6);
+    expect(lastToast()).toMatchObject({
+      variant: 'success',
+      message: 'Imported 1 object(s) from crate.fbx',
+    });
+  });
+
+  it('names the file an import failed on, and why', async () => {
+    const project = files();
+
+    pickedFile = new File(['v 0 0 0\n'], 'chair.fbx');
+    await act(() => project.current.importMesh());
+
+    expect(lastToast()).toMatchObject({
+      variant: 'error',
+      message: 'Could not import chair.fbx: Not an FBX file',
+    });
+    expect(useEditorStore.getState().objects).toHaveLength(0);
+  });
+
   it('warns by name when a file holds no geometry', async () => {
     const project = files();
 
-    picked = { name: 'empty.obj', text: '# nothing here\n' };
+    pickedFile = new File(['# nothing here\n'], 'empty.obj');
     await act(() => project.current.importMesh());
 
     expect(lastToast()).toMatchObject({

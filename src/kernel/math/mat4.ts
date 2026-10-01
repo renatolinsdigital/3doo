@@ -53,6 +53,19 @@ export function composeMatrix(transform: Transform): Mat4 {
   ];
 }
 
+/** `a · b`: the matrix that applies `b` first, then `a`. */
+export function multiplyMatrices(a: Mat4, b: Mat4): Mat4 {
+  const out = new Array<number>(16);
+  for (let column = 0; column < 4; column++) {
+    for (let row = 0; row < 4; row++) {
+      let sum = 0;
+      for (let k = 0; k < 4; k++) sum += a[k * 4 + row] * b[column * 4 + k];
+      out[column * 4 + row] = sum;
+    }
+  }
+  return out;
+}
+
 export function transformPoint(m: Mat4, p: Vec3): Vec3 {
   return {
     x: m[0] * p.x + m[4] * p.y + m[8] * p.z + m[12],

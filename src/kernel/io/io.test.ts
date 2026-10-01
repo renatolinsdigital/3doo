@@ -1,12 +1,27 @@
+import { deflateSync } from 'node:zlib';
+
 import { describe, expect, it } from 'vitest';
 
 import { History } from '../commands/history';
 import { execOperator } from '../commands/operators';
-import { createTransform, dot, vec3 } from '../math';
+import {
+  type Vec3,
+  add,
+  centroid,
+  composeMatrix,
+  createTransform,
+  distance,
+  dot,
+  sub,
+  transformPoint,
+  vec3,
+} from '../math';
+import type { BMesh } from '../mesh';
+import { MESH_BUDGET } from '../ops/budget';
 import { createBox, createImagePlane, createPlane, imagePlaneSize } from '../primitives';
 
-import { exportFBX } from './fbx';
-import { exportOBJ, importOBJ } from './obj';
+import { exportFBX, importFBX } from './fbx';
+import { type ImportedObject, exportOBJ, importOBJ, meshFromPolygons } from './obj';
 import { deserializeProject, parseProject, serializeProject, stringifyProject } from './project';
 import type { AxisPreset, ExportObject } from './types';
 
@@ -378,6 +393,23 @@ describe('FBX export', () => {
     const indices = child(child(child(triangulated, 'Objects'), 'Geometry'), 'PolygonVertexIndex');
     expect(indices?.props[0]).toHaveLength(36);
   });
+
+  it('breaks smooth normals along sharp edges', () => {
+    const exportedNormals = (sharp: boolean) => {
+      const object = cubeExport();
+      for (const face of object.mesh.faces.values()) face.smooth = true;
+      for (const edge of object.mesh.edges.values()) edge.sharp = sharp;
+      const geometry = child(child(readFBX(exportFBX([object])), 'Objects'), 'Geometry');
+      return child(child(geometry, 'LayerElementNormal'), 'Normals')?.props[0] as number[];
+    };
+
+    // Smooth all over, every corner leans out along the diagonal of its
+    // vertex. Cut along every edge, each face is back to its own normal. The
+    // axis conversion only swaps and negates axes, so neither reading moves.
+    const near = (value: number, target: number) => Math.abs(Math.abs(value) - target) < 1e-6;
+    expect(exportedNormals(false).every((value) => near(value, 1 / Math.sqrt(3)))).toBe(true);
+    expect(exportedNormals(true).every((value) => near(value, 0) || near(value, 1))).toBe(true);
+  });
 });
 
 describe('FBX export of an image plane', () => {
@@ -442,6 +474,358 @@ describe('FBX export of an image plane', () => {
       Video: 1,
     });
     expect(child(definitions, 'Count')?.props).toEqual([11]);
+  });
+});
+
+/** Where every vertex of an imported object sits, with its origin added back. */
+function worldPoints(object: ImportedObject): Vec3[] {
+  return [...object.mesh.verts.values()].map((vert) => add(vert.co, object.position));
+}
+
+/** Same points in any order: an import numbers vertices as its faces first use them. */
+function expectSamePoints(actual: readonly Vec3[], expected: readonly Vec3[]) {
+  expect(actual).toHaveLength(expected.length);
+  for (const point of actual) {
+    const nearest = Math.min(...expected.map((candidate) => distance(point, candidate)));
+    expect(nearest).toBeLessThan(1e-6);
+  }
+}
+
+/** Every face of a convex shape points away from its middle. */
+function facesPointOut(mesh: BMesh): boolean {
+  const middle = centroid([...mesh.verts.values()].map((vert) => vert.co));
+  return [...mesh.faces.values()].every((face) => {
+    const centre = centroid(mesh.faceLoops(face).map((loop) => loop.vert.co));
+    return dot(sub(centre, middle), face.normal) > 0;
+  });
+}
+
+describe('mesh import', () => {
+  it('drops polygons a mesh cannot hold, rather than failing the file', () => {
+    const source = [
+      'v 0 0 0',
+      'v 1 0 0',
+      'v 1 0 1',
+      'v 0 0 1',
+      'f 1 2 3 4',
+      // A corner repeated in place, which is only a triangle.
+      'f 1 1 2 3',
+      // A ring that touches itself, and one that collapses to a line.
+      'f 1 2 1 3',
+      'f 1 2 2',
+    ].join('\n');
+
+    const [imported] = importOBJ(source);
+
+    expect(imported.mesh.faces.size).toBe(2);
+    expect(imported.mesh.validate()).toEqual([]);
+  });
+
+  it('refuses a mesh past what a browser tab can hold, before building any of it', () => {
+    const positions = [vec3(), vec3(1, 0, 0), vec3(0, 0, 1)];
+    const polygons = Array.from({ length: MESH_BUDGET.faces + 1 }, () => [0, 1, 2]);
+
+    expect(() => meshFromPolygons('Scan', positions, polygons)).toThrow(
+      'Scan has 250,001 faces, past the 250,000 a browser tab can hold',
+    );
+  });
+});
+
+/** A property for `binaryFBX`: a number goes out as a double, a bigint as a 64-bit id. */
+type WrittenProp = number | bigint | string | { i: number[] } | { d: number[] };
+
+interface WrittenNode {
+  name: string;
+  props?: WrittenProp[];
+  children?: WrittenNode[];
+}
+
+/**
+ * Writes binary FBX the way other programs do and the exporter does not:
+ * arrays deflated, and from 7500 on the records whose lengths are 64-bit.
+ */
+function binaryFBX(version: number, nodes: readonly WrittenNode[]): Uint8Array<ArrayBuffer> {
+  const wide = version >= 7500;
+  const closing = Buffer.alloc(wide ? 25 : 13);
+  const word = (value: number) => {
+    const out = Buffer.alloc(wide ? 8 : 4);
+    if (wide) out.writeBigUInt64LE(BigInt(value));
+    else out.writeUInt32LE(value);
+    return out;
+  };
+
+  const property = (value: WrittenProp): Buffer => {
+    if (typeof value === 'string') {
+      const text = Buffer.from(value, 'utf8');
+      const head = Buffer.alloc(5);
+      head.write('S');
+      head.writeUInt32LE(text.length, 1);
+      return Buffer.concat([head, text]);
+    }
+    const scalar = Buffer.alloc(9);
+    if (typeof value === 'bigint') {
+      scalar.write('L');
+      scalar.writeBigInt64LE(value, 1);
+      return scalar;
+    }
+    if (typeof value === 'number') {
+      scalar.write('D');
+      scalar.writeDoubleLE(value, 1);
+      return scalar;
+    }
+    const type = 'i' in value ? 'i' : 'd';
+    const values = 'i' in value ? value.i : value.d;
+    const raw = Buffer.alloc(values.length * (type === 'i' ? 4 : 8));
+    values.forEach((entry, index) => {
+      if (type === 'i') raw.writeInt32LE(entry, index * 4);
+      else raw.writeDoubleLE(entry, index * 8);
+    });
+    const packed = deflateSync(raw);
+    const head = Buffer.alloc(13);
+    head.write(type);
+    head.writeUInt32LE(values.length, 1);
+    head.writeUInt32LE(1, 5);
+    head.writeUInt32LE(packed.length, 9);
+    return Buffer.concat([head, packed]);
+  };
+
+  const record = (written: WrittenNode, start: number): Buffer => {
+    const name = Buffer.from(written.name);
+    const props = Buffer.concat((written.props ?? []).map(property));
+    const parts: Buffer[] = [];
+    let end = start + (wide ? 25 : 13) + name.length + props.length;
+    for (const nested of written.children ?? []) {
+      const bytes = record(nested, end);
+      parts.push(bytes);
+      end += bytes.length;
+    }
+    if (parts.length > 0) {
+      parts.push(closing);
+      end += closing.length;
+    }
+    return Buffer.concat([
+      word(end),
+      word(written.props?.length ?? 0),
+      word(props.length),
+      Buffer.from([name.length]),
+      name,
+      props,
+      ...parts,
+    ]);
+  };
+
+  const head = Buffer.alloc(27);
+  head.write('Kaydara FBX Binary  \0\x1a\0', 'latin1');
+  head.writeUInt32LE(version, 23);
+  const parts: Buffer[] = [head];
+  let offset = head.length;
+  for (const written of nodes) {
+    const bytes = record(written, offset);
+    parts.push(bytes);
+    offset += bytes.length;
+  }
+  parts.push(closing);
+  return new Uint8Array(Buffer.concat(parts));
+}
+
+const encodeText = (text: string) => new TextEncoder().encode(text);
+
+describe('FBX import', () => {
+  const placed = (): ExportObject => ({
+    ...cubeExport(),
+    transform: {
+      position: vec3(1, 2, 3),
+      rotation: vec3(0.3, -0.5, 0.7),
+      scale: vec3(1, 2, 0.5),
+    },
+  });
+  const expectedPoints = (object: ExportObject) =>
+    [...object.mesh.verts.values()].map((vert) =>
+      transformPoint(composeMatrix(object.transform), vert.co),
+    );
+
+  it('reads back what the exporter writes, quads and all', async () => {
+    const imported = await importFBX(exportFBX([cubeExport()]));
+
+    expect(imported).toHaveLength(1);
+    expect(imported[0].name).toBe('Cube');
+    expect(imported[0].mesh.verts.size).toBe(8);
+    expect(imported[0].mesh.faces.size).toBe(6);
+    for (const face of imported[0].mesh.faces.values()) {
+      expect(imported[0].mesh.faceLoops(face)).toHaveLength(4);
+    }
+    expect(imported[0].mesh.validate()).toEqual([]);
+  });
+
+  it.each(
+    (['unity', 'unreal', 'blender', 'maya'] as AxisPreset[]).flatMap((preset) => [
+      { preset, applyTransform: true },
+      { preset, applyTransform: false },
+    ]),
+  )(
+    'lands where it was, the right way up and size, from $preset (applyTransform $applyTransform)',
+    async ({ preset, applyTransform }) => {
+      const source = placed();
+      const [imported] = await importFBX(exportFBX([source], { preset, applyTransform }));
+
+      expectSamePoints(worldPoints(imported), expectedPoints(source));
+      expect(facesPointOut(imported.mesh)).toBe(true);
+      // Left unbaked, the model keeps its own origin, which becomes the object's.
+      const origin = applyTransform ? vec3() : source.transform.position;
+      expect(distance(imported.position, origin)).toBeLessThan(1e-9);
+    },
+  );
+
+  it('turns the corners round when a mirror is baked in, so faces still point out', async () => {
+    const source = { ...cubeExport(), transform: { ...createTransform(), scale: vec3(-1, 1, 1) } };
+    const [imported] = await importFBX(exportFBX([source], { applyTransform: false }));
+
+    expectSamePoints(worldPoints(imported), expectedPoints(source));
+    expect(facesPointOut(imported.mesh)).toBe(true);
+  });
+
+  it('reads deflated arrays, 64-bit records and ids too long for a double', async () => {
+    // 2^60 + 1 and 2^60 + 2 are the same double. Read as numbers, the two
+    // models would be one, and both meshes would land on it.
+    const id = (offset: number) => 2n ** 60n + BigInt(offset);
+    const entry = (name: string, ...values: WrittenProp[]): WrittenNode => ({
+      name: 'P',
+      props: [name, '', '', '', ...values],
+    });
+    const geometry = (key: number, name: string, vertices: number[], indices: number[]) => ({
+      name: 'Geometry',
+      props: [id(key), `${name}\0\x01Geometry`, 'Mesh'],
+      children: [
+        { name: 'Vertices', props: [{ d: vertices }] },
+        { name: 'PolygonVertexIndex', props: [{ i: indices }] },
+      ],
+    });
+
+    const bytes = binaryFBX(7500, [
+      { name: 'FBXHeaderExtension', children: [{ name: 'FBXVersion', props: [7500] }] },
+      {
+        name: 'GlobalSettings',
+        children: [
+          {
+            name: 'Properties70',
+            // Z-up in centimetres, front at -Y.
+            children: [
+              entry('UpAxis', 2),
+              entry('FrontAxis', 1),
+              entry('FrontAxisSign', -1),
+              entry('UnitScaleFactor', 1),
+            ],
+          },
+        ],
+      },
+      {
+        name: 'Objects',
+        children: [
+          { name: 'Model', props: [id(1), 'Sail\0\x01Model', 'Mesh'] },
+          { name: 'Model', props: [id(2), 'Deck\0\x01Model', 'Mesh'] },
+          geometry(3, 'Sail', [0, 0, 0, 100, 0, 0, 0, 0, 100], [0, 1, -3]),
+          geometry(4, 'Deck', [0, 0, 0, 100, 0, 0, 100, 100, 0, 0, 100, 0], [0, 1, 2, -4]),
+        ],
+      },
+      {
+        name: 'Connections',
+        children: [
+          { name: 'C', props: ['OO', id(1), 0n] },
+          { name: 'C', props: ['OO', id(2), 0n] },
+          { name: 'C', props: ['OO', id(3), id(1)] },
+          { name: 'C', props: ['OO', id(4), id(2)] },
+        ],
+      },
+    ]);
+
+    const [sail, deck, ...rest] = await importFBX(bytes);
+
+    expect(rest).toHaveLength(0);
+    expect(sail.name).toBe('Sail');
+    // The file's +Z is up, so the sail stands and the deck lies flat.
+    expectSamePoints(worldPoints(sail), [vec3(), vec3(1, 0, 0), vec3(0, 1, 0)]);
+    expect(deck.name).toBe('Deck');
+    expectSamePoints(worldPoints(deck), [vec3(), vec3(1, 0, 0), vec3(1, 0, -1), vec3(0, 0, -1)]);
+    const [floor] = deck.mesh.faces.values();
+    expect(floor.normal.y).toBeCloseTo(1);
+  });
+
+  it('reads ASCII, through parents, pre-rotation and the offset that moves only the mesh', async () => {
+    const text = `; FBX 7.4.0 project file
+FBXHeaderExtension:  {
+	FBXVersion: 7400
+}
+GlobalSettings:  {
+	Properties70:  {
+		P: "UnitScaleFactor", "double", "Number", "",100
+	}
+}
+Objects:  {
+	Model: 1152921504606846977, "Model::Rig", "Null" {
+		Properties70:  {
+			P: "Lcl Translation", "Lcl Translation", "", "A",10,0,0
+		}
+		Shading: Y
+		Culling: "CullingOff"
+	}
+	Model: 1152921504606846978, "Model::Blade", "Mesh" {
+		Properties70:  {
+			P: "RotationActive", "bool", "", "",1
+			P: "PreRotation", "Vector3D", "Vector", "",0,0,90
+			P: "GeometricTranslation", "Vector3D", "Vector", "",0,1,0
+		}
+	}
+	Geometry: 3, "Geometry::Blade", "Mesh" {
+		Vertices: *12 {
+			a: 0,0,0,1,0,0,
+			1,0,1,0,0,1
+		}
+		PolygonVertexIndex: *4 {
+			a: 0,1,2,-4
+		}
+	}
+}
+Connections:  {
+	;Model::Rig, Model::RootNode
+	C: "OO",1152921504606846977,0
+	C: "OO",1152921504606846978,1152921504606846977
+	C: "OO",3,1152921504606846978
+}
+`;
+
+    const [blade, ...rest] = await importFBX(encodeText(text));
+
+    expect(rest).toHaveLength(0);
+    expect(blade.name).toBe('Blade');
+    // The origin is the rig's, since the geometric offset moves the mesh alone.
+    expect(distance(blade.position, vec3(10, 0, 0))).toBeLessThan(1e-9);
+    // Lifted 1 by the offset, a quarter turn about Z, then 10 along with the rig.
+    expectSamePoints(worldPoints(blade), [
+      vec3(9, 0, 0),
+      vec3(9, 1, 0),
+      vec3(9, 1, 1),
+      vec3(9, 0, 1),
+    ]);
+  });
+
+  it('says a file cut short is damaged', async () => {
+    const bytes = exportFBX([cubeExport()]);
+
+    await expect(importFBX(bytes.slice(0, 600))).rejects.toThrow(
+      'The file is damaged or cut short',
+    );
+  });
+
+  it('names the version it is too old to read', async () => {
+    const text = '; FBX 6.1.0 project file\nFBXHeaderExtension:  {\n\tFBXVersion: 6100\n}\n';
+
+    await expect(importFBX(encodeText(text))).rejects.toThrow(
+      'FBX 6.1 is too old: only FBX 7 and later can be read',
+    );
+  });
+
+  it('refuses a file that is not FBX at all', async () => {
+    await expect(importFBX(encodeText('v 0 0 0\nf 1 2 3\n'))).rejects.toThrow('Not an FBX file');
   });
 });
 

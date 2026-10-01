@@ -61,6 +61,16 @@ export function weldVerts(mesh: BMesh, mapping: ReadonlyMap<number, Vert>): numb
     if (vert.edges.length === 0 && !mapping.has(vert.id)) keptLoose.add(vert.id);
   }
 
+  // An edge with a welded end comes back as a new edge between the corners it
+  // resolves to, and a new edge starts out smooth.
+  const sharpPairs: [Vert, Vert][] = [];
+  for (const edge of mesh.edges.values()) {
+    if (!edge.sharp || (!mapping.has(edge.v0.id) && !mapping.has(edge.v1.id))) continue;
+    const a = resolve(edge.v0);
+    const b = resolve(edge.v1);
+    if (a !== b) sharpPairs.push([a, b]);
+  }
+
   for (const face of doomedFaces) mesh.removeFace(face);
   for (const spec of rebuilt) {
     const face = mesh.addFace(spec.ring, {
@@ -70,6 +80,10 @@ export function weldVerts(mesh: BMesh, mapping: ReadonlyMap<number, Vert>): numb
     face.selected = spec.selected;
   }
   for (const [a, b] of wirePairs) keptWires.add(mesh.addEdge(a, b).id);
+  for (const [a, b] of sharpPairs) {
+    const edge = mesh.findEdge(a, b);
+    if (edge) edge.sharp = true;
+  }
 
   let removed = 0;
   for (const vertId of mapping.keys()) {

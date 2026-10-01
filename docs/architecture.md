@@ -46,7 +46,7 @@ Pure TypeScript. See [mesh-kernel.md](mesh-kernel.md).
 - `primitives/` holds the parametric shape constructors.
 - `ops/` holds extrude, inset, bevel, loop cut, subdivide, merge, dissolve, …
 - `modifiers/` holds the non-destructive stack and its evaluator.
-- `io/` holds OBJ, binary FBX, project files.
+- `io/` holds OBJ and FBX import and export, and project files.
 - `commands/` holds undo history and the operator registry.
 
 ### `/src/bridge`
@@ -75,13 +75,16 @@ only barrel.
 Everything that knows what the application *is*: panels, the keymap, autosave,
 file services, and the hooks that hold behaviour so components stay declarative.
 
-This is also the only layer that talks to files and browser storage:
-`services/autosave.ts` for the numbered copies and the one handle it keeps in
-IndexedDB, the autosave location, and `services/download.ts` for opening and
-saving `.3doo` files. The browser keeps no copy of a project. The viewport never
-reads any of it. It draws what the store holds, which is how an image reaches
-the screen without `/src/viewport` importing `/src/domain` and inverting the
-arrows above. See [saving.md](saving.md).
+It is also the only layer that touches files and browser storage:
+
+- `services/autosave.ts` writes the numbered autosave copies, and keeps the
+  handle of the autosave folder in IndexedDB.
+- `services/download.ts` opens and saves `.3doo` files.
+
+The browser keeps no copy of a project (see [saving.md](saving.md)). The
+viewport never reads any of this: it draws what the store holds. That is how an
+imported image reaches the screen without `/src/viewport` importing
+`/src/domain`, which would invert the arrows above.
 
 ### `/src/modules` and `/src/app`
 
@@ -90,7 +93,7 @@ A **module** is one whole area of the application, reachable at its own path:
 | Module | Path | Is |
 | --- | --- | --- |
 | `home` | `/` | The landing page |
-| `modeling` | `/modeling` | The mesh editor, the shell that was once `App` |
+| `modeling` | `/modeling` | The mesh editor |
 | `docs` | `/docs` | The user manual, with its own left-hand contents menu |
 
 `/src/app` holds only what all of them share: the registry in `modules.ts`, the
@@ -98,28 +101,32 @@ router, the `ModuleSwitcher` brand plate, and an `App` whose entire job is to re
 the path and hand the screen to one module.
 
 Each module owns its own layout **and its own lifecycle hooks**. `useKeymap` and
-`useAutosave` are mounted inside `ModelingModule`, not in `App`, which is what
-stops <kbd>X</kbd> deleting geometry while someone is reading the docs. It is
-also what keeps the landing page cheap: nothing imports the viewport until the
-modeling module mounts, so no WebGL context is created to show a hero heading.
+`useAutosave` are mounted inside `ModelingModule`, not in `App`. That has two
+effects:
 
-Adding sculpting later is one entry in `APP_MODULES` and one branch in `App`.
+- <kbd>X</kbd> cannot delete geometry while someone is reading the docs.
+- The landing page stays cheap: nothing imports the viewport until the modeling
+  module mounts, so no WebGL context is created just to show a heading.
 
-The arrow from `app` runs one way only. `TopBar` does not import the switcher.
-It takes the brand plate as a `brand` prop, and `ModelingModule` passes it in.
+Adding a module (sculpting is next) takes one entry in `APP_MODULES` and one
+branch in `App`.
+
+The arrow from `app` runs one way only. `TopBar` does not import the switcher:
+it takes the brand plate as a `brand` prop, and `ModelingModule` passes it in.
 A domain component reaching back up into `/src/app` would invert the rule this
 whole diagram rests on.
 
 #### Routing
 
 There is no router dependency. `app/router.ts` is a `useSyncExternalStore` over
-`history.pushState` and `popstate`, about thirty lines. Nested routes, params
-and loaders would all go unused, because the registry already says which path
-maps to which area; the docs module's sections are a URL fragment, not a route.
+`history.pushState` and `popstate`, about thirty lines. A router's nested
+routes, params and loaders would all go unused: the registry already says which
+path maps to which module, and the docs module's sections are a URL fragment,
+not a route.
 
-The one deployment requirement this creates: `/modeling` and `/docs` must serve
-`index.html`. Vite's dev server and `preview` already do; a static host needs its
-SPA fallback turned on.
+This creates one deployment requirement: `/modeling` and `/docs` must serve
+`index.html`. Vite's dev server and `preview` already do. A static host needs
+its SPA fallback turned on.
 
 ## Data flow of one operation
 

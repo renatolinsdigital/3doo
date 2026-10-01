@@ -72,11 +72,11 @@ export function blobToBase64(blob: Blob): Promise<string> {
 }
 
 /** A blob's bytes, through `FileReader` like `blobToBase64`. */
-export function blobBytes(blob: Blob): Promise<Uint8Array> {
+export function blobBytes(blob: Blob): Promise<Uint8Array<ArrayBuffer>> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(new Uint8Array(reader.result as ArrayBuffer));
-    reader.onerror = () => reject(new Error('Could not read the image'));
+    reader.onerror = () => reject(new Error('Could not read the file'));
     reader.readAsArrayBuffer(blob);
   });
 }

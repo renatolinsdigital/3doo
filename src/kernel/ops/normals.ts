@@ -1,7 +1,7 @@
 import { cross, dot } from '../math';
 import type { BMesh } from '../mesh';
 import { triangulatePolygon } from '../mesh';
-import type { Face } from '../mesh/types';
+import type { Edge, Face, Vert } from '../mesh/types';
 
 /**
  * Rewrites a face's winding in place by rebuilding it, preserving the flags a
@@ -95,4 +95,37 @@ function signedVolume(mesh: BMesh, faces: readonly Face[]): number {
 
 export function setShading(faces: readonly Face[], smooth: boolean): void {
   for (const face of faces) face.smooth = smooth;
+}
+
+/**
+ * Marks edges sharp, or clears the mark, and says how many changed.
+ *
+ * A sharp edge splits the shading of the smooth faces either side of it (see
+ * `BMesh.cornerNormals`). It moves nothing, and a flat face is faceted along
+ * every edge already, so on a flat-shaded mesh the mark shows in the overlay
+ * and nowhere else.
+ */
+export function markSharp(edges: readonly Edge[], sharp: boolean): number {
+  let changed = 0;
+  for (const edge of edges) {
+    if (edge.sharp === sharp) continue;
+    edge.sharp = sharp;
+    changed++;
+  }
+  return changed;
+}
+
+/**
+ * Hands a cut edge's sharp mark on to the pieces it was cut into.
+ *
+ * `chain` is every vertex the edge now runs through, end to end. The pieces are
+ * new edges, and a new edge starts out smooth, so a crease run through a
+ * subdivision or a loop cut would otherwise come out of it gone.
+ */
+export function carrySharp(mesh: BMesh, edge: Edge, chain: readonly Vert[]): void {
+  if (!edge.sharp) return;
+  for (let i = 0; i < chain.length - 1; i++) {
+    const piece = mesh.findEdge(chain[i], chain[i + 1]);
+    if (piece) piece.sharp = true;
+  }
 }

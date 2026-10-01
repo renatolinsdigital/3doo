@@ -25,7 +25,12 @@ import {
 } from '@shared/components';
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
 import { cx } from '@shared/utils/cx';
-import { useActiveObject, useEdgeLengthTarget, useEditorStore } from '@store/index';
+import {
+  useActiveObject,
+  useEdgeLengthTarget,
+  useEditorStore,
+  useSharpSelection,
+} from '@store/index';
 
 import './PropertiesPanel.scss';
 
@@ -104,6 +109,7 @@ export function PropertiesPanel() {
   // Edges of differing lengths report none, and the field keeps the last figure
   // typed into it: there is no single size to put in its place.
   const edgeTarget = useEdgeLengthTarget();
+  const sharpness = useSharpSelection();
   const [edgeLength, setEdgeLength] = useState(1);
   useEffect(() => {
     if (edgeTarget.length !== null) setEdgeLength(edgeTarget.length);
@@ -370,6 +376,30 @@ export function PropertiesPanel() {
             label="SHADE FLAT"
             hint="Use one flat normal per face"
             onClick={() => exec('shade', { smooth: false }, 'Shade flat')}
+          />
+          <Button
+            label="MARK SHARP"
+            disabled={sharpness.smooth === 0}
+            hint={
+              sharpness.smooth > 0
+                ? 'Mark the selected edges sharp: smooth shading breaks along them instead of blending across'
+                : sharpness.sharp > 0
+                  ? 'The selected edges are all sharp already'
+                  : 'Select the edges for smooth shading to break along'
+            }
+            onClick={() => exec('markSharp', {}, 'Mark sharp')}
+          />
+          <Button
+            label="CLEAR SHARP"
+            disabled={sharpness.sharp === 0}
+            hint={
+              sharpness.sharp > 0
+                ? 'Clear the mark from the selected edges, so smooth shading blends across them again'
+                : sharpness.smooth > 0
+                  ? 'None of the selected edges is sharp'
+                  : 'Select sharp edges, drawn in cyan, to clear the mark from'
+            }
+            onClick={() => exec('markSharp', { clear: true }, 'Clear sharp')}
           />
         </FieldRow>
       ) : null}
