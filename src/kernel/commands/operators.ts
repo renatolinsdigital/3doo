@@ -490,9 +490,11 @@ export const OPERATORS: Record<string, OperatorHandler> = {
   fill: ({ mesh }, params) => {
     const edges = mesh.selectedEdges();
     if (edges.length < 3) return { status: 'Select a boundary loop to fill' };
-    const created = readBoolean(params, 'bridge', false)
-      ? bridgeEdgeLoops(mesh, edges)
-      : fillHole(mesh, edges);
+    if (readBoolean(params, 'bridge', false)) {
+      return { status: `Created ${bridgeEdgeLoops(mesh, edges).length} face(s)` };
+    }
+    const created = fillHole(mesh, edges);
+    if (created.length === 0) return { status: 'No holes in the selection to fill', refused: true };
     return { status: `Created ${created.length} face(s)` };
   },
 

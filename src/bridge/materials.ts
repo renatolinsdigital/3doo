@@ -99,13 +99,13 @@ const SURFACE_DEPTH_OFFSET = {
 
 /**
  * The steepest a surface may be turned away from the camera and still have the
- * wire crossing it drawn whole, as a slope. Eight is a face at about 83
- * degrees.
+ * wire crossing it, or a vertex dot sitting on it, drawn whole, as a slope.
+ * Eight is a face at about 83 degrees.
  *
  * Past that a face is edge-on enough to be a contour, and what runs across it
  * is a pixel or two of a surface nobody can read anyway.
  */
-const WIRE_LIFT_SLOPE = 8;
+const MARK_LIFT_SLOPE = 8;
 
 /** Where the lift is spliced into `LineMaterial`'s vertex shader. */
 const WIRE_LIFT_ANCHOR = 'vec4 end = modelViewMatrix * vec4( instanceEnd, 1.0 );';
@@ -115,7 +115,7 @@ const WIRE_LIFT_GLSL = /* glsl */ `
 			// outright under an orthographic camera, which is what lets one
 			// expression serve both.
 			float wireSpan = 2.0 / ( resolution.y * projectionMatrix[ 1 ][ 1 ] );
-			float wireLift = 0.5 * linewidth * ${WIRE_LIFT_SLOPE.toFixed(1)} * wireSpan;
+			float wireLift = 0.5 * linewidth * ${MARK_LIFT_SLOPE.toFixed(1)} * wireSpan;
 
 			if ( projectionMatrix[ 2 ][ 3 ] == - 1.0 ) {
 
@@ -159,6 +159,55 @@ function liftWire<T extends LineMaterial>(material: T): T {
     WIRE_LIFT_ANCHOR,
     WIRE_LIFT_ANCHOR + WIRE_LIFT_GLSL,
   );
+  return material;
+}
+
+/** Where the lift is spliced into `PointsMaterial`'s vertex shader. */
+const POINT_LIFT_ANCHOR = '#include <project_vertex>';
+
+const POINT_LIFT_UNIFORM = 'uniform float scale;';
+
+const POINT_LIFT_GLSL = /* glsl */ `
+			// \`scale\` is half the viewport's height in CSS pixels, the unit the
+			// point's own size is given in, where \`size\` is in device pixels.
+			float pointSpan = 1.0 / ( scale * projectionMatrix[ 1 ][ 1 ] );
+			float pointLift = pointHalfSize * ${MARK_LIFT_SLOPE.toFixed(1)} * pointSpan;
+
+			if ( projectionMatrix[ 2 ][ 3 ] == - 1.0 ) {
+
+				mvPosition.xyz *= 1.0 - pointLift;
+
+			} else {
+
+				mvPosition.z += pointLift;
+
+			}
+
+			gl_Position = projectionMatrix * mvPosition;
+`;
+
+/**
+ * Floats a vertex dot towards the camera by what the surface under it gains in
+ * depth across half the dot's own size, the way `liftWire` does for a line.
+ *
+ * A point is drawn as a square at the one depth of its vertex, while the faces
+ * around the vertex keep changing depth across those pixels. The surface's
+ * constant offset only settles the tie at the centre: wherever a face leans
+ * towards the camera, the half of the square on that side lost the depth test,
+ * and a dot on an edge came out a short dash. A corner, with every face round
+ * it falling away, stayed square, which is what gave it away.
+ *
+ * The half size goes in as a uniform rather than spliced into the source:
+ * three.js keys its program cache on this callback's text, so every point
+ * material sharing it shares one compiled shader.
+ */
+function liftPoints(material: THREE.PointsMaterial): THREE.PointsMaterial {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.pointHalfSize = { value: material.size / 2 };
+    shader.vertexShader = shader.vertexShader
+      .replace(POINT_LIFT_UNIFORM, `${POINT_LIFT_UNIFORM}\nuniform float pointHalfSize;`)
+      .replace(POINT_LIFT_ANCHOR, POINT_LIFT_ANCHOR + POINT_LIFT_GLSL);
+  };
   return material;
 }
 
@@ -419,18 +468,21 @@ const ORIGIN_POINT_SIZE = 8;
  * and vertices round the back showing through it read as sitting on the face in
  * front: a click near one lands somewhere the user cannot see. The surface's
  * own depth offset is what keeps the dots on the near side visible, since a
- * vertex and the faces meeting at it share a depth to the last bit.
+ * vertex and the faces meeting at it share a depth to the last bit, and the
+ * lift is what keeps the whole square of one visible rather than its centre.
  *
  * Nothing is hidden in x-ray or wireframe shading even so: neither writes any
  * depth for this to test against.
  */
 export function createPointMaterial(): THREE.PointsMaterial {
-  return new THREE.PointsMaterial({
-    size: POINT_SIZE,
-    sizeAttenuation: false,
-    vertexColors: true,
-    depthTest: true,
-  });
+  return liftPoints(
+    new THREE.PointsMaterial({
+      size: POINT_SIZE,
+      sizeAttenuation: false,
+      vertexColors: true,
+      depthTest: true,
+    }),
+  );
 }
 
 /**
@@ -450,12 +502,14 @@ export function createPointMaterial(): THREE.PointsMaterial {
  * equal depth without showing through the far side of a solid surface.
  */
 export function createHoverPointMaterial(): THREE.PointsMaterial {
-  return new THREE.PointsMaterial({
-    size: POINT_SIZE * HOVER_POINT_SCALE,
-    sizeAttenuation: false,
-    color: VIEWPORT_COLORS.cyan,
-    depthTest: true,
-  });
+  return liftPoints(
+    new THREE.PointsMaterial({
+      size: POINT_SIZE * HOVER_POINT_SCALE,
+      sizeAttenuation: false,
+      color: VIEWPORT_COLORS.cyan,
+      depthTest: true,
+    }),
+  );
 }
 
 /**
@@ -472,13 +526,15 @@ export function createHoverPointMaterial(): THREE.PointsMaterial {
  * user can act on from here anyway.
  */
 export function createRecentPointMaterial(): THREE.PointsMaterial {
-  return new THREE.PointsMaterial({
-    size: 11,
-    sizeAttenuation: false,
-    color: VIEWPORT_COLORS.cyan,
-    depthTest: true,
-    transparent: true,
-  });
+  return liftPoints(
+    new THREE.PointsMaterial({
+      size: 11,
+      sizeAttenuation: false,
+      color: VIEWPORT_COLORS.cyan,
+      depthTest: true,
+      transparent: true,
+    }),
+  );
 }
 
 /**

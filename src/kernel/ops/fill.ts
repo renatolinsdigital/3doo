@@ -26,6 +26,10 @@ function edgeLoopsFrom(mesh: BMesh, edges: readonly Edge[]): Vert[][] {
     pool.delete(seed);
 
     const ring: Vert[] = [seed.v0, seed.v1];
+    const position = new Map([
+      [seed.v0.id, 0],
+      [seed.v1.id, 1],
+    ]);
     let head = seed.v1;
 
     for (;;) {
@@ -33,7 +37,16 @@ function edgeLoopsFrom(mesh: BMesh, edges: readonly Edge[]): Vert[][] {
       if (!next) break;
       pool.delete(next);
       head = mesh.edgeOther(next, head);
-      if (head === ring[0]) break;
+      const seen = position.get(head.id);
+      if (seen === 0) break;
+      if (seen !== undefined) {
+        // Two holes meeting at one vertex chain into a figure eight: peel off
+        // the loop the walk just closed so each hole gets its own face.
+        const peeled = ring.splice(seen);
+        for (const vert of peeled) position.delete(vert.id);
+        loops.push(peeled);
+      }
+      position.set(head.id, ring.length);
       ring.push(head);
     }
 
@@ -43,11 +56,17 @@ function edgeLoopsFrom(mesh: BMesh, edges: readonly Edge[]): Vert[][] {
   return loops;
 }
 
-/** Fills a closed boundary loop with a single n-gon. */
+/**
+ * Fills each closed boundary loop in the selection with a single n-gon.
+ *
+ * An edge with a face on both sides cannot border a hole, so it sits out:
+ * with the whole mesh selected, only the holes fill.
+ */
 export function fillHole(mesh: BMesh, edges: readonly Edge[]): Face[] {
+  const open = edges.filter((edge) => edge.loops.length < 2);
   const created: Face[] = [];
 
-  for (const ring of edgeLoopsFrom(mesh, edges)) {
+  for (const ring of edgeLoopsFrom(mesh, open)) {
     if (ring.length < 3) continue;
     if (mesh.findFace(ring)) continue;
 

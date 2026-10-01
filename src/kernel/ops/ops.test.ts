@@ -1456,6 +1456,47 @@ describe('fill and bridge', () => {
     expect(filled[0].normal.y).toBeCloseTo(1);
   });
 
+  it('fills only the holes when the whole mesh is selected', () => {
+    const cube = createBox(2);
+    const holes = [faceAt(cube, vec3(0, 1, 0)), faceAt(cube, vec3(0, -1, 0))];
+    deleteGeometry(cube, { verts: [], edges: [], faces: holes }, 'onlyFaces');
+    cube.selectAll();
+
+    const filled = fillHole(cube, cube.selectedEdges());
+
+    expect(filled).toHaveLength(2);
+    expect(cube.faces.size).toBe(6);
+    expect(isClosed(cube)).toBe(true);
+    expect(cube.validate()).toEqual([]);
+  });
+
+  it('gives two holes that share a corner a face each', () => {
+    const cube = createBox(2);
+    subdivideFaces(cube, [...cube.faces.values()], { cuts: 1 });
+    const corners = [vec3(0.5, 1, 0.5), vec3(-0.5, 1, -0.5)];
+    const holes = [...cube.faces.values()].filter((face) =>
+      corners.some((center) => distance(cube.faceCenter(face), center) < 1e-6),
+    );
+    expect(holes).toHaveLength(2);
+    deleteGeometry(cube, { verts: [], edges: [], faces: holes }, 'onlyFaces');
+    cube.selectAll();
+
+    const filled = fillHole(cube, cube.selectedEdges());
+
+    expect(filled.map((face) => cube.faceVerts(face).length)).toEqual([4, 4]);
+    expect(isClosed(cube)).toBe(true);
+    expect(cube.validate()).toEqual([]);
+  });
+
+  it('refuses to fill a closed mesh', () => {
+    const cube = createBox(2);
+    cube.selectAll();
+    const context = { mesh: cube, selectMode: 'face' as const, cursor: vec3() };
+
+    expect(execOperator(context, 'fill').refused).toBe(true);
+    expect(cube.faces.size).toBe(6);
+  });
+
   it('bridges two open loops with a band of quads', () => {
     const lower = createPlane(2);
     const upper = createPlane(2);

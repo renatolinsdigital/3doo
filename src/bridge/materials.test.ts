@@ -5,6 +5,7 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ShadingMode } from '@store/types';
 
 import {
+  createHoverPointMaterial,
   createOutlineMaterial,
   createPointMaterial,
   createPreviewWireMaterial,
@@ -120,6 +121,30 @@ describe('vertex point material', () => {
 
   it('depth-tests the marks on freshly made vertices for the same reason', () => {
     expect(createRecentPointMaterial().depthTest).toBe(true);
+  });
+
+  it.each([
+    ['dot', createPointMaterial],
+    ['hover mark', createHoverPointMaterial],
+    ['fresh-vertex mark', createRecentPointMaterial],
+  ])('lifts the %s off the surface by half its own size', (_, create) => {
+    // A point is one depth across its whole square, so without the lift the
+    // half of it over a face leaning towards the camera loses the depth test.
+    const material = create();
+    const shader = {
+      uniforms: THREE.UniformsUtils.clone(THREE.ShaderLib.points.uniforms),
+      vertexShader: THREE.ShaderLib.points.vertexShader,
+      fragmentShader: THREE.ShaderLib.points.fragmentShader,
+    } as unknown as THREE.WebGLProgramParametersWithUniforms;
+
+    material.onBeforeCompile(shader, {} as THREE.WebGLRenderer);
+
+    expect(shader.uniforms.pointHalfSize.value).toBe(material.size / 2);
+    expect(shader.vertexShader).toContain('uniform float pointHalfSize;');
+    expect(shader.vertexShader).toContain('mvPosition.xyz *= 1.0 - pointLift');
+    expect(shader.vertexShader.indexOf('pointLift')).toBeGreaterThan(
+      shader.vertexShader.indexOf('#include <project_vertex>'),
+    );
   });
 });
 

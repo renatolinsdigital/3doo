@@ -357,7 +357,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Fill (F) and bridge',
-            'Fill closes a selected boundary loop with a face. Bridge (Alt+B) connects two open loops of matching length with a band of quads.',
+            'Fill closes a selected boundary loop with a face. Only open edges count, so with the whole mesh selected, F fills its holes and nothing else. Bridge (Alt+B) connects two open loops of matching length with a band of quads.',
           ],
           [
             'Connect (J)',
