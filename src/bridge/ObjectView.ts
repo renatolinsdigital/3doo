@@ -125,6 +125,17 @@ function surfaceMaterials(mesh: THREE.Mesh): THREE.Material[] {
   return Array.isArray(mesh.material) ? mesh.material : [mesh.material];
 }
 
+/**
+ * Whether edit mode draws the stack's edges under the cage.
+ *
+ * Not for a subdivision surface, which is read from its shading with the cage
+ * around it: its own edges run four times denser per level and would bury the
+ * surface in wire.
+ */
+function drawsPreviewWire(object: SceneObject): boolean {
+  return !object.modifiers.some((modifier) => modifier.enabled && modifier.type === 'subsurf');
+}
+
 /** Everything the surface materials are built from, as one comparable string. */
 function solidMaterialKey(object: SceneObject, state: ObjectViewState): string {
   const colours = object.materials.map(
@@ -481,7 +492,7 @@ export class ObjectView {
       ? {
           cage: this.cullTableFor('cage', cageMesh, state.meshVersion),
           preview:
-            this.picksCage && this.previewMesh
+            this.picksCage && this.previewMesh && drawsPreviewWire(object)
               ? this.cullTableFor('preview', this.previewMesh, state.meshVersion)
               : null,
           object,
@@ -543,7 +554,7 @@ export class ObjectView {
    * mode gives no sign the modifier is there at all.
    */
   private updatePreviewWire(edges: EdgeBuffers, object: SceneObject, state: ObjectViewState): void {
-    if (!this.picksCage) {
+    if (!this.picksCage || !drawsPreviewWire(object)) {
       this.setLinePositions(this.previewWire, new Float32Array(0), false);
       return;
     }

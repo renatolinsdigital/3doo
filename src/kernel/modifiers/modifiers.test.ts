@@ -11,6 +11,7 @@ import type {
   RemeshModifier,
   SolidifyModifier,
   SubdivideModifier,
+  SubsurfModifier,
   WeldModifier,
 } from './types';
 
@@ -606,6 +607,107 @@ describe('subdivide modifier', () => {
     ]);
 
     expect(result.faces.size).toBe(6 * 4 * 4);
+  });
+});
+
+describe('subdivision surface modifier', () => {
+  function subsurf(overrides: Partial<SubsurfModifier> = {}): SubsurfModifier {
+    return { ...(createModifier('subsurf') as SubsurfModifier), ...overrides };
+  }
+
+  it('defaults to one level of Catmull-Clark', () => {
+    const modifier = subsurf();
+    expect(modifier.levels).toBe(1);
+    expect(modifier.catmullClark).toBe(true);
+  });
+
+  it('moves the corners of a cube to the Catmull-Clark points', () => {
+    const cube = createBox(2);
+    const result = evaluateModifiers(cube, [subsurf()]);
+
+    expect(result.faces.size).toBe(24);
+    expect(result.validate()).toEqual([]);
+    expect([...result.edges.values()].every((edge) => edge.loops.length === 2)).toBe(true);
+
+    // A corner of valence three: (F + 2R) / 3 with F at a third and R at two
+    // thirds of the way out, which is five ninths.
+    const box = result.boundingBox();
+    expect(box.max.x).toBeCloseTo(1);
+    const corners = [...result.verts.values()].filter((vert) => vert.edges.length === 3);
+    expect(corners).toHaveLength(8);
+    for (const corner of corners) {
+      expect(Math.abs(corner.co.x)).toBeCloseTo(5 / 9);
+      expect(Math.abs(corner.co.y)).toBeCloseTo(5 / 9);
+      expect(Math.abs(corner.co.z)).toBeCloseTo(5 / 9);
+    }
+  });
+
+  it('only splits the faces when Catmull-Clark is off', () => {
+    const cube = createBox(2);
+    const result = evaluateModifiers(cube, [subsurf({ levels: 2, catmullClark: false })]);
+
+    expect(result.faces.size).toBe(96);
+    expect(result.boundingBox().min).toEqual({ x: -1, y: -1, z: -1 });
+    expect(result.boundingBox().max).toEqual({ x: 1, y: 1, z: 1 });
+    for (const vert of result.verts.values()) {
+      const onSurface = [vert.co.x, vert.co.y, vert.co.z].some((c) => Math.abs(c) === 1);
+      expect(onSurface).toBe(true);
+    }
+  });
+
+  it('shrinks toward a sphere as the levels rise', () => {
+    const cube = createBox(2);
+    const one = evaluateModifiers(cube, [subsurf({ levels: 1 })]);
+    const three = evaluateModifiers(cube, [subsurf({ levels: 3 })]);
+
+    const farthest = (mesh: BMesh) =>
+      Math.max(
+        ...[...mesh.verts.values()].map((vert) => Math.hypot(vert.co.x, vert.co.y, vert.co.z)),
+      );
+    expect(three.faces.size).toBe(6 * 4 ** 3);
+    expect(farthest(three)).toBeLessThan(farthest(one));
+    expect(three.validate()).toEqual([]);
+  });
+
+  it('keeps an open border attached and smooths along it', () => {
+    const plane = createPlane(2);
+    const result = evaluateModifiers(plane, [subsurf({ levels: 2 })]);
+
+    expect(result.faces.size).toBe(16);
+    expect(result.validate()).toEqual([]);
+    const border = [...result.edges.values()].filter((edge) => edge.loops.length === 1);
+    expect(border).toHaveLength(16);
+  });
+
+  it('carries sharp edges and leaves the base mesh alone', () => {
+    const cube = createBox(2);
+    const [edge] = cube.edges.values();
+    edge.sharp = true;
+    const before = cloneMesh(cube);
+
+    const result = evaluateModifiers(cube, [subsurf()]);
+
+    expect([...result.edges.values()].filter((candidate) => candidate.sharp)).toHaveLength(2);
+    expect(cube.faces.size).toBe(before.faces.size);
+    expect([...cube.verts.values()].map((vert) => vert.co)).toEqual(
+      [...before.verts.values()].map((vert) => vert.co),
+    );
+  });
+
+  it('drops a level that would put the mesh past what a tab can hold', () => {
+    const dense = createBox(2);
+    subdivideFaces(dense, [...dense.faces.values()], { cuts: 4 });
+    subdivideFaces(dense, [...dense.faces.values()], { cuts: 4 });
+    subdivideFaces(dense, [...dense.faces.values()], { cuts: 4 });
+
+    const result = evaluateModifiers(dense, [subsurf({ levels: 2 })]);
+
+    expect(result.faces.size).toBe(93750);
+  });
+
+  it('bakes into the mesh on apply', () => {
+    const result = applyModifier(createBox(2), subsurf({ levels: 2 }));
+    expect(result.faces.size).toBe(96);
   });
 });
 

@@ -1,6 +1,7 @@
 import { DEFAULT_REMESH_SETTINGS, type RemeshSettings } from '../remesh';
 
-export type ModifierType = 'mirror' | 'array' | 'solidify' | 'weld' | 'subdivide' | 'remesh';
+export type ModifierType =
+  'mirror' | 'array' | 'solidify' | 'weld' | 'subdivide' | 'subsurf' | 'remesh';
 
 export interface ModifierBase {
   id: string;
@@ -60,6 +61,13 @@ export interface SubdivideModifier extends ModifierBase {
   smooth: number;
 }
 
+export interface SubsurfModifier extends ModifierBase {
+  type: 'subsurf';
+  levels: number;
+  /** Round toward the Catmull-Clark limit surface, or only split the faces. */
+  catmullClark: boolean;
+}
+
 /**
  * Rebuilds the topology wholesale: the one modifier that throws away the
  * geometry it was given rather than adding to it.
@@ -87,6 +95,7 @@ export type Modifier =
   | SolidifyModifier
   | WeldModifier
   | SubdivideModifier
+  | SubsurfModifier
   | RemeshModifier;
 
 let counter = 0;
@@ -157,6 +166,15 @@ export function createModifier(type: ModifierType): Modifier {
         enabled: true,
         levels: 1,
         smooth: 0,
+      };
+    case 'subsurf':
+      return {
+        id: nextId(type),
+        type,
+        name: 'SUBDIVISION SURFACE',
+        enabled: true,
+        levels: 1,
+        catmullClark: true,
       };
     case 'remesh':
       return {

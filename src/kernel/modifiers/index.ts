@@ -4,7 +4,7 @@ import type { Edge, Face, Vert } from '../mesh/types';
 import { mergeByDistance, weldVerts } from '../ops/merge';
 import { MESH_BUDGET } from '../ops/budget';
 import { carrySharp } from '../ops/normals';
-import { subdivideFaces } from '../ops/subdivide';
+import { catmullClark, subdivideFaces } from '../ops/subdivide';
 import { remeshMesh } from '../remesh';
 
 import type {
@@ -14,6 +14,7 @@ import type {
   RemeshModifier,
   SolidifyModifier,
   SubdivideModifier,
+  SubsurfModifier,
   WeldModifier,
 } from './types';
 
@@ -65,6 +66,8 @@ export function applyModifier(
       return applyWeld(mesh, modifier);
     case 'subdivide':
       return applySubdivide(mesh, modifier);
+    case 'subsurf':
+      return applySubsurf(mesh, modifier);
     case 'remesh':
       return applyRemesh(mesh, modifier);
   }
@@ -386,6 +389,22 @@ function applySubdivide(mesh: BMesh, modifier: SubdivideModifier): BMesh {
     subdivideFaces(mesh, [...mesh.faces.values()], { cuts: 1, smooth: modifier.smooth });
   }
   return mesh;
+}
+
+export const MAX_SUBSURF_LEVELS = 6;
+
+function applySubsurf(mesh: BMesh, modifier: SubsurfModifier): BMesh {
+  const levels = Math.max(0, Math.min(MAX_SUBSURF_LEVELS, Math.floor(modifier.levels)));
+  let result = mesh;
+  for (let level = 0; level < levels; level++) {
+    // Each face comes back as one quad per corner. Like LOOP SUBDIVIDE, a level
+    // that would outgrow the tab is dropped rather than run.
+    let next = 0;
+    for (const face of result.faces.values()) next += result.faceLoopCount(face);
+    if (next > MESH_BUDGET.faces) break;
+    result = catmullClark(result, modifier.catmullClark);
+  }
+  return result;
 }
 
 /**

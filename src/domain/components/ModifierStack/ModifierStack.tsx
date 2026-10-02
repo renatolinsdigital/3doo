@@ -3,6 +3,7 @@ import {
   type ModifierType,
   MAX_SHARP_ANGLE,
   MAX_SMOOTHING,
+  MAX_SUBSURF_LEVELS,
   MAX_TARGET_FACES,
   MAX_VOXEL_SIZE,
   MIN_TARGET_FACES,
@@ -39,6 +40,11 @@ const MODIFIER_INFO: Record<ModifierType, { label: string; description: string }
     label: 'LOOP SUBDIVIDE',
     description:
       'Cuts every edge at its midpoint and splits each face into quads around its centre. At SMOOTH 0 the shape stays exactly as it was; raising SMOOTH rounds it off.',
+  },
+  subsurf: {
+    label: 'SUBDIVISION SURFACE',
+    description:
+      'Splits every face into quads, level after level, and with CATMULL-CLARK on rounds the mesh toward a smooth surface. In edit mode the original mesh stays drawn as a cage around the result, and that cage is what you edit.',
   },
   remesh: {
     label: 'REMESH',
@@ -321,6 +327,28 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
         hint="How far apart two vertices can sit and still be fused into one"
         onChange={(threshold) => onChange({ threshold })}
       />
+    );
+  }
+
+  if (modifier.type === 'subsurf') {
+    return (
+      <>
+        <Toggle
+          label="CATMULL-CLARK"
+          checked={modifier.catmullClark}
+          hint="On rounds the shape toward a smooth surface. Off only splits the faces and keeps the shape as it is"
+          onChange={(catmullClark) => onChange({ catmullClark })}
+        />
+        <NumberField
+          label="SUBDIVISION LEVELS"
+          value={modifier.levels}
+          integer
+          min={0}
+          max={MAX_SUBSURF_LEVELS}
+          hint="How many times to subdivide. Each level brings about four times the faces, and a level that would put the result past what a browser tab holds is skipped"
+          onChange={(levels) => onChange({ levels })}
+        />
+      </>
     );
   }
 

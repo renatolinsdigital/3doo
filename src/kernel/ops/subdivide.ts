@@ -18,8 +18,7 @@ import {
   sub,
   vec3,
 } from '../math';
-import type { BMesh } from '../mesh';
-import { triangulatePolygon } from '../mesh';
+import { BMesh, triangulatePolygon } from '../mesh';
 import type { Edge, Face, Loop, Vert } from '../mesh/types';
 
 import { carrySharp } from './normals';
@@ -56,6 +55,117 @@ export function subdivideFaces(
   const cuts = Math.max(1, Math.floor(options.cuts ?? 1));
   const smooth = clamp(options.smooth ?? 0, 0, 1);
   return subdividePass(mesh, faces, cuts, smooth);
+}
+
+/**
+ * One level of subdivision over the whole mesh, returned as a new mesh.
+ *
+ * Every face becomes one quad per corner around its centre. With `smooth` the
+ * points are the Catmull-Clark ones: an open border follows its own curve and
+ * nothing else, and a vertex where borders meet, or on a wire or non-manifold
+ * edge, stays where it is. Without it the points are midpoints and centres,
+ * which adds faces and leaves the shape alone.
+ *
+ * Kept apart from `subdivideFaces` because the modifier runs it on every edit:
+ * building the result from the cage's rings is far cheaper than cutting faces
+ * out of a mesh in place, and a whole-mesh level has no selection border to
+ * keep watertight.
+ */
+export function catmullClark(mesh: BMesh, smooth: boolean): BMesh {
+  const out = new BMesh();
+
+  const facePoints = new Map<number, Vec3>();
+  for (const face of mesh.faces.values()) {
+    facePoints.set(face.id, centroid(mesh.facePoints(face)));
+  }
+
+  const edgeVerts = new Map<number, Vert>();
+  for (const edge of mesh.edges.values()) {
+    const ends = add(edge.v0.co, edge.v1.co);
+    const co =
+      smooth && edge.loops.length === 2
+        ? mul(
+            add(
+              ends,
+              add(
+                facePoints.get(edge.loops[0].face.id) ?? vec3(),
+                facePoints.get(edge.loops[1].face.id) ?? vec3(),
+              ),
+            ),
+            0.25,
+          )
+        : mul(ends, 0.5);
+    edgeVerts.set(edge.id, out.addVert(co));
+  }
+
+  const cornerVerts = new Map<number, Vert>();
+  for (const vert of mesh.verts.values()) {
+    cornerVerts.set(vert.id, out.addVert(smooth ? smoothCorner(mesh, vert, facePoints) : vert.co));
+  }
+
+  const halfway = (a: Loop, b: Loop) => ({ u: (a.uv.u + b.uv.u) / 2, v: (a.uv.v + b.uv.v) / 2 });
+
+  for (const face of mesh.faces.values()) {
+    const loops = mesh.faceLoops(face);
+    const middle = out.addVert(facePoints.get(face.id) ?? vec3());
+    const middleUv = { u: 0, v: 0 };
+    for (const loop of loops) {
+      middleUv.u += loop.uv.u / loops.length;
+      middleUv.v += loop.uv.v / loops.length;
+    }
+
+    for (const loop of loops) {
+      const quad = out.addFace(
+        [
+          cornerVerts.get(loop.vert.id) as Vert,
+          edgeVerts.get(loop.edge.id) as Vert,
+          middle,
+          edgeVerts.get(loop.prev.edge.id) as Vert,
+        ],
+        { materialIndex: face.materialIndex, smooth: face.smooth },
+      );
+      const [corner, next, centre, previous] = out.faceLoops(quad);
+      corner.uv = { ...loop.uv };
+      next.uv = halfway(loop, loop.next);
+      centre.uv = { ...middleUv };
+      previous.uv = halfway(loop.prev, loop);
+    }
+  }
+
+  // Wire edges have no face to bring their halves along, and a sharp edge's
+  // halves come with its faces but start out smooth.
+  for (const edge of mesh.edges.values()) {
+    if (edge.loops.length > 0 && !edge.sharp) continue;
+    const middle = edgeVerts.get(edge.id) as Vert;
+    const halves = [
+      out.addEdge(cornerVerts.get(edge.v0.id) as Vert, middle),
+      out.addEdge(middle, cornerVerts.get(edge.v1.id) as Vert),
+    ];
+    if (edge.sharp) for (const half of halves) half.sharp = true;
+  }
+
+  out.computeNormals();
+  return out;
+}
+
+/** Where a corner of the cage lands on the next Catmull-Clark level. */
+function smoothCorner(mesh: BMesh, vert: Vert, facePoints: ReadonlyMap<number, Vec3>): Vec3 {
+  const valence = vert.edges.length;
+  if (valence < 2) return vert.co;
+  if (vert.edges.some((edge) => edge.loops.length === 0 || edge.loops.length > 2)) return vert.co;
+
+  const border = vert.edges.filter((edge) => edge.loops.length === 1);
+  if (border.length > 0) {
+    if (border.length !== 2) return vert.co;
+    const [a, b] = border.map((edge) => mesh.edgeOther(edge, vert).co);
+    return mul(add(add(a, b), mul(vert.co, 6)), 1 / 8);
+  }
+
+  const faceAverage = centroid(
+    mesh.vertFaces(vert).map((face) => facePoints.get(face.id) ?? vec3()),
+  );
+  const edgeAverage = centroid(vert.edges.map((edge) => mul(add(edge.v0.co, edge.v1.co), 0.5)));
+  return mul(add(add(faceAverage, mul(edgeAverage, 2)), mul(vert.co, valence - 3)), 1 / valence);
 }
 
 /**

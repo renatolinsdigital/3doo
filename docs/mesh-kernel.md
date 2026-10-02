@@ -416,6 +416,31 @@ those faces bring start out smooth. So each one marks the copy of every sharp
 edge afterwards (`copySharp`). Solidify's rim stays smooth: it is new geometry,
 not a copy of a crease.
 
+### Subdivision surface
+
+`catmullClark` builds one level over the whole mesh as a new `BMesh`, from the
+cage's rings: a face point per face, an edge point per edge, a moved corner per
+vertex, and one quad per face corner. It does not go through `subdivideFaces`,
+because the stack runs on every edit and building from flat rings is far
+cheaper than cutting faces out of a mesh in place. Level 6 on a cube (24,576
+faces) evaluates in about 140 ms.
+
+- **Catmull-Clark** places the points by the standard rules, the ones Blender's
+  Subdivision Surface modifier uses at its defaults. An open border is smoothed
+  along itself alone (`(a + 6v + b) / 8`). A vertex where borders meet, or on a
+  wire or non-manifold edge, does not move.
+- **Simple** (`catmullClark: false`) takes midpoints and centres and leaves the
+  shape alone.
+
+UVs are interpolated linearly, sharp marks carry onto both halves of the edge,
+and wire edges are split in two. Sharp edges are not creases: the surface
+rounds across them and only the shading breaks there. Like loop subdivide, a
+level that would outgrow `MESH_BUDGET` is dropped.
+
+Edit mode draws the cage's wire around the shaded result, as Blender does, and
+leaves out the result's own edges (`drawsPreviewWire` in `ObjectView.ts`): at
+any real level they would bury the surface. Object mode draws the result alone.
+
 ### Weld
 
 Weld is `mergeByDistance` run over every vertex in the mesh. There is no

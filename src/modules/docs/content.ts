@@ -494,6 +494,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           ['Loop Subdivide', 'Splits every face into quads, one level at a time, keeping the shape or rounding it off.'],
           [
+            'Subdivision Surface',
+            'Splits every face into quads for each of up to six SUBDIVISION LEVELS. With CATMULL-CLARK on, each level rounds the mesh toward a smooth surface; off, it only adds faces. In edit mode the original mesh stays drawn as a cage around the smooth result, and the cage is what you select and move. Object mode and Apply show the result alone.',
+          ],
+          [
             'Remesh',
             'Rebuilds the topology outright, by one of three methods. VOXEL samples the shape into a signed distance grid and builds an even quad shell back out of it. BLOCKS reads the same grid straight off the lattice, every face axis-aligned: a voxel study of the shape rather than a surface to keep working on. REDUCE rebuilds nothing: it collapses the edges that cost least to lose and leaves every other vertex exactly where it was. REDUCE is the only method that keeps material slots.',
           ],
