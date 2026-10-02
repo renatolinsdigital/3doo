@@ -1,6 +1,6 @@
 # Testing
 
-1506 tests across the kernel, the bridge, the store, the viewport, the component library and
+1514 tests across the kernel, the bridge, the store, the viewport, the component library and
 the app shell.
 
 ```bash

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ModuleSwitcher } from '@app/ModuleSwitcher/ModuleSwitcher';
 import { navigate } from '@app/router';
+import { SiteFooter } from '@domain/components';
 import { Button, TextField } from '@shared/components';
 
 import { type DocsBlock, type DocsResult, DOCS_SECTIONS, searchDocs, searchTerms } from './content';
@@ -131,6 +132,8 @@ export function DocsModule() {
           </div>
         </main>
       </div>
+
+      <SiteFooter className="docs__footer" />
     </div>
   );
 }

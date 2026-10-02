@@ -1,0 +1,42 @@
+@use '@global-styles/helpers' as *;
+@use '@global-styles/responsive-mixins' as *;
+
+.site-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: 40px 32px 48px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--bone-shade);
+  border-top: var(--border-width) solid var(--bone);
+
+  strong {
+    font-family: var(--font-display);
+    font-size: 14px;
+    letter-spacing: 0.06em;
+    color: var(--bone);
+  }
+
+  &__credit-link {
+    @include brutal-focus;
+
+    font-weight: 700;
+    color: var(--bone);
+    text-transform: uppercase;
+
+    &:hover {
+      color: var(--red);
+    }
+  }
+
+  @include mobile {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: var(--space-6) 0 32px;
+    line-height: 1.6;
+  }
+}

@@ -22,3 +22,4 @@ export { ShortcutOverlay } from './ShortcutOverlay/ShortcutOverlay';
 export { CursorMenu } from './CursorMenu/CursorMenu';
 export { DeleteMenu } from './DeleteMenu/DeleteMenu';
 export { ViewAxes } from './ViewAxes/ViewAxes';
+export { SiteFooter, type SiteFooterProps } from './SiteFooter/SiteFooter';

@@ -3,7 +3,7 @@
 
 .docs {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   height: 100%;
   background: var(--ash);
 
@@ -36,6 +36,15 @@
     min-height: 0;
     margin-inline: auto;
     padding: var(--panel-gap);
+  }
+
+  // Lined up with the panels above it. The page never scrolls, so the footer
+  // stays on screen and runs shorter than the home page's to leave the reading
+  // room to the article.
+  &__footer.site-footer {
+    width: min(calc(100% - 2 * var(--panel-gap)), calc(1240px - 2 * var(--panel-gap)));
+    margin-inline: auto;
+    padding: var(--space-4) var(--space-3) var(--space-5);
   }
 
   &__nav {
@@ -342,6 +351,11 @@
 
     &__content {
       padding: var(--space-4);
+    }
+
+    &__footer.site-footer {
+      gap: var(--space-1);
+      padding: var(--space-3) 0 var(--space-4);
     }
 
     // The term column's desktop floor is most of a phone's width on its own,

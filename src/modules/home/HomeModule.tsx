@@ -1,5 +1,6 @@
 import { ModuleSwitcher } from '@app/ModuleSwitcher/ModuleSwitcher';
 import { navigate } from '@app/router';
+import { SiteFooter } from '@domain/components';
 import { Button } from '@shared/components';
 
 import { version } from '../../../package.json';
@@ -197,22 +198,7 @@ export function HomeModule() {
           </section>
         </main>
 
-        <footer className="home__footer">
-          <span className="home__footer-brand">
-            <strong>3DOO</strong> · LIGHTWEIGHT 3D EDITOR THAT RUNS IN THE BROWSER
-          </span>
-          <span>
-            © 2026 BY{' '}
-            <a
-              className="home__credit-link"
-              href="https://www.linkedin.com/in/renatolinsdigital/"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Renato Lins
-            </a>
-          </span>
-        </footer>
+        <SiteFooter className="home__footer" />
       </div>
     </div>
   );
