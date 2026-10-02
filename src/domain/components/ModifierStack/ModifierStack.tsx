@@ -36,9 +36,9 @@ const MODIFIER_INFO: Record<ModifierType, { label: string; description: string }
       'Fuses vertices closer together considering a DISTANCE threshold. Raising it starts collapsing real detail.',
   },
   subdivide: {
-    label: 'SUBDIVISION',
+    label: 'LOOP SUBDIVIDE',
     description:
-      'Splits every face into smaller ones and pulls them toward the Catmull-Clark limit surface, rounding the shape off.',
+      'Cuts every edge at its midpoint and splits each face into quads around its centre. At SMOOTH 0 the shape stays exactly as it was; raising SMOOTH rounds it off.',
   },
   remesh: {
     label: 'REMESH',
@@ -453,7 +453,7 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
         integer
         min={0}
         max={3}
-        hint="How many Catmull-Clark subdivision passes to apply. A level that would put the result past what a browser tab holds is skipped"
+        hint="How many times to split every face again. Each level brings about four times the faces, and a level that would put the result past what a browser tab holds is skipped"
         onChange={(levels) => onChange({ levels })}
       />
       <NumberField
@@ -462,7 +462,7 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
         step={0.1}
         min={0}
         max={1}
-        hint="Blend toward the limit surface versus the flat cage"
+        hint="0 keeps the shape flat and only adds faces. Higher values round the corners off on every level"
         onChange={(smooth) => onChange({ smooth })}
       />
     </>

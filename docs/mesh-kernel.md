@@ -399,13 +399,17 @@ non-destructive. `applyModifier` bakes a single one into the mesh.
   whole. Without it, the reflection lands back on top of the uncut half, and the
   result is doubled geometry with opposing winding.
 
-### Array, solidify and subdivision
+### Array, solidify and loop subdivide
 
 - **Array** repeats the mesh along an offset built from the bounding box, a
   constant, or the two added together.
 - **Solidify** offsets a shell along vertex normals, reverses it, and fills rim
   quads along the boundary edges, which it captures *before* the shell is added.
-- **Subdivision** runs `subdivideFaces` across every face.
+- **Loop subdivide** runs `subdivideFaces` across every face with one cut,
+  once per level. At the default `smooth` of 0 it only adds faces and leaves the
+  shape untouched: a plain grid split, not a Catmull-Clark surface. Raising
+  `smooth` applies the edit-mode operator's corner relaxation, again on every
+  level.
 
 Mirror, array and solidify build their copies a face at a time, and the edges
 those faces bring start out smooth. So each one marks the copy of every sharp

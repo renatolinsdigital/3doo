@@ -375,9 +375,9 @@ function applyWeld(mesh: BMesh, modifier: WeldModifier): BMesh {
 
 function applySubdivide(mesh: BMesh, modifier: SubdivideModifier): BMesh {
   const levels = Math.max(0, Math.min(3, Math.floor(modifier.levels)));
-  // A level is a whole pass of the scheme over the result of the last one,
-  // which is what makes the surface converge; one pass cutting every edge
-  // `levels` times would be a finer cage, not a smoother limit.
+  // Levels run as repeated single-cut passes rather than one pass with more
+  // cuts: that doubles the resolution per level, and lets SMOOTH round the
+  // result again each time instead of once.
   for (let level = 0; level < levels; level++) {
     // A level quadruples the face count and the stack is re-evaluated on every
     // edit, so a level that would put the result past what a tab can hold is

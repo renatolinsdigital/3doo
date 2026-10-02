@@ -153,7 +153,7 @@ export function createModifier(type: ModifierType): Modifier {
       return {
         id: nextId(type),
         type,
-        name: 'SUBDIVISION',
+        name: 'LOOP SUBDIVIDE',
         enabled: true,
         levels: 1,
         smooth: 0,
