@@ -207,19 +207,30 @@ describe('wireframe material', () => {
     const stock = new LineMaterial();
 
     expect(wire.vertexShader).not.toBe(stock.vertexShader);
-    expect(wire.vertexShader).toContain('wireLift');
+    expect(wire.vertexShader).toContain('startLift');
     expect(wire.polygonOffset).toBe(false);
   });
 
+  it('sizes the lift by the faces either side of the edge, not by the steepest there is', () => {
+    // A fixed lift sized for a face at 83 degrees carried far-side edges
+    // through a cylinder's cap as ticks along the rim. Each edge carries its
+    // own two face normals now, and the lift is what those need.
+    const shader = createWireMaterial(false).vertexShader;
+
+    expect(shader).toContain('attribute vec3 instanceSideA');
+    expect(shader).toContain('attribute vec3 instanceSideB');
+    expect(shader).toContain('wireSlope( start.xyz )');
+  });
+
   it('lifts the modifier preview the same way, its lines lying on a surface too', () => {
-    expect(createPreviewWireMaterial().vertexShader).toContain('wireLift');
+    expect(createPreviewWireMaterial().vertexShader).toContain('startLift');
   });
 
   it('takes the lift off the view ray, so an edge does not slide across the screen', () => {
     // Under perspective the ends move towards the camera along the ray they
     // are seen on, which is all three components scaled. Dropping the depth on
     // its own moves the projected point as well.
-    expect(createWireMaterial(false).vertexShader).toContain('start.xyz *= 1.0 - wireLift');
+    expect(createWireMaterial(false).vertexShader).toContain('start.xyz *= 1.0 - startLift');
   });
 
   it('writes no depth, so the marks drawn after it still come through', () => {

@@ -2013,6 +2013,28 @@ describe('selection walks', () => {
     expect(selectEdgeLoop(cylinder, vertical as never)).toHaveLength(1);
   });
 
+  it('runs an edge loop around the rim of an n-gon cap', () => {
+    const cylinder = createCylinder(1, 2, 8, true);
+    const top = Math.max(...[...cylinder.verts.values()].map((vert) => vert.co.y));
+    const rim = [...cylinder.edges.values()].find(
+      (edge) => edge.v0.co.y === top && edge.v1.co.y === top,
+    );
+    expect(rim).toBeDefined();
+
+    const loop = selectEdgeLoop(cylinder, rim as never);
+
+    expect(loop).toHaveLength(8);
+    expect(loop.every((edge) => edge.v0.co.y === top && edge.v1.co.y === top)).toBe(true);
+  });
+
+  it('runs an edge loop along an open border', () => {
+    const cylinder = createCylinder(1, 2, 8, false);
+    const rim = [...cylinder.edges.values()].find((edge) => cylinder.isBoundaryEdge(edge));
+    expect(rim).toBeDefined();
+
+    expect(selectEdgeLoop(cylinder, rim as never)).toHaveLength(8);
+  });
+
   it('brings back one loop whole from a stroke of edges along it', () => {
     const grid = createGrid(4, 4);
     const row = [...grid.edges.values()].filter(

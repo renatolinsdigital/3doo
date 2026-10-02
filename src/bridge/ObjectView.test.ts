@@ -9,7 +9,7 @@ import type { SceneObject, ViewportSettings } from '@store/types';
 
 import { ObjectView } from './ObjectView';
 import * as meshBuffers from './meshBuffers';
-import { buildEdgeCull, frontEdgePositions } from './meshBuffers';
+import { buildEdgeCull, frontEdgeLines } from './meshBuffers';
 
 const SELECTION_LINE = {
   color: DEFAULT_PREFERENCES.selectionLineColor,
@@ -480,7 +480,7 @@ describe('ObjectView under a modifier', () => {
   // What an opaque surface leaves on screen: the edges that are not on the far
   // side of the mesh from where `viewState` puts the camera.
   const frontEdgesOf = (mesh: Parameters<typeof buildEdgeCull>[0]) =>
-    frontEdgePositions(buildEdgeCull(mesh), vec3(0, 0, 10)).length / 6;
+    frontEdgeLines(buildEdgeCull(mesh), vec3(0, 0, 10)).positions.length / 6;
 
   it('draws the shape the stack makes, and the cage that makes it, in edit mode', () => {
     const { object, settings } = subdividedBox();

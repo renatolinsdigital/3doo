@@ -1,4 +1,11 @@
-import { type BMesh, type Face, type Loop, type Vec3, triangulatePolygon } from '@kernel/index';
+import {
+  type BMesh,
+  type Edge,
+  type Face,
+  type Loop,
+  type Vec3,
+  triangulatePolygon,
+} from '@kernel/index';
 
 export interface SolidBuffers {
   positions: Float32Array;
@@ -11,10 +18,26 @@ export interface SolidBuffers {
   selectedTriangles: Float32Array;
 }
 
+/**
+ * A set of edges as the line shaders draw them: both ends of each, and the
+ * normals of the faces on either side of it (see `writeSides`).
+ */
+export interface EdgeLines {
+  positions: Float32Array;
+  sides: Float32Array;
+}
+
+export const NO_EDGE_LINES: EdgeLines = {
+  positions: new Float32Array(0),
+  sides: new Float32Array(0),
+};
+
 export interface EdgeBuffers {
   positions: Float32Array;
+  /** The face normals either side of each edge in `positions`; see `writeSides`. */
+  sides: Float32Array;
   edgeIds: Int32Array;
-  selectedPositions: Float32Array;
+  selected: EdgeLines;
   /**
    * Edges with one end selected and one not, for the fade that says which way
    * a vertex selection reaches. Paired with `partialWeights`.
@@ -23,7 +46,7 @@ export interface EdgeBuffers {
   /** 1 at the selected end of each `partialPositions` segment, 0 at the other. */
   partialWeights: Float32Array;
   /** Edges marked sharp, selected or not. */
-  sharpPositions: Float32Array;
+  sharp: EdgeLines;
 }
 
 export interface PointBuffers {
@@ -173,11 +196,14 @@ function buildEdges(mesh: BMesh): EdgeBuffers {
   }
 
   const positions = new Float32Array(mesh.edges.size * 6);
+  const sides = new Float32Array(mesh.edges.size * 6);
   const edgeIds = new Int32Array(mesh.edges.size);
   const selectedPositions = new Float32Array(selectedCount * 6);
+  const selectedSides = new Float32Array(selectedCount * 6);
   const partialPositions = new Float32Array(partialCount * 6);
   const partialWeights = new Float32Array(partialCount * 2);
   const sharpPositions = new Float32Array(sharpCount * 6);
+  const sharpSides = new Float32Array(sharpCount * 6);
 
   let e = 0;
   let selected = 0;
@@ -195,6 +221,7 @@ function buildEdges(mesh: BMesh): EdgeBuffers {
     positions[at + 3] = b.x;
     positions[at + 4] = b.y;
     positions[at + 5] = b.z;
+    writeSides(sides, at, edge);
     edgeIds[e] = edge.id;
     e++;
 
@@ -205,6 +232,7 @@ function buildEdges(mesh: BMesh): EdgeBuffers {
       sharpPositions[sharp + 3] = b.x;
       sharpPositions[sharp + 4] = b.y;
       sharpPositions[sharp + 5] = b.z;
+      writeSides(sharpSides, sharp, edge);
       sharp += 6;
     }
 
@@ -215,6 +243,7 @@ function buildEdges(mesh: BMesh): EdgeBuffers {
       selectedPositions[selected + 3] = b.x;
       selectedPositions[selected + 4] = b.y;
       selectedPositions[selected + 5] = b.z;
+      writeSides(selectedSides, selected, edge);
       selected += 6;
       continue;
     }
@@ -239,12 +268,35 @@ function buildEdges(mesh: BMesh): EdgeBuffers {
 
   return {
     positions,
+    sides,
     edgeIds,
-    selectedPositions,
+    selected: { positions: selectedPositions, sides: selectedSides },
     partialPositions,
     partialWeights,
-    sharpPositions,
+    sharp: { positions: sharpPositions, sides: sharpSides },
   };
+}
+
+/**
+ * Writes the normals of the faces either side of an edge, six floats from
+ * `at`, for the wire's lift to size itself by (see `liftWire`).
+ *
+ * A boundary repeats its one face, and a bare wire edge is left at zero, which
+ * the shader reads as nothing under the line to clear. A non-manifold edge
+ * gives its first two faces.
+ */
+function writeSides(target: Float32Array, at: number, edge: Edge): void {
+  const { loops } = edge;
+  if (loops.length === 0) return;
+
+  const a = loops[0].face.normal;
+  const b = loops[loops.length > 1 ? 1 : 0].face.normal;
+  target[at] = a.x;
+  target[at + 1] = a.y;
+  target[at + 2] = a.z;
+  target[at + 3] = b.x;
+  target[at + 4] = b.y;
+  target[at + 5] = b.z;
 }
 
 /**
@@ -274,7 +326,7 @@ function cameraFacing(mesh: BMesh, eye: Vec3): (face: Face) => boolean {
 }
 
 /**
- * Everything `frontEdgePositions` needs, flattened out of the half-edge graph.
+ * Everything `frontEdgeLines` needs, flattened out of the half-edge graph.
  *
  * The pass that uses this runs on every frame the camera moves, and walking the
  * mesh itself there costs far more than the answer is worth: a map lookup per
@@ -286,6 +338,8 @@ function cameraFacing(mesh: BMesh, eye: Vec3): (face: Face) => boolean {
 export interface EdgeCull {
   /** Both endpoints of every edge, in the order `buildEdges` writes them. */
   ends: Float32Array;
+  /** The face normals either side of every edge, as `writeSides` gives them. */
+  sideNormals: Float32Array;
   /**
    * The two faces along each edge, as indices into the face tables.
    *
@@ -345,6 +399,7 @@ export function buildEdgeCull(mesh: BMesh): EdgeCull {
   }
 
   const ends = new Float32Array(mesh.edges.size * 6);
+  const sideNormals = new Float32Array(mesh.edges.size * 6);
   const sides = new Int32Array(mesh.edges.size * 2).fill(-1);
   const bounds = new Float32Array([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
   const sharp: number[] = [];
@@ -359,6 +414,7 @@ export function buildEdgeCull(mesh: BMesh): EdgeCull {
     ends[e * 6 + 3] = edge.v1.co.x;
     ends[e * 6 + 4] = edge.v1.co.y;
     ends[e * 6 + 5] = edge.v1.co.z;
+    writeSides(sideNormals, e * 6, edge);
 
     for (let axis = 0; axis < 3; axis++) {
       const a = ends[e * 6 + axis];
@@ -378,6 +434,7 @@ export function buildEdgeCull(mesh: BMesh): EdgeCull {
 
   return {
     ends,
+    sideNormals,
     sides,
     normals,
     centres,
@@ -411,7 +468,7 @@ function withinBounds(bounds: Float32Array, eye: Vec3): boolean {
 
 /**
  * Records in `cull.facing` which faces are turned towards the camera, or says
- * the cull does not hold from here (see `frontEdgePositions`).
+ * the cull does not hold from here (see `frontEdgeLines`).
  */
 function faceCamera(cull: EdgeCull, eye: Vec3): boolean {
   const { normals, centres, facing, closed, bounds } = cull;
@@ -456,10 +513,10 @@ function onNearSide(cull: EdgeCull, edge: number): boolean {
  * gives. Skipped in x-ray and wireframe shading, where seeing through the model
  * is the point (see `ObjectView`).
  */
-export function frontEdgePositions(cull: EdgeCull, eye: Vec3): Float32Array {
-  const { ends, sides } = cull;
+export function frontEdgeLines(cull: EdgeCull, eye: Vec3): EdgeLines {
+  const { ends, sideNormals, sides } = cull;
 
-  if (!faceCamera(cull, eye)) return ends;
+  if (!faceCamera(cull, eye)) return { positions: ends, sides: sideNormals };
 
   const edges = sides.length / 2;
 
@@ -468,54 +525,51 @@ export function frontEdgePositions(cull: EdgeCull, eye: Vec3): Float32Array {
   let kept = 0;
   for (let edge = 0; edge < edges; edge++) if (onNearSide(cull, edge)) kept++;
 
-  const positions = new Float32Array(kept * 6);
+  const lines = { positions: new Float32Array(kept * 6), sides: new Float32Array(kept * 6) };
   let n = 0;
   for (let edge = 0; edge < edges; edge++) {
     if (!onNearSide(cull, edge)) continue;
-    const from = edge * 6;
-    positions[n] = ends[from];
-    positions[n + 1] = ends[from + 1];
-    positions[n + 2] = ends[from + 2];
-    positions[n + 3] = ends[from + 3];
-    positions[n + 4] = ends[from + 4];
-    positions[n + 5] = ends[from + 5];
+    copyEdge(cull, edge, lines, n);
     n += 6;
   }
 
-  return positions;
+  return lines;
+}
+
+/** Copies one edge of the cull table into a line set, six floats from `at`. */
+function copyEdge(cull: EdgeCull, edge: number, lines: EdgeLines, at: number): void {
+  const from = edge * 6;
+  for (let i = 0; i < 6; i++) {
+    lines.positions[at + i] = cull.ends[from + i];
+    lines.sides[at + i] = cull.sideNormals[from + i];
+  }
 }
 
 /**
  * The sharp edges worth drawing over an opaque surface, left out on the far
- * side the way `frontEdgePositions` leaves out the wireframe.
+ * side the way `frontEdgeLines` leaves out the wireframe.
  *
  * They need it more than the wire does. A far-side edge comes through at a
  * contour as a stub a pixel or two long, which in the faint wire is easy to
  * miss and in cyan is not.
  */
-export function frontSharpPositions(cull: EdgeCull, eye: Vec3): Float32Array {
-  const { ends, sharp } = cull;
-  if (sharp.length === 0) return new Float32Array(0);
+export function frontSharpLines(cull: EdgeCull, eye: Vec3): EdgeLines {
+  const { sharp } = cull;
+  if (sharp.length === 0) return NO_EDGE_LINES;
 
   const culls = faceCamera(cull, eye);
   let kept = 0;
   for (const edge of sharp) if (!culls || onNearSide(cull, edge)) kept++;
 
-  const positions = new Float32Array(kept * 6);
+  const lines = { positions: new Float32Array(kept * 6), sides: new Float32Array(kept * 6) };
   let n = 0;
   for (const edge of sharp) {
     if (culls && !onNearSide(cull, edge)) continue;
-    const from = edge * 6;
-    positions[n] = ends[from];
-    positions[n + 1] = ends[from + 1];
-    positions[n + 2] = ends[from + 2];
-    positions[n + 3] = ends[from + 3];
-    positions[n + 4] = ends[from + 4];
-    positions[n + 5] = ends[from + 5];
+    copyEdge(cull, edge, lines, n);
     n += 6;
   }
 
-  return positions;
+  return lines;
 }
 
 /**

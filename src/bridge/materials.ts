@@ -107,6 +107,45 @@ const SURFACE_DEPTH_OFFSET = {
  */
 const MARK_LIFT_SLOPE = 8;
 
+/**
+ * The least a wire is lifted by, as a slope: a face at 45 degrees.
+ *
+ * A face seen square on needs no lift at all, and the surface's own offset
+ * settles the tie there. This is margin for the rounding in working the slope
+ * out, and costs a fraction of a pixel's depth at the wire's width.
+ */
+const WIRE_LIFT_MIN_SLOPE = 1;
+
+/** Where the wire's extra attributes, and the slope it is lifted by, are declared. */
+const WIRE_SIDES_ANCHOR = 'attribute vec3 instanceEnd;';
+
+const WIRE_SIDES_GLSL = /* glsl */ `
+		attribute vec3 instanceSideA;
+		attribute vec3 instanceSideB;
+
+		// How far the face on one side of the wire climbs in depth per unit
+		// across the screen, seen along the ray: the tangent of the angle it is
+		// turned away by. Back faces count the same as front ones, since a mesh
+		// seen from inside, or an open one from behind, shows its back faces.
+		// A zero normal is no face at all, which leaves nothing to clear.
+		float wireSideSlope( vec3 side, vec3 ray ) {
+
+			if ( dot( side, side ) < 0.25 ) return 0.0;
+
+			float facing = abs( dot( normalize( normalMatrix * side ), ray ) );
+			return sqrt( max( 1.0 - facing * facing, 0.0 ) ) / max( facing, 1e-4 );
+
+		}
+
+		float wireSlope( vec3 at ) {
+
+			vec3 ray = projectionMatrix[ 2 ][ 3 ] == - 1.0 ? normalize( at ) : vec3( 0.0, 0.0, - 1.0 );
+			float slope = max( wireSideSlope( instanceSideA, ray ), wireSideSlope( instanceSideB, ray ) );
+			return clamp( slope, ${WIRE_LIFT_MIN_SLOPE.toFixed(1)}, ${MARK_LIFT_SLOPE.toFixed(1)} );
+
+		}
+`;
+
 /** Where the lift is spliced into `LineMaterial`'s vertex shader. */
 const WIRE_LIFT_ANCHOR = 'vec4 end = modelViewMatrix * vec4( instanceEnd, 1.0 );';
 
@@ -115,20 +154,22 @@ const WIRE_LIFT_GLSL = /* glsl */ `
 			// outright under an orthographic camera, which is what lets one
 			// expression serve both.
 			float wireSpan = 2.0 / ( resolution.y * projectionMatrix[ 1 ][ 1 ] );
-			float wireLift = 0.5 * linewidth * ${MARK_LIFT_SLOPE.toFixed(1)} * wireSpan;
+			float wireHalf = 0.5 * linewidth * wireSpan;
+			float startLift = wireHalf * wireSlope( start.xyz );
+			float endLift = wireHalf * wireSlope( end.xyz );
 
 			if ( projectionMatrix[ 2 ][ 3 ] == - 1.0 ) {
 
 				// Along the view ray, by scaling all three components. Taking it
 				// off the depth alone would slide the line across the screen, by
 				// a pixel and more out towards the corners.
-				start.xyz *= 1.0 - wireLift;
-				end.xyz *= 1.0 - wireLift;
+				start.xyz *= 1.0 - startLift;
+				end.xyz *= 1.0 - endLift;
 
 			} else {
 
-				start.z += wireLift;
-				end.z += wireLift;
+				start.z += startLift;
+				end.z += endLift;
 
 			}
 `;
@@ -153,12 +194,21 @@ const WIRE_LIFT_GLSL = /* glsl */ `
  * So the lift owes nothing to the line's own direction, and a quad is what
  * lets it: the width is already the vertex shader's to choose, and this puts
  * the depth there too.
+ *
+ * Nor does it owe anything to faces the edge is not on. Every line set carries
+ * the normals of the faces either side of each edge (see `ObjectView.setLines`)
+ * and the lift is what those two need. It used to be the most any face could
+ * need, a face at 83 degrees, on every edge, and that much carries a wire
+ * through whatever stands in front of it until the gap between them outgrows
+ * it. An edge meets its occluder at a shared vertex, where that gap starts
+ * from nothing, so the side edges of a cylinder came through its cap as ticks
+ * along the far rim wherever the far-side cull was not running. Lifted by what
+ * its own faces need, a far-side edge's tick shrinks below a pixel.
  */
 function liftWire<T extends LineMaterial>(material: T): T {
-  material.vertexShader = material.vertexShader.replace(
-    WIRE_LIFT_ANCHOR,
-    WIRE_LIFT_ANCHOR + WIRE_LIFT_GLSL,
-  );
+  material.vertexShader = material.vertexShader
+    .replace(WIRE_SIDES_ANCHOR, WIRE_SIDES_ANCHOR + WIRE_SIDES_GLSL)
+    .replace(WIRE_LIFT_ANCHOR, WIRE_LIFT_ANCHOR + WIRE_LIFT_GLSL);
   return material;
 }
 

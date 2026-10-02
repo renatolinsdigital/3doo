@@ -94,7 +94,11 @@ export const createToolSlice: StateCreator<
   activeTool: 'select',
   selectShape: 'box',
   pivot: 'median',
-  proportional: { enabled: false, radius: 1.5, falloff: 'smooth' },
+  // Half the height of a fresh primitive. A turned loop round the middle of a
+  // cylinder then bends the walls and leaves the caps where they are; at 1.5
+  // the falloff reached the caps at three quarters strength and the whole
+  // cylinder swung round with the loop.
+  proportional: { enabled: false, radius: 0.5, falloff: 'smooth' },
   // Off by default, and a tenth of the default grid square when it is switched
   // on: wide enough to catch a slide run all the way onto its neighbour,
   // narrow enough to leave detail the user modelled on purpose alone.

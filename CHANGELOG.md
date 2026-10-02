@@ -12,14 +12,6 @@ New entries go under `Unreleased` until a version is cut. Group them under
 
 ## [Unreleased]
 
-### Added
-
-- The docs page now has the same footer as the home page
-
-### Fixed
-
-- The footer's copyright year follows the current year instead of a fixed one
-
 ## [1.0.1] - 2026-10-02
 
 ### Changed

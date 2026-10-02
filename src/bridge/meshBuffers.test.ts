@@ -6,8 +6,8 @@ import {
   buildEdgeCull,
   buildMeshBuffers,
   buildSilhouetteEdges,
-  frontEdgePositions,
-  frontSharpPositions,
+  frontEdgeLines,
+  frontSharpLines,
 } from './meshBuffers';
 
 /** Silhouette buffers are pairs of points, so two vertices per edge. */
@@ -57,7 +57,7 @@ describe('silhouette edges', () => {
 
 describe('front edges', () => {
   const frontEdges = (mesh: BMesh, eye: ReturnType<typeof vec3>) =>
-    edgeCount(frontEdgePositions(buildEdgeCull(mesh), eye));
+    edgeCount(frontEdgeLines(buildEdgeCull(mesh), eye).positions);
 
   it('leaves a cube seen face on with the square that is all anyone can see', () => {
     // Every other face is edge-on or behind, so the eight edges they own are
@@ -108,9 +108,51 @@ describe('front edges', () => {
     // they are flattened once and then only read.
     const cull = buildEdgeCull(createBox(1));
 
-    expect(edgeCount(frontEdgePositions(cull, vec3(0, 0, 10)))).toBe(4);
-    expect(edgeCount(frontEdgePositions(cull, vec3(0, 0, -10)))).toBe(4);
-    expect(edgeCount(frontEdgePositions(cull, vec3(10, 10, 10)))).toBe(9);
+    expect(edgeCount(frontEdgeLines(cull, vec3(0, 0, 10)).positions)).toBe(4);
+    expect(edgeCount(frontEdgeLines(cull, vec3(0, 0, -10)).positions)).toBe(4);
+    expect(edgeCount(frontEdgeLines(cull, vec3(10, 10, 10)).positions)).toBe(9);
+  });
+});
+
+describe('edge sides', () => {
+  /** The two normals written for edge `i`, as plain arrays. */
+  const sidesOf = (sides: Float32Array, i: number) => [
+    [...sides.slice(i * 6, i * 6 + 3)],
+    [...sides.slice(i * 6 + 3, i * 6 + 6)],
+  ];
+
+  it('gives each edge of a box the normals of the two faces it joins', () => {
+    // What the wire's lift is sized by: a box edge joins two faces at right
+    // angles, so its two normals are two different axes.
+    const { edges } = buildMeshBuffers(createBox(1));
+
+    for (let i = 0; i < edges.positions.length / 6; i++) {
+      const [a, b] = sidesOf(edges.sides, i);
+      expect(Math.abs(a[0] * b[0] + a[1] * b[1] + a[2] * b[2])).toBeCloseTo(0);
+    }
+  });
+
+  it('repeats the one face of a boundary edge and leaves a bare wire at zero', () => {
+    const plane = createPlane(1);
+    const loose = new BMesh();
+    loose.addEdge(loose.addVert(vec3(0, 0, 0)), loose.addVert(vec3(1, 0, 0)));
+
+    const [a, b] = sidesOf(buildMeshBuffers(plane).edges.sides, 0);
+    expect(a).toEqual(b);
+    expect(Math.hypot(a[0], a[1], a[2])).toBeCloseTo(1);
+    expect([...buildMeshBuffers(loose).edges.sides]).toEqual([0, 0, 0, 0, 0, 0]);
+  });
+
+  it('keeps the sides with their edges through the far-side cull', () => {
+    // Seen face on down +Z, the four edges kept are the front face's, so each
+    // has that face's normal on one side.
+    const lines = frontEdgeLines(buildEdgeCull(createBox(1)), vec3(0, 0, 10));
+
+    expect(lines.sides.length).toBe(lines.positions.length);
+    for (let i = 0; i < lines.positions.length / 6; i++) {
+      const [a, b] = sidesOf(lines.sides, i);
+      expect(Math.max(a[2], b[2])).toBeCloseTo(1);
+    }
   });
 });
 
@@ -125,7 +167,7 @@ describe('vertex selection fade', () => {
 
     // Two of the quad's four edges meet at the corner, and neither has both
     // ends selected, so nothing counts as a selected edge yet.
-    expect(edges.selectedPositions.length).toBe(0);
+    expect(edges.selected.positions.length).toBe(0);
     expect(edges.partialPositions.length / 6).toBe(2);
 
     // One end full and one end nothing, whichever way round the edge was
@@ -146,7 +188,7 @@ describe('vertex selection fade', () => {
 
     // The edge between the two is selected outright and drawn in flat red. The
     // fade is for the edges running off the selection, not inside it.
-    expect(edges.selectedPositions.length / 6).toBe(1);
+    expect(edges.selected.positions.length / 6).toBe(1);
     expect(edges.partialPositions.length / 6).toBe(2);
   });
 
@@ -176,7 +218,7 @@ describe('sharp edges', () => {
     const [first] = mesh.edges.values();
     first.selected = true;
 
-    expect(edgeCount(buildMeshBuffers(mesh).edges.sharpPositions)).toBe(4);
+    expect(edgeCount(buildMeshBuffers(mesh).edges.sharp.positions)).toBe(4);
   });
 
   it('breaks the smooth shading along them', () => {
@@ -192,20 +234,22 @@ describe('sharp edges', () => {
   it('leaves out the sharp edges on the far side, like the wire', () => {
     const cull = buildEdgeCull(sharpBox());
 
-    expect(edgeCount(frontSharpPositions(cull, vec3(0, 0, 10)))).toBe(4);
-    expect(edgeCount(frontSharpPositions(cull, vec3(10, 10, 10)))).toBe(9);
+    expect(edgeCount(frontSharpLines(cull, vec3(0, 0, 10)).positions)).toBe(4);
+    expect(edgeCount(frontSharpLines(cull, vec3(10, 10, 10)).positions)).toBe(9);
   });
 
   it('draws none when every sharp edge is round the back', () => {
     const behind = (edge: Edge) => edge.v0.co.z < 0 && edge.v1.co.z < 0;
 
-    expect(edgeCount(frontSharpPositions(buildEdgeCull(sharpBox(behind)), vec3(0, 0, 10)))).toBe(0);
+    expect(
+      edgeCount(frontSharpLines(buildEdgeCull(sharpBox(behind)), vec3(0, 0, 10)).positions),
+    ).toBe(0);
   });
 
   it('keeps them all where the cull does not hold', () => {
     const plane = createPlane(1);
     for (const edge of plane.edges.values()) edge.sharp = true;
 
-    expect(edgeCount(frontSharpPositions(buildEdgeCull(plane), vec3(0, 10, 0)))).toBe(4);
+    expect(edgeCount(frontSharpLines(buildEdgeCull(plane), vec3(0, 10, 0)).positions)).toBe(4);
   });
 });

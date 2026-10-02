@@ -94,6 +94,13 @@ const LASSO_POINT_SPACING = 6;
  */
 const CLICK_SLOP_PIXELS = 4;
 
+/**
+ * How far behind an orthographic camera its facing eye stands (see
+ * `facingEye`). Far enough past any scene that the rays from it are as good as
+ * parallel.
+ */
+const ORTHO_EYE_DISTANCE = 1e6;
+
 /** How long freshly created vertices stay flagged in the viewport. */
 const RECENT_VERTS_MS = 1600;
 
@@ -500,7 +507,7 @@ export class Viewport {
   private pointerPixels = new THREE.Vector2();
   /** Whether the pointer is over the canvas at all, which is what a hover needs. */
   private pointerInside = false;
-  /** Where the camera stood when the selection outlines were last traced. */
+  /** The eye the selection outlines were last traced from; see `facingEye`. */
   private readonly outlineEye = new THREE.Vector3(Number.NaN, 0, 0);
   /** Canvas size in CSS pixels; the outline material sizes its line against it. */
   private readonly outlineResolution = new THREE.Vector2(1, 1);
@@ -1184,7 +1191,7 @@ export class Viewport {
         recentVerts: this.recentVerts?.objectId === object.id ? this.recentVerts.ids : undefined,
         isActive: object.id === state.activeObjectId,
         isSelected: state.selectedObjectIds.includes(object.id),
-        eye: vec3(this.camera.position.x, this.camera.position.y, this.camera.position.z),
+        eye: this.facingEye(),
         selectionLine: { color: state.selectionLineColor, width: state.selectionLineWidth },
         meshVersion: state.meshVersion,
         settings,
@@ -1577,6 +1584,12 @@ export class Viewport {
    */
   private captureBaselines(state: EditorStore): void {
     this.captureGizmoBaseline();
+    // Every transform measures its own falloff, from wherever the selection
+    // stands now. Cleared here, where every transform starts, rather than where
+    // a gizmo drag ends: the keyboard's S and R end elsewhere, and the spread
+    // they left behind was taken up by the next transform of any selection with
+    // as many vertices, which on a cylinder is every other loop.
+    this.dragSpread = null;
     this.objectBaselines.clear();
     for (const object of state.objects) {
       if (!this.transformGroup.includes(object.id)) continue;
@@ -1615,9 +1628,6 @@ export class Viewport {
     this.endScaleDrag();
     this.endRotateDrag();
     this.autoMergeSelection();
-    // The next drag measures its own falloff, from wherever the selection has
-    // ended up rather than from where this one found it.
-    this.dragSpread = null;
 
     // `gizmoDragging` is already false, so this resync is the one that re-seats
     // the gizmo on where the selection actually landed.
@@ -1791,7 +1801,12 @@ export class Viewport {
           );
     }
 
-    const restorePoints = selected.map((vert) => ({ vert, co: { ...vert.co } }));
+    // Proportional editing carries vertices outside the selection too, and the
+    // wheel can widen its reach mid-drag, so a cancel has to be able to put back
+    // any vertex in the mesh.
+    const moving =
+      state.proportional.enabled && object ? [...object.mesh.verts.values()] : selected;
+    const restorePoints = moving.map((vert) => ({ vert, co: { ...vert.co } }));
     return () => {
       for (const point of restorePoints) point.vert.co = point.co;
       object?.mesh.computeNormals();
@@ -2594,8 +2609,8 @@ export class Viewport {
    * sets off. It is also supposed to be settled: the falloff is measured from
    * where the selection stood when the drag began, so recomputing it from the
    * vertices as they move would let the circle of influence crawl along with
-   * them. Held until the selection, the radius or the curve changes, which is
-   * what the wheel does mid-drag.
+   * them. Held for the rest of the transform, and measured again only when the
+   * radius or the curve changes, which is what the wheel does mid-drag.
    */
   private proportionalSpread(
     state: EditorStore,
@@ -3700,11 +3715,39 @@ export class Viewport {
    * return immediately, so this costs nothing on an empty or hidden scene.
    */
   private updateSelectionOutlines(): void {
-    if (this.camera.position.distanceToSquared(this.outlineEye) < 1e-10) return;
-    this.outlineEye.copy(this.camera.position);
+    // Compared as the eye rather than as the camera's position, which a switch
+    // between perspective and orthographic leaves where it was.
+    const eye = this.facingEye();
+    if (this.outlineEye.distanceToSquared(eye) < 1e-10) return;
+    this.outlineEye.set(eye.x, eye.y, eye.z);
 
-    const eye = vec3(this.camera.position.x, this.camera.position.y, this.camera.position.z);
     for (const view of this.views.values()) view.refreshForCamera(eye);
+  }
+
+  /**
+   * The point the outline and the far-side cull judge which faces are turned
+   * towards the camera from.
+   *
+   * A perspective camera's own position. An orthographic camera has no such
+   * point: every ray runs parallel to the view, and its position is only the
+   * orbit radius off the target, which zooming in shrinks. Judged from there, a
+   * close-up stood the eye inside the mesh's bounding box, the cull stood down
+   * as it does for a camera in among the geometry, and the far side's edges
+   * came back. The depth test let their ends through along every contour, as
+   * short ticks under the rim of a cylinder's cap. Standing it far back along
+   * the view makes every ray as good as parallel, which is what the picture
+   * is drawn with.
+   */
+  private facingEye(): Vec3 {
+    const { position } = this.camera;
+    if (!(this.camera instanceof THREE.OrthographicCamera)) {
+      return vec3(position.x, position.y, position.z);
+    }
+
+    const back = this.camera
+      .getWorldDirection(new THREE.Vector3())
+      .multiplyScalar(-ORTHO_EYE_DISTANCE);
+    return vec3(position.x + back.x, position.y + back.y, position.z + back.z);
   }
 
   /**

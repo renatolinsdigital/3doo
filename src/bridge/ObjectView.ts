@@ -27,14 +27,16 @@ import {
 import {
   type EdgeBuffers,
   type EdgeCull,
+  type EdgeLines,
+  NO_EDGE_LINES,
   type PointBuffers,
   type SolidBuffers,
   buildEdgeCull,
   buildMeshBuffers,
   buildNormalLines,
   buildSilhouetteEdges,
-  frontEdgePositions,
-  frontSharpPositions,
+  frontEdgeLines,
+  frontSharpLines,
 } from './meshBuffers';
 
 /**
@@ -498,32 +500,28 @@ export class ObjectView {
           object,
         }
       : null;
-    this.setLinePositions(
+    this.setLines(
       this.wire,
-      this.culled ? this.frontEdges(this.culled.cage, object, state.eye) : edges.positions,
+      this.culled ? this.frontEdges(this.culled.cage, object, state.eye) : edges,
       drawsWire,
     );
 
     // Never culled: a selection has to read wherever it is, and an edge picked
     // round the back is one the user chose.
-    this.setLinePositions(
-      this.selectedEdges,
-      edges.selectedPositions,
-      state.mode === 'edit' && state.isActive,
-    );
+    this.setLines(this.selectedEdges, edges.selected, state.mode === 'edit' && state.isActive);
 
     // Edit mode alone, on the cage: the mark is there to be edited, and out of
     // edit mode the break in the shading is what shows it. Culled like the
     // wire it lies on rather than like the selection, since it is a property
     // of the mesh and not something the user just picked round the back.
     this.marksSharp = state.mode === 'edit' && state.isActive;
-    this.setLinePositions(
+    this.setLines(
       this.sharpEdges,
       !this.marksSharp
-        ? new Float32Array(0)
+        ? NO_EDGE_LINES
         : this.culled
           ? this.frontSharp(this.culled.cage, object, state.eye)
-          : edges.sharpPositions,
+          : edges.sharp,
       this.marksSharp,
     );
 
@@ -555,14 +553,14 @@ export class ObjectView {
    */
   private updatePreviewWire(edges: EdgeBuffers, object: SceneObject, state: ObjectViewState): void {
     if (!this.picksCage || !drawsPreviewWire(object)) {
-      this.setLinePositions(this.previewWire, new Float32Array(0), false);
+      this.setLines(this.previewWire, NO_EDGE_LINES, false);
       return;
     }
 
     const preview = this.culled?.preview;
-    this.setLinePositions(
+    this.setLines(
       this.previewWire,
-      preview ? this.frontEdges(preview, object, state.eye) : edges.positions,
+      preview ? this.frontEdges(preview, object, state.eye) : edges,
       true,
     );
   }
@@ -641,23 +639,23 @@ export class ObjectView {
     // are handed back the visibility they were drawn with rather than whatever
     // the last position of the camera left them at.
     const { cage, preview, object } = this.culled;
-    this.setLinePositions(this.wire, this.frontEdges(cage, object, eye), true);
+    this.setLines(this.wire, this.frontEdges(cage, object, eye), true);
     if (preview) {
-      this.setLinePositions(this.previewWire, this.frontEdges(preview, object, eye), true);
+      this.setLines(this.previewWire, this.frontEdges(preview, object, eye), true);
     }
     if (this.marksSharp) {
-      this.setLinePositions(this.sharpEdges, this.frontSharp(cage, object, eye), true);
+      this.setLines(this.sharpEdges, this.frontSharp(cage, object, eye), true);
     }
   }
 
   /** The mesh's edges minus the ones lying on its far side, in object space. */
-  private frontEdges(cull: EdgeCull, object: SceneObject, eye: Vec3): Float32Array {
-    return frontEdgePositions(cull, inverseTransformPoint(object.transform, eye));
+  private frontEdges(cull: EdgeCull, object: SceneObject, eye: Vec3): EdgeLines {
+    return frontEdgeLines(cull, inverseTransformPoint(object.transform, eye));
   }
 
   /** The same for the sharp edges alone. */
-  private frontSharp(cull: EdgeCull, object: SceneObject, eye: Vec3): Float32Array {
-    return frontSharpPositions(cull, inverseTransformPoint(object.transform, eye));
+  private frontSharp(cull: EdgeCull, object: SceneObject, eye: Vec3): EdgeLines {
+    return frontSharpLines(cull, inverseTransformPoint(object.transform, eye));
   }
 
   /** The cull table for a mesh, flattened again only once the mesh has moved on. */
@@ -673,16 +671,25 @@ export class ObjectView {
   /**
    * Hands a line set to a `LineSegments2`, which wants its own geometry type.
    *
+   * The face normals either side of each edge ride along as two more instance
+   * attributes, which is what the wire's lift sizes itself by (see
+   * `liftWire`).
+   *
    * An empty one is left without positions, and hidden: an instanced geometry
    * with no instances has no bounding sphere for the frustum check to work
    * with. Whether it comes back is the caller's to say, since a set can empty
    * and fill again as the camera turns around a mesh.
    */
-  private setLinePositions(line: LineSegments2, positions: Float32Array, visible: boolean): void {
+  private setLines(line: LineSegments2, lines: EdgeLines, visible: boolean): void {
     const geometry = new LineSegmentsGeometry();
-    if (positions.length > 0) geometry.setPositions(positions);
+    if (lines.positions.length > 0) {
+      geometry.setPositions(lines.positions);
+      const sides = new THREE.InstancedInterleavedBuffer(lines.sides, 6, 1);
+      geometry.setAttribute('instanceSideA', new THREE.InterleavedBufferAttribute(sides, 3, 0));
+      geometry.setAttribute('instanceSideB', new THREE.InterleavedBufferAttribute(sides, 3, 3));
+    }
     this.replaceGeometry(line, geometry);
-    line.visible = visible && positions.length > 0;
+    line.visible = visible && lines.positions.length > 0;
   }
 
   private traceOutline(eye: Vec3): void {

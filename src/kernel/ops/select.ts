@@ -11,25 +11,29 @@ import { collectEdgeRing } from './loopcut';
  * At a valence-4 vertex the loop continues along the one edge that shares no
  * face with the current edge. Any other valence ends the loop, which is what
  * makes Alt+click stop at poles.
+ *
+ * Two kinds of loop end a mesh rather than cross it, and their vertices are
+ * valence 3, so they get walks of their own (the same two Blender's walker
+ * special-cases). An open border runs from boundary edge to boundary edge. The
+ * rim of an n-gon cap runs around the n-gon, its "hub".
  */
 export function selectEdgeLoop(mesh: BMesh, start: Edge): Edge[] {
   const loop: Edge[] = [start];
   const seen = new Set<number>([start.id]);
+  const boundary = mesh.isBoundaryEdge(start);
+  const hub = boundary ? null : loopHub(mesh, start);
 
   for (const direction of [start.v0, start.v1]) {
     let edge = start;
     let vert = direction;
 
     for (;;) {
-      const currentFaces = new Set(mesh.edgeFaces(edge).map((face) => face.id));
-      const candidates = vert.edges.filter((candidate) => {
-        if (candidate === edge) return false;
-        return !mesh.edgeFaces(candidate).some((face) => currentFaces.has(face.id));
-      });
-
-      if (vert.edges.length !== 4 || candidates.length !== 1) break;
-      const next = candidates[0];
-      if (seen.has(next.id)) break;
+      const next = boundary
+        ? nextBoundaryEdge(mesh, edge, vert)
+        : hub
+          ? nextHubEdge(mesh, hub, edge, vert)
+          : nextQuadEdge(mesh, edge, vert);
+      if (!next || seen.has(next.id)) break;
 
       seen.add(next.id);
       loop.push(next);
@@ -39,6 +43,49 @@ export function selectEdgeLoop(mesh: BMesh, start: Edge): Edge[] {
   }
 
   return loop;
+}
+
+function nextQuadEdge(mesh: BMesh, edge: Edge, vert: Vert): Edge | null {
+  if (vert.edges.length !== 4) return null;
+  const currentFaces = new Set(mesh.edgeFaces(edge).map((face) => face.id));
+  const candidates = vert.edges.filter((candidate) => {
+    if (candidate === edge) return false;
+    return !mesh.edgeFaces(candidate).some((face) => currentFaces.has(face.id));
+  });
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+function nextBoundaryEdge(mesh: BMesh, edge: Edge, vert: Vert): Edge | null {
+  const candidates = vert.edges.filter(
+    (candidate) => candidate !== edge && mesh.isBoundaryEdge(candidate),
+  );
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+/**
+ * The n-gon a start edge rims, when one of its ends is valence 3. Quads are
+ * left out: a valence-3 vertex beside a quad is a pole, where the ordinary
+ * loop has to stop rather than turn the corner of the quad.
+ */
+function loopHub(mesh: BMesh, start: Edge): Face | null {
+  if (start.v0.edges.length !== 3 && start.v1.edges.length !== 3) return null;
+  let best: Face | null = null;
+  let bestCount = 4;
+  for (const face of mesh.edgeFaces(start)) {
+    const count = mesh.faceLoopCount(face);
+    if (count > bestCount) {
+      best = face;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+function nextHubEdge(mesh: BMesh, hub: Face, edge: Edge, vert: Vert): Edge | null {
+  if (vert.edges.length !== 3) return null;
+  const corner = mesh.loopOfVertInFace(hub, vert);
+  if (!corner) return null;
+  return corner.edge === edge ? corner.prev.edge : corner.edge;
 }
 
 /** Edge ring selection: the edges a loop cut would run across. */
