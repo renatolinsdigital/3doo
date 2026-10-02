@@ -23,7 +23,7 @@ export const APP_MODULES: readonly AppModule[] = [
     id: 'home',
     path: '/',
     label: 'HOME',
-    brand: '3DOO',
+    brand: '3DOO - HOME',
     summary: 'What 3DOO is and where to start',
   },
   {

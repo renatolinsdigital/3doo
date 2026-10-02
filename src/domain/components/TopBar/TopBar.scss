@@ -20,12 +20,6 @@
     min-width: 0;
   }
 
-  // The switcher is the one control that wraps its button in a positioning
-  // shell, so the stretch has to be passed down to the button itself.
-  .module-switcher__brand {
-    height: 100%;
-  }
-
   &__project-input {
     // The bar is bone itself, so the field has to sit a shade back from it.
     --text-field-surface: var(--bone-dim);

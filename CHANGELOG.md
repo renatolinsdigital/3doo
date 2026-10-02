@@ -12,6 +12,13 @@ New entries go under `Unreleased` until a version is cut. Group them under
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-02
+
+### Changed
+
+- Redesigned the home page
+- Improved the module switcher on the home page reads `3DOO - HOME`
+
 ## [1.0.0] - 2026-10-02
 
 First tracked release. It marks the state of the project at this point,

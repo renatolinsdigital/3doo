@@ -2,7 +2,9 @@
 
 .module-switcher {
   position: relative;
+  display: flex;
   flex: 0 0 auto;
+  align-items: center;
 
   &__brand {
     @include display-text;
@@ -11,8 +13,12 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    padding: var(--space-2) var(--space-3);
+    // A fixed box rather than one sized by each module's header, whose bars
+    // centre, stretch or size to different neighbours.
+    height: var(--control-height);
+    padding: 0 var(--space-3);
     font-size: var(--text-lg);
+    line-height: 1;
     color: var(--bone);
     background: var(--void);
     cursor: pointer;
