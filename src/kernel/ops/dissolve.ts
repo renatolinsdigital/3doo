@@ -91,6 +91,23 @@ export function isDissolvableVert(
   return true;
 }
 
+/**
+ * Whether `dissolveFaces` has anything to merge: a connected region of two or
+ * more faces with an outline left around it. A region that closes off a solid
+ * (every face of a cube) has no boundary ring to rebuild as the merged face.
+ */
+export function hasDissolvableRegion(mesh: BMesh, faces: readonly Face[]): boolean {
+  return connectedRegions(mesh, faces).some((region) => {
+    if (region.length < 2) return false;
+    const ids = new Set(region.map((face) => face.id));
+    return region.some((face) =>
+      mesh
+        .faceEdges(face)
+        .some((edge) => mesh.edgeFaces(edge).filter((other) => ids.has(other.id)).length === 1),
+    );
+  });
+}
+
 export function dissolveEdges(mesh: BMesh, edges: readonly Edge[]): Face[] {
   const merged: Face[] = [];
   for (const edge of edges) {

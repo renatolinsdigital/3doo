@@ -353,7 +353,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Delete menu (Del) and delete (X)',
-            'Del opens the DELETE MENU at the pointer, with a delete and a dissolve for each of vertices, edges and faces. Delete removes the geometry and leaves a hole. Dissolve removes it but keeps the surface closed, merging the faces around it into one. Each entry acts on the type it names, whatever the select mode, and an entry with nothing to act on is greyed out: dissolving faces needs two or more that share an edge, and dissolving edges needs one with a face on each side. Dissolve skips an edge or corner whose faces meet at more than 40°, since merging them would fold the face, and the status bar says how many it skipped. X skips the menu and deletes whatever the select mode targets.',
+            'Del opens the DELETE MENU at the pointer, with a delete and a dissolve for each of vertices, edges and faces. Delete removes the geometry and leaves a hole. Dissolve removes it but keeps the surface closed, merging the faces around it into one. Each entry acts on the type it names, whatever the select mode, and an entry with nothing to act on is greyed out: dissolving faces needs two or more that share an edge without closing off a solid, and dissolving edges needs one with a face on each side. Dissolve skips an edge or corner whose faces meet at more than 40°, since merging them would fold the face. When that leaves nothing to dissolve, as on a cube corner, the entry is greyed out too. Otherwise the status bar says how many it skipped. X skips the menu and deletes whatever the select mode targets.',
           ],
           [
             'Fill (F) and bridge',

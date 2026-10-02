@@ -364,6 +364,11 @@ the removed element into one. That has consequences, so it follows three rules:
   vertex lying along a path, such as the midpoint left by subdividing an edge,
   merges nothing and always dissolves.
 
+When the 40° rule would skip the whole selection, as with a cube corner, the
+entry is greyed out rather than offering a click that changes nothing. So is
+Dissolve Faces when the selected faces close off a solid, such as every face
+of a cube, since there is no outline left to merge them into.
+
 ### What the panels offer
 
 Because the delete menu and <kbd>X</kbd> cover delete and dissolve, no panel

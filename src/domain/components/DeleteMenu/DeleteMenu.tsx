@@ -70,23 +70,29 @@ export function DeleteMenu() {
       'verts',
       'DISSOLVE VERTICES',
       'Remove the selected vertices and merge the faces around each one, keeping the surface closed. A corner whose faces meet at more than 40° is left alone',
-      null,
+      can.flatVert
+        ? null
+        : 'Every selected vertex is a corner whose faces meet at more than 40°, too sharp to merge into one face',
     ),
     dissolve(
       'edges',
       'DISSOLVE EDGES',
       'Remove the selected edges and merge the faces on either side, keeping the surface closed. An edge whose faces meet at more than 40° is left alone',
-      can.innerEdge
-        ? null
-        : 'Only an edge with a face on each side can dissolve, and the selected ones all lie on an open border',
+      !can.innerEdge
+        ? 'Only an edge with a face on each side can dissolve, and the selected ones all lie on an open border'
+        : can.flatEdge
+          ? null
+          : 'Every selected edge joins faces that meet at more than 40°, too sharp to merge into one face',
     ),
     dissolve(
       'faces',
       'DISSOLVE FACES',
       'Merge the selected faces into one face',
-      can.touchingFaces
-        ? null
-        : 'Select two or more faces that share an edge to merge them into one',
+      !can.touchingFaces
+        ? 'Select two or more faces that share an edge to merge them into one'
+        : can.openFaces
+          ? null
+          : 'The selected faces close off a solid, leaving no outline to merge them into',
     ),
   ];
 

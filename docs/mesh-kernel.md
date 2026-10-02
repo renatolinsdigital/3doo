@@ -228,9 +228,12 @@ These are separate paths because they answer different questions:
 <kbd>Delete</kbd> in edit mode opens the delete menu (`DeleteMenu`), whose six
 entries each pass their own `mode`: `verts`, `edges` or `faces`, to `delete` or
 to `dissolve`. The entry names the type, so the select mode plays no part.
-`useDeleteActions` disables the entries the operators would refuse: one with no
+`useDeleteActions` disables the entries that would change nothing: one with no
 element of its type selected, a face dissolve without two selected faces that
-share an edge, and an edge dissolve whose edges all lie on an open border.
+share an edge or whose faces close off a solid (`hasDissolvableRegion`), an
+edge dissolve whose edges all lie on an open border, and a vertex or edge
+dissolve whose whole selection fails the 40° fold rule. A selection that fails
+the rule only in part stays enabled, and the operator reports what it skipped.
 
 <kbd>X</kbd> is the quick path and asks nothing. `useKeymap` maps the active
 select mode onto the operator's `mode` param (vertex → `verts`, edge →

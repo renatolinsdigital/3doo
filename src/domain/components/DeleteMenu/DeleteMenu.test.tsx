@@ -24,7 +24,7 @@ const ENTRIES = [
 ];
 
 /** A primitive in edit mode, with nothing selected yet. */
-function editing(kind: 'cube' | 'plane') {
+function editing(kind: 'cube' | 'plane' | 'grid') {
   act(() => {
     store().addPrimitive(kind);
     store().setMode('edit');
@@ -37,6 +37,18 @@ function selectFaces(pick: (normal: { x: number; y: number; z: number }) => bool
     mesh().deselectAll();
     for (const face of mesh().faces.values()) face.selected = pick(face.normal);
     mesh().flushSelection('face');
+    store().touchMesh();
+  });
+}
+
+/** Selects one vertex, the way a click in vertex select would. */
+function selectVert(pick: (position: { x: number; y: number; z: number }) => boolean) {
+  act(() => {
+    mesh().deselectAll();
+    const vert = [...mesh().verts.values()].find((candidate) => pick(candidate.co));
+    if (!vert) throw new Error('No vertex matches');
+    vert.selected = true;
+    mesh().flushSelection('vertex');
     store().touchMesh();
   });
 }
@@ -68,13 +80,42 @@ describe('DeleteMenu', () => {
     expect(hintFor('DISSOLVE FACES')).toBe('No faces selected to dissolve');
   });
 
-  it('enables every entry once the whole cube is selected', () => {
-    editing('cube');
+  it('enables every entry once a whole flat grid is selected', () => {
+    editing('grid');
     act(() => store().exec('selectAll', {}, 'Select all'));
     openMenu();
     render(<DeleteMenu />);
 
     for (const name of ENTRIES) expect(entry(name)).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('holds back every dissolve on a whole cube, where nothing can merge', () => {
+    editing('cube');
+    act(() => store().exec('selectAll', {}, 'Select all'));
+    openMenu();
+    render(<DeleteMenu />);
+
+    for (const name of ['DELETE VERTICES', 'DELETE EDGES', 'DELETE FACES']) {
+      expect(entry(name)).not.toHaveAttribute('aria-disabled');
+    }
+
+    // Every corner and edge folds 90°, and the six faces close off a solid.
+    expect(entry('DISSOLVE VERTICES')).toHaveAttribute('aria-disabled', 'true');
+    expect(hintFor('DISSOLVE VERTICES')).toContain('more than 40°');
+    expect(entry('DISSOLVE EDGES')).toHaveAttribute('aria-disabled', 'true');
+    expect(hintFor('DISSOLVE EDGES')).toContain('more than 40°');
+    expect(entry('DISSOLVE FACES')).toHaveAttribute('aria-disabled', 'true');
+    expect(hintFor('DISSOLVE FACES')).toContain('close off a solid');
+  });
+
+  it('holds back a vertex dissolve on a cube corner, which the operator would skip', () => {
+    editing('cube');
+    selectVert((co) => co.x > 0 && co.y > 0 && co.z > 0);
+    openMenu();
+    render(<DeleteMenu />);
+
+    expect(entry('DISSOLVE VERTICES')).toHaveAttribute('aria-disabled', 'true');
+    expect(entry('DELETE VERTICES')).not.toHaveAttribute('aria-disabled');
   });
 
   it('holds back a face dissolve until two touching faces are selected', () => {

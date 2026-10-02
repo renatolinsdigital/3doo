@@ -35,6 +35,7 @@ import {
   dissolveEdges,
   dissolveFaces,
   dissolveVerts,
+  hasDissolvableRegion,
   isDissolvableEdge,
   isDissolvableVert,
   limitedDissolve,
@@ -1300,6 +1301,28 @@ describe('dissolvable edges', () => {
     const edge = [...plane.edges.values()][0];
 
     expect(isDissolvableEdge(plane, edge)).toBe(false);
+  });
+});
+
+describe('dissolvable face regions', () => {
+  it('accepts two touching faces, which have an outline to merge into', () => {
+    const cube = createBox(2);
+    const faces = [...cube.faces.values()].filter((f) => f.normal.y > 0.99 || f.normal.x > 0.99);
+
+    expect(hasDissolvableRegion(cube, faces)).toBe(true);
+  });
+
+  it('rejects faces that share no edge', () => {
+    const cube = createBox(2);
+    const faces = [...cube.faces.values()].filter((f) => Math.abs(f.normal.y) > 0.99);
+
+    expect(hasDissolvableRegion(cube, faces)).toBe(false);
+  });
+
+  it('rejects every face of a closed solid, which leaves no outline', () => {
+    const cube = createBox(2);
+
+    expect(hasDissolvableRegion(cube, [...cube.faces.values()])).toBe(false);
   });
 });
 
