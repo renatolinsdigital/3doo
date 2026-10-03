@@ -127,6 +127,42 @@ triangles and boundaries, exactly where a loop cut has to stop. Every ring edge
 is split at the same parameters, measured from a consistent side so the cuts line
 up, and each quad becomes a strip of quads.
 
+### Knife (`knife.ts`)
+
+`knifeCut` takes runs of `KnifePoint`s: a vertex, a point part of the way along
+an edge, or a point inside a face. Each straight piece between two neighbouring
+points of a run lies inside one face, which `knifeSegmentFace` finds as the face
+both ends touch whose outline holds the middle of the piece. That test is what
+turns away a piece cutting across the outside of a face that bends back on
+itself, and a piece that only runs along an existing edge adds nothing.
+
+The cut is then made face by face, and the order of the runs makes no
+difference:
+
+1. **Pieces meet.** Inside each face, two pieces that cross get a new point
+   where they cross, and a piece ending on another splits that one where it
+   lands. Both are worked in 2D, on the plane the face's corners average to.
+2. **Edges split.** Every edge with a point on it is split there, and each face
+   it borders is rebuilt with the new corners in the order it walks the edge,
+   UVs interpolated along it and sharp marks carried onto the pieces.
+3. **Faces divide.** The pieces inside a face form a small net. Every path
+   through it from a vertex on the face's border, through vertices inside the
+   face, to another border vertex divides the face in two; dividing puts the
+   path's inner vertices on a border, which is what lets the middle of a cross
+   divide the face again. Both halves keep the face's winding, material and
+   smoothing, and the inner vertices take UVs from mean value coordinates, which
+   reproduce a flat layout such as an image plane's exactly.
+
+What is left of the net, a line that stops inside a face, becomes loose edges:
+a face is one ring of corners and cannot hold a slit. A point inside a face that
+no piece reached is removed. Points within `1e-6` of each other along an edge,
+or inside a face, are one point, so a run ending where it began closes, and an
+edge point within `1e-4` of an end is that end's vertex.
+
+How a click becomes a point, and what a line between two clicks crosses, is a
+question of the camera, so it lives in the viewport (see
+[rendering.md](rendering.md#the-knife)).
+
 ### Subdivide (`subdivide.ts`)
 
 One Catmull-Clark topology step: every selected face becomes one quad per corner,

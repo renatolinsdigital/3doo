@@ -255,6 +255,31 @@ space. That is also more forgiving, and closer to what the user sees.
 Candidates behind the camera are rejected by their projected depth before any
 distance test.
 
+### The knife
+
+The knife picks twice: where a click lands, and what the line between two clicks
+cuts. Both live in [knife.ts](../src/viewport/knife.ts), against a `KnifeView`
+that carries the camera into the object's own space.
+
+- **A click** lands on the nearest vertex or point of the cut within 12 pixels,
+  else on the nearest edge or piece of the cut within 8, else on the face the
+  ray hits. Two candidates drawn in the same spot go to the one nearer the
+  camera: square on to a box, every far corner sits exactly behind a near one.
+  The spot along an edge comes from the closest approach of the edge to the
+  line of sight, not from the fraction of the way across the screen, which
+  perspective would skew.
+- **A line** is the plane holding both clicks' lines of sight. Every face is
+  sliced by it on its own, and the slices are clipped to the span between the
+  clicks. A vertex drawn within a pixel of the line counts as lying on it, and
+  a corner exactly on the plane counts as on its positive side, which keeps the
+  crossings round every face in pairs with no tolerance to tune.
+
+Unlike the selection picks, the knife's visibility is exact rather than a
+front-facing test: a point is hidden when another face's slice crosses its line
+of sight before the line gets there, which also catches one part of a model
+hiding another. In wireframe and x-ray shading nothing is hidden, so the knife
+cuts every layer the line passes over.
+
 ## Camera
 
 `CameraController` is hand-written rather than `OrbitControls`, for two

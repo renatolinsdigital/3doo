@@ -24,6 +24,12 @@ describe('keymap', () => {
     expect(matchBinding(keyEvent('e'), 'object')).toBeNull();
   });
 
+  it('picks the knife up with K, in edit mode only', () => {
+    expect(matchBinding(keyEvent('k'), 'edit')?.id).toBe('knife');
+    // Object mode has whole objects in hand and no faces to cut.
+    expect(matchBinding(keyEvent('k'), 'object')).toBeNull();
+  });
+
   it('keeps X for a straight delete and gives Delete the menu in edit mode', () => {
     expect(matchBinding(keyEvent('x'), 'edit')?.id).toBe('delete');
     expect(matchBinding(keyEvent('Delete'), 'edit')?.id).toBe('deleteMenu');

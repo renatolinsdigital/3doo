@@ -7,9 +7,9 @@ section ends with a link to the document that goes deeper.
 ## What 3DOO is
 
 A polygon mesh editor that runs in the browser. You start from a primitive,
-shape it with modelling operations (extrude, inset, bevel, loop cut, dissolve
-and the rest), stack non-destructive modifiers on top, and export the result as
-OBJ or FBX for a game engine.
+shape it with modelling operations (extrude, inset, bevel, loop cut, knife,
+dissolve and the rest), stack non-destructive modifiers on top, and export the
+result as OBJ or FBX for a game engine.
 
 Its keymap, camera and tool behaviour follow Blender's, so a Blender user finds
 their way around quickly. The app itself never names Blender (see

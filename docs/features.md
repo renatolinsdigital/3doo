@@ -10,7 +10,7 @@ drive them, see [keymap.md](keymap.md).
 | Primitives | Cube, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule, torus, with live parameters |
 | Object mode | Transform gizmo, duplicate, linked duplicate, merge, separate, union / difference / intersect booleans, apply transform, delete, outliner with rename / visibility / lock and Ctrl+G groups that rename, select, join, ungroup or delete as one |
 | Selection | Vertex, edge and face modes; click and Shift+click, box / circle / lasso region select, Alt+click edge and face loops, grow / shrink / invert |
-| Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, subdivide (Catmull-Clark), vertex and edge slide, relax, circle, space, merge, merge by distance, connect, delete, dissolve, fill, bridge, triangulate, tris-to-quads |
+| Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, knife, subdivide (Catmull-Clark), vertex and edge slide, relax, circle, space, merge, merge by distance, connect, delete, dissolve, fill, bridge, triangulate, tris-to-quads |
 | Normals | Recalculate outside, flip, shade smooth / flat, mark / clear sharp edges (drawn in cyan, carried through subdivide, loop cut, merge and the modifiers), face-orientation overlay |
 | Modifiers | Mirror, array, solidify, weld, loop subdivide, subdivision surface (Catmull-Clark or simple, up to 6 levels, edit cage drawn around the result), remesh. All non-destructive, reorderable, with Apply |
 | Remesh | A modifier with three methods: voxel quad shell (signed distance field, surface nets, crease and corner constraints), blocks straight off the lattice, and quadric error decimation |
@@ -54,6 +54,53 @@ keypress. A wider bevel is the original edges bevelled again, not the last
 chamfer bevelled a second time. Confirming without moving changes nothing and
 records no undo step, so a stray <kbd>E</kbd> costs nothing. When you already
 know the exact figure, type it into the OPERATIONS panel instead.
+
+### The knife cuts what you draw
+
+<kbd>K</kbd>, or the knife in the tool rail, picks up a tool modelled on
+Blender's knife. It cuts new edges into the mesh along a line you click out
+point by point, with no selection to make first and no quads required. The
+pointer turns into a knife while it is in hand, and a cyan square marks where
+the next click will land.
+
+1. Click where the cut starts: on a vertex, on an edge, inside a face, or out in
+   empty space beside the mesh, to cut in from its edge.
+2. Click wherever the cut should turn. A line follows the pointer from the last
+   point, with a dot wherever it will cross an edge.
+3. Press <kbd>Enter</kbd> or <kbd>Space</kbd> to make the cut, or
+   <kbd>Esc</kbd> to call it off.
+
+| Input | While a cut is open |
+| --- | --- |
+| Click | Adds a point: on a vertex within 12 pixels, on an edge within 8, and otherwise inside the face under the pointer. Press, drag and release to place two points |
+| `Enter` / `Space` | Makes the cut |
+| `Backspace` / `Ctrl+Z` | Takes the last point back |
+| `E` | Lifts the knife: the next click starts a separate line, and every line is cut together |
+| `Shift`, held | Ignores vertices and edges, so a point can go anywhere inside a face |
+| `Ctrl`, held | Takes the middle of the edge under the pointer |
+| `Esc` / right-click | Calls the cut off |
+| A click outside the viewport | Makes the cut, then does its own job |
+
+How it behaves, and why:
+
+- **Nothing changes until the cut is made.** Each line is worked out as it is
+  drawn and held by the viewport; the operator then makes the whole cut in one
+  run, so it is one undo step, and <kbd>Esc</kbd> leaves no step behind.
+- **The line is the one drawn on screen.** Each line cuts the mesh along the
+  plane holding the two clicks' lines of sight, so it lands exactly under the
+  line in a perspective view too. A vertex within a pixel of the line is cut
+  through rather than cut beside, which would leave two slivers.
+- **It cuts what you can see.** Every face is sliced on its own, and in solid
+  shading a slice the camera cannot see is dropped. Wireframe and x-ray cut
+  through, the way they select through, so one line across a box goes all the
+  way round it. Orbiting partway through a cut does not move the part already
+  drawn: each line keeps the view it was drawn in.
+- **A face divides from edge to edge.** A cut that stops inside a face divides
+  nothing, and its edges are left loose on top of the face, as Blender leaves
+  them: a face is one ring of corners, with no room for a slit. Where two lines
+  of one cut cross inside a face, the face divides along both.
+- **It is a tool, not a one-off.** The knife stays in hand after a cut, the way
+  the move tool does, until another tool is picked or edit mode is left.
 
 ### Subdivide follows the select mode
 

@@ -26,12 +26,14 @@ import {
   type Transform,
   type Vec3,
   type Vert,
+  addScaled,
   applySlide,
   autoMergeVerts,
   averageNormal,
   axisVector,
   centroid,
   cloneMesh,
+  dot,
   execOperator,
   faceLoopAtClick,
   inverseTransformDirection,
@@ -46,6 +48,7 @@ import {
   rotateVerts,
   scaleVerts,
   selectEdgeLoop,
+  sub,
   translateVerts,
   vec3,
 } from '@kernel/index';
@@ -67,6 +70,17 @@ import type {
 
 import { CameraController, viewLostReason } from './CameraController';
 import { type SnapAmounts, ViewportGrid, snapAmounts, snapTo } from './grid';
+import {
+  type KnifeAnchor,
+  type KnifeStep,
+  type KnifeView,
+  knifeCutRuns,
+  knifeMarks,
+  knifeSections,
+  knifeSectionsOf,
+  knifeTarget,
+  knifeViewOf,
+} from './knife';
 import { type MarqueeLayer, createMarqueeLayer, drawMarquee, hideMarquee } from './marquee';
 import {
   type FacingElements,
@@ -316,6 +330,20 @@ const SLIDE_PREVIEW_POINT_PX = 6;
  */
 const SLIDE_GUIDE_WIDTH_PX = 1.25;
 
+/**
+ * How wide the knife's cut is drawn, in CSS pixels.
+ *
+ * Heavier than a slide's rails: the cut is the thing being made, drawn over a
+ * wireframe it has to stand out from, where a rail is a guide beside the drag.
+ */
+const KNIFE_LINE_WIDTH_PX = 2;
+
+/** How big the knife's points are drawn, in pixels: where its vertices will go. */
+const KNIFE_POINT_PX = 6;
+
+/** How big the mark of where the next click lands is drawn: the hover mark's size. */
+const KNIFE_AIM_PX = 10;
+
 /** What each pointer-driven operator's undo step is called. */
 const OFFSET_LABELS: Record<OffsetDrag['kind'], string> = {
   bevel: 'Bevel',
@@ -477,6 +505,28 @@ interface GizmoBaseline {
 }
 
 /**
+ * A knife cut being drawn, from its first click until it is made or called off.
+ *
+ * Nothing in the mesh changes until then: every line is worked out against the
+ * mesh as it stands and held here, and the operator makes the whole cut at once,
+ * which is what lets Esc walk away from it without an undo step left behind.
+ */
+interface KnifeSession {
+  /** The mesh being cut. Anything else under the object by the end calls the cut off. */
+  mesh: BMesh;
+  steps: KnifeStep[];
+  /** Set by E: the next click starts a line of its own rather than carrying this one on. */
+  lifted: boolean;
+}
+
+/** The object the knife is on, the view drawing it, and the knife's view of it. */
+interface KnifeContext {
+  object: SceneObject;
+  view: ObjectView;
+  knifeView: KnifeView;
+}
+
+/**
  * Three.js owns everything in here: the renderer, camera, gizmo, picking and
  * overlays. It is created once against a canvas ref and never re-rendered by
  * React; it reads the store through `subscribeWithSelector` and pushes
@@ -577,6 +627,17 @@ export class Viewport {
   private readonly slidePreviewPoints: THREE.Points;
   /** Whether that preview has anything to draw, apart from the drag that hides it. */
   private slidePreviewUp = false;
+  private knife: KnifeSession | null = null;
+  /** Where the knife went down, for a drag that lays a second point where it is let go. */
+  private knifePress: THREE.Vector2 | null = null;
+  /** The edges the cut will make, and the line on from its last click to the pointer. */
+  private readonly knifeLines: LineSegments2;
+  /** Where the cut will put its vertices: its clicks and the edges it crosses. */
+  private readonly knifeDots: THREE.Points;
+  /** Where the next click with the knife would land. */
+  private readonly knifeAim: THREE.Points;
+  /** The camera the knife last aimed from, so a turn of the view re-aims it. */
+  private readonly knifeCamera = new Float64Array(32);
   private gizmoBaseline: GizmoBaseline | null = null;
   /** What `proportionalSpread` last worked out, and what it was worked out from. */
   private dragSpread: {
@@ -658,6 +719,10 @@ export class Viewport {
     this.slidePreviewEdges = this.createSlidePreviewEdges();
     this.slidePreviewPoints = this.createSlidePreviewPoints();
     this.scene.add(this.slidePreviewEdges, this.slidePreviewPoints);
+    this.knifeLines = this.createKnifeLines();
+    this.knifeDots = this.createKnifePoints(KNIFE_POINT_PX, 13);
+    this.knifeAim = this.createKnifePoints(KNIFE_AIM_PX, 14);
+    this.scene.add(this.knifeLines, this.knifeDots, this.knifeAim);
     this.scene.add(this.gizmoProxy);
 
     this.controls = new CameraController(this.camera, canvas);
@@ -881,6 +946,47 @@ export class Viewport {
   }
 
   /**
+   * The knife's cut, drawn over the mesh rather than in it.
+   *
+   * Cyan, the palette's colour for geometry that is not there yet, as the slide
+   * preview is. Not depth tested: a cut runs flush with the surface, and half of
+   * it would be lost in the faces it lies on.
+   */
+  private createKnifeLines(): LineSegments2 {
+    const lines = new LineSegments2(
+      new LineSegmentsGeometry(),
+      new LineMaterial({
+        color: VIEWPORT_COLORS.cyan,
+        linewidth: KNIFE_LINE_WIDTH_PX,
+        depthTest: false,
+        transparent: true,
+      }),
+    );
+    lines.visible = false;
+    lines.renderOrder = 12;
+    lines.frustumCulled = false;
+    return lines;
+  }
+
+  /** The knife's points, or the mark of where its next one would go. */
+  private createKnifePoints(size: number, renderOrder: number): THREE.Points {
+    const points = new THREE.Points(
+      new THREE.BufferGeometry(),
+      new THREE.PointsMaterial({
+        size,
+        sizeAttenuation: false,
+        color: VIEWPORT_COLORS.cyan,
+        depthTest: false,
+        transparent: true,
+      }),
+    );
+    points.visible = false;
+    points.renderOrder = renderOrder;
+    points.frustumCulled = false;
+    return points;
+  }
+
+  /**
    * The circle marking how far proportional editing reaches.
    *
    * Unit radius, in the XY plane; `updateProportionalRing` turns it to face the
@@ -1066,7 +1172,14 @@ export class Viewport {
       ),
       store.subscribe(
         (state) => state.activeTool,
-        () => this.updateGizmo(),
+        (tool) => {
+          // A click outside the view makes the cut before another tool can be
+          // picked, so a cut still open here was left by a route that never
+          // asked for it to be made.
+          if (tool !== 'knife') this.finishKnife(true);
+          this.updateGizmo();
+          this.refreshKnife();
+        },
       ),
       store.subscribe(
         (state) => state.modal,
@@ -1087,6 +1200,7 @@ export class Viewport {
           else if (!modal && this.rotateDrag?.modal) this.finishModalRotate(true);
           else if (!modal && this.slideDrag) this.finishModalSlide(true);
           else if (!modal && this.offsetDrag) this.finishOffsetDrag(true);
+          else if (!modal && this.knife) this.finishKnife(true);
         },
       ),
       // An operator reporting new vertices flags them for a moment. The expiry
@@ -1217,6 +1331,11 @@ export class Viewport {
     // Every view has just rebuilt its buffers and dropped the mark with them,
     // and the geometry under a still pointer may be different geometry now.
     this.updateHoverVert();
+    // An undo, or leaving edit mode, takes away the mesh the cut was drawn on.
+    if (this.knife && (state.mode !== 'edit' || activeObject(state)?.mesh !== this.knife.mesh)) {
+      this.finishKnife(true);
+    }
+    this.refreshKnife();
   }
 
   /**
@@ -2784,6 +2903,15 @@ export class Viewport {
     if (this.controls.onPointerDown(event)) return;
     if (event.button !== 0) return;
 
+    // The knife lays a point where it goes down rather than picking anything,
+    // and keeps the pointer so a drag can lay the next one where it is let go.
+    if (this.knifeArmed()) {
+      this.knifePress = this.pointerPixels.clone();
+      this.canvas.setPointerCapture(event.pointerId);
+      this.addKnifePoint();
+      return;
+    }
+
     this.dragStart = this.pointerPosition(event);
     this.dragCurrent = this.dragStart.clone();
     this.dragPath = [this.dragStart.clone()];
@@ -2826,6 +2954,10 @@ export class Viewport {
       this.clearHoverVert();
       return;
     }
+    if (this.knifeArmed()) {
+      this.refreshKnife();
+      return;
+    }
 
     // Only while nothing is being dragged out: a region drag aims at what it
     // encloses rather than at one vertex, and the pick behind the mark is the
@@ -2852,6 +2984,19 @@ export class Viewport {
   private handlePointerUp = (event: PointerEvent): void => {
     const wasNavigating = this.controls.isNavigating;
     this.controls.onPointerUp(event);
+    // The knife's mark stands down while the camera is being turned.
+    if (wasNavigating) this.refreshKnife();
+
+    const pressed = this.knifePress;
+    if (pressed) {
+      this.knifePress = null;
+      const released = this.pointerPosition(event);
+      if (event.button === 0 && pressed.distanceTo(released) > CLICK_SLOP_PIXELS) {
+        this.pointerPixels = released;
+        this.addKnifePoint();
+      }
+      return;
+    }
 
     const start = this.dragStart;
     const end = this.dragCurrent;
@@ -3161,6 +3306,7 @@ export class Viewport {
    */
   private handleLostPointerCapture = (): void => {
     this.deferredGrab = false;
+    this.knifePress = null;
     if (!this.gizmoDragging) return;
     this.gizmo.axis = null;
     this.gizmo.dragging = false;
@@ -3169,6 +3315,7 @@ export class Viewport {
   private handlePointerLeave = (): void => {
     this.pointerInside = false;
     this.clearHoverVert();
+    this.refreshKnife();
   };
 
   /**
@@ -3180,7 +3327,12 @@ export class Viewport {
    * at, and a press on its own fires no pointer event to read them from.
    */
   private handleModifierKey = (event: KeyboardEvent): void => {
+    const { shift, ctrl } = this.heldModifiers;
     this.readModifiers(event);
+    // Shift and Ctrl change where the knife lands, so the mark moves with them.
+    if (shift !== this.heldModifiers.shift || ctrl !== this.heldModifiers.ctrl) {
+      if (this.knifeArmed()) this.refreshKnife();
+    }
   };
 
   /** A window that loses focus never sees the keyup, and the marks would stick. */
@@ -3261,12 +3413,14 @@ export class Viewport {
    */
   private updateHoverVert(): void {
     const state = useEditorStore.getState();
+    // The knife marks where it would land itself, and a click with it picks nothing.
     const hovering =
       this.pointerInside &&
       !this.activeModal() &&
       !this.gizmoDragging &&
       state.mode === 'edit' &&
-      state.selectMode === 'vertex';
+      state.selectMode === 'vertex' &&
+      state.activeTool !== 'knife';
 
     const object = hovering ? activeObject(state) : null;
     const view = object ? this.views.get(object.id) : undefined;
@@ -3467,6 +3621,335 @@ export class Viewport {
     state.touchMesh();
   }
 
+  // ---------------------------------------------------------------- knife
+
+  /** Whether the knife is in hand: the knife tool, in edit mode, on an object. */
+  private knifeArmed(): boolean {
+    const state = useEditorStore.getState();
+    return state.mode === 'edit' && state.activeTool === 'knife' && activeObject(state) !== null;
+  }
+
+  private knifeContext(): KnifeContext | null {
+    const state = useEditorStore.getState();
+    const object = activeObject(state);
+    const view = object ? this.views.get(object.id) : undefined;
+    if (!object || !view) return null;
+
+    const occlude = state.shading !== 'xray' && state.shading !== 'wireframe';
+    return {
+      object,
+      view,
+      knifeView: knifeViewOf(this.camera, view.group.matrix, this.canvasSize(), occlude),
+    };
+  }
+
+  /**
+   * Where a click with the knife would land under the pointer, given the keys
+   * held: Shift lets go of the vertices and edges, Ctrl takes an edge's middle.
+   */
+  private knifeAnchor(
+    pointer: THREE.Vector2,
+    { object, view, knifeView }: KnifeContext,
+  ): KnifeAnchor {
+    const steps = this.knife?.mesh === object.mesh ? this.knife.steps : [];
+    const surface = pickElement(
+      view,
+      object.mesh,
+      'face',
+      pointer,
+      this.camera,
+      this.canvasSize(),
+      this.updatedRaycaster(pointer),
+      null,
+    );
+
+    const mark = knifeTarget(object.mesh, pointer, knifeView, {
+      surface:
+        surface?.point !== undefined
+          ? {
+              point: { kind: 'face', face: surface.elementId, co: surface.point },
+              co: surface.point,
+            }
+          : null,
+      marks: knifeMarks(steps),
+      sections: knifeSectionsOf(steps),
+      snap: !this.heldModifiers.shift,
+      midpoint: this.heldModifiers.ctrl,
+    });
+    if (mark) return { at: mark.co, mark };
+
+    // Over empty space the click still has to stand somewhere along its line of
+    // sight, and level with the middle of the mesh keeps the line drawn to it
+    // in among the geometry it is cutting, whichever way the view turns later.
+    const sight = knifeView.sight(pointer);
+    const { min, max } = object.mesh.boundingBox();
+    const along = dot(sub(centroid([min, max]), sight.origin), sight.direction);
+    return { at: addScaled(sight.origin, sight.direction, along), mark: null };
+  }
+
+  private updatedRaycaster(pointer: THREE.Vector2): THREE.Raycaster {
+    this.updateRaycaster(pointer);
+    return this.raycaster;
+  }
+
+  /**
+   * Lays down a point of the cut where the pointer is: its first, which takes
+   * the keyboard until the cut is made, or the next, which cuts the line to it.
+   */
+  private addKnifePoint(): void {
+    const context = this.knifeContext();
+    if (!context) return;
+
+    const state = useEditorStore.getState();
+    if (context.object.locked) {
+      state.noteLockedAttempt(context.object.id);
+      return;
+    }
+
+    if (this.knife && this.knife.mesh !== context.object.mesh) this.finishKnife(true);
+    const anchor = this.knifeAnchor(this.pointerPixels, context);
+    const session = this.knife;
+    const last = session?.steps[session.steps.length - 1];
+    const starts = !session || !last || session.lifted;
+
+    // A second click on the spot of the last one, a double click, adds nothing.
+    if (last && !starts && anchor.mark !== null && anchor.mark === last.mark) return;
+
+    const sections =
+      starts || !last
+        ? []
+        : knifeSections(
+            context.object.mesh,
+            last,
+            anchor,
+            context.knifeView,
+            knifeMarks(session?.steps ?? []),
+          );
+
+    if (session) {
+      session.steps.push({ ...anchor, starts, sections });
+      session.lifted = false;
+    } else {
+      this.knife = {
+        mesh: context.object.mesh,
+        steps: [{ ...anchor, starts, sections }],
+        lifted: false,
+      };
+      state.beginModal('knife');
+      this.captureKnifeInput();
+    }
+
+    this.noteKnifePoints();
+    this.refreshKnife();
+  }
+
+  /** Takes the last click back, with the line drawn to it. Taking back the first calls the cut off. */
+  private takeBackKnifePoint(): void {
+    const session = this.knife;
+    if (!session) return;
+
+    session.steps.pop();
+    session.lifted = false;
+    if (session.steps.length === 0) {
+      this.finishKnife(true);
+      return;
+    }
+    this.noteKnifePoints();
+    this.refreshKnife();
+  }
+
+  /** Lifts the knife off the mesh, so the next click starts a line of its own. */
+  private liftKnife(): void {
+    if (!this.knife) return;
+    this.knife.lifted = true;
+    this.refreshKnife();
+  }
+
+  /** Tells the status bar how many points the cut has, which is the figure it reads out. */
+  private noteKnifePoints(): void {
+    useEditorStore.getState().updateModal({ value: vec3(this.knife?.steps.length ?? 0, 0, 0) });
+  }
+
+  /**
+   * Makes the cut, or calls it off.
+   *
+   * One operator run for the whole cut, however many clicks went into it, so it
+   * is one step to undo. A cut whose mesh was swapped out from under it is
+   * called off however it ended, since its points name geometry that is gone.
+   */
+  private finishKnife(cancelled: boolean): void {
+    const session = this.knife;
+    if (!session) return;
+
+    // Cleared before the store is told, so the modal subscription finds
+    // nothing left to call off.
+    this.knife = null;
+    this.knifePress = null;
+    this.releaseKnifeInput();
+
+    const state = useEditorStore.getState();
+    const intact = state.mode === 'edit' && activeObject(state)?.mesh === session.mesh;
+    if (cancelled || !intact) {
+      state.endModal('Knife cut cancelled');
+    } else {
+      state.endModal();
+      state.exec('knife', { cuts: knifeCutRuns(session.steps) }, 'Knife');
+    }
+    this.refreshKnife();
+  }
+
+  /**
+   * Takes the keyboard, a click outside the view and the right button for the
+   * cut being drawn. A click inside the view is left to it: that lays the next
+   * point.
+   */
+  private captureKnifeInput(): void {
+    window.addEventListener('keydown', this.handleKnifeKey, true);
+    window.addEventListener('pointerdown', this.handleKnifePointer, true);
+    window.addEventListener('contextmenu', this.handleKnifeContextMenu, true);
+  }
+
+  private releaseKnifeInput(): void {
+    window.removeEventListener('keydown', this.handleKnifeKey, true);
+    window.removeEventListener('pointerdown', this.handleKnifePointer, true);
+    window.removeEventListener('contextmenu', this.handleKnifeContextMenu, true);
+  }
+
+  private handleKnifeKey = (event: KeyboardEvent): void => {
+    if (!this.knife) return;
+
+    const key = event.key.toLowerCase();
+    const command = event.ctrlKey || event.metaKey;
+    const action =
+      key === 'escape'
+        ? () => this.finishKnife(true)
+        : key === 'enter' || key === ' '
+          ? () => this.finishKnife(false)
+          : key === 'backspace' || (command && key === 'z')
+            ? () => this.takeBackKnifePoint()
+            : key === 'e' && !command && !event.altKey
+              ? () => this.liftKnife()
+              : null;
+    if (!action) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    action();
+  };
+
+  /**
+   * A press outside the view makes the cut, the way a click confirms every
+   * other modal operation, and is spent doing it.
+   *
+   * Outside is outside the view's own box: the axis widget in its corner turns
+   * the camera, which is what reaching round a model halfway through a cut
+   * needs, so a click there carries on with the cut rather than making it.
+   */
+  private handleKnifePointer = (event: PointerEvent): void => {
+    if (!this.knife || event.button !== 0) return;
+    if (event.target instanceof Node && this.canvas.parentElement?.contains(event.target)) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    this.finishKnife(false);
+  };
+
+  /** Right-click calls the cut off, and the cursor menu it would have opened stays shut. */
+  private handleKnifeContextMenu = (event: Event): void => {
+    if (!this.knife) return;
+    event.preventDefault();
+    event.stopPropagation();
+    this.finishKnife(true);
+  };
+
+  /**
+   * Redraws the knife: the cut so far, the line on from its last click to the
+   * pointer, and the mark of where the next click would land.
+   *
+   * The line on is worked out afresh every time it is drawn, since it follows
+   * the pointer and the view, while the rest of the cut was settled as it was
+   * clicked.
+   */
+  private refreshKnife(): void {
+    const armed = this.knifeArmed();
+    const session = this.knife;
+    const context = armed || session ? this.knifeContext() : null;
+
+    const lines: Vec3[] = [];
+    const dots: Vec3[] = [];
+    let aim: Vec3 | null = null;
+
+    if (context && session?.mesh === context.object.mesh) {
+      for (const section of knifeSectionsOf(session.steps)) {
+        lines.push(section.from.co, section.to.co);
+      }
+      for (const mark of knifeMarks(session.steps)) dots.push(mark.co);
+    }
+
+    if (context && armed && this.pointerInside && !this.controls.isNavigating) {
+      const anchor = this.knifeAnchor(this.pointerPixels, context);
+      if (anchor.mark) aim = anchor.at;
+
+      const last = session?.steps[session.steps.length - 1];
+      if (session && last && !session.lifted) {
+        lines.push(last.at, anchor.at);
+        const ahead = knifeSections(
+          context.object.mesh,
+          last,
+          anchor,
+          context.knifeView,
+          knifeMarks(session.steps),
+        );
+        for (const section of ahead) dots.push(section.from.co, section.to.co);
+      }
+    }
+
+    this.drawKnife(context?.view.group.matrix ?? null, lines, dots, aim);
+  }
+
+  /** Re-aims the knife's line on once the camera has moved under a still pointer. */
+  private aimKnifeForCamera(): void {
+    if (!this.knife && !this.knifeArmed()) return;
+
+    const now = [...this.camera.matrixWorld.elements, ...this.camera.projectionMatrix.elements];
+    if (now.every((value, i) => value === this.knifeCamera[i])) return;
+    this.knifeCamera.set(now);
+    this.refreshKnife();
+  }
+
+  /** Puts the knife's overlays where its object-space points are in the world. */
+  private drawKnife(
+    matrix: THREE.Matrix4 | null,
+    lines: readonly Vec3[],
+    dots: readonly Vec3[],
+    aim: Vec3 | null,
+  ): void {
+    const world = (points: readonly Vec3[]) => {
+      const positions = new Float32Array(points.length * 3);
+      const point = new THREE.Vector3();
+      points.forEach((co, i) => {
+        point.set(co.x, co.y, co.z);
+        if (matrix) point.applyMatrix4(matrix);
+        positions.set([point.x, point.y, point.z], i * 3);
+      });
+      return positions;
+    };
+
+    this.knifeLines.visible = lines.length > 0;
+    if (lines.length > 0) {
+      const geometry = new LineSegmentsGeometry();
+      geometry.setPositions(world(lines));
+      this.knifeLines.geometry.dispose();
+      this.knifeLines.geometry = geometry;
+    }
+
+    this.knifeDots.visible = dots.length > 0;
+    if (dots.length > 0) this.setOverlayPositions(this.knifeDots, world(dots));
+
+    this.knifeAim.visible = aim !== null;
+    if (aim) this.setOverlayPositions(this.knifeAim, world([aim]));
+  }
+
   // -------------------------------------------------------------- framing
 
   private frame(target: 'selected' | 'all'): void {
@@ -3506,6 +3989,7 @@ export class Viewport {
     this.renderer.setSize(width, height, false);
     this.outlineResolution.set(width, height);
     (this.slideGuide.material as LineMaterial).resolution.set(width, height);
+    (this.knifeLines.material as LineMaterial).resolution.set(width, height);
     for (const view of this.views.values()) {
       view.setResolution(width, height, this.renderer.getPixelRatio());
     }
@@ -3536,6 +4020,7 @@ export class Viewport {
     this.updateCursor();
     this.updateProportionalRing();
     this.updateSlidePreviewVisibility();
+    this.aimKnifeForCamera();
     this.updatePointerCursor();
     this.updateSelectionOutlines();
     if (this.modalGuideUp()) this.standDownGizmo();
@@ -3611,7 +4096,9 @@ export class Viewport {
       ? ROTATE_CURSOR
       : this.modalGuideUp()
         ? 'crosshair'
-        : this.selectionCursor();
+        : this.knifeArmed()
+          ? KNIFE_CURSOR
+          : this.selectionCursor();
     if (cursor === this.appliedCursor) return;
 
     this.appliedCursor = cursor;
@@ -3838,6 +4325,9 @@ export class Viewport {
     // orientation this one published until the next one draws a frame.
     resetViewAxes();
 
+    // Called off rather than left open: the store would go on holding the
+    // keyboard for a cut no viewport is drawing any more.
+    this.finishKnife(true);
     for (const unsubscribe of this.unsubscribers) unsubscribe();
     this.canvas.removeEventListener('pointerdown', this.handlePointerDown);
     this.canvas.removeEventListener('pointermove', this.handlePointerMove);
@@ -4100,6 +4590,28 @@ const ROTATE_CURSOR_SVG = [
 export const ROTATE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
   ROTATE_CURSOR_SVG,
 )}") 12 12, crosshair`;
+
+/**
+ * A knife for the pointer while the knife tool is in hand: a pale blade with
+ * the palette's red handle, tip down to the left.
+ *
+ * Outlined in --void like every other pointer here, so it reads over the dark
+ * viewport and over a lit surface alike.
+ */
+const KNIFE_CURSOR_SVG = [
+  `<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'>`,
+  `<path d='M14 18L20.7 11.3' fill='none' stroke='#0b0b0b' stroke-width='7' stroke-linecap='round'/>`,
+  `<path d='M14 18L20.7 11.3' fill='none' stroke='#e5342a' stroke-width='4.2' stroke-linecap='round'/>`,
+  `<path d='M3 29L10.9 16.4L15.7 21.2Q11.5 26.9 3 29Z' fill='#f4f1ea' stroke='#0b0b0b' ` +
+    `stroke-width='1.6' stroke-linejoin='round'/>`,
+  `</svg>`,
+].join('');
+
+// Hotspot on the tip of the blade, where the point goes down. A browser that
+// refuses an SVG cursor falls back to the crosshair, which places as precisely.
+export const KNIFE_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
+  KNIFE_CURSOR_SVG,
+)}") 3 29, crosshair`;
 
 /** The ordinary arrow, drawn so badges can be hung off its tail. */
 const POINTER_ARROW =

@@ -2,6 +2,7 @@ import { type Vec3, axisVector, degToRad, vec3 } from '../math';
 import type { BMesh } from '../mesh';
 import type { SelectMode } from '../mesh/types';
 import {
+  type KnifePoint,
   type MergeMode,
   type ProportionalOptions,
   type SlideWay,
@@ -27,6 +28,7 @@ import {
   invertSelection,
   isDissolvableEdge,
   isDissolvableVert,
+  knifeCut,
   limitedDissolve,
   canLoopCut,
   loopCut,
@@ -131,6 +133,52 @@ function readVector(params: OperatorParams, key: string, fallback: Vec3): Vec3 {
     typeof candidate.y === 'number' ? candidate.y : fallback.y,
     typeof candidate.z === 'number' ? candidate.z : fallback.z,
   );
+}
+
+/** An integer id, or null for anything else. */
+function readId(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) ? value : null;
+}
+
+function readKnifePoint(value: unknown): KnifePoint | null {
+  if (typeof value !== 'object' || value === null) return null;
+  const point = value as Record<string, unknown>;
+
+  if (point.kind === 'vert') {
+    const vert = readId(point.vert);
+    return vert === null ? null : { kind: 'vert', vert };
+  }
+
+  if (point.kind === 'edge') {
+    const edge = readId(point.edge);
+    const t = point.t;
+    if (edge === null || typeof t !== 'number' || !Number.isFinite(t)) return null;
+    return { kind: 'edge', edge, t: Math.min(1, Math.max(0, t)) };
+  }
+
+  if (point.kind === 'face') {
+    const face = readId(point.face);
+    const co = point.co as Partial<Vec3> | null | undefined;
+    const finite = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
+    if (face === null || !co || !finite(co.x) || !finite(co.y) || !finite(co.z)) return null;
+    return { kind: 'face', face, co: vec3(co.x, co.y, co.z) };
+  }
+
+  return null;
+}
+
+/**
+ * A knife cut's runs, each a list of points in the order the line crosses them.
+ *
+ * A malformed point is dropped on its own rather than taking the cut with it:
+ * the rest of its run still cuts what it reaches.
+ */
+function readKnifeCuts(params: OperatorParams): KnifePoint[][] {
+  const runs = params.cuts;
+  if (!Array.isArray(runs)) return [];
+  return runs
+    .filter((run): run is unknown[] => Array.isArray(run))
+    .map((run) => run.map(readKnifePoint).filter((point): point is KnifePoint => point !== null));
 }
 
 function selection(mesh: BMesh) {
@@ -269,6 +317,37 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     mesh.flushSelection(selectMode);
 
     return { status: `Inserted ${result.verts.length} vertices` };
+  },
+
+  knife: ({ mesh, selectMode }, params) => {
+    const runs = readKnifeCuts(params).filter((run) => run.length >= 2);
+    if (runs.length === 0) {
+      return {
+        status: 'A cut needs two points: click where it starts and where it ends',
+        refused: true,
+      };
+    }
+
+    const result = knifeCut(mesh, runs);
+    if (result.verts.length === 0 && result.splits === 0 && result.loose === 0) {
+      return {
+        status: 'That cut only follows edges already there or crosses empty space',
+        refused: true,
+      };
+    }
+
+    // The cut is what gets worked on next, and nothing selected before it is.
+    mesh.deselectAll();
+    for (const edge of result.edges) edge.selected = true;
+    mesh.flushSelection('edge');
+    mesh.flushSelection(selectMode);
+
+    const loose =
+      result.loose > 0 ? `; ${result.loose} edge(s) stop inside a face and are left loose` : '';
+    return {
+      status: `Knife cut ${result.splits} face(s), adding ${result.verts.length} vertex(es)${loose}`,
+      createdVerts: result.verts.map((vert) => vert.id),
+    };
   },
 
   subdivide: ({ mesh, selectMode }, params) => {

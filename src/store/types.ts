@@ -27,7 +27,8 @@ export type SelectShape = 'box' | 'circle' | 'lasso';
  */
 export type SelectIntent = 'replace' | 'add' | 'subtract';
 
-export type ToolId = 'select' | 'move' | 'rotate' | 'scale' | 'extrude' | 'inset' | 'loopcut';
+export type ToolId =
+  'select' | 'move' | 'rotate' | 'scale' | 'knife' | 'extrude' | 'inset' | 'loopcut';
 
 /** What snapping measures against: the grid square itself, or a step you set. */
 export type SnapMode = 'grid' | 'custom';
@@ -392,7 +393,7 @@ export interface LastOperator {
 }
 
 export interface ModalTransform {
-  kind: 'move' | 'rotate' | 'scale' | 'slide' | 'bevel' | 'inset' | 'extrude';
+  kind: 'move' | 'rotate' | 'scale' | 'slide' | 'bevel' | 'inset' | 'extrude' | 'knife';
   /** Which kind of element a slide is moving. Absent for the other transforms. */
   element?: 'vertex' | 'edge';
   axis: 'x' | 'y' | 'z' | null;
@@ -400,7 +401,10 @@ export interface ModalTransform {
   excludeAxis: boolean;
   /** Digits typed so far for an exact numeric entry. */
   typed: string;
-  /** A bevel, an inset or an extrude carries its one distance in x, as a rotation does its angle. */
+  /**
+   * A bevel, an inset or an extrude carries its one distance in x, as a rotation
+   * does its angle, and a knife cut how many points it has.
+   */
   value: Vec3;
 }
 

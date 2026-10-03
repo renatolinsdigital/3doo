@@ -27,10 +27,27 @@ function modalLabel(modal: ModalTransform): string {
   if (modal.kind === 'bevel' || modal.kind === 'inset' || modal.kind === 'extrude') {
     return `${kind} ${modal.value.x.toFixed(3)}`;
   }
+
+  // A knife cut is clicked out point by point, with nothing to measure until it is made.
+  if (modal.kind === 'knife') {
+    return `KNIFE ${modal.value.x} POINT${modal.value.x === 1 ? '' : 'S'}`;
+  }
   if (modal.kind !== 'scale') return `${kind}${axis}`;
 
   const factor = modal.axis ? modal.value[modal.axis] : modal.value.x;
   return `${kind}${axis} ×${factor.toFixed(3)}`;
+}
+
+/**
+ * The keys a modal operation answers to, for the end of its status line.
+ *
+ * Every other one ends on a click. A knife cut is made of clicks, so a click
+ * adds to it and Enter is what ends it.
+ */
+function modalKeys(modal: ModalTransform): string {
+  return modal.kind === 'knife'
+    ? 'LMB add point, Enter cut, Backspace undo point, E new line, Esc cancel'
+    : 'LMB confirm, Esc cancel';
 }
 
 /**
@@ -100,7 +117,7 @@ export function StatusBar() {
           <Progress progress={progress} />
         ) : (
           <span className="status-bar__value" role="status" aria-live="polite">
-            {modal ? `${modalLabel(modal)}: LMB confirm, Esc cancel` : status}
+            {modal ? `${modalLabel(modal)}: ${modalKeys(modal)}` : status}
           </span>
         )}
         <SaveSpin showing={saving} />

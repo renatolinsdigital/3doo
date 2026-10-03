@@ -53,6 +53,7 @@ Unknown operator "extrud". Available: bevel, bridge, delete, deselectAll, ...
 | `inset` | `thickness`, `depth`, `individual` | |
 | `bevel` | `width`, `segments`, `clampOverlap` | Needs an edge selection |
 | `loopCut` | `cuts`, `slide` | Starts from the first selected edge |
+| `knife` | `cuts`: runs of points, each `{ kind: 'vert', vert }`, `{ kind: 'edge', edge, t }` or `{ kind: 'face', face, co }` | Needs no selection. Leaves the cut selected and reports the new vertices; a malformed point is dropped on its own |
 | `subdivide` | `cuts`, `smooth` | Splits edges in edge select mode, faces otherwise; reports the new vertices |
 | `relax` | `factor`, `iterations`, `keepShape` | Straightens and spaces a selected loop, keeping it on the surface |
 | `circle` | `factor` | Rounds each selected loop onto the circle that fits it best |

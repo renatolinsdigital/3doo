@@ -59,6 +59,34 @@ describe('StatusBar', () => {
     expect(screen.getByRole('status')).toHaveTextContent('BEVEL 0.125');
   });
 
+  it('counts the points of a knife cut, and says Enter makes it', () => {
+    useEditorStore.getState().addPrimitive('cube');
+    act(() => {
+      useEditorStore.getState().beginModal('knife');
+      useEditorStore.getState().updateModal({ value: { x: 3, y: 0, z: 0 } });
+    });
+
+    render(<StatusBar />);
+
+    const line = screen.getByRole('status');
+    expect(line).toHaveTextContent('KNIFE 3 POINTS');
+    expect(line).toHaveTextContent('Enter cut');
+    // A click adds a point to the cut rather than confirming it.
+    expect(line).not.toHaveTextContent('LMB confirm');
+  });
+
+  it('counts a knife cut of one point as one point', () => {
+    useEditorStore.getState().addPrimitive('cube');
+    act(() => {
+      useEditorStore.getState().beginModal('knife');
+      useEditorStore.getState().updateModal({ value: { x: 1, y: 0, z: 0 } });
+    });
+
+    render(<StatusBar />);
+
+    expect(screen.getByRole('status')).toHaveTextContent('KNIFE 1 POINT:');
+  });
+
   it('flags auto merge while it is switched on', () => {
     useEditorStore.getState().setAutoMerge({ enabled: true, threshold: 0.02 });
 

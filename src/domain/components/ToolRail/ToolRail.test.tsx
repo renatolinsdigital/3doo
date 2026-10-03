@@ -69,6 +69,30 @@ describe('ToolRail', () => {
     expect(useEditorStore.getState().activeTool).toBe('move');
   });
 
+  it('keeps the knife in the rail in object mode, greyed out and saying why', async () => {
+    useEditorStore.getState().addPrimitive('cube');
+    render(<ToolRail />);
+
+    const knife = screen.getByRole('button', { name: 'Knife' });
+    expect(knife).toHaveAttribute('aria-disabled', 'true');
+
+    await userEvent.click(knife);
+    expect(useEditorStore.getState().activeTool).not.toBe('knife');
+  });
+
+  it('picks the knife up in edit mode', async () => {
+    useEditorStore.getState().addPrimitive('cube');
+    useEditorStore.getState().setMode('edit');
+    render(<ToolRail />);
+
+    const knife = screen.getByRole('button', { name: 'Knife' });
+    expect(knife).not.toHaveAttribute('aria-disabled');
+
+    await userEvent.click(knife);
+    expect(useEditorStore.getState().activeTool).toBe('knife');
+    expect(knife).toHaveAttribute('aria-pressed', 'true');
+  });
+
   it('picking a shape picks the select tool up with it', async () => {
     useEditorStore.getState().setActiveTool('move');
     render(<ToolRail />);

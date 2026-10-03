@@ -15,6 +15,14 @@
   overflow-y: auto;
 }
 
+// A drawn icon, sized to the glyphs the other tools wear so the column reads
+// as one set.
+.tool-rail__icon {
+  display: block;
+  width: 1em;
+  height: 1em;
+}
+
 // Separates the tools above from the one-shot commands below.
 .tool-rail__rule {
   flex: none;

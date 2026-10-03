@@ -4,6 +4,7 @@ export * from './extrude';
 export * from './inset';
 export * from './bevel';
 export * from './loopcut';
+export * from './knife';
 export * from './chains';
 export * from './relax';
 export * from './circle';

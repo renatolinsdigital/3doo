@@ -12,10 +12,18 @@ New entries go under `Unreleased` until a version is cut. Group them under
 
 ## [Unreleased]
 
+### Added
+
+- Knife tool (K, edit mode): click out a line on the mesh to cut new edges
+  through its faces.
+
 ### Fixed
 
 - In orthographic view, zoomed in, a click on an object could select the one
   behind it, and the gizmo on that object could not be grabbed.
+- The in-app docs said the tool rail switches to vertex, edge and face select
+  in edit mode. It holds the same tools in both modes, and the select modes are
+  in the SELECT panel.
 
 ## [1.0.1] - 2026-10-02
 

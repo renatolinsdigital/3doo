@@ -21,7 +21,9 @@ import type {
  * Only a move, a turn and a scale have an axis to pin, which is what X, Y and Z
  * offer mid-drag. A slide is already running along one, the edge under it, and
  * the three pointer-driven operators are one distance each with nothing to pin
- * it to: what they need saying instead is which way that distance opens.
+ * it to: what they need saying instead is which way that distance opens. A
+ * knife cut is clicked out point by point, so a click adds to it rather than
+ * ending it, and Enter is what makes the cut.
  */
 const MODAL_HINTS: Record<ModalTransform['kind'], string> = {
   move: 'move the mouse, X/Y/Z to constrain',
@@ -31,7 +33,11 @@ const MODAL_HINTS: Record<ModalTransform['kind'], string> = {
   bevel: 'draw the guide line out from the selection',
   inset: 'push the pointer in toward the selection',
   extrude: 'move the pointer along the normal',
+  knife: 'click to add points, Enter to cut, Backspace to take one back, E for a new line',
 };
+
+/** What the status bar says while the knife is in hand and no cut has been started. */
+const KNIFE_READY = 'KNIFE: click on the mesh to start a cut';
 
 /** What each pointer-driven operator is called, and what it needs selected. */
 const OFFSET_OPERATORS = {
@@ -121,11 +127,13 @@ export const createToolSlice: StateCreator<
     if (mode === 'edit' && object) object.mesh.deselectAll();
 
     // The delete menu goes too: its entries are edit-mode operations, and one
-    // left open across the switch would come back on the next visit.
+    // left open across the switch would come back on the next visit. So does
+    // the knife, which cuts faces and has nothing to cut in object mode.
     set((state) => ({
       mode,
       modal: null,
       deleteMenu: null,
+      activeTool: mode === 'object' && state.activeTool === 'knife' ? 'select' : state.activeTool,
       meshVersion: state.meshVersion + 1,
       status: mode === 'edit' ? 'Edit mode' : 'Object mode',
     }));
@@ -150,7 +158,8 @@ export const createToolSlice: StateCreator<
     set((state) => ({ selectMode, meshVersion: state.meshVersion + 1 }));
   },
 
-  setActiveTool: (activeTool) => set({ activeTool, status: activeTool.toUpperCase() }),
+  setActiveTool: (activeTool) =>
+    set({ activeTool, status: activeTool === 'knife' ? KNIFE_READY : activeTool.toUpperCase() }),
 
   // Picking a shape is picking up the select tool: the shape only means
   // anything to a selection drag.
@@ -256,6 +265,7 @@ export const createToolSlice: StateCreator<
     // it decides what happens, not just a flag to notice in the status bar.
     const orbiting = (kind === 'rotate' || kind === 'scale') && get().pivot === 'cursor';
     const about = orbiting ? ' about the 3D cursor' : '';
+    const ending = kind === 'knife' ? 'Esc to cancel' : 'click or Enter to confirm, Esc to cancel';
 
     set({
       modal: {
@@ -267,7 +277,7 @@ export const createToolSlice: StateCreator<
         // A scale of nothing is 1, and the status bar reads this out live.
         value: kind === 'scale' ? { x: 1, y: 1, z: 1 } : { x: 0, y: 0, z: 0 },
       },
-      status: `${kind.toUpperCase()}${about}: ${MODAL_HINTS[kind]}, click or Enter to confirm, Esc to cancel`,
+      status: `${kind.toUpperCase()}${about}: ${MODAL_HINTS[kind]}, ${ending}`,
     });
   },
 

@@ -64,7 +64,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           'Open the MODELING module from the plate in the top-left corner. A cube is already waiting in the scene.',
           'To add another shape, click one in the PRIMITIVES panel on the left. It appears at the 3D cursor, already selected.',
           'While the shape is freshly added, change its parameters (size, segments, rings) in the PROPERTIES panel. The mesh rebuilds each time.',
-          'Press Tab to enter edit mode. The left panels change to SELECT, OPERATIONS, LOOP OPERATIONS and TOPOLOGY, and the tool rail switches to vertex, edge and face selection.',
+          'Press Tab to enter edit mode. The left panels change to SELECT, OPERATIONS, LOOP OPERATIONS and TOPOLOGY, and the knife in the tool rail becomes available.',
           'Select some geometry and run an operation: E extrudes, I insets, Ctrl+R cuts a loop.',
           'Press Ctrl+S to save the project as a file you can reopen, or Ctrl+E to export it as OBJ or FBX.',
         ],
@@ -102,7 +102,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Tool rail, far left',
-            'Select, move, rotate and scale in object mode; vertex, edge and face select in edit mode.',
+            'Select, move, rotate, scale and the knife. The knife cuts mesh faces, so it is greyed out until you enter edit mode. Below the rule, ⊙ moves the origin onto the geometry.',
           ],
           [
             'Left panels',
@@ -255,7 +255,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Selecting with other tools',
-            'Clicks select under MOVE, ROTATE and SCALE just as under SELECT, and the pointer marks follow whichever tool is active. A click on a gizmo handle reaches whatever is under it, so Shift+clicking a selected object where its handles stand drops it from the selection.',
+            'Clicks select under MOVE, ROTATE and SCALE just as under SELECT, and the pointer marks follow whichever tool is active. A click on a gizmo handle reaches whatever is under it, so Shift+clicking a selected object where its handles stand drops it from the selection. The knife is the exception: its clicks place the points of a cut, and select nothing.',
           ],
           [
             'A region of elements',
@@ -326,6 +326,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           [
             'Loop cut (Ctrl+R)',
             'Adds edge loops across the ring of quads the selected edge runs through, and leaves the new loop selected, ready to move or scale. It needs quads: an edge with a triangle or an n-gon on both sides (every edge of a cone) has nothing to cut across, so the button stays unavailable.',
+          ],
+          [
+            'Knife (K)',
+            'Cuts new edges into the mesh along a line you click out point by point, wherever you want them, with no selection needed and no quads required. A vertex goes in at every click and wherever the line crosses an edge. It is a tool in the rail rather than a button: see below.',
           ],
           [
             'Subdivide (Ctrl+D)',
@@ -402,6 +406,59 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       {
         kind: 'note',
         text: 'Pressing the key and confirming without moving changes nothing and records no undo step, so a stray E or I costs nothing. When you know the exact figure, type it into the OFFSET, THICKNESS, DEPTH, WIDTH or SEGMENTS field of the OPERATIONS panel instead.',
+      },
+      {
+        kind: 'prose',
+        text: 'The knife cuts new edges into the mesh wherever you draw them. While it is in hand the pointer turns into a knife, and a cyan square marks where the next click will land:',
+      },
+      {
+        kind: 'steps',
+        items: [
+          'Press K, or pick the knife in the tool rail. It works in edit mode only.',
+          'Click where the cut starts: on a vertex, on an edge, inside a face, or out in empty space beside the mesh to cut in from its edge.',
+          'Click again wherever the cut should turn. A cyan line follows the pointer from the last point, with dots where it will cross the edges.',
+          'Press Enter or Space to make the cut. The new edges come out selected, ready to move, and the whole cut is one undo step.',
+        ],
+      },
+      {
+        kind: 'table',
+        head: ['WHILE CUTTING', 'DOES'],
+        rows: [
+          [
+            'Click',
+            'Adds a point. Near a vertex it lands on the vertex, near an edge on the edge, and otherwise inside the face under the pointer. Press, drag and let go to place two points in one go.',
+          ],
+          [
+            'Enter or Space',
+            'Makes the cut. The two keys do the same thing: every line drawn so far goes into the mesh at once, as one undo step, and the new edges come out selected. The knife stays in hand, ready for the next cut.',
+          ],
+          ['Backspace or Ctrl+Z', 'Takes the last point back.'],
+          [
+            'E',
+            'Lifts the knife: the next click starts a separate line. Every line is cut at once when you press Enter.',
+          ],
+          [
+            'Shift, held',
+            'Lets go of vertices and edges, so a point can go anywhere inside a face, however close to an edge.',
+          ],
+          ['Ctrl, held', 'Puts the point on the middle of the edge under the pointer.'],
+          [
+            'Esc or right-click',
+            'Calls the cut off. The mesh is left as it was, and no undo step is recorded.',
+          ],
+          [
+            'Click outside the viewport',
+            'Makes the cut, the way a click confirms the operations above, then does whatever it was aimed at.',
+          ],
+        ],
+      },
+      {
+        kind: 'note',
+        text: 'A face is divided wherever the cut crosses it from one of its edges to another, through any points you placed inside it. A cut that stops inside a face divides nothing, and its edges are left loose on top of the face: carry it on to an edge to divide the face. Where two lines of one cut cross, the face divides along both. Click the first point again to close a cut on itself.',
+      },
+      {
+        kind: 'note',
+        text: 'The knife cuts what you can see. In wireframe and x-ray shading it cuts through to the faces behind as well, so one line across a box goes all the way round it. You can orbit, pan and zoom partway through a cut to reach round the model: the part already drawn stays where it was drawn. An image plane keeps its picture lined up where the knife cuts it.',
       },
       {
         kind: 'note',

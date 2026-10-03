@@ -1,6 +1,6 @@
 # Testing
 
-1514 tests across the kernel, the bridge, the store, the viewport, the component library and
+1585 tests across the kernel, the bridge, the store, the viewport, the component library and
 the app shell.
 
 ```bash
@@ -46,16 +46,16 @@ Good operation tests check four things, not just one:
 | --- | --- | --- |
 | `kernel/math` | 8 | Inverting a transform for a point, an offset and a direction, including a zeroed scale axis |
 | `kernel/mesh` | 31 | BMesh structure, radial sets, cascade deletion, primitives, triangulation, serialization, normals after a move |
-| `kernel/ops` | 241 | Every modelling operation (extrude, inset, bevel, loop cut, subdivide, relax, circle, space, slide, merge, connect, delete, dissolve, fill, bridge, normals, transforms), the mesh budget, selection walks, pivot arithmetic, and booleans: the result, what they must not touch, what they cost |
+| `kernel/ops` | 270 | Every modelling operation (extrude, inset, bevel, loop cut, knife, subdivide, relax, circle, space, slide, merge, connect, delete, dissolve, fill, bridge, normals, transforms), the mesh budget, selection walks, pivot arithmetic, and booleans: the result, what they must not touch, what they cost |
 | `kernel/modifiers` | 60 | Mirror (seam merge, bisect, wire edges, mirroring about the 3D cursor), array, solidify, weld (split seams, array joints, non-transitivity), loop subdivide, subdivision surface, remesh, stack ordering, non-destructiveness |
 | `kernel/remesh` | 34 | Surface sampling, voxel and blocks remeshing, sharp features, decimation, settings |
 | `kernel/io` | 66 | OBJ and FBX export (the FBX read back byte by byte), OBJ and FBX import (round trips under every preset, deflated arrays, 64-bit records and ids, ASCII, parents, pivots and mirrors, damaged and outdated files, the mesh budget), image planes with their UVs and pictures, project files and imported images, undo history, the operator registry |
-| `bridge` | 74 | Materials (depth offsets, stencil, outline, overlays), silhouette and front-edge buffers, and `ObjectView`: image planes, selection outline, hover mark, modifier previews, origin marker |
-| `store` | 247 | Add, duplicate, merge, exec, undo and the history timeline, modifiers, booleans and their worker, cursor snaps, outliner groups, imported images and meshes, what counts as a change, panel and toast state, viewport requests, and the preference set: storage round trip, coercion of a bad blob, import rejection |
-| `viewport` | 239 | Camera orbit, zoom, axis views and pose handover, the TransformControls drag contract and disposal, gizmo colours and guides, grid and snapping, region and click selection, occlusion, picking under a modifier, the modal rotate, slide and offset drags, the proportional ring, the axis widget |
+| `bridge` | 91 | Materials (depth offsets, stencil, outline, overlays), silhouette and front-edge buffers, and `ObjectView`: image planes, selection outline, hover mark, modifier previews, origin marker |
+| `store` | 251 | Add, duplicate, merge, exec, undo and the history timeline, modifiers, booleans and their worker, cursor snaps, outliner groups, imported images and meshes, what counts as a change, panel and toast state, viewport requests, and the preference set: storage round trip, coercion of a bad blob, import rejection |
+| `viewport` | 264 | Camera orbit, zoom, axis views and pose handover, the TransformControls drag contract and disposal, gizmo colours and guides, grid and snapping, region and click selection, occlusion, picking under a modifier, the modal rotate, slide and offset drags, the knife (where a click lands, what a line cuts, the cut end to end, its cursor), the proportional ring, the axis widget |
 | `shared/components` | 73 | Rendering and behaviour of every shared component |
-| `domain` | 347 | Keymap resolution (including which shifted keys actually reach the handler), the autosave and project-file hooks and services, and dedicated suites for the outliner, the properties, operations, loop operations and topology panels, the tool rail, status bar, cursor menu, axis widget and the confirmation and history dialogs |
-| `app` | 78 | Full shell mounted with the viewport mocked: modelling end to end, the top bar, right-click, the reload keys, autosave in preferences, and module routing |
+| `domain` | 356 | Keymap resolution (including which shifted keys actually reach the handler), the autosave and project-file hooks and services, and dedicated suites for the outliner, the properties, operations, loop operations and topology panels, the tool rail, status bar, cursor menu, axis widget and the confirmation and history dialogs |
+| `app` | 81 | Full shell mounted with the viewport mocked: modelling end to end, the top bar, right-click, the reload keys, autosave in preferences, and module routing |
 
 ## Two traps worth knowing
 

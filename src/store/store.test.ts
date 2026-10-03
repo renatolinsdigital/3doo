@@ -67,6 +67,41 @@ describe('editor store', () => {
     expect(store().status).toBe('Added CUBE');
   });
 
+  it('says how to start a cut when the knife is picked up', () => {
+    store().addPrimitive('cube');
+    store().setMode('edit');
+
+    store().setActiveTool('knife');
+
+    expect(store().activeTool).toBe('knife');
+    expect(store().status).toBe('KNIFE: click on the mesh to start a cut');
+  });
+
+  it('puts the knife down on the way out of edit mode, and keeps any other tool', () => {
+    store().addPrimitive('cube');
+    store().setMode('edit');
+    store().setActiveTool('knife');
+
+    store().setMode('object');
+    expect(store().activeTool).toBe('select');
+
+    store().setMode('edit');
+    store().setActiveTool('rotate');
+    store().setMode('object');
+    expect(store().activeTool).toBe('rotate');
+  });
+
+  it('does not tell a knife cut that a click confirms it', () => {
+    store().addPrimitive('cube');
+    store().setMode('edit');
+
+    store().beginModal('knife');
+
+    expect(store().modal).toMatchObject({ kind: 'knife' });
+    expect(store().status).toContain('Enter to cut');
+    expect(store().status).not.toContain('click or Enter to confirm');
+  });
+
   it('keeps the active tool when an operator only moves the selection around', () => {
     store().addPrimitive('cube');
     store().setMode('edit');

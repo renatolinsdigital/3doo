@@ -395,6 +395,23 @@ describe('App shell', () => {
     expect(useEditorStore.getState().modal).toMatchObject({ kind: 'rotate', axis: null });
   });
 
+  it('picks the knife up on K in edit mode, and leaves it for the next cut', async () => {
+    render(<App />);
+    const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });
+    await userEvent.click(within(addPanel).getByRole('button', { name: 'CUBE' }));
+
+    fireEvent.keyDown(window, { key: 'k' });
+    // Object mode has no faces to cut, so K does nothing there.
+    expect(useEditorStore.getState().activeTool).not.toBe('knife');
+
+    fireEvent.keyDown(window, { key: 'Tab' });
+    fireEvent.keyDown(window, { key: 'k' });
+
+    // A tool rather than a one-off: nothing starts until the mesh is clicked.
+    expect(useEditorStore.getState().activeTool).toBe('knife');
+    expect(useEditorStore.getState().modal).toBeNull();
+  });
+
   it('arms the rotate tool but starts no turn when nothing is selected', async () => {
     render(<App />);
     act(() => useEditorStore.getState().setActiveObject(null));

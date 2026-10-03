@@ -75,6 +75,13 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
     group: 'Modelling',
   },
   { id: 'loopCut', key: 'r', ctrl: true, label: 'Loop cut', mode: 'edit', group: 'Modelling' },
+  {
+    id: 'knife',
+    key: 'k',
+    mode: 'edit',
+    label: 'Knife: click points on the mesh to cut new edges through its faces',
+    group: 'Modelling',
+  },
   { id: 'merge', key: 'm', label: 'Merge by distance', mode: 'edit', group: 'Modelling' },
   {
     id: 'recalculateNormals',

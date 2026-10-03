@@ -43,6 +43,7 @@ object mode only. The rest work in both.
 | `I` | Inset: drag the thickness in toward the selection (*edit*) |
 | `Ctrl+B` | Bevel: drag the width out from the selection (*edit*) |
 | `Ctrl+R` | Loop cut (*edit*) |
+| `K` | Knife: click points on the mesh to cut new edges through its faces (*edit*). Its own keys are under [During a knife cut](#during-a-knife-cut) |
 | `Ctrl+D` | Subdivide: split selected edges at their midpoint, or cut up faces (*edit*) |
 | `M` | Merge by distance (*edit*) |
 | `F` | Fill a boundary loop with a face (*edit*) |
@@ -93,6 +94,20 @@ object mode only. The rest work in both.
 | `Shift+5` | Orthographic / perspective, like plain `5` |
 | `Shift+Z` | Cycle shading: solid, solid + wireframe, wireframe, x-ray, matcap |
 
+## During a knife cut
+
+From the knife's first click until the cut is made, the knife holds the
+keyboard the way a modal transform does, and the ordinary bindings wait.
+
+| Key | Action |
+| --- | --- |
+| `Enter` / `Space` | Make the cut |
+| `Backspace` / `Ctrl+Z` | Take the last point back |
+| `E` | Lift the knife: the next click starts a separate line |
+| `Shift`, held | Ignore vertices and edges, and place the point freely inside the face |
+| `Ctrl`, held | Snap to the middle of the edge under the pointer |
+| `Esc` | Call the cut off |
+
 ## Files and help
 
 | Key | Action |
@@ -110,7 +125,7 @@ object mode only. The rest work in both.
 | <kbd>Shift</kbd> + middle-drag | Pan |
 | Wheel | Zoom |
 | <kbd>Alt</kbd> + click | Select the edge loop (edge select) or face loop (face select) under the pointer |
-| Right-click | The 3D cursor menu |
+| Right-click | The 3D cursor menu. During a knife cut it calls the cut off instead |
 | <kbd>Ctrl</kbd> + wheel | Resize the proportional-editing falloff. Plain wheel does the same mid-transform |
 
 The camera controller also has a Maya preset (<kbd>Alt</kbd> + left-drag to

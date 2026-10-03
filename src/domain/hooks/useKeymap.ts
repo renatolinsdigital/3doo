@@ -148,6 +148,11 @@ export function useKeymap(): void {
         case 'loopCut':
           state.exec('loopCut', { cuts: 1 }, 'Loop cut');
           break;
+        // A tool rather than a one-off: the knife stays in hand for the next
+        // cut, the way G leaves the move tool there, until another is picked.
+        case 'knife':
+          state.setActiveTool('knife');
+          break;
         case 'subdivide':
           state.exec('subdivide', { cuts: 1 }, 'Subdivide');
           break;

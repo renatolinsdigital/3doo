@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { type ContextMenuEntry, ContextMenu, IconButton } from '@shared/components';
@@ -9,11 +9,34 @@ import './ToolRail.scss';
 
 interface ToolEntry {
   id: ToolId;
-  icon: string;
+  icon: ReactNode;
   label: string;
   shortcut: string;
   hint: string;
+  /**
+   * For a tool that only works on mesh elements: what it says in object mode,
+   * where it stays in the rail, greyed out, rather than the rail changing shape.
+   */
+  objectHint?: string;
 }
+
+/**
+ * The knife, drawn rather than typed: no character set has one that renders as
+ * plain text everywhere. The blade and handle are the ones the pointer wears
+ * while the tool is in hand.
+ */
+const KNIFE_ICON = (
+  <svg className="tool-rail__icon" viewBox="2 7 24 24" aria-hidden="true">
+    <path d="M3 29L10.9 16.4L15.7 21.2Q11.5 26.9 3 29Z" fill="currentColor" />
+    <path
+      d="M14 18L20.7 11.3"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="4.2"
+      strokeLinecap="round"
+    />
+  </svg>
+);
 
 /** What the select tool wears, and what its menu says, per region shape. */
 const SHAPE_FACES: Record<SelectShape, { icon: string; label: string; hint: string }> = {
@@ -63,9 +86,18 @@ const TOOLS: ToolEntry[] = [
     shortcut: 'S',
     hint: 'Drag the gizmo to scale the selection',
   },
+  {
+    id: 'knife',
+    icon: KNIFE_ICON,
+    label: 'Knife',
+    shortcut: 'K',
+    hint: 'Click points on the mesh to cut new edges through its faces. Enter makes the cut, Esc calls it off',
+    objectHint: 'The knife cuts the faces of a mesh: enter edit mode first (Tab)',
+  },
 ];
 
 export function ToolRail() {
+  const mode = useEditorStore((state) => state.mode);
   const activeTool = useEditorStore((state) => state.activeTool);
   const setActiveTool = useEditorStore((state) => state.setActiveTool);
   const selectShape = useEditorStore((state) => state.selectShape);
@@ -84,25 +116,29 @@ export function ToolRail() {
 
   return (
     <nav className="tool-rail" aria-label="Tool rail">
-      {TOOLS.map((tool) => (
-        <IconButton
-          key={tool.id}
-          // The select button wears the shape it would draw, so the rail says
-          // what a drag is about to do without opening anything.
-          icon={tool.id === 'select' ? SHAPE_FACES[selectShape].icon : tool.icon}
-          label={tool.label}
-          shortcut={tool.shortcut}
-          hint={tool.hint}
-          active={activeTool === tool.id}
-          onClick={(event) => {
-            setActiveTool(tool.id);
-            if (tool.id === 'select') {
-              const rect = event.currentTarget.getBoundingClientRect();
-              setShapeMenu({ x: rect.right + 4, y: rect.top });
-            }
-          }}
-        />
-      ))}
+      {TOOLS.map((tool) => {
+        const unavailable = tool.objectHint !== undefined && mode !== 'edit';
+        return (
+          <IconButton
+            key={tool.id}
+            // The select button wears the shape it would draw, so the rail says
+            // what a drag is about to do without opening anything.
+            icon={tool.id === 'select' ? SHAPE_FACES[selectShape].icon : tool.icon}
+            label={tool.label}
+            shortcut={tool.shortcut}
+            hint={unavailable ? tool.objectHint : tool.hint}
+            active={activeTool === tool.id}
+            disabled={unavailable}
+            onClick={(event) => {
+              setActiveTool(tool.id);
+              if (tool.id === 'select') {
+                const rect = event.currentTarget.getBoundingClientRect();
+                setShapeMenu({ x: rect.right + 4, y: rect.top });
+              }
+            }}
+          />
+        );
+      })}
       {/* Below the rule because it is a command, not a tool: it runs once and
           leaves whatever tool you were holding in your hand. */}
       <hr className="tool-rail__rule" />
