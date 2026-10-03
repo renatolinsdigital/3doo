@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { describe, expect, it } from 'vitest';
 
-import { gizmoScaleRatio } from './Viewport';
+import { aimGizmoRays, gizmoScaleRatio } from './Viewport';
 
 /**
  * Guards the TransformControls behaviour the viewport's drag handling rests on.
@@ -14,6 +14,7 @@ import { gizmoScaleRatio } from './Viewport';
  */
 
 interface DragApi {
+  pointerHover: (pointer: { x: number; y: number; button: number }) => void;
   pointerDown: (pointer: { x: number; y: number; button: number }) => void;
   pointerMove: (pointer: { x: number; y: number; button: number }) => void;
   pointerUp: (pointer: { x: number; y: number; button: number }) => void;
@@ -156,6 +157,37 @@ describe('TransformControls drag contract', () => {
     expect(values).toEqual([true, false]);
     api.pointerMove({ x: 0.9, y: 0, button: -1 });
     expect(proxy.position.x).toBeCloseTo(settled, 6);
+  });
+});
+
+describe('gizmo under an orthographic camera', () => {
+  it('takes hold of an object standing between the viewer and the camera', () => {
+    // Zoomed in: the camera stands a unit off the target and draws from a near
+    // plane far in front of itself, the way the viewport's does. The object is
+    // on screen, but nearer the viewer than the camera's own position.
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -100, 100);
+    camera.position.set(0, 0, 1);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld();
+
+    const controls = new TransformControls(camera, document.createElement('div'));
+    aimGizmoRays(controls);
+    const helper = (controls as unknown as { getHelper: () => THREE.Object3D }).getHelper();
+
+    const scene = new THREE.Scene();
+    const proxy = new THREE.Object3D();
+    proxy.position.z = 5;
+    scene.add(proxy, helper);
+    controls.attach(proxy);
+    helper.updateMatrixWorld(true);
+
+    const api = controls as unknown as DragApi;
+    api.pointerHover({ x: 0.25, y: 0, button: -1 });
+    expect(api.axis).toBe('X');
+
+    api.pointerDown({ x: 0.25, y: 0, button: 0 });
+    api.pointerMove({ x: 0.45, y: 0, button: -1 });
+    expect(proxy.position.x).toBeCloseTo(0.2, 6);
   });
 });
 

@@ -10,6 +10,13 @@ All notable changes to 3DOO are recorded here. Versions follow
 New entries go under `Unreleased` until a version is cut. Group them under
 `Added`, `Changed`, `Fixed` or `Removed`.
 
+## [Unreleased]
+
+### Fixed
+
+- In orthographic view, zoomed in, a click on an object could select the one
+  behind it, and the gizmo on that object could not be grabbed.
+
 ## [1.0.1] - 2026-10-02
 
 ### Relevant Changes

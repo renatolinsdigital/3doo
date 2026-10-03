@@ -6,6 +6,7 @@ import { type BMesh, type Vert, createBox } from '@kernel/index';
 
 import {
   type FacingElements,
+  aimRay,
   circleRegion,
   facingElements,
   pickElement,
@@ -205,5 +206,43 @@ describe('picking through a dense mesh', () => {
     expect(new Set(through).size).toBe(8);
     expect(new Set(visible).size).toBe(4);
     for (const id of visible) expect(mesh.verts.get(id)?.co.z).toBeGreaterThan(0);
+  });
+});
+
+describe('aiming through a zoomed-in orthographic camera', () => {
+  // The camera stands a unit off the target and draws from a near plane far in
+  // front of itself, the way the viewport's does, so a square five units
+  // towards the viewer is on screen in front of one five units behind.
+  function zoomedIn(): THREE.OrthographicCamera {
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -100, 100);
+    camera.position.set(0, 0, 1);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld(true);
+    return camera;
+  }
+
+  function square(name: string, z: number): THREE.Mesh {
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1));
+    mesh.name = name;
+    mesh.position.z = z;
+    mesh.updateMatrixWorld(true);
+    return mesh;
+  }
+
+  const squares = [square('front', 5), square('back', -5)];
+  const centre = new THREE.Vector2(0, 0);
+
+  it('passes through what is in front of the camera when three aims the ray', () => {
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(centre, zoomedIn());
+
+    expect(raycaster.intersectObjects(squares)[0]?.object.name).toBe('back');
+  });
+
+  it('lands on the nearest thing drawn once the ray starts on the near plane', () => {
+    const raycaster = new THREE.Raycaster();
+    aimRay(raycaster, centre, zoomedIn());
+
+    expect(raycaster.intersectObjects(squares)[0]?.object.name).toBe('front');
   });
 });

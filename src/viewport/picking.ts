@@ -138,6 +138,27 @@ export function facingElements(
   return { verts, edges, faces };
 }
 
+/**
+ * Aims `raycaster` through `ndc` from where the camera's picture begins.
+ *
+ * three starts an orthographic ray at the camera's own position, but the
+ * viewport's orthographic camera draws from a near plane far in front of that
+ * (its `near` is negative), and the position is only the orbit radius off the
+ * target, which zooming in shrinks. Anything nearer the viewer than that point
+ * was drawn but out of the ray's reach: a click went straight through it to
+ * whatever stood behind, and a gizmo standing on it could not be grabbed.
+ * Starting on the near plane puts everything on screen ahead of the ray.
+ *
+ * Called on three's own method rather than through the instance, so it can
+ * stand in for `setFromCamera` on a raycaster it is patched onto.
+ */
+export function aimRay(raycaster: THREE.Raycaster, ndc: THREE.Vector2, camera: THREE.Camera): void {
+  THREE.Raycaster.prototype.setFromCamera.call(raycaster, ndc, camera);
+  if (camera instanceof THREE.OrthographicCamera) {
+    raycaster.ray.origin.addScaledVector(raycaster.ray.direction, camera.near);
+  }
+}
+
 function project(
   point: THREE.Vector3,
   matrix: THREE.Matrix4,

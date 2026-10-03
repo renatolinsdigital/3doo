@@ -73,6 +73,7 @@ import {
   type Marquee,
   type PickResult,
   type Region,
+  aimRay,
   facingElements,
   marqueeBounds,
   marqueeShape,
@@ -668,6 +669,7 @@ export class Viewport {
     this.gizmo = new TransformControls(this.camera, canvas);
     this.gizmo.size = GIZMO_SIZE;
     this.gizmoHelper = resolveGizmoHelper(this.gizmo);
+    aimGizmoRays(this.gizmo);
     paintGizmoAxes(this.gizmoHelper, this.gizmo);
     trimGizmoGuides(this.gizmoHelper, this.gizmo);
     this.scene.add(this.gizmoHelper);
@@ -3323,7 +3325,7 @@ export class Viewport {
   }
 
   private updateRaycaster(pointer: THREE.Vector2): void {
-    this.raycaster.setFromCamera(this.ndcPosition(pointer), this.camera);
+    aimRay(this.raycaster, this.ndcPosition(pointer), this.camera);
   }
 
   private clickSelect(pointer: THREE.Vector2, intent: SelectIntent, loopSelect: boolean): void {
@@ -3958,6 +3960,19 @@ function resolveGizmoHelper(controls: TransformControls): THREE.Object3D {
   const candidate = controls as unknown as { getHelper?: () => THREE.Object3D };
   if (typeof candidate.getHelper === 'function') return candidate.getHelper();
   return controls as unknown as THREE.Object3D;
+}
+
+/**
+ * Has the gizmo aim its rays the way the viewport's own picks do (see `aimRay`).
+ *
+ * TransformControls keeps its raycaster private and aims it itself on every
+ * hover, press and drag, so the aim is swapped on the instance it hands out.
+ * Without this the handles of an object in front of the orthographic camera's
+ * position could be seen but neither highlighted nor grabbed.
+ */
+export function aimGizmoRays(controls: TransformControls): void {
+  const raycaster = controls.getRaycaster();
+  raycaster.setFromCamera = (ndc, camera) => aimRay(raycaster, ndc, camera);
 }
 
 type GizmoMaterial = THREE.Material & { color: THREE.Color; _color?: THREE.Color };
