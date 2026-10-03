@@ -12,6 +12,11 @@ New entries go under `Unreleased` until a version is cut. Group them under
 
 ## [Unreleased]
 
+### Added
+
+- App icon, the X, Y and Z axes in off-white on red, for browser tabs,
+  bookmarks and home screens; the app can be installed on phones as a standalone web app
+
 ## [1.0.1] - 2026-10-02
 
 ### Changed
