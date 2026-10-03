@@ -4,10 +4,11 @@
 operations of a desktop package (extrude, inset, bevel, loop cut, dissolve and
 the rest) and export the result as OBJ or FBX, ready for a game engine.
 
-3DOO is inspired by Blender. Its keymap, its camera and much of how its tools
-behave follow Blender's, so a Blender user finds their way around quickly. The
-app itself never names Blender: this documentation is where that lineage is
-recorded.
+## Some things you can do with this software
+
+### Proportional Editing for Organic modeling
+
+![Modelling an apple with proportional editing](docs/gifs/apple.gif)
 
 ## Quick start
 
