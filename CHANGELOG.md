@@ -10,16 +10,9 @@ All notable changes to 3DOO are recorded here. Versions follow
 New entries go under `Unreleased` until a version is cut. Group them under
 `Added`, `Changed`, `Fixed` or `Removed`.
 
-## [Unreleased]
-
-### Added
-
-- App icon, the X, Y and Z axes in off-white on red, for browser tabs,
-  bookmarks and home screens; the app can be installed on phones as a standalone web app
-
 ## [1.0.1] - 2026-10-02
 
-### Changed
+### Relevant Changes
 
 - Redesigned the home page
 - Improved the module switcher on the home page reads `3DOO - HOME`

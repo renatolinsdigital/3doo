@@ -33,6 +33,33 @@
     }
   }
 
+  &__end {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-4) var(--space-6);
+  }
+
+  &__donate {
+    @include brutal-focus;
+
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-height: var(--control-sm);
+    padding: var(--space-1) var(--space-4);
+    font-weight: 700;
+    color: var(--bone);
+    background: var(--red);
+    border: var(--border-thin) solid var(--bone);
+    transition: background-color 80ms linear;
+
+    &:hover {
+      background: var(--bone);
+      color: var(--red);
+    }
+  }
+
   @include mobile {
     flex-direction: column;
     align-items: flex-start;

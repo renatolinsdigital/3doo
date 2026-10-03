@@ -1,0 +1,127 @@
+@use '@global-styles/helpers' as *;
+
+// Opened from the page footers, which read at page scale, so the headline and
+// the amounts set their own sizes rather than the editor's dense --text-* rungs.
+.donate {
+  &__lead {
+    @include brutal-border(var(--border-thin));
+
+    padding: var(--space-5);
+    background: var(--amber);
+    color: var(--void);
+  }
+
+  &__headline {
+    @include display-text;
+
+    font-size: 24px;
+    line-height: 1.1;
+  }
+
+  &__pitch {
+    @include mono-value;
+
+    margin-top: var(--space-3);
+    font-size: var(--text-md);
+    line-height: 1.5;
+  }
+
+  &__amounts {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--space-3);
+    margin-top: var(--space-2);
+  }
+
+  &__amount {
+    @include brutal-border(var(--border-thin));
+    @include brutal-shadow;
+    @include brutal-press;
+    @include brutal-focus;
+    @include display-text;
+
+    min-height: 52px;
+    font-size: 20px;
+    letter-spacing: 0.02em;
+    background: var(--bone);
+    color: var(--void);
+    transition: background-color 80ms linear;
+
+    &:hover {
+      background: var(--bone-dim);
+    }
+
+    // Filled and underlined, like a segmented set: two channels, not just hue.
+    &--active {
+      background: var(--red);
+      color: var(--bone);
+      box-shadow:
+        inset 0 calc(-1 * var(--border-width)) 0 var(--void),
+        var(--shadow-offset) var(--shadow-offset) 0 var(--void);
+
+      &:hover {
+        background: var(--rust);
+      }
+    }
+  }
+
+  &__other {
+    @include brutal-focus-field;
+
+    display: grid;
+    grid-template-columns: auto 1fr;
+    min-height: var(--control-height);
+  }
+
+  &__other-label {
+    @include field-label;
+
+    cursor: text;
+  }
+
+  &__other-field {
+    font-size: var(--text-lg);
+  }
+
+  &__go {
+    min-height: 44px;
+    font-size: var(--text-md);
+  }
+
+  &__direct {
+    margin-top: var(--space-3);
+    padding-top: var(--space-4);
+    border-top: var(--border-thin) dashed var(--void);
+  }
+
+  &__caption {
+    @include label-text;
+
+    color: var(--ink-muted);
+  }
+
+  &__email {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: var(--space-3);
+    margin-top: var(--space-3);
+  }
+
+  &__email-field {
+    font-size: var(--text-md);
+  }
+
+  &__status {
+    @include hint-text;
+
+    &:not(:empty) {
+      margin-top: var(--space-3);
+    }
+  }
+
+  &__fine {
+    @include hint-text;
+
+    text-align: center;
+  }
+}
