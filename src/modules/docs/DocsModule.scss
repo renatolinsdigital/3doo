@@ -378,4 +378,37 @@
       min-width: 0;
     }
   }
+
+  // A phone either way up has no room for two boxes that each scroll: the
+  // article was left a strip a third of the screen tall. It reads as a page
+  // instead. The whole module scrolls, the bar stays where it is, and the
+  // contents sit above the article at the height they were.
+  @include phone {
+    grid-template-rows: auto auto auto;
+    overflow-y: auto;
+
+    &__bar {
+      position: sticky;
+      top: 0;
+      z-index: var(--z-panel);
+    }
+
+    // The desktop's floor of nothing is what lets its two boxes scroll inside
+    // a fixed height. Here the rows have to be as tall as what is in them, or
+    // the article runs out over the footer.
+    &__body {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: fit-content(30vh) auto;
+      min-height: auto;
+    }
+
+    &__nav {
+      max-height: 30vh;
+    }
+
+    &__content {
+      min-height: auto;
+      overflow: visible;
+    }
+  }
 }

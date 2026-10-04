@@ -78,3 +78,24 @@
   --z-modal: 1000;
   --z-toast: 2000;
 }
+
+// A finger is the main way in: phones and tablets.
+//
+// Every rung of the control ladder grows to a size a fingertip can land on
+// without catching its neighbour, the default target reaching the 44px the
+// phone platforms ask for, and the two smallest type sizes come up a point so
+// a label can be read at arm's length. Borders and shadows stay where they
+// are, for the reason given above. The desktop, read through a mouse, keeps
+// every value it had.
+@media (pointer: coarse) {
+  :root {
+    --control-height: 44px;
+    --control-sm: 36px;
+    --field-height: 32px;
+    --field-label-min: 64px;
+    --box-size: 20px;
+    --rail-size: 56px;
+    --text-xs: 10px;
+    --text-sm: 11px;
+  }
+}

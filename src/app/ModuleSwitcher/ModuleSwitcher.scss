@@ -33,13 +33,12 @@
     @include brutal-border;
     @include brutal-shadow;
 
-    position: absolute;
-    top: calc(100% + var(--space-2));
-    left: 0;
+    // Placed by the component, against the window: see `ModuleSwitcher`.
+    position: fixed;
     z-index: var(--z-overlay);
     display: flex;
     flex-direction: column;
-    min-width: 224px;
+    min-width: min(224px, calc(100vw - var(--space-5)));
     background: var(--bone);
   }
 

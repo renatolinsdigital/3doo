@@ -12,6 +12,12 @@
   z-index: calc(var(--z-panel) + 1);
   width: 92px;
   height: 92px;
+
+  // A finger needs more room between the ends than a mouse does.
+  @media (pointer: coarse) {
+    width: 112px;
+    height: 112px;
+  }
   // The corner is still viewport: an orbit that starts here has to reach the
   // canvas underneath. Only the ends themselves answer the pointer.
   pointer-events: none;
@@ -22,6 +28,29 @@
     width: 100%;
     height: 100%;
     overflow: visible;
+  }
+
+  // What a drag starts on. Clear until the pointer is over it, then a faint
+  // disc that says the widget can be taken hold of, and always faintly there
+  // on a touch screen, which has no hover to reveal it.
+  &__pad {
+    fill: transparent;
+    pointer-events: auto;
+    cursor: grab;
+    // The finger dragging here turns the camera, not the page.
+    touch-action: none;
+
+    &:active {
+      cursor: grabbing;
+    }
+
+    @media (hover: none) {
+      fill: rgb(244 241 234 / 6%);
+    }
+  }
+
+  &__plate:hover &__pad {
+    fill: rgb(244 241 234 / 8%);
   }
 
   &__spoke {
@@ -44,6 +73,7 @@
   &__ball {
     pointer-events: auto;
     cursor: pointer;
+    touch-action: none;
 
     circle {
       // The same hard outline the buttons wear, so the widget reads as part of

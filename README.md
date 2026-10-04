@@ -34,6 +34,9 @@ New to the code? Start with [docs/get-started.md](docs/get-started.md).
   groups, a 3D cursor and proportional editing.
 - **Files**: `.3doo` projects, OBJ and FBX import, binary FBX 7.4 and OBJ
   export with engine axis presets, opt-in autosave to a folder you choose.
+- **Touch**: runs on phones and tablets. Pinch to zoom, slide two fingers to
+  pan, twist them to turn the view, and long-press for the right-click menus;
+  the panels fold into drawers on narrow screens.
 - **Scripting**: a code editor in the top bar that builds and edits the scene
   with JavaScript, in the spirit of Blender's Python console, with hover help
   linked to the docs. A run is one step to undo, and a failed run changes

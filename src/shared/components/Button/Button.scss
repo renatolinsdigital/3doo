@@ -51,6 +51,13 @@
 
     background: var(--red);
     color: var(--bone);
+
+    // Without this the hover fill above wins, and bone text on bone-dim
+    // cannot be read. A touch screen keeps the hover after a tap, so there it
+    // was every active button.
+    &:hover:not(:disabled):not([aria-disabled='true']) {
+      background: var(--rust);
+    }
   }
 
   &--full {

@@ -3,6 +3,12 @@ export { TopBar, type TopBarProps } from './TopBar/TopBar';
 export { ToolRail } from './ToolRail/ToolRail';
 export { Outliner } from './Outliner/Outliner';
 export { PropertiesPanel } from './PropertiesPanel/PropertiesPanel';
+export {
+  QuickBar,
+  type QuickBarProps,
+  SCENE_DRAWER_ID,
+  TOOLS_DRAWER_ID,
+} from './QuickBar/QuickBar';
 export { ModifierStack } from './ModifierStack/ModifierStack';
 export { StatusBar } from './StatusBar/StatusBar';
 export { AddPanel } from './AddPanel/AddPanel';

@@ -63,12 +63,13 @@ import {
 import type {
   CursorSnapKind,
   CursorSnapTargets,
+  ModalCommand,
   SceneObject,
   SelectIntent,
   ViewLostReason,
 } from '@store/types';
 
-import { CameraController, viewLostReason } from './CameraController';
+import { CameraController, VIEW_TWEEN_MS, viewLostReason } from './CameraController';
 import { type SnapAmounts, ViewportGrid, snapAmounts, snapTo } from './grid';
 import {
   type KnifeAnchor,
@@ -96,7 +97,7 @@ import {
   pickObjectsInRegion,
   regionForShape,
 } from './picking';
-import { pinnedAxes, publishViewAxes, resetViewAxes } from './viewAxes';
+import { pinnedAxes, publishViewAxes, resetViewAxes, subscribeViewAxesOrbit } from './viewAxes';
 
 /** Minimum gap between recorded lasso points, in pixels. */
 const LASSO_POINT_SPACING = 6;
@@ -108,6 +109,19 @@ const LASSO_POINT_SPACING = 6;
  * held back for the geometry behind it has not yet become a drag.
  */
 const CLICK_SLOP_PIXELS = 4;
+
+/**
+ * The same allowance for a finger, which is wider and never lands quite where
+ * it went down: a tap that drifts a few pixels as it lifts is still a tap, not
+ * a region drag around nothing.
+ */
+const TOUCH_SLOP_PIXELS = 10;
+
+/**
+ * How long a finger has to rest on the canvas to stand in for the right
+ * button. Half a second is what phones use for their own long press.
+ */
+const LONG_PRESS_MS = 500;
 
 /**
  * How far behind an orthographic camera its facing eye stands (see
@@ -630,6 +644,31 @@ export class Viewport {
   private knife: KnifeSession | null = null;
   /** Where the knife went down, for a drag that lays a second point where it is let go. */
   private knifePress: THREE.Vector2 | null = null;
+  /** Whether that press laid a point, so a second finger arriving can take it back. */
+  private knifePressLaid = false;
+  /**
+   * How far the press now down may travel and still be a click: a finger is
+   * allowed further than a mouse.
+   */
+  private pressSlop = CLICK_SLOP_PIXELS;
+  /** Every finger on the canvas, where it is in canvas pixels, for as long as it is down. */
+  private readonly touches = new Map<number, THREE.Vector2>();
+  /**
+   * Fingers whose press has been taken over, by the camera or by a long press,
+   * and which stay out of the click and drag handling until they lift.
+   */
+  private readonly spentTouches = new Set<number>();
+  /** The two fingers steering the camera, while two are. */
+  private steeringTouches: [number, number] | null = null;
+  /** A finger resting where it went down, and the timer that turns it into a right-click. */
+  private longPress: { pointerId: number; at: THREE.Vector2; timer: number } | null = null;
+  /** What the pointer events are caught on before the gizmo sees them. */
+  private touchHost: HTMLElement | null = null;
+  /** The system's reduce-motion setting, watched so the camera follows it as it changes. */
+  private readonly reducedMotion: MediaQueryList | null =
+    typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)')
+      : null;
   /** The edges the cut will make, and the line on from its last click to the pointer. */
   private readonly knifeLines: LineSegments2;
   /** Where the cut will put its vertices: its clicks and the edges it crosses. */
@@ -730,6 +769,7 @@ export class Viewport {
     // camera picks up where the last one was left rather than at the default.
     const pose = useEditorStore.getState().cameraPose;
     if (pose) this.controls.setPose(pose);
+    this.applyMotionPreference();
 
     this.gizmo = new TransformControls(this.camera, canvas);
     this.gizmo.size = GIZMO_SIZE;
@@ -1019,6 +1059,14 @@ export class Viewport {
   }
 
   private bindEvents(): void {
+    // Caught on the way down, on the canvas's parent, because the gizmo
+    // listens on the canvas itself and was there first: a second finger has to
+    // be taken for the camera before three can read it as a grab.
+    this.touchHost = this.canvas.parentElement ?? this.canvas;
+    this.touchHost.addEventListener('pointerdown', this.handleTouchDown, true);
+    this.touchHost.addEventListener('pointermove', this.handleTouchMove, true);
+    this.touchHost.addEventListener('pointerup', this.handleTouchUp, true);
+    this.touchHost.addEventListener('pointercancel', this.handleTouchUp, true);
     this.canvas.addEventListener('pointerdown', this.handlePointerDown);
     this.canvas.addEventListener('pointermove', this.handlePointerMove);
     this.canvas.addEventListener('pointerup', this.handlePointerUp);
@@ -1029,6 +1077,7 @@ export class Viewport {
     window.addEventListener('keydown', this.handleModifierKey);
     window.addEventListener('keyup', this.handleModifierKey);
     window.addEventListener('blur', this.handleWindowBlur);
+    this.reducedMotion?.addEventListener('change', this.applyMotionPreference);
 
     this.gizmo.addEventListener('dragging-changed', this.handleGizmoDragging);
     this.gizmo.addEventListener('objectChange', this.handleGizmoChange);
@@ -1073,6 +1122,10 @@ export class Viewport {
     const store = useEditorStore;
 
     this.unsubscribers.push(
+      subscribeViewAxesOrbit((deltaX, deltaY) => {
+        this.controls.orbitBy(deltaX, deltaY);
+        this.clearHoverVert();
+      }),
       store.subscribe(
         (state) => state.meshVersion,
         () => this.syncScene(),
@@ -1261,6 +1314,12 @@ export class Viewport {
         (state) => state.deleteMenuRequest,
         (request) => {
           if (request) this.openDeleteMenu();
+        },
+      ),
+      store.subscribe(
+        (state) => state.modalCommandRequest,
+        (request) => {
+          if (request) this.commandModal(request.command);
         },
       ),
     );
@@ -1486,6 +1545,16 @@ export class Viewport {
     useEditorStore.getState().clearRecentVerts();
     this.syncScene();
   }
+
+  /**
+   * Someone who has asked their system for less motion gets the views and the
+   * orbit steps on the spot rather than turned to. The turn says how one view
+   * relates to the next, but it is a fifth of a second of the whole picture
+   * swinging round, which is the motion that setting exists to stop.
+   */
+  private applyMotionPreference = (): void => {
+    this.controls.viewTweenMs = this.reducedMotion?.matches ? 0 : VIEW_TWEEN_MS;
+  };
 
   private applyCameraSettings(): void {
     const state = useEditorStore.getState();
@@ -2345,8 +2414,23 @@ export class Viewport {
     this.applyScaleDrag();
   };
 
+  /**
+   * Finishes the operation in progress from a button rather than a key.
+   *
+   * The knife's own three, and confirm or cancel for everything else, which
+   * has no point to take back.
+   */
+  private commandModal(command: ModalCommand): void {
+    if (this.knife) {
+      if (command === 'back') this.takeBackKnifePoint();
+      else this.finishKnife(command === 'cancel');
+      return;
+    }
+    if (command !== 'back' && this.activeModal()) this.finishModal(command === 'cancel');
+  }
+
   private handleModalPointer = (event: PointerEvent): void => {
-    if (!this.activeModal()) return;
+    if (!this.activeModal() || pressesModalControl(event)) return;
     event.preventDefault();
     event.stopPropagation();
 
@@ -2899,6 +2983,7 @@ export class Viewport {
     this.pointerPixels = this.pointerPosition(event);
     this.pointerInside = true;
     this.readModifiers(event);
+    this.pressSlop = event.pointerType === 'touch' ? TOUCH_SLOP_PIXELS : CLICK_SLOP_PIXELS;
     if (this.gizmo.dragging) return;
     if (this.controls.onPointerDown(event)) return;
     if (event.button !== 0) return;
@@ -2908,7 +2993,9 @@ export class Viewport {
     if (this.knifeArmed()) {
       this.knifePress = this.pointerPixels.clone();
       this.canvas.setPointerCapture(event.pointerId);
+      const laid = this.knife?.steps.length ?? 0;
       this.addKnifePoint();
+      this.knifePressLaid = (this.knife?.steps.length ?? 0) > laid;
       return;
     }
 
@@ -2921,7 +3008,13 @@ export class Viewport {
     // pointer moves decides whether an oval is held round. Holding it
     // throughout asks for both, and letting go mid-drag frees the shape without
     // turning the addition back into a replacement.
-    this.dragIntent = selectIntent(event);
+    // The ADD switch holds Shift down for a hand that has no Shift to hold.
+    const extend = useEditorStore.getState().selectExtend;
+    this.dragIntent = selectIntent({
+      shiftKey: event.shiftKey || extend,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+    });
     this.dragUniform = event.shiftKey;
   };
 
@@ -2991,7 +3084,7 @@ export class Viewport {
     if (pressed) {
       this.knifePress = null;
       const released = this.pointerPosition(event);
-      if (event.button === 0 && pressed.distanceTo(released) > CLICK_SLOP_PIXELS) {
+      if (event.button === 0 && pressed.distanceTo(released) > this.pressSlop) {
         this.pointerPixels = released;
         this.addKnifePoint();
       }
@@ -3018,7 +3111,7 @@ export class Viewport {
 
     // Under a few pixels the drag is a click with a shaky hand, whatever shape
     // it drew: a lasso that small encloses nothing anyone aimed at.
-    if (start.distanceTo(end) > CLICK_SLOP_PIXELS) {
+    if (start.distanceTo(end) > this.pressSlop) {
       // The release point closes the lasso: thinning may have dropped it, and
       // it is the one point the user was certainly looking at.
       const shape = useEditorStore.getState().selectShape;
@@ -3052,7 +3145,7 @@ export class Viewport {
   private promoteDeferredGrab(): boolean {
     if (!this.deferredGrab || !this.gizmo.enabled) return false;
     if (!this.dragStart || !this.dragCurrent) return false;
-    if (this.dragStart.distanceTo(this.dragCurrent) <= CLICK_SLOP_PIXELS) return false;
+    if (this.dragStart.distanceTo(this.dragCurrent) <= this.pressSlop) return false;
 
     this.deferredGrab = false;
     const ndc = this.ndcPosition(this.dragCurrent);
@@ -3161,14 +3254,163 @@ export class Viewport {
   private handleContextMenu = (event: MouseEvent): void => {
     event.preventDefault();
     if (this.gizmo.dragging) return;
+    // Android raises its own menu event for a finger held down. The long press
+    // below has that finger already, and opening the menu twice would put a
+    // second one over the first.
+    if (this.touches.size > 0) return;
 
-    const pointer = this.pointerPosition(event);
+    this.openCursorMenuAt(this.pointerPosition(event));
+  };
+
+  private openCursorMenuAt(pointer: THREE.Vector2): void {
     useEditorStore.getState().openCursorMenu({
       x: pointer.x,
       y: pointer.y,
       targets: this.resolveCursorTargets(pointer),
     });
+  }
+
+  // --------------------------------------------------------------- touch
+
+  /**
+   * A finger going down.
+   *
+   * The first one is the left button, and is let through to everything that
+   * reads one: a tap selects, a drag draws a region or carries a gizmo handle,
+   * and the knife lays its points. Resting it in place for `LONG_PRESS_MS`
+   * opens the 3D cursor menu, which is what the right button does.
+   *
+   * A second finger makes it a hand, and the hand is the camera's: the press
+   * the first finger began is dropped and both of them steer from there. A
+   * handle already in hand is the exception. That drag keeps its finger and
+   * the second one is ignored, rather than the camera swinging round under an
+   * object halfway through being moved.
+   */
+  private handleTouchDown = (event: PointerEvent): void => {
+    if (event.pointerType !== 'touch' || event.target !== this.canvas) return;
+    this.touches.set(event.pointerId, this.pointerPosition(event));
+
+    if (this.touches.size === 1) {
+      this.armLongPress(event.pointerId);
+      return;
+    }
+
+    event.stopPropagation();
+    this.cancelLongPress();
+    this.spentTouches.add(event.pointerId);
+    if (this.steeringTouches || this.gizmoDragging || this.activeModal()) return;
+
+    for (const id of this.touches.keys()) this.spentTouches.add(id);
+    this.abandonPress();
+
+    const [[firstId, first], [secondId, second]] = [...this.touches];
+    this.steeringTouches = [firstId, secondId];
+    this.controls.beginTouch(first, second);
+    this.clearHoverVert();
+    this.refreshKnife();
   };
+
+  /** A finger moving: steering, if it is one of the hand's, and otherwise left alone. */
+  private handleTouchMove = (event: PointerEvent): void => {
+    const at = this.touches.get(event.pointerId);
+    if (event.pointerType !== 'touch' || !at) return;
+    at.copy(this.pointerPosition(event));
+
+    const press = this.longPress;
+    if (press?.pointerId === event.pointerId && at.distanceTo(press.at) > TOUCH_SLOP_PIXELS) {
+      this.cancelLongPress();
+    }
+    if (!this.spentTouches.has(event.pointerId)) return;
+
+    event.stopPropagation();
+    const steering = this.steeringTouches;
+    if (!steering?.includes(event.pointerId)) return;
+    const first = this.touches.get(steering[0]);
+    const second = this.touches.get(steering[1]);
+    if (first && second) this.controls.moveTouch(first, second);
+  };
+
+  /**
+   * A finger lifting, or the browser taking it away.
+   *
+   * Either of the steering pair lifting lets go of the camera. The one left
+   * down stays spent until it lifts too, so the end of a pinch never lands as
+   * a tap on whatever was under the last finger.
+   */
+  private handleTouchUp = (event: PointerEvent): void => {
+    if (event.pointerType !== 'touch' || !this.touches.has(event.pointerId)) return;
+    this.touches.delete(event.pointerId);
+    if (this.longPress?.pointerId === event.pointerId) this.cancelLongPress();
+
+    if (this.steeringTouches?.includes(event.pointerId)) {
+      this.steeringTouches = null;
+      this.controls.endTouch();
+      this.refreshKnife();
+    }
+
+    if (this.spentTouches.delete(event.pointerId)) {
+      event.stopPropagation();
+      return;
+    }
+    // A press the browser took back (a system swipe, an incoming call) never
+    // gets the release that would end it, so it is dropped here instead.
+    if (event.type === 'pointercancel') this.abandonPress();
+  };
+
+  private armLongPress(pointerId: number): void {
+    this.cancelLongPress();
+    const at = this.touches.get(pointerId);
+    if (!at) return;
+    const timer = window.setTimeout(() => this.fireLongPress(), LONG_PRESS_MS);
+    this.longPress = { pointerId, at: at.clone(), timer };
+  }
+
+  private cancelLongPress(): void {
+    if (!this.longPress) return;
+    window.clearTimeout(this.longPress.timer);
+    this.longPress = null;
+  }
+
+  /**
+   * A finger that has rested long enough opens the 3D cursor menu where it is.
+   *
+   * Not while something is running off that finger already: a gizmo handle, a
+   * transform, or the knife, whose press-and-drag lays its next point and must
+   * be free to wait as long as the hand likes before it moves.
+   */
+  private fireLongPress(): void {
+    const press = this.longPress;
+    this.longPress = null;
+    if (!press || this.disposed || this.touches.size !== 1) return;
+    const at = this.touches.get(press.pointerId);
+    if (!at || this.gizmoDragging || this.activeModal() || this.knife || this.knifeArmed()) return;
+
+    this.spentTouches.add(press.pointerId);
+    this.abandonPress();
+    this.openCursorMenuAt(at.clone());
+  }
+
+  /**
+   * Drops whatever the press now down had started, as if it had never landed.
+   *
+   * A region drag is cleared off the screen, a handle grab held back for the
+   * click behind it is forgotten, and a knife point the press laid is taken
+   * back, which calls the cut off if it was the first.
+   */
+  private abandonPress(): void {
+    this.dragStart = null;
+    this.dragCurrent = null;
+    this.dragPath = [];
+    this.deferredGrab = false;
+    this.hideSelectionShape();
+    if (!this.gizmoDragging) this.gizmo.axis = null;
+
+    if (this.knifePress) {
+      this.knifePress = null;
+      if (this.knifePressLaid) this.takeBackKnifePoint();
+    }
+    this.knifePressLaid = false;
+  }
 
   /**
    * Runs one of the menu's snaps from the keyboard.
@@ -3355,7 +3597,7 @@ export class Viewport {
 
   private drawSelectionShape(): void {
     if (!this.dragStart || !this.dragCurrent) return;
-    if (this.dragStart.distanceTo(this.dragCurrent) < CLICK_SLOP_PIXELS) return;
+    if (this.dragStart.distanceTo(this.dragCurrent) < this.pressSlop) return;
 
     const shape = useEditorStore.getState().selectShape;
     this.shapeLayer ??= createMarqueeLayer(this.overlay);
@@ -3846,7 +4088,7 @@ export class Viewport {
    * needs, so a click there carries on with the cut rather than making it.
    */
   private handleKnifePointer = (event: PointerEvent): void => {
-    if (!this.knife || event.button !== 0) return;
+    if (!this.knife || event.button !== 0 || pressesModalControl(event)) return;
     if (event.target instanceof Node && this.canvas.parentElement?.contains(event.target)) return;
 
     event.preventDefault();
@@ -4132,7 +4374,7 @@ export class Viewport {
     const drawingRegion =
       this.dragStart !== null &&
       this.dragCurrent !== null &&
-      this.dragStart.distanceTo(this.dragCurrent) > CLICK_SLOP_PIXELS;
+      this.dragStart.distanceTo(this.dragCurrent) > this.pressSlop;
     if (drawingRegion) return selectCursor(intent, false);
 
     const landsOnSelected = intent === 'add' && this.selectedUnderPointer();
@@ -4329,6 +4571,11 @@ export class Viewport {
     // keyboard for a cut no viewport is drawing any more.
     this.finishKnife(true);
     for (const unsubscribe of this.unsubscribers) unsubscribe();
+    this.cancelLongPress();
+    this.touchHost?.removeEventListener('pointerdown', this.handleTouchDown, true);
+    this.touchHost?.removeEventListener('pointermove', this.handleTouchMove, true);
+    this.touchHost?.removeEventListener('pointerup', this.handleTouchUp, true);
+    this.touchHost?.removeEventListener('pointercancel', this.handleTouchUp, true);
     this.canvas.removeEventListener('pointerdown', this.handlePointerDown);
     this.canvas.removeEventListener('pointermove', this.handlePointerMove);
     this.canvas.removeEventListener('pointerup', this.handlePointerUp);
@@ -4339,6 +4586,7 @@ export class Viewport {
     window.removeEventListener('keydown', this.handleModifierKey);
     window.removeEventListener('keyup', this.handleModifierKey);
     window.removeEventListener('blur', this.handleWindowBlur);
+    this.reducedMotion?.removeEventListener('change', this.applyMotionPreference);
 
     for (const view of this.views.values()) view.dispose();
     this.views.clear();
@@ -4375,6 +4623,17 @@ export class Viewport {
       if (holder.material) disposeMaterial(holder.material);
     });
   }
+}
+
+/**
+ * Whether a press lands on the buttons that finish a modal operation.
+ *
+ * Every other press during one is taken as the click that confirms it, which
+ * is what a press on its CANCEL button must not be. Those buttons carry the
+ * attribute this looks for.
+ */
+export function pressesModalControl(event: Event): boolean {
+  return event.target instanceof Element && event.target.closest('[data-modal-control]') !== null;
 }
 
 /**

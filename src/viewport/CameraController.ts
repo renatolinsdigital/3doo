@@ -3,6 +3,14 @@ import * as THREE from 'three';
 import { MIN_OBJECT_SIZE } from '@kernel/index';
 import type { CameraPose, NavigationPreset, ViewLostReason } from '@store/types';
 
+import {
+  type TouchPoint,
+  type TwoFingerFrame,
+  TwistGate,
+  gestureStep,
+  twoFingerFrame,
+} from './touchGestures';
+
 /**
  * Hard clamp on how far the orbit can zoom out. Shared with the viewport so it
  * can decide when the scene has scrolled out of comfortable view.
@@ -192,6 +200,20 @@ export function upSign(phi: number): number {
 }
 
 /**
+ * Which way the turntable has to turn for the scene to follow a twisting hand.
+ *
+ * From above, a clockwise hand asks for the camera to go clockwise round the
+ * vertical too. From underneath, the ground is seen from its other face and
+ * the spin on screen reverses. Holding the camera upside down past a pole
+ * changes nothing: that turns the picture half over, and a half turn keeps
+ * clockwise clockwise. So the only question is which side of the ground the
+ * camera is on.
+ */
+export function twistSign(phi: number): number {
+  return Math.cos(phi) < 0 ? -1 : 1;
+}
+
+/**
  * Orbit / pan / zoom with configurable bindings.
  *
  * Written by hand rather than using OrbitControls because the two presets bind
@@ -203,8 +225,10 @@ export class CameraController {
   private readonly target = new THREE.Vector3();
   private readonly pointers = new Map<number, THREE.Vector2>();
 
-  private action: 'orbit' | 'pan' | null = null;
+  private action: 'orbit' | 'pan' | 'touch' | null = null;
   private move: CameraMove | null = null;
+  /** The hand two fingers make, as it was at their last move, while they steer. */
+  private touch: { frame: TwoFingerFrame; gate: TwistGate } | null = null;
   private lastPosition = new THREE.Vector2();
   private moved = false;
 
@@ -292,6 +316,8 @@ export class CameraController {
 
   onPointerMove(event: PointerEvent): boolean {
     if (!this.action) return false;
+    // Two fingers are read whole by `moveTouch`, never one pointer at a time.
+    if (this.action === 'touch') return true;
 
     const deltaX = event.clientX - this.lastPosition.x;
     const deltaY = event.clientY - this.lastPosition.y;
@@ -299,12 +325,7 @@ export class CameraController {
     this.lastPosition.set(event.clientX, event.clientY);
 
     if (this.action === 'orbit') {
-      this.spherical.theta -= deltaX * this.orbitSpeed;
-      this.spherical.phi = orbitPhi(
-        this.spherical.phi,
-        -deltaY * this.orbitSpeed,
-        this.lockVerticalOrbit,
-      );
+      this.turn(deltaX, deltaY);
     } else {
       const scale = this.spherical.radius * this.panSpeed;
       const right = new THREE.Vector3();
@@ -323,7 +344,118 @@ export class CameraController {
     if (this.element.hasPointerCapture(event.pointerId)) {
       this.element.releasePointerCapture(event.pointerId);
     }
-    this.action = null;
+    // A mouse let go while two fingers steer has nothing of theirs to end.
+    if (this.action !== 'touch') this.action = null;
+  }
+
+  /**
+   * Orbits by a drag of so many pixels, the way a middle-drag on the canvas
+   * would. The corner widget drives this, so a hand with no middle button, a
+   * finger above all, can still turn the camera over the top of the model.
+   */
+  orbitBy(deltaX: number, deltaY: number): void {
+    this.move = null;
+    this.turn(deltaX, deltaY);
+    this.apply();
+  }
+
+  private turn(deltaX: number, deltaY: number): void {
+    this.spherical.theta -= deltaX * this.orbitSpeed;
+    this.spherical.phi = orbitPhi(
+      this.spherical.phi,
+      -deltaY * this.orbitSpeed,
+      this.lockVerticalOrbit,
+    );
+  }
+
+  /** True while two fingers are steering the camera. */
+  get isTouching(): boolean {
+    return this.action === 'touch';
+  }
+
+  /**
+   * Hands the camera to two fingers.
+   *
+   * The hand wins over a keyboard turn in flight, the same as a mouse drag
+   * does. From here `moveTouch` follows the fingers until `endTouch`.
+   */
+  beginTouch(a: TouchPoint, b: TouchPoint): void {
+    this.move = null;
+    this.action = 'touch';
+    this.moved = false;
+    this.touch = { frame: twoFingerFrame(a, b), gate: new TwistGate() };
+  }
+
+  /**
+   * Follows two fingers to where they are now, in canvas pixels.
+   *
+   * All three at once, because a hand does all three at once:
+   * - **Slide**: the scene travels with the middle of the hand, one pixel for
+   *   one pixel at the depth of the orbit point, so what was under the fingers
+   *   stays under them.
+   * - **Pinch**: the orbit closes in or opens out by the spread's ratio, and
+   *   the point between the fingers holds still while it does, the way a map
+   *   zooms where it is pinched rather than at its middle.
+   * - **Twist**: the camera turns round the vertical, so the scene turns with
+   *   the hand like a turntable. Held back by `TwistGate` until the hand is
+   *   plainly turning, so a pinch does not wobble the view round.
+   */
+  moveTouch(a: TouchPoint, b: TouchPoint): void {
+    const touch = this.touch;
+    if (!touch) return;
+
+    const frame = twoFingerFrame(a, b);
+    const step = gestureStep(touch.frame, frame);
+    touch.frame = frame;
+
+    const right = new THREE.Vector3();
+    const up = new THREE.Vector3();
+    this.camera.matrix.extractBasis(right, up, new THREE.Vector3());
+    const perPixel = this.unitsPerPixel();
+
+    this.target.addScaledVector(right, -step.panX * perPixel);
+    this.target.addScaledVector(up, step.panY * perPixel);
+
+    const radius = THREE.MathUtils.clamp(
+      this.spherical.radius * step.zoom,
+      MIN_ORBIT_DISTANCE,
+      MAX_ORBIT_DISTANCE,
+    );
+    const pull = 1 - radius / this.spherical.radius;
+    const offsetX = frame.centre.x - this.element.clientWidth / 2;
+    const offsetY = frame.centre.y - this.element.clientHeight / 2;
+    this.target.addScaledVector(right, offsetX * perPixel * pull);
+    this.target.addScaledVector(up, -offsetY * perPixel * pull);
+    this.spherical.radius = radius;
+
+    this.spherical.theta += twistSign(this.spherical.phi) * touch.gate.pass(step.twist);
+
+    if (Math.hypot(step.panX, step.panY) > 1 || Math.abs(1 - step.zoom) > 0.01) {
+      this.moved = true;
+    }
+    this.apply();
+  }
+
+  /** Lets go of the camera once fewer than two fingers are left on it. */
+  endTouch(): void {
+    this.touch = null;
+    if (this.action === 'touch') this.action = null;
+  }
+
+  /**
+   * World units per canvas pixel at the depth of the orbit point.
+   *
+   * What makes a two-finger slide stick to the scene: the target moves by
+   * exactly what the fingers moved over it. A canvas with no size yet (a test,
+   * or a frame before layout) is read as one pixel tall rather than divided by.
+   */
+  private unitsPerPixel(): number {
+    const height = Math.max(this.element.clientHeight, 1);
+    if (this.camera instanceof THREE.OrthographicCamera) {
+      return (this.camera.top - this.camera.bottom) / height;
+    }
+    const halfFov = THREE.MathUtils.degToRad(this.camera.fov) / 2;
+    return (2 * this.spherical.radius * Math.tan(halfFov)) / height;
   }
 
   onWheel(event: WheelEvent): void {

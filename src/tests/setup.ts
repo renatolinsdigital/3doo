@@ -18,14 +18,19 @@ if (!HTMLCanvasElement.prototype.getContext) {
 // jsdom has no PointerEvent, and without one a fired pointer event falls back
 // to a plain Event that carries no coordinates, so a dragged field reads every
 // move as happening in the same place. A mouse event already carries what a
-// scrub reads, and the id is the only thing missing from it.
+// scrub reads, and the id and the kind of pointer are what is missing from it.
 if (!('PointerEvent' in globalThis)) {
   class PointerEventPolyfill extends MouseEvent {
     readonly pointerId: number;
+    readonly pointerType: string;
 
-    constructor(type: string, init: MouseEventInit & { pointerId?: number } = {}) {
+    constructor(
+      type: string,
+      init: MouseEventInit & { pointerId?: number; pointerType?: string } = {},
+    ) {
       super(type, init);
       this.pointerId = init.pointerId ?? 0;
+      this.pointerType = init.pointerType ?? '';
     }
   }
 

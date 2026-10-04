@@ -1,4 +1,22 @@
 @use '@global-styles/helpers' as *;
+@use '@global-styles/responsive-mixins' as *;
+
+@mixin scrolling-row {
+  @include scrollbar;
+
+  justify-content: flex-start;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  // Room for a focus ring, which the scroll box would otherwise crop.
+  padding-block: var(--space-3);
+
+  .top-bar__brand,
+  .top-bar__modes,
+  .top-bar__actions {
+    flex: 0 0 auto;
+  }
+}
 
 .top-bar {
   display: flex;
@@ -149,5 +167,19 @@
     align-items: stretch;
     gap: var(--space-2);
     justify-content: flex-end;
+  }
+
+  // Too narrow for the whole bar, or a touch screen whose fingertip-sized
+  // controls no longer fit it: it becomes one row that scrolls sideways, the
+  // way a phone app's toolbar does, rather than pushing the page wider than
+  // the screen. Nothing in it shrinks, so every control keeps its size and a
+  // swipe brings it into reach. The menus it opens are fixed to the window, so
+  // the scroll does not crop them.
+  @include tablet-down {
+    @include scrolling-row;
+  }
+
+  @media (pointer: coarse) {
+    @include scrolling-row;
   }
 }

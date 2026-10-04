@@ -4,6 +4,7 @@ import type { EditorStore } from '../useEditorStore';
 import type {
   CameraPose,
   CursorSnapKind,
+  ModalCommand,
   NavigationPreset,
   OrbitStep,
   OverlaySettings,
@@ -33,6 +34,14 @@ export interface ViewportSlice extends ViewportSettings {
    * viewport knows where the pointer was left.
    */
   deleteMenuRequest: { nonce: number } | null;
+  /**
+   * Incremented to finish the modal operation in progress from a button: make
+   * it, call it off, or take the knife's last point back.
+   *
+   * The keyboard does this with Enter, Esc and Backspace, and the viewport
+   * holds the operation, so a touch screen with no keys asks it from here.
+   */
+  modalCommandRequest: { command: ModalCommand; nonce: number } | null;
   /** Why the scene is out of view, or null while it is where the camera can see it. */
   viewLost: ViewLostReason | null;
   /**
@@ -55,6 +64,7 @@ export interface ViewportSlice extends ViewportSettings {
   orbitView: (step: OrbitStep) => void;
   snapCursorUnderPointer: (kind: CursorSnapKind) => void;
   openDeleteMenuAtPointer: () => void;
+  commandModal: (command: ModalCommand) => void;
   setViewLost: (lost: ViewLostReason | null) => void;
   setCameraPose: (pose: CameraPose) => void;
 }
@@ -109,6 +119,7 @@ export const createViewportSlice: StateCreator<
   orbitRequest: null,
   cursorSnapRequest: null,
   deleteMenuRequest: null,
+  modalCommandRequest: null,
   viewLost: null,
   cameraPose: null,
 
@@ -135,6 +146,8 @@ export const createViewportSlice: StateCreator<
   snapCursorUnderPointer: (kind) => set({ cursorSnapRequest: { kind, nonce: ++nonce } }),
 
   openDeleteMenuAtPointer: () => set({ deleteMenuRequest: { nonce: ++nonce } }),
+
+  commandModal: (command) => set({ modalCommandRequest: { command, nonce: ++nonce } }),
 
   setViewLost: (viewLost) => set({ viewLost }),
 

@@ -1,3 +1,5 @@
+@use '@global-styles/helpers' as *;
+
 .viewport-canvas {
   position: relative;
   min-width: 0;
@@ -6,6 +8,11 @@
   // frame it: a border here would double those up and eat viewport.
   background: var(--ash);
   overflow: hidden;
+
+  // Read out as the region's description, never drawn.
+  &__guide {
+    @include visually-hidden;
+  }
 
   &__surface {
     display: block;

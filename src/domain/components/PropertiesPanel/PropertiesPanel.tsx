@@ -441,6 +441,7 @@ function MaterialRow({
   return (
     <li
       className="properties__material"
+      data-context-menu=""
       onContextMenu={(event) => {
         event.preventDefault();
         onOpenMenu(event.clientX, event.clientY);

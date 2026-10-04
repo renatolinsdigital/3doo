@@ -1,4 +1,5 @@
 @use '@global-styles/helpers' as *;
+@use '@global-styles/responsive-mixins' as *;
 
 .status-bar {
   display: flex;
@@ -45,6 +46,16 @@
 
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  // On a phone the counts and flags would squeeze the message to nothing, and
+  // the message is what says how a running operation is driven. It keeps most
+  // of the width, and the rest of the strip scrolls in after it.
+  @include phone {
+    &__section--message {
+      flex: 0 0 auto;
+      max-width: 85vw;
+    }
   }
 
   // Modal hints stay legible in the message slot, which never wraps.

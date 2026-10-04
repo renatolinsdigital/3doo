@@ -78,20 +78,56 @@
     }
   }
 
+  // Below desktop width the columns are drawers, put away until the quick
+  // bar's TOOLS or SCENE brings them out over the viewport.
   @include tablet-down {
     --right-column: 224px;
 
-    &__left {
+    // Touch-sized fields need the desktop's width to keep their labels whole.
+    @media (pointer: coarse) {
+      --right-column: 264px;
+    }
+
+    &__left,
+    &__right {
       display: none;
+    }
+
+    &--tools-open &__left,
+    &--scene-open &__right {
+      display: flex;
+    }
+
+    // The axis widget keeps clear of the scene drawer only while it is out.
+    &:not(&--scene-open) {
+      --right-column: 0px;
     }
   }
 
   @include mobile {
-    // Nothing to keep clear of once the column is gone.
+    // A drawer on a phone covers the viewport rather than sitting beside it,
+    // so there is nothing for the axis widget to keep clear of.
     --right-column: 0px;
 
+    // As wide as a desktop column where the phone has the room, and never so
+    // wide that it runs off the edge or under the rail.
+    &__left {
+      width: min(224px, calc(100% - var(--rail-size) - var(--panel-gap) * 4));
+    }
+
+    &__left--flush {
+      width: min(224px, calc(100% - var(--panel-gap) * 2));
+    }
+
     &__right {
-      display: none;
+      width: min(264px, calc(100% - var(--rail-size) - var(--panel-gap) * 4));
+    }
+
+    // A drawer on a phone is laid over the corner the axis widget stands in,
+    // and the widget would otherwise be drawn over the panel's controls.
+    &--tools-open .view-axes,
+    &--scene-open .view-axes {
+      z-index: calc(var(--z-panel) - 1);
     }
   }
 
