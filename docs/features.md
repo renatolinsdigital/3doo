@@ -17,6 +17,7 @@ drive them, see [keymap.md](keymap.md).
 | 3D cursor | Right-click to place it on a point, vertex, edge or face; snap it to the selection or the selection to it; use it as the transform pivot, as a mirror plane or as the centre of a bend |
 | Proportional editing | Six falloff curves, with a viewport ring showing how far the falloff reaches. Scroll to resize it mid-transform, or Ctrl+scroll any time |
 | Viewport | Orbit / pan / zoom, solid / wireframe / x-ray / matcap, adaptive grid, normals overlay |
+| Touch | Pinch to zoom, two-finger slide to pan, two-finger twist to turn, drag the axis widget to orbit, long press for the right-click menus. Panels become drawers on narrow screens, and a quick bar holds undo, redo, ADD, delete and the knife's CUT / UNDO POINT / CANCEL |
 | Files | Save and load `.3doo` projects (JSON, with imported images inside), OBJ and FBX import (binary or ASCII, FBX 7 onwards, landing the right way up and the right size), PNG / JPG / BMP import as a plane at the origin |
 | Autosave | Off until turned on. Writes numbered `.3doo` copies into a `3doo-auto-saves` folder you choose, every 30 seconds to 15 minutes, and only when the scene has changed. The browser keeps no copy of the project. Needs a browser with a folder picker (Chrome, Edge) |
 | Opening scene | A fresh tab starts on a cube, as Blender does, and so does FILE > NEW. One Ctrl+Z takes it away |
@@ -152,6 +153,48 @@ When the 40° rule would skip the whole selection, as with a cube corner, the
 entry is greyed out rather than offering a click that changes nothing. So is
 Dissolve Faces when the selected faces close off a solid, such as every face
 of a cube, since there is no outline left to merge them into.
+
+### Phones, tablets and touch
+
+The editor runs on a phone or a tablet with nothing but fingers. The layout
+follows the screen's width and the input follows the pointer, so the two are
+decided separately:
+
+- **Width.** Below 1024px the two panel columns are drawers, opened from the
+  quick bar under the viewport. A tablet starts with the scene drawer out,
+  which is how the layout looked before the drawers existed; a phone starts
+  with both away and keeps only one out at a time. The top bar becomes one row
+  that scrolls sideways rather than pushing the page wider than the screen.
+- **Pointer.** On a coarse pointer every control grows to a fingertip's size
+  (44px for the default target) and the quick bar gains the keys a hand
+  without a keyboard cannot press. A laptop with a touch screen keeps the
+  desktop layout, since its main pointer is the mouse, but its screen still
+  takes every gesture below.
+
+On the canvas, one finger is the left mouse button: a tap selects, a drag draws
+a region or carries a gizmo handle, the knife lays its points. Two fingers are
+the camera. That split is why a second finger cancels whatever the first one
+started, a region drag or a knife point: people rarely land two fingers at
+exactly the same moment, and the first one down would otherwise leave a
+selection or a cut behind every time they reached for the view. A gizmo handle
+already in hand is the exception, because swinging the camera round under an
+object halfway through moving it is worse than ignoring the second finger.
+
+A twist turns the scene round the vertical, like a turntable, rather than
+rolling the view: the camera has no roll, and a turntable is what the keyboard
+and the mouse orbit around too. Turning over the top needs the other axis, and
+that is what dragging the axis widget does, the same way a navigation gizmo
+works in desktop packages. The twist is held back until the hand has turned
+about ten degrees, since no pinch or slide keeps the line between two fingers
+perfectly still, and a view that wobbled on every zoom would be worse than one
+that could not turn at all.
+
+A long press stands in for the right button. Android sends a `contextmenu`
+event for one and iOS sends nothing, so `useLongPressMenu` raises the event
+itself on anything marked `data-context-menu`, and swallows Android's when it
+follows, so a menu never opens twice. The click the finger makes on release
+is swallowed too. On a control without a menu, the same long press shows the
+control's hint, since a touch screen has no hover to show it with.
 
 ### What the panels offer
 

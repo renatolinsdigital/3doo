@@ -124,3 +124,26 @@ export function subscribeViewAxes(listener: (frame: ViewAxesFrame) => void): () 
 export function resetViewAxes(): void {
   publishViewAxes(DEFAULT_FRAME);
 }
+
+const orbitListeners = new Set<(deltaX: number, deltaY: number) => void>();
+
+/**
+ * Turns the camera by a drag across the corner widget, in pixels.
+ *
+ * The other way along the same channel: the widget is React and the camera is
+ * the viewport's, and a drag sends a move per pointer event, which is no
+ * traffic to put through the store either.
+ */
+export function orbitFromViewAxes(deltaX: number, deltaY: number): void {
+  for (const listener of orbitListeners) listener(deltaX, deltaY);
+}
+
+/** Listens for drags across the widget. The viewport is the one listener. */
+export function subscribeViewAxesOrbit(
+  listener: (deltaX: number, deltaY: number) => void,
+): () => void {
+  orbitListeners.add(listener);
+  return () => {
+    orbitListeners.delete(listener);
+  };
+}

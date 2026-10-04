@@ -30,8 +30,41 @@ New entries go under `Unreleased` until a version is cut. Group them under
   the dialog; a failure is reported in a toast and under the code, marks the
   failing line, keeps the dialog open and leaves the scene untouched. A whole
   run is one step to undo.
+- Touch screens: pinch to zoom about the point between the fingers, slide two
+  fingers to pan, and twist them to turn the scene round like a turntable. One
+  finger keeps doing what the left mouse button does, and a second finger
+  takes over from it.
+- Dragging the axis widget in the viewport's corner orbits the view, with a
+  finger or a mouse.
+- A long press opens the menus a right-click does (the 3D cursor menu, the
+  outliner rows, the material slots), and on any other control shows its hint.
+  A tap on an unavailable control shows why it is unavailable.
+- A quick bar under the viewport on phones, tablets and narrow windows. TOOLS
+  and SCENE open the panel columns as drawers. On a touch screen it also has
+  undo, redo, ADD (a tap builds on the selection, as Shift+click does), delete,
+  and CUT, UNDO POINT and CANCEL while the knife is cutting.
+
+### Changed
+
+- Below 1024px the panel columns are drawers instead of disappearing, and the
+  top bar scrolls sideways instead of widening the page.
+- On touch screens the controls grow to fingertip size and the smallest text
+  comes up a point. The desktop is unchanged.
+- On a phone the docs read as one scrolling page, instead of an article boxed
+  into a third of the screen under the contents.
+- The camera jumps to a view instead of turning to it when the system asks for
+  reduced motion.
+- The viewport is announced to screen readers as a named region, with a
+  description of how to steer it, and the editor area is the page's main
+  landmark.
 
 ### Fixed
+
+- An active button being hovered drew its light label on a light fill, which
+  could not be read. A touch screen keeps the hover after a tap, so there it
+  was every active button.
+- On a touch screen a tap left the control's hint stuck on screen.
+- iOS no longer zooms the page into a field when it is tapped.
 
 - In orthographic view, zoomed in, a click on an object could select the one
   behind it, and the gizmo on that object could not be grabbed.

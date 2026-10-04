@@ -1,0 +1,42 @@
+@use '@global-styles/helpers' as *;
+
+// A row of its own under the viewport rather than floating over it: a thumb
+// rests on the bottom edge of a phone, and a strip there covers none of the
+// model.
+.quick-bar {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bone);
+  border-top: var(--border-width) solid var(--void);
+
+  &__actions {
+    display: flex;
+    align-items: stretch;
+    gap: var(--space-2);
+    min-width: 0;
+
+    .button {
+      box-shadow: none;
+    }
+  }
+
+  &__drawer {
+    flex: 0 0 auto;
+    box-shadow: none;
+  }
+
+  // Square, at the height of the buttons beside them.
+  &__icon {
+    width: var(--control-height);
+    min-width: var(--control-height);
+  }
+
+  &__glyph {
+    display: block;
+    width: var(--box-size);
+    height: var(--box-size);
+  }
+}

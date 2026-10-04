@@ -128,6 +128,27 @@ keyboard the way a modal transform does, and the ordinary bindings wait.
 | Right-click | The 3D cursor menu. During a knife cut it calls the cut off instead |
 | <kbd>Ctrl</kbd> + wheel | Resize the proportional-editing falloff. Plain wheel does the same mid-transform |
 
+Dragging across the axis widget in the viewport's corner orbits the same way a
+middle-drag does.
+
+## Touch
+
+| Gesture | Action |
+| --- | --- |
+| Tap | Select, as a left click does |
+| One-finger drag | Draw a selection region, or carry the gizmo handle it starts on |
+| Pinch | Zoom, about the point between the fingers |
+| Two-finger slide | Pan: the scene follows the fingers |
+| Two-finger twist | Turn the scene round the vertical, like a turntable. Ignored until the hand has turned about ten degrees |
+| Drag the axis widget | Orbit freely, over the top too |
+| Long press | The menu a right-click opens: the 3D cursor menu on the viewport, the row menus in the outliner and on material slots. On any other control, its hint |
+
+The quick bar under the viewport stands in for the keys a touch screen cannot
+press: undo and redo, **ADD** (Shift held down, so a tap builds on the
+selection), delete (<kbd>X</kbd> in object mode, the delete menu in edit mode),
+and, during a knife cut, **CUT**, **UNDO POINT** and **CANCEL** for
+<kbd>Enter</kbd>, <kbd>Backspace</kbd> and <kbd>Esc</kbd>.
+
 The camera controller also has a Maya preset (<kbd>Alt</kbd> + left-drag to
 orbit, <kbd>Alt</kbd> + middle-drag to pan), set through the store's
 `setNavigation`. No control in the UI exposes it yet.

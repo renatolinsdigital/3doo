@@ -138,6 +138,20 @@ describe('Outliner', () => {
       expect(state.activeObjectId).toBe(cone.id);
     });
 
+    it('adds one row at a time with ADD on, which is how a finger does it', async () => {
+      const [box, , , cone] = rows();
+
+      await userEvent.click(screen.getByRole('button', { name: 'CUBE' }));
+      act(() => useEditorStore.getState().setSelectExtend(true));
+      await userEvent.click(screen.getByRole('button', { name: 'CONE' }));
+      expect(useEditorStore.getState().selectedObjectIds).toEqual([box.id, cone.id]);
+
+      // And a second tap takes it back out.
+      await userEvent.click(screen.getByRole('button', { name: 'CONE' }));
+      expect(useEditorStore.getState().selectedObjectIds).toEqual([box.id]);
+      act(() => useEditorStore.getState().setSelectExtend(false));
+    });
+
     it('drops one row at a time on Ctrl', async () => {
       const [, cylinder, sphere] = rows();
 

@@ -50,6 +50,37 @@ button {
   border: none;
 }
 
+// A tap on a control is a press and nothing else. Without this a phone reads
+// two quick taps on a button as a zoom, and draws its own rounded grey flash
+// over a control that already shows its press by meeting its shadow.
+button,
+a,
+input,
+select,
+textarea,
+label,
+summary,
+[role='button'],
+[role='menuitem'] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+// Held down, a label is a control being long-pressed, not text being chosen:
+// iOS would otherwise select the word under the finger and offer to copy it.
+button,
+[role='button'],
+[role='menuitem'] {
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+// A row with a menu of its own keeps its text selectable, since it holds the
+// field the row is renamed in, and loses only the callout.
+[data-context-menu] {
+  -webkit-touch-callout: none;
+}
+
 // `aria-disabled` is styled alongside the native attribute: controls that have
 // a hint to explain themselves stay hoverable and focusable, so they announce
 // their state rather than carrying it.

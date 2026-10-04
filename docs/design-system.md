@@ -74,7 +74,10 @@ digits do not jitter as they change.
 
 Brutalism has to stay usable. These are requirements, not preferences:
 
-- **Hit targets ≥ 40px** (`--hit-target`).
+- **Hit targets ≥ 40px** (`--hit-target`). On a coarse pointer the control
+  ladder grows (`--control-height` to 44px, `--field-height` to 32px) and the
+  two smallest type sizes come up a point, under `@media (pointer: coarse)` in
+  `theme.scss`. The desktop keeps its sizes.
 - **WCAG AA contrast** maintained across every combination in use.
 - **Active state through at least two channels.** Never colour alone: the active
   tool gets a fill *and* a filled indicator bar; the active segment gets a fill
@@ -114,8 +117,17 @@ The viewport bleeds edge to edge behind the panels while keeping a hard 3px
 frame. The status strip is oxblood and carries counts, the active operation,
 modal hints, snap state, and a disk that turns when the autosave writes.
 
-At tablet width the left tool panel collapses; at mobile width the right column
-collapses too, leaving the rail and viewport.
+Below desktop width (1024px) both columns become drawers over the viewport,
+opened from the quick bar, a strip under the viewport that only appears there
+or on a touch screen. A tablet starts with the right column out; a phone starts
+with both away and keeps one out at a time. The top bar turns into a single row
+that scrolls sideways, and the menus it opens are fixed to the window so the
+scroll cannot crop them.
+
+On a touch screen the quick bar also carries undo, redo, ADD and delete, and
+during a knife cut its CUT, UNDO POINT and CANCEL. Hover states stick after a
+tap on a touch screen, so an active control keeps its own hover colour rather
+than falling back to the plain one.
 
 ## Adding a component
 

@@ -354,6 +354,13 @@ export type ViewLostReason = 'far' | 'stuck';
  */
 export type OrbitStep = 'left' | 'right' | 'up' | 'down' | 'opposite';
 
+/**
+ * What a button can ask of the modal operation in progress: make it, call it
+ * off, or take back the knife's last point. Enter, Esc and Backspace do the
+ * same from the keyboard.
+ */
+export type ModalCommand = 'confirm' | 'cancel' | 'back';
+
 export interface Toast {
   id: string;
   variant: 'success' | 'error' | 'warning' | 'info';

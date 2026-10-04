@@ -453,6 +453,7 @@ function OutlinerGroupRow({
         isLanding && 'outliner__row--landing',
       )}
       data-group-row={group.id}
+      data-context-menu=""
       onContextMenu={(event) => {
         event.preventDefault();
         onOpenMenu(event.clientX, event.clientY);
@@ -570,6 +571,9 @@ function OutlinerRow({
       : undefined,
   );
 
+  // The ADD switch on a touch screen, which has no Ctrl to hold: a tap then
+  // takes this row in or out on its own, as Ctrl+click does.
+  const selectExtend = useEditorStore((state) => state.selectExtend);
   const [trembleToken, setTrembleToken] = useState<number | null>(null);
 
   // Clicking (or failing to edit) this object bumps lockAttemptToken; shake the
@@ -591,6 +595,7 @@ function OutlinerRow({
         landingEdge && `outliner__row--landing-${landingEdge}`,
       )}
       data-object-row={object.id}
+      data-context-menu=""
       onPointerDown={(event) => {
         // The left button only, and never while the row holds a text field.
         // The toggles at its end are controls of their own, not a grip.
@@ -616,7 +621,7 @@ function OutlinerRow({
             // outside the selection takes its run in, one already in it drops
             // the run back out.
             const intent = isSelected ? 'subtract' : 'add';
-            if (event.ctrlKey || event.metaKey) onSelect(intent, false);
+            if (event.ctrlKey || event.metaKey || selectExtend) onSelect(intent, false);
             else if (event.shiftKey) onSelect(intent, true);
             else onSelect('replace', false);
           }}

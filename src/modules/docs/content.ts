@@ -249,7 +249,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Top bar',
-            'Left: FILE, PREFS and the project name. Middle: the object/edit mode switch; the snap, proportional, auto merge, orthographic and smooth-shading flags; the pivot picker; the SHADING and OVERLAYS menus. Right: the script editor, the history list, the two framing buttons and the shortcut list.',
+            'Left: FILE, PREFS and the project name. Middle: the object/edit mode switch; the snap, proportional, auto merge, orthographic and smooth-shading flags; the pivot picker; the SHADING and OVERLAYS menus. Right: the script editor, the history list, the two framing buttons and the shortcut list. On a narrow screen the bar is one row that scrolls sideways: swipe it to reach the rest.',
           ],
           [
             'Tool rail, far left',
@@ -272,6 +272,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'OUTLINER lists the objects, PROPERTIES shows the active object, MODIFIERS holds its modifier stack.',
           ],
           [
+            'Quick bar, bottom',
+            'Phones, tablets and narrow windows only. TOOLS and SCENE bring the left panels and the right column out as drawers over the viewport, since there is no room to keep them open beside it. On a touch screen the bar also holds undo, redo, ADD and delete, and during a knife cut it holds CUT, UNDO POINT and CANCEL.',
+          ],
+          [
             'Status bar',
             'Scene and selection counts, the last operation that ran, and the hint line during a modal transform. A small floppy disk turns once each time autosave writes a copy.',
           ],
@@ -279,7 +283,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'Rest the pointer on almost any control for a moment to see a one-line hint explaining it. If the hints get in the way, turn them off under PREFS.',
+        text: 'Rest the pointer on almost any control for a moment to see a one-line hint explaining it. On a touch screen, rest a finger on it instead: the hint comes up and lifting the finger does not press the control. If the hints get in the way, turn them off under PREFS.',
       },
     ],
   },
@@ -854,13 +858,17 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'The axis widget',
-            'The six coloured ends in the top right corner turn with the camera, so they always show which way the world is facing. Click one to look from that side: the lettered ends are +X, +Y and +Z, and the hollow ones are their negatives.',
+            'The six coloured ends in the top right corner turn with the camera, so they always show which way the world is facing. Click one to look from that side: the lettered ends are +X, +Y and +Z, and the hollow ones are their negatives. Drag across the widget to orbit, the same as a middle-drag, which is how a finger turns the view over the top.',
+          ],
+          [
+            'On a touch screen',
+            'Pinch to zoom, slide two fingers to pan, twist two fingers to turn the scene round like a turntable. One finger does what the left mouse button does. The TOUCH SCREENS section has the rest.',
           ],
         ],
       },
       {
         kind: 'note',
-        text: 'The widget also shows what a transform will affect. Lock a move, rotation or scale to an axis, or grab one gizmo handle, and the other two axes fade, so the corner shows what is about to move. A drag that starts in that corner but not on an end still orbits the scene, so the widget takes no space from the viewport.',
+        text: 'The widget also shows what a transform will affect. Lock a move, rotation or scale to an axis, or grab one gizmo handle, and the other two axes fade, so the corner shows what is about to move. Only the disc behind the ends takes a drag: one that starts in the corner outside it reaches the viewport as usual.',
       },
       {
         kind: 'table',
@@ -878,6 +886,60 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       {
         kind: 'note',
         text: 'Pick the shading from the SHADING menu in the top bar, or cycle through the modes with Shift+Z. The grid adapts its spacing as you zoom. The OVERLAYS menu beside it turns the grid, axes, cursor, normals, face orientation and statistics on and off independently.',
+      },
+    ],
+  },
+  {
+    id: 'touch',
+    title: 'TOUCH SCREENS',
+    blurb: 'Modelling on a phone or a tablet',
+    blocks: [
+      {
+        kind: 'prose',
+        text: 'The editor works with fingers as well as with a mouse and keyboard. One finger is the left button, two fingers are the camera, and a long press is the right button. Every control grows to a size a fingertip can hit.',
+      },
+      {
+        kind: 'table',
+        head: ['GESTURE', 'DOES'],
+        rows: [
+          ['Tap', 'Selects what it lands on, or empties the selection on empty space.'],
+          ['Drag one finger', 'Draws a selection region, or carries a gizmo handle it starts on.'],
+          ['Pinch', 'Zooms in and out, about the point between your fingers.'],
+          ['Slide two fingers', 'Pans: the scene follows your fingers.'],
+          [
+            'Twist two fingers',
+            'Turns the scene round the vertical, like a turntable. A small twist is ignored, so a pinch does not wobble the view.',
+          ],
+          ['Drag the axis widget', 'Orbits freely, over the top of the model too.'],
+          [
+            'Long press',
+            'Opens the menu a right-click would: the 3D cursor menu on the viewport, the row menu in the outliner and on a material slot. On any other control it shows the hint.',
+          ],
+        ],
+      },
+      {
+        kind: 'table',
+        head: ['QUICK BAR', 'DOES'],
+        rows: [
+          ['TOOLS, SCENE', 'Open and close the left panels and the right column.'],
+          ['Undo, redo', 'Ctrl+Z and Ctrl+Shift+Z.'],
+          [
+            'ADD',
+            'Holds Shift down for you. While it is on, a tap adds what it lands on and takes back what is already selected, and a region adds everything in it. In the outliner a tap adds or removes one row.',
+          ],
+          [
+            'Delete',
+            'Deletes the selected objects in object mode, and opens the delete menu in edit mode.',
+          ],
+          [
+            'CUT, UNDO POINT, CANCEL',
+            'Shown while the knife is cutting, in place of Enter, Backspace and Esc. Other modal operations get CONFIRM and CANCEL.',
+          ],
+        ],
+      },
+      {
+        kind: 'note',
+        text: 'Two fingers always win over one: putting a second finger down drops the selection region or the knife point the first one had just started, and steers the camera instead. The exception is a gizmo handle already in hand, which keeps its finger until it is let go.',
       },
     ],
   },

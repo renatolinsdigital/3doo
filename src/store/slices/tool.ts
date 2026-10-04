@@ -71,6 +71,12 @@ export interface ToolSlice {
   autoMerge: AutoMergeSettings;
   modal: ModalTransform | null;
   slidePreview: SlidePreview | null;
+  /**
+   * Whether a click builds on the selection the way Shift+click does, with no
+   * Shift held. A touch screen has no keys to hold, and this is how a finger
+   * picks more than one thing.
+   */
+  selectExtend: boolean;
 
   setMode: (mode: EditorMode) => void;
   toggleMode: () => void;
@@ -87,6 +93,7 @@ export interface ToolSlice {
   beginModal: (kind: ModalTransform['kind'], element?: ModalTransform['element']) => void;
   updateModal: (patch: Partial<ModalTransform>) => void;
   endModal: (status?: string) => void;
+  setSelectExtend: (extend: boolean) => void;
 }
 
 export const createToolSlice: StateCreator<
@@ -111,6 +118,7 @@ export const createToolSlice: StateCreator<
   autoMerge: { enabled: false, threshold: 0.01 },
   modal: null,
   slidePreview: null,
+  selectExtend: false,
 
   setMode: (mode) => {
     const object = activeObject(get());
@@ -287,4 +295,12 @@ export const createToolSlice: StateCreator<
   // The status is how a modal transform reports what it did: the instruction
   // text it put up while it was running has nothing left to say once it ends.
   endModal: (status) => set(status ? { modal: null, status } : { modal: null }),
+
+  setSelectExtend: (selectExtend) =>
+    set({
+      selectExtend,
+      status: selectExtend
+        ? 'ADD: a tap adds to the selection, and a tap on something selected takes it back out'
+        : 'ADD off: a tap replaces the selection',
+    }),
 });
