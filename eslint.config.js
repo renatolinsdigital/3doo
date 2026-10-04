@@ -26,4 +26,9 @@ export default tseslint.config(
       'no-console': ['warn', { allow: ['warn', 'error'] }],
     },
   },
+  {
+    // The MCP server runs in Node, not in the page.
+    files: ['mcp/**/*.ts'],
+    languageOptions: { globals: globals.node },
+  },
 );

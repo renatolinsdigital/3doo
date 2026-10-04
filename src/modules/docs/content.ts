@@ -977,6 +977,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Reads a PNG, JPG or BMP in as a plane at the world origin, standing upright and facing the front view, with the picture drawn on it.',
           ],
           [
+            'A scene link',
+            'Opens the editor on the scene the link carries, in place of the starting cube. AI assistants hand these out: see AI ASSISTANTS. The scene is in no file until you save it.',
+          ],
+          [
             'Export (Ctrl+E)',
             'Writes OBJ with a matching MTL, or binary FBX 7.4, which Unity, Unreal, Blender, Maya and 3ds Max all import.',
           ],
@@ -1061,6 +1065,91 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     title: 'SCRIPTING',
     blurb: 'Building and editing the scene with code',
     blocks: scriptingBlocks(),
+  },
+  {
+    id: 'assistants',
+    title: 'AI ASSISTANTS',
+    blurb: 'Asking an assistant to build a model for you',
+    blocks: [
+      {
+        kind: 'prose',
+        text: 'An AI assistant such as Claude can build models in 3DOO for you. Describe what you want in your own words, the way you would to a person: "a low poly wooden chair", "a hex nut 2 cm across", "the table from before, with a drawer". The assistant writes a script with the same API as SCRIPT, runs it, looks at pictures of the result, fixes what is off, and hands the model back to you.',
+      },
+      {
+        kind: 'table',
+        head: ['ASK FOR', 'WHAT YOU GET'],
+        rows: [
+          [
+            'A project file',
+            'A .3doo you open with FILE > OPEN. Every object, modifier and colour arrives editable, exactly as if you had built it yourself.',
+          ],
+          [
+            'An OBJ or FBX',
+            'A model ready for a game engine or another 3D program, with modifiers applied. Say which engine it is for and the assistant picks the matching axis and unit preset.',
+          ],
+          [
+            'Pictures',
+            'Renders of the model, drawn the way the viewport draws it. One in perspective by default, or any of the straight-on views the camera keys give: front (Shift+1), right (Shift+3), top (Shift+7), back, left and bottom (Ctrl+Shift with the same numbers). Ask to "see it from every side" for all of them.',
+          ],
+          [
+            'A link',
+            'A link that opens this editor on the model, ready to keep working on. The whole model travels inside the link, so nothing is uploaded and the link works for anyone you send it to.',
+          ],
+        ],
+      },
+      {
+        kind: 'prose',
+        text: 'Setting it up takes a few minutes, once. The assistant talks to 3DOO through an MCP server that comes with the code, and it needs the code on your computer:',
+      },
+      {
+        kind: 'steps',
+        items: [
+          'In the 3DOO folder, run npm install and then npm run build.',
+          'If you have no Chrome or Edge installed, run npx playwright-core install chromium. The server runs 3DOO in a hidden browser of its own to build and draw the models.',
+          'Add the server to your assistant. In Claude Code: claude mcp add 3doo -- node /path/to/3doo/mcp/server.ts. In Claude Desktop: add a 3doo entry under mcpServers in its configuration file, with node as the command and the path to mcp/server.ts as its argument.',
+          'For links, tell the server where 3DOO is hosted by setting THREEDOO_APP_URL to its address. Files and pictures work without it.',
+          'Ask for a model. "Build a low poly chair in 3DOO, show me the front and side views, then export it as FBX for Unity" is enough.',
+        ],
+      },
+      {
+        kind: 'table',
+        head: ['TRY ASKING', 'THE ASSISTANT'],
+        rows: [
+          [
+            'Build a coffee mug and show it to me',
+            'Builds it and replies with a picture in perspective.',
+          ],
+          [
+            'Show me the front, side and top views',
+            'Replies with three straight-on pictures, drawn flat so proportions can be compared.',
+          ],
+          [
+            'Make the handle thicker',
+            'Changes the model it already built, rather than starting again.',
+          ],
+          [
+            'Give me a link to open it in 3DOO',
+            'Replies with a link. Open it and the model is in the editor.',
+          ],
+          [
+            'Export it as OBJ for Unreal',
+            'Writes the .obj and its .mtl, the right way up and the right size for Unreal, and says where they are.',
+          ],
+          [
+            'Open lamp.3doo and add a shade',
+            'Loads your project, adds to it and gives it back as a new file or link.',
+          ],
+        ],
+      },
+      {
+        kind: 'note',
+        text: 'A model opened from a link is in no file yet, like a new project: save it with Ctrl+S to keep it. Pasting a link over a tab that has unsaved work in it offers to save that work first.',
+      },
+      {
+        kind: 'note',
+        text: 'The assistant works on a copy of 3DOO of its own and never touches the scene in your tab. Its files go to a 3doo-output folder in your home folder unless you or the assistant choose another.',
+      },
+    ],
   },
   {
     id: 'shortcuts',

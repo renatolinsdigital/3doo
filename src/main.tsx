@@ -2,6 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { App } from './app/App';
+import { installAutomation } from './app/automation/automation';
 
 import './global-styles/index.scss';
 
@@ -17,6 +18,9 @@ if (ios) {
   const viewport = document.querySelector('meta[name="viewport"]');
   viewport?.setAttribute('content', `${viewport.getAttribute('content')}, maximum-scale=1`);
 }
+
+// What an assistant drives the editor through, by way of the MCP server.
+installAutomation();
 
 const container = document.getElementById('root');
 if (!container) throw new Error('Root element #root is missing from index.html');

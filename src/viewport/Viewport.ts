@@ -541,6 +541,20 @@ interface KnifeContext {
 }
 
 /**
+ * The lights every view of the scene is lit by: the editor's own and the
+ * snapshots an assistant takes of it, so a picture shades like the viewport.
+ */
+export function addViewportLights(scene: THREE.Scene): void {
+  scene.add(new THREE.AmbientLight(0xffffff, 1.15));
+  const key = new THREE.DirectionalLight(0xffffff, 1.5);
+  key.position.set(4, 8, 6);
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(0xffe7d0, 0.5);
+  fill.position.set(-6, 2, -4);
+  scene.add(fill);
+}
+
+/**
  * Three.js owns everything in here: the renderer, camera, gizmo, picking and
  * overlays. It is created once against a canvas ref and never re-rendered by
  * React; it reads the store through `subscribeWithSelector` and pushes
@@ -738,13 +752,7 @@ export class Viewport {
     );
     this.camera = this.perspectiveCamera;
 
-    this.scene.add(new THREE.AmbientLight(0xffffff, 1.15));
-    const key = new THREE.DirectionalLight(0xffffff, 1.5);
-    key.position.set(4, 8, 6);
-    this.scene.add(key);
-    const fill = new THREE.DirectionalLight(0xffe7d0, 0.5);
-    fill.position.set(-6, 2, -4);
-    this.scene.add(fill);
+    addViewportLights(this.scene);
 
     this.scene.add(this.grid.group);
     this.cursor = this.createCursor();

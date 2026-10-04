@@ -213,6 +213,30 @@ export function twistSign(phi: number): number {
   return Math.cos(phi) < 0 ? -1 : 1;
 }
 
+/** Where the camera stands round its pivot, as the two angles of the orbit. */
+export interface ViewAngles {
+  /** From straight up, 0 to π. */
+  phi: number;
+  /** Round the vertical, 0 looking from +Z. */
+  theta: number;
+}
+
+/** The view a fresh tab opens on: above the ground, a quarter turn round from the front. */
+export const OPENING_VIEW: ViewAngles = { phi: Math.PI / 3, theta: Math.PI / 4 };
+
+/**
+ * The angles of the six straight-on views, which Shift and a number pick.
+ *
+ * Top and bottom stop a hair short of the pole, where the orbit's maths gives
+ * out. Exported for the snapshot renderer, so a picture of the front view is
+ * taken from exactly where Shift+1 puts the camera.
+ */
+export function axisViewAngles(axis: 'x' | 'y' | 'z', negative: boolean): ViewAngles {
+  if (axis === 'y') return { phi: negative ? Math.PI - POLE_EPSILON : POLE_EPSILON, theta: 0 };
+  if (axis === 'x') return { phi: Math.PI / 2, theta: (negative ? -1 : 1) * (Math.PI / 2) };
+  return { phi: Math.PI / 2, theta: negative ? Math.PI : 0 };
+}
+
 /**
  * Orbit / pan / zoom with configurable bindings.
  *
@@ -221,7 +245,7 @@ export function twistSign(phi: number): number {
  * was navigation so it does not also treat it as a selection click.
  */
 export class CameraController {
-  private readonly spherical = new THREE.Spherical(8, Math.PI / 3, Math.PI / 4);
+  private readonly spherical = new THREE.Spherical(8, OPENING_VIEW.phi, OPENING_VIEW.theta);
   private readonly target = new THREE.Vector3();
   private readonly pointers = new Map<number, THREE.Vector2>();
 
@@ -616,16 +640,7 @@ export class CameraController {
    * you are standing.
    */
   setAxisView(axis: 'x' | 'y' | 'z', negative: boolean): void {
-    const sign = negative ? -1 : 1;
-    let phi = Math.PI / 2;
-    let theta = 0;
-    if (axis === 'y') {
-      phi = negative ? Math.PI - 0.001 : 0.001;
-    } else if (axis === 'x') {
-      theta = sign * (Math.PI / 2);
-    } else {
-      theta = negative ? Math.PI : 0;
-    }
+    const { phi, theta } = axisViewAngles(axis, negative);
 
     // The shorter way round, measured from where the camera is heading: the
     // half turn from the right side to the left is the same either way, but

@@ -14,6 +14,14 @@ New entries go under `Unreleased` until a version is cut. Group them under
 
 ### Added
 
+- AI assistants: an MCP server (`node mcp/server.ts`) lets Claude and other
+  assistants build models with the scripting API, look at them from the
+  perspective view or any of the Shift+number views, and hand them back as a
+  `.3doo`, an OBJ or FBX, PNG pictures, or a link that opens the editor on the
+  result. The new AI ASSISTANTS section of the docs says how to set it up.
+- Scene links: a `/modeling#scene=...` link opens the editor on the scene it
+  carries, in place of the starting cube. The whole scene travels inside the
+  link, so nothing is uploaded.
 - Knife tool (K, edit mode): click out a line on the mesh to cut new edges
   through its faces.
 - Bend modifier: curls the mesh around X, Y and Z at once, each by up to 360°

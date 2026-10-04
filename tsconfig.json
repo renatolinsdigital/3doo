@@ -34,5 +34,5 @@
       "@global-styles/*": ["src/global-styles/*"]
     }
   },
-  "include": ["src", "vite.config.ts"]
+  "include": ["src", "mcp", "vite.config.ts"]
 }
