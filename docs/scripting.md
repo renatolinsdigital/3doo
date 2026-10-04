@@ -1,8 +1,9 @@
-# The operator API
+# The operator API and scripting
 
 Every mutation the UI performs goes through one named registry. That single
-surface gives the test harness, the undo stack and any external driver the same
-entry point.
+surface gives the test harness, the undo stack and the SCRIPT editor the same
+entry point. The first half of this page is the registry; the second half is
+the scripting layer built on it, which is what a user's script talks to.
 
 ## Shape
 
@@ -121,13 +122,117 @@ expect(mesh.validate()).toEqual([]);
    closed results, the Euler characteristic.
 2. Register it in `OPERATORS` in `src/kernel/commands/operators.ts`, reading
    parameters through the coercing accessors and returning a status string.
-3. Add a button or key binding. Both go through `store.exec`, so undo and status
+3. Describe it in `OPERATOR_SPECS` in `src/domain/scripting/reference.ts`: its
+   parameters with their types and ranges, and what it `needs` selected. A test
+   compares the two lists, so an operator left out of the specs fails the
+   suite instead of being missing from scripts and from the docs.
+4. Add a button or key binding. Both go through `store.exec`, so undo and status
    reporting come for free.
 
 The status string is user-visible: `Extruded 1 face(s) by 1` is useful,
 `ok` is not.
 
-## Not yet exposed
+## The scripting API
 
-There is no `window.app.exec` global for driving the running app from the
-browser console yet. The registry it would call is already in place.
+The `<>` button in the top bar opens the SCRIPT dialog, where a user writes
+JavaScript against the scene and runs it. The user-facing reference is the
+SCRIPTING section of the in-app docs, generated from the same catalogue the
+editor reads; this section is about how the layer is built.
+
+```text
+src/domain/scripting/
+  reference.ts   the catalogue: every API name, operator spec and modifier field
+  api.ts         the scene and view globals, object, mesh and modifier handles
+  runScript.ts   compile, run as one transaction, map an error to a script line
+  syntax.ts      tokenizer, bracket check and completion, for the editor
+  examples.ts    the starter script and the EXAMPLE menu, all run by a test
+src/domain/components/
+  ScriptEditor/  textarea over a highlighted layer, hovers, suggestions
+  ScriptDialog/  the modal: toolbar, editor, RUN, toasts, the saved draft
+```
+
+### One catalogue, four readers
+
+`reference.ts` holds data rather than code: `API_ENTRIES` (every name, its
+signature and a one-line summary), `OPERATOR_SPECS` (each operator's
+parameters and selection needs), `MODIFIER_FIELDS` and the primitive options.
+The API validates against it, the tokenizer marks names from it, the hover
+balloons and the suggestion list read from it, and the docs section is built
+from it. A name added to the API without an entry has no hover, no suggestion
+and no docs row, which is why the entries are written first.
+
+### A script is checked, not coerced
+
+The operator registry coerces bad parameters to defaults because the panels
+can only send good ones. A script can send anything, and `ofset: 2` quietly
+running at offset 1 is a bug its author never sees. So the scripting layer
+reads every options object against its spec and throws on an unknown name, a
+wrong type or a value outside the panel's range, suggesting the nearest real
+name. Handles are wrapped in a `Proxy` that refuses an assignment to a property
+that does not exist, for the same reason: `cube.positon = [0, 1, 0]` would
+otherwise create a property nothing reads.
+
+Several operators answer an empty selection with a status line and no
+`refused` flag. The panels never reach those paths, since their buttons are
+disabled, but a script would run straight past them. `OPERATOR_SPECS` gives
+those operators a `needs`, and the API checks it before running the operator.
+
+Errors raised inside the store's `exec` reach the script too: it takes
+`throws: true`, which turns a failure or a refusal into a thrown error instead
+of a toast, so a script stops on its first one and reports it once.
+
+### A run is one transaction
+
+`runScript` hands the compiled script to the store's `transact`, which:
+
+- snapshots the document before the script starts,
+- holds history while it runs, so the actions it calls record no steps of
+  their own (and drop none: `discardHistory` is held too),
+- records one `Run script` step at the end, only if the scene changed,
+- and on a throw, loads the snapshot back and rethrows, so a failed run leaves
+  the scene exactly as it was.
+
+Store actions that work on the active object are pointed at another object for
+the length of one call by `onObject`, which puts the active object back
+afterwards. A script that colours or edits one object does not change which
+object the panels show.
+
+### Finding the failing line
+
+The script is compiled with `new AsyncFunction('scene', 'view', body)`, where
+the body starts with `'use strict'` and ends with a `//# sourceURL` comment.
+The source URL names the script's frames in a stack trace, so an error thrown
+deep inside `api.ts` is still reported on the line of the script that made the
+call. Engines wrap the body in a header of their own and disagree on its
+length, so the offset is measured once from a body that throws on its first
+line, rather than assumed.
+
+Chrome reports no line at all for a syntax error in a function body. The
+bracket check in `syntax.ts` stands in: it names the first bracket left open,
+closed twice or closed by the wrong one, and the first string or comment never
+closed, which covers most scripts that will not compile.
+
+### The editor
+
+`ScriptEditor` is a transparent textarea over a layer that draws the same text
+in colour, moved with every scroll. The browser's own field keeps native undo,
+IME input and accessibility. Every edit the editor makes for the user
+(indenting, closing a bracket, accepting a suggestion, loading an example) goes
+through `document.execCommand('insertText')`, so Ctrl+Z takes it back in one
+step; where that command is missing, the text is still changed without undo.
+
+Hover balloons find the name under the pointer with `elementsFromPoint`, which
+sees through the textarea to the coloured spans below it. Each span carries the
+ids of the entries it may mean: after `scene.` or `view.` there is one, after
+any other variable there may be several (`delete` is on objects and meshes),
+and whether the name is being called settles `scale`, which is a property of an
+object and an operation on a mesh. Each balloon links to the entry's row in the
+docs module, as `/docs#scripting/<id>`, opened in a new tab so the script stays
+where it is.
+
+The draft is kept in `localStorage` under `3doo:script`, not in the project: a
+script is a tool for making the scene rather than a part of it.
+
+There is still no `window.app` global for the browser console. The API is
+built per run by `createScriptApi()`, and exposing it there is one line when
+there is a reason to.

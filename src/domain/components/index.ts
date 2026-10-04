@@ -17,6 +17,7 @@ export { ReloadDialog } from './ReloadDialog/ReloadDialog';
 export { AutosaveLocationDialog } from './AutosaveLocationDialog/AutosaveLocationDialog';
 export { ExportDialog } from './ExportDialog/ExportDialog';
 export { HistoryDialog } from './HistoryDialog/HistoryDialog';
+export { ScriptDialog } from './ScriptDialog/ScriptDialog';
 export { PreferencesDialog } from './PreferencesDialog/PreferencesDialog';
 export { ShortcutOverlay } from './ShortcutOverlay/ShortcutOverlay';
 export { CursorMenu } from './CursorMenu/CursorMenu';

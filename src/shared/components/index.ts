@@ -17,7 +17,7 @@ export { Select, type SelectOption, type SelectProps } from './Select/Select';
 export { Slider, type SliderProps } from './Slider/Slider';
 export { ColorField, type ColorFieldProps } from './ColorField/ColorField';
 export { Vector3Field, type Axis, type Vector3FieldProps } from './Vector3Field/Vector3Field';
-export { Modal, type ModalProps } from './Modal/Modal';
+export { AUTOFOCUS, Modal, OWNS_ESCAPE, type ModalProps } from './Modal/Modal';
 export { Toast, type ToastProps, type ToastVariant } from './Toast/Toast';
 export { ToastHost } from './ToastHost/ToastHost';
 export { TooltipHost } from './TooltipHost/TooltipHost';

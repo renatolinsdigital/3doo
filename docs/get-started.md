@@ -120,7 +120,7 @@ useEditorStore.getState().exec('extrude', { offset: 1 }, 'Extrude');
 
 `exec` records an undo step, runs the kernel operator against the active
 object, bumps `meshVersion` and writes a status string. Buttons, keys, tests
-and any future script share this one entry point. Parameters are coerced to a
+and scripts share this one entry point. Parameters are coerced to a
 safe default rather than trusted.
 
 Deeper: [scripting.md](scripting.md).
@@ -193,7 +193,7 @@ Pressing <kbd>E</kbd> to extrude:
 
 | To | Do |
 | --- | --- |
-| Add a modelling operation | Write it in `src/kernel/ops/` with tests, register it in `OPERATORS` in `src/kernel/commands/operators.ts`, then call it from a button or key through `exec`. See [scripting.md](scripting.md#adding-an-operator) |
+| Add a modelling operation | Write it in `src/kernel/ops/` with tests, register it in `OPERATORS` in `src/kernel/commands/operators.ts`, describe it in `OPERATOR_SPECS` for scripts, then call it from a button or key through `exec`. See [scripting.md](scripting.md#adding-an-operator) |
 | Add or change a key | Edit `DEFAULT_KEYMAP` in [keymap.ts](../src/domain/keymap/keymap.ts) and handle its id in `useKeymap`. Then update [keymap.md](keymap.md) |
 | Add a UI component | Presentation-only goes in `src/shared/components/`, anything that reads the store in `src/domain/components/`. See [design-system.md](design-system.md#adding-a-component) |
 | Add a module | One entry in `APP_MODULES` in `src/app/modules.ts` and one branch in `App`. See [architecture.md](architecture.md) |

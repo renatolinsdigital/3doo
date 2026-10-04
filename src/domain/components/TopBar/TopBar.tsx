@@ -377,6 +377,13 @@ export function TopBar({ brand }: TopBarProps) {
 
       <div className="top-bar__actions">
         <IconButton
+          label="SCRIPT"
+          icon={<CodeIcon />}
+          className="top-bar__icon"
+          hint="Script: build and edit the scene with code, run it, and undo the whole run in one step"
+          onClick={() => openDialog('script')}
+        />
+        <IconButton
           label="HISTORY"
           icon={<HistoryIcon />}
           className="top-bar__icon"
@@ -544,6 +551,15 @@ function SmoothIcon() {
     <Glyph>
       <circle cx="8" cy="8" r="6" />
       <path d="M8 2a6 6 0 0 1 0 12Z" fill="currentColor" stroke="none" />
+    </Glyph>
+  );
+}
+
+/** The two angle brackets code is written between. */
+function CodeIcon() {
+  return (
+    <Glyph>
+      <path d="M5.5 4 1.5 8l4 4M10.5 4l4 4-4 4" />
     </Glyph>
   );
 }

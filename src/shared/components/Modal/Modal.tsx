@@ -1,5 +1,7 @@
 import { type ReactNode, useEffect, useRef } from 'react';
 
+import { cx } from '../../utils/cx';
+
 import './Modal.scss';
 
 export interface ModalProps {
@@ -8,9 +10,20 @@ export interface ModalProps {
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
+  /** On the dialog box itself, for one that needs a size of its own. */
+  className?: string;
 }
 
-export function Modal({ title, open, onClose, children, footer }: ModalProps) {
+/**
+ * Marks an element inside a dialog that answers Escape itself, as a code
+ * editor does to close its suggestions: the dialog leaves the key to it.
+ */
+export const OWNS_ESCAPE = 'data-owns-escape';
+
+/** Marks the element a dialog should focus as it opens, in place of the box. */
+export const AUTOFOCUS = 'data-autofocus';
+
+export function Modal({ title, open, onClose, children, footer, className }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
@@ -20,10 +33,12 @@ export function Modal({ title, open, onClose, children, footer }: ModalProps) {
     // Focus moves into the dialog on open and back to the trigger on close, so
     // keyboard users are never dropped at the top of the document.
     previouslyFocused.current = document.activeElement as HTMLElement | null;
-    dialogRef.current?.focus();
+    const target = dialogRef.current?.querySelector<HTMLElement>(`[${AUTOFOCUS}]`);
+    (target ?? dialogRef.current)?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      const owner = event.target instanceof Element && event.target.closest(`[${OWNS_ESCAPE}]`);
+      if (event.key === 'Escape' && !owner) {
         event.stopPropagation();
         onClose();
       }
@@ -42,7 +57,7 @@ export function Modal({ title, open, onClose, children, footer }: ModalProps) {
     <div className="modal" role="presentation" onMouseDown={onClose}>
       <div
         ref={dialogRef}
-        className="modal__dialog"
+        className={cx('modal__dialog', className)}
         role="dialog"
         aria-modal="true"
         aria-label={title}

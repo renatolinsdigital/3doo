@@ -1,0 +1,344 @@
+@use '@global-styles/helpers' as *;
+
+.script-editor {
+  // The code is drawn on the viewport's own ash, so a script reads as part of
+  // the scene it builds. Every colour is the palette's: the ones too dark to
+  // read on ash at this size are lifted toward bone just far enough to clear
+  // AA contrast, rather than reaching for a hue the rest of the app never uses.
+  --code-line: 18px;
+  --code-pad-y: var(--space-3);
+  --code-pad-x: var(--space-4);
+  --syntax-plain: var(--bone);
+  --syntax-keyword: color-mix(in srgb, var(--red) 78%, var(--bone));
+  --syntax-string: var(--amber);
+  --syntax-number: color-mix(in srgb, var(--rust) 58%, var(--bone));
+  --syntax-api: var(--cyan);
+  --syntax-comment: color-mix(in srgb, var(--bone) 55%, var(--ash));
+  --syntax-punctuation: var(--bone-shade);
+  --syntax-property: var(--bone-dim);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 0;
+
+  &__frame {
+    @include brutal-border;
+
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    height: min(56vh, 460px);
+    min-height: 200px;
+    overflow: hidden;
+    background: var(--ash);
+  }
+
+  &__gutter {
+    position: relative;
+    min-width: 40px;
+    overflow: hidden;
+    background: var(--void);
+    border-right: var(--border-thin) solid var(--grid);
+  }
+
+  &__numbers {
+    padding: var(--code-pad-y) 0;
+    will-change: transform;
+  }
+
+  &__number {
+    @include mono-value;
+
+    height: var(--code-line);
+    padding: 0 var(--space-3) 0 var(--space-4);
+    font-size: var(--text-sm);
+    line-height: var(--code-line);
+    text-align: right;
+    color: color-mix(in srgb, var(--bone) 42%, var(--void));
+    user-select: none;
+
+    &--current {
+      color: var(--amber);
+    }
+
+    // Filled as well as coloured, so the failed line is not marked by hue alone.
+    &--error {
+      color: var(--bone);
+      background: var(--red);
+    }
+  }
+
+  &__code {
+    position: relative;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  // The two layers share every metric that decides where a character lands:
+  // font, size, line height, padding, tab width and no wrapping. Ligatures are
+  // off in both, since the colour layer is cut into spans and would not join
+  // what the field above it does.
+  &__layer,
+  &__input {
+    font-family: var(--font-mono);
+    font-size: var(--text-md);
+    font-variant-ligatures: none;
+    line-height: var(--code-line);
+    letter-spacing: 0;
+    tab-size: 2;
+    white-space: pre;
+  }
+
+  &__layer {
+    position: absolute;
+    inset: 0 auto auto 0;
+    min-width: 100%;
+    padding: var(--code-pad-y) var(--code-pad-x);
+    color: var(--syntax-plain);
+    will-change: transform;
+  }
+
+  &__measure {
+    position: absolute;
+    visibility: hidden;
+    white-space: pre;
+  }
+
+  &__line {
+    height: var(--code-line);
+    padding-right: var(--code-pad-x);
+
+    &--current {
+      background: color-mix(in srgb, var(--bone) 5%, transparent);
+    }
+
+    &--error {
+      background: color-mix(in srgb, var(--red) 24%, transparent);
+      box-shadow: inset var(--border-thin) 0 0 var(--red);
+    }
+  }
+
+  &__input {
+    @include scrollbar;
+
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: var(--code-pad-y) var(--code-pad-x);
+    overflow: auto;
+    overflow-wrap: normal;
+    color: transparent;
+    caret-color: var(--bone);
+    background: transparent;
+    border: none;
+    outline: none;
+    resize: none;
+
+    &::selection {
+      color: transparent;
+      background: color-mix(in srgb, var(--cyan) 32%, transparent);
+    }
+
+    &:focus-visible {
+      outline: none;
+    }
+  }
+
+  // The frame takes the focus ring, since the field filling it has no edge of
+  // its own to draw one on.
+  &__frame:focus-within {
+    border-color: var(--cyan);
+  }
+
+  &__token {
+    &--keyword {
+      font-weight: 700;
+      color: var(--syntax-keyword);
+    }
+
+    &--string {
+      color: var(--syntax-string);
+    }
+
+    &--number,
+    &--literal {
+      color: var(--syntax-number);
+    }
+
+    &--comment {
+      font-style: italic;
+      color: var(--syntax-comment);
+    }
+
+    &--api {
+      color: var(--syntax-api);
+    }
+
+    &--function {
+      font-weight: 700;
+    }
+
+    &--property {
+      color: var(--syntax-property);
+    }
+
+    &--punctuation {
+      color: var(--syntax-punctuation);
+    }
+
+    &--hovered {
+      text-decoration: underline dotted;
+      text-underline-offset: 3px;
+      cursor: help;
+    }
+  }
+
+  &__status {
+    @include label-text;
+
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
+    min-width: 0;
+    color: var(--ink-muted);
+  }
+
+  &__position {
+    flex: none;
+  }
+
+  &__context {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-transform: none;
+    letter-spacing: 0.04em;
+  }
+
+  // Both popups hang off the text in window coordinates, above the dialog,
+  // so the frame's own clipping cannot cut them short at its edges.
+  &__completions,
+  &__balloon {
+    position: fixed;
+    z-index: var(--z-toast);
+    color: var(--bone);
+    background: var(--void);
+    border: var(--border-thin) solid var(--bone);
+    box-shadow: var(--shadow-offset) var(--shadow-offset) 0 var(--grid);
+  }
+
+  &__completions {
+    @include scrollbar;
+
+    display: flex;
+    flex-direction: column;
+    width: 320px;
+    max-height: 240px;
+    overflow-y: auto;
+    list-style: none;
+  }
+
+  &__completion {
+    @include mono-value;
+
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-3);
+    padding: var(--space-1) var(--space-3);
+    font-size: var(--text-md);
+    cursor: pointer;
+
+    &[aria-selected='true'] {
+      @include active-indicator(var(--amber));
+
+      color: var(--bone);
+      background: var(--oxblood);
+    }
+
+    &:hover:not([aria-selected='true']) {
+      background: color-mix(in srgb, var(--bone) 10%, transparent);
+    }
+  }
+
+  &__completion-name {
+    color: var(--syntax-api);
+  }
+
+  &__completion-owner {
+    @include label-text;
+
+    align-self: center;
+    color: color-mix(in srgb, var(--bone) 60%, var(--void));
+  }
+
+  &__completion-detail {
+    @include mono-value;
+
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-2) var(--space-3);
+    font-size: var(--text-xs);
+    line-height: 1.4;
+    color: var(--bone-dim);
+    background: var(--ash);
+    border-top: var(--border-thin) solid var(--grid);
+
+    code {
+      color: var(--syntax-api);
+      font-size: var(--text-sm);
+    }
+  }
+
+  &__balloon {
+    display: flex;
+    flex-direction: column;
+    width: max-content;
+    max-width: min(380px, calc(100vw - 16px));
+  }
+
+  &__entry {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3);
+
+    & + & {
+      border-top: var(--border-thin) solid var(--grid);
+    }
+  }
+
+  &__signature {
+    @include mono-value;
+
+    font-size: var(--text-md);
+    font-weight: 700;
+    color: var(--syntax-api);
+    overflow-wrap: anywhere;
+  }
+
+  &__summary {
+    @include mono-value;
+
+    line-height: 1.5;
+    color: var(--bone);
+  }
+
+  &__docs {
+    @include label-text;
+    @include brutal-focus(var(--cyan));
+
+    align-self: flex-start;
+    color: var(--amber);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+
+    &:hover {
+      color: var(--void);
+      background: var(--amber);
+    }
+  }
+}

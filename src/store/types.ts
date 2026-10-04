@@ -375,6 +375,7 @@ export type DialogId =
   | 'openProject'
   | 'reload'
   | 'autosaveLocation'
+  | 'script'
   | null;
 
 export interface HintState {

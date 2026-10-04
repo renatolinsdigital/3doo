@@ -34,6 +34,10 @@ New to the code? Start with [docs/get-started.md](docs/get-started.md).
   groups, a 3D cursor and proportional editing.
 - **Files**: `.3doo` projects, OBJ and FBX import, binary FBX 7.4 and OBJ
   export with engine axis presets, opt-in autosave to a folder you choose.
+- **Scripting**: a code editor in the top bar that builds and edits the scene
+  with JavaScript, in the spirit of Blender's Python console, with hover help
+  linked to the docs. A run is one step to undo, and a failed run changes
+  nothing.
 
 The full list, and how each tool behaves, is in
 [docs/features.md](docs/features.md). Every shortcut is in
@@ -90,7 +94,7 @@ Sass. No Tailwind, no CSS-in-JS, no component library.
 | [export.md](docs/export.md) | OBJ and binary FBX, axis presets, and the FBX pitfalls |
 | [saving.md](docs/saving.md) | Project files, autosave, and what the browser keeps |
 | [design-system.md](docs/design-system.md) | Brutalist tokens, mixins, and usability guardrails |
-| [scripting.md](docs/scripting.md) | The operator registry and `exec` API |
+| [scripting.md](docs/scripting.md) | The operator registry, `exec`, and the scripting API behind the SCRIPT editor |
 | [testing.md](docs/testing.md) | What is tested and how to add to it |
 
 The user manual is not in this folder. It is the in-app Docs module, written in

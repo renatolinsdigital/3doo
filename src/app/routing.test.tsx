@@ -2,6 +2,8 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { API_ENTRIES } from '@domain/scripting/reference';
+
 import { App } from './App';
 import { moduleForPath } from './modules';
 
@@ -119,6 +121,30 @@ describe('docs module', () => {
     // Built from the live keymap rather than transcribed, so the editor's own
     // bindings are what show up here.
     expect(screen.getByRole('row', { name: /Ctrl \+ R.*Loop cut/ })).toBeInTheDocument();
+  });
+
+  it('lands on the row a link names, marked, and keeps it in the address', () => {
+    const scrolled = vi.fn();
+    Element.prototype.scrollIntoView = scrolled;
+    go('/docs#scripting/mesh.extrude');
+    render(<App />);
+
+    expect(screen.getByRole('heading', { name: 'SCRIPTING' })).toBeInTheDocument();
+    const row = screen.getByRole('row', { name: /^mesh\.extrude\(/ });
+    expect(row).toHaveAttribute('id', 'docs-mesh.extrude');
+    expect(row).toHaveClass('docs__row--target');
+    expect(scrolled).toHaveBeenCalled();
+    expect(window.location.hash).toBe('#scripting/mesh.extrude');
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  });
+
+  it('documents every name the script editor knows, each on a row of its own', () => {
+    go('/docs#scripting');
+    const { container } = render(<App />);
+
+    for (const entry of API_ENTRIES) {
+      expect(container.querySelector(`[id="docs-${entry.id}"]`), entry.id).not.toBeNull();
+    }
   });
 
   it('searches every section and cuts tables down to the rows that matched', async () => {

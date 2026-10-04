@@ -331,6 +331,19 @@
     tbody tr:last-child td {
       border-bottom: none;
     }
+
+    // The row a link arrived on: an amber bar and fill, so it is found by
+    // more than its colour once the page has scrolled to it.
+    tbody tr.docs__row--target th {
+      @include active-indicator(var(--red));
+
+      background: var(--amber);
+    }
+
+    tbody tr.docs__row--target td {
+      color: var(--void);
+      background: color-mix(in srgb, var(--amber) 22%, var(--bone));
+    }
   }
 
   @include tablet-down {
