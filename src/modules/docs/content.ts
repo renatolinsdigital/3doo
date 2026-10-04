@@ -546,6 +546,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           ['Solidify', 'Gives a surface thickness by generating an inner shell and a rim.'],
           [
+            'Bend',
+            'Curls the mesh around X, Y and Z at once, applied in that order. Around each axis, the longer of the two sides square to it curls toward the other. The angle is spread along the whole of that length, so 360° closes any length into a ring. SEGMENTS slices flat faces and straight edges into strips first, so they curve rather than only moving their corners. ORIGIN keeps the mesh at the object origin or the 3D cursor where it is.',
+          ],
+          [
             'Weld',
             'Merges vertices closer together than a threshold, across the whole evaluated result.',
           ],
@@ -649,7 +653,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'The mirror modifier can use the cursor as its mirror plane instead of the object origin, which is how you mirror a part about a point other than its centre.',
+        text: 'The mirror modifier can use the cursor as its mirror plane instead of the object origin, which is how you mirror a part about a point other than its centre. The bend modifier can use it as the point that stays put, so a column bent about a cursor at its foot keeps its foot planted.',
       },
     ],
   },

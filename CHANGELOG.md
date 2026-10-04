@@ -16,6 +16,10 @@ New entries go under `Unreleased` until a version is cut. Group them under
 
 - Knife tool (K, edit mode): click out a line on the mesh to cut new edges
   through its faces.
+- Bend modifier: curls the mesh around X, Y and Z at once, each by up to 360°
+  spread along the whole length that curls, so a full turn closes it into a
+  ring. SEGMENTS slices flat faces and straight edges into strips first so
+  they curve, and ORIGIN centres the bend on the object or the 3D cursor.
 
 ### Fixed
 

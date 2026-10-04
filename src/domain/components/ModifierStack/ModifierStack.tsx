@@ -1,6 +1,8 @@
 import {
   type Modifier,
   type ModifierType,
+  MAX_BEND_ANGLE,
+  MAX_BEND_SEGMENTS,
   MAX_SHARP_ANGLE,
   MAX_SMOOTHING,
   MAX_SUBSURF_LEVELS,
@@ -30,6 +32,11 @@ const MODIFIER_INFO: Record<ModifierType, { label: string; description: string }
     label: 'SOLIDIFY',
     description:
       'Gives a flat surface thickness by extruding a second shell along the vertex normals and closing the gap around open edges.',
+  },
+  bend: {
+    label: 'BEND',
+    description:
+      'Curls the mesh around the X, Y and Z axes, in that order. Around each axis, the longer of the two sides square to it curls toward the other, and the angle is spread along its whole length, so 360° closes it into a ring. SEGMENTS slices flat faces and straight edges into strips first, so they have somewhere to curve.',
   },
   weld: {
     label: 'WELD',
@@ -311,6 +318,45 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
           checked={modifier.rimFill}
           hint="Close the open edge of the shell with rim faces"
           onChange={(rimFill) => onChange({ rimFill })}
+        />
+      </>
+    );
+  }
+
+  if (modifier.type === 'bend') {
+    return (
+      <>
+        <Select
+          label="ORIGIN"
+          value={modifier.origin}
+          options={[
+            { value: 'object', label: 'OBJECT' },
+            { value: 'cursor', label: '3D CURSOR' },
+          ]}
+          hint="Whether the bend is centred on the object's origin or the 3D cursor. The mesh there stays where it is"
+          onChange={(origin) => onChange({ origin })}
+        />
+        {(['x', 'y', 'z'] as const).map((axis) => (
+          <NumberField
+            key={axis}
+            label={`BEND ${axis.toUpperCase()}`}
+            value={modifier.angles[axis]}
+            step={1}
+            min={-MAX_BEND_ANGLE}
+            max={MAX_BEND_ANGLE}
+            suffix="°"
+            hint={`Degrees to curl the mesh around the ${axis.toUpperCase()} axis. A positive angle curls toward the positive side, a negative one away from it, and 360 closes it into a ring`}
+            onChange={(degrees) => onChange({ angles: { ...modifier.angles, [axis]: degrees } })}
+          />
+        ))}
+        <NumberField
+          label="SEGMENTS"
+          value={modifier.segments}
+          integer
+          min={1}
+          max={MAX_BEND_SEGMENTS}
+          hint="How many strips to slice the mesh into along each bend, so flat faces and straight edges can follow the curve. 1 only moves the vertices already there"
+          onChange={(segments) => onChange({ segments })}
         />
       </>
     );

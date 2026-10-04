@@ -1,12 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
-import { BMesh, cloneMesh } from '../mesh';
+import { BMesh, type Vert, cloneMesh } from '../mesh';
 import { subdivideFaces } from '../ops/subdivide';
-import { createBox, createPlane, createUVSphere } from '../primitives';
+import {
+  createBox,
+  createGrid,
+  createImagePlane,
+  createPlane,
+  createUVSphere,
+} from '../primitives';
 
 import { applyModifier, evaluateModifiers, createModifier } from './index';
 import type {
   ArrayModifier,
+  BendModifier,
   MirrorModifier,
   RemeshModifier,
   SolidifyModifier,
@@ -461,6 +468,211 @@ describe('solidify modifier', () => {
 
     expect(box.max.y).toBeCloseTo(0.2);
     expect(box.min.y).toBeCloseTo(-0.2);
+  });
+});
+
+describe('bend modifier', () => {
+  function bend(angles: Partial<BendModifier['angles']>, overrides: Partial<BendModifier> = {}) {
+    const modifier = createModifier('bend') as BendModifier;
+    return { ...modifier, angles: { x: 0, y: 0, z: 0, ...angles }, ...overrides };
+  }
+
+  /** One straight wire edge along X, from `from` to `to`. */
+  function segment(from = -1, to = 1): BMesh {
+    const mesh = new BMesh();
+    mesh.addEdge(mesh.addVert({ x: from, y: 0, z: 0 }), mesh.addVert({ x: to, y: 0, z: 0 }));
+    return mesh;
+  }
+
+  const coords = (mesh: BMesh) => [...mesh.verts.values()].map((vert) => vert.co);
+
+  function boundaryLength(mesh: BMesh): number {
+    let total = 0;
+    for (const edge of mesh.edges.values()) {
+      if (edge.loops.length !== 1) continue;
+      total += Math.hypot(
+        edge.v0.co.x - edge.v1.co.x,
+        edge.v0.co.y - edge.v1.co.y,
+        edge.v0.co.z - edge.v1.co.z,
+      );
+    }
+    return total;
+  }
+
+  it('closes a straight segment into a ring at 360 degrees', () => {
+    const result = evaluateModifiers(segment(), [bend({ z: 360 }, { segments: 16 })]);
+
+    // The whole length of 2 goes once round the rim, centred on +Y.
+    const radius = 2 / (2 * Math.PI);
+    expect(result.verts.size).toBe(17);
+    expect(result.edges.size).toBe(16);
+    for (const co of coords(result)) {
+      expect(Math.hypot(co.x, co.y - radius)).toBeCloseTo(radius, 9);
+      expect(co.z).toBe(0);
+    }
+    const [start, end] = [...result.verts.values()].slice(0, 2);
+    expect(start.co.x).toBeCloseTo(end.co.x, 9);
+    expect(start.co.y).toBeCloseTo(end.co.y, 9);
+    expect(result.validate()).toEqual([]);
+  });
+
+  it('slices a flat face into strips, so it curves rather than only moving its corners', () => {
+    const plane = createPlane(2);
+
+    const sliced = evaluateModifiers(plane, [bend({ z: 90 }, { segments: 8 })]);
+    const corners = evaluateModifiers(plane, [bend({ z: 90 }, { segments: 1 })]);
+
+    expect(sliced.faces.size).toBe(8);
+    expect(sliced.verts.size).toBe(18);
+    expect(corners.faces.size).toBe(1);
+    expect(plane.faces.size).toBe(1);
+    expect(sliced.validate()).toEqual([]);
+
+    // Spread over the whole width, a quarter turn tips each end by 45 degrees.
+    const radius = 2 / (Math.PI / 2);
+    const box = sliced.boundingBox();
+    expect(box.max.x).toBeCloseTo(radius * Math.SQRT1_2, 9);
+    expect(box.min.x).toBeCloseTo(-radius * Math.SQRT1_2, 9);
+    expect(box.max.y).toBeCloseTo(radius * (1 - Math.SQRT1_2), 9);
+    expect(box.min.y).toBeCloseTo(0, 9);
+    expect(box.min.z).toBeCloseTo(-1, 9);
+    expect(box.max.z).toBeCloseTo(1, 9);
+  });
+
+  it('curls toward the positive side for a positive angle and away for a negative one', () => {
+    const up = evaluateModifiers(createPlane(2), [bend({ z: 90 })]).boundingBox();
+    const down = evaluateModifiers(createPlane(2), [bend({ z: -90 })]).boundingBox();
+
+    expect(up.min.y).toBeCloseTo(0, 9);
+    expect(up.max.y).toBeGreaterThan(0.1);
+    expect(down.max.y).toBeCloseTo(0, 9);
+    expect(down.min.y).toBeLessThan(-0.1);
+  });
+
+  it('curls the longer of the two sides square to the axis', () => {
+    const plank = createPlane(2);
+    for (const vert of plank.verts.values()) vert.co = { ...vert.co, z: vert.co.z * 3 };
+
+    // Around Y, the plank's length runs along Z and curls toward X, in the floor.
+    const flat = evaluateModifiers(plank, [bend({ y: 90 })]).boundingBox();
+    expect(flat.min.y).toBe(0);
+    expect(flat.max.y).toBe(0);
+    expect(flat.max.x - flat.min.x).toBeGreaterThan(0.5);
+
+    // Around X, the same length curls up off the floor instead.
+    const raised = evaluateModifiers(plank, [bend({ x: 90 })]).boundingBox();
+    expect(raised.max.y - raised.min.y).toBeGreaterThan(0.5);
+    expect(raised.min.x).toBeCloseTo(-1, 9);
+    expect(raised.max.x).toBeCloseTo(1, 9);
+  });
+
+  it('bends around X, then Y, then Z, as separate bends stacked in that order would', () => {
+    const plank = createBox(2);
+    for (const vert of plank.verts.values()) vert.co = { ...vert.co, x: vert.co.x * 3 };
+
+    const together = evaluateModifiers(plank, [bend({ x: 30, y: -50, z: 120 })]);
+    const stacked = evaluateModifiers(plank, [bend({ x: 30 }), bend({ y: -50 }), bend({ z: 120 })]);
+    const zOnly = evaluateModifiers(plank, [bend({ z: 120 })]);
+
+    expect(coords(together)).toEqual(coords(stacked));
+    expect(together.faces.size).toBe(stacked.faces.size);
+    expect(together.boundingBox()).not.toEqual(zOnly.boundingBox());
+    expect(together.validate()).toEqual([]);
+  });
+
+  it('stops at a full turn', () => {
+    const full = evaluateModifiers(segment(), [bend({ z: 360 })]);
+    const past = evaluateModifiers(segment(), [bend({ z: 720 })]);
+
+    expect(coords(past)).toEqual(coords(full));
+  });
+
+  it('holds the mesh still at the 3D cursor when it is set as the origin', () => {
+    const modifier = bend({ z: 360 }, { origin: 'cursor', segments: 8 });
+    const result = evaluateModifiers(segment(), [modifier], { cursor: { x: -1, y: 0, z: 0 } });
+
+    // The end at the cursor stays put, and the far end comes all the way round to it.
+    const [start, end] = [...result.verts.values()].slice(0, 2);
+    expect(start.co).toEqual({ x: -1, y: 0, z: 0 });
+    expect(end.co.x).toBeCloseTo(-1, 9);
+    expect(end.co.y).toBeCloseTo(0, 9);
+  });
+
+  it('cuts nothing where the mesh already has vertices on every plane', () => {
+    const grid = createGrid(2, 8);
+
+    const result = evaluateModifiers(grid, [bend({ z: 90 }, { segments: 8 })]);
+
+    expect(result.verts.size).toBe(81);
+    expect(result.faces.size).toBe(64);
+  });
+
+  it('cuts a concave face without joining its arms across the gap between them', () => {
+    // A U lying on the floor, open toward +X: the cut at x = 2 runs through both
+    // arms and the gap outside the face between them.
+    const mesh = new BMesh();
+    const outline: [number, number][] = [
+      [0, 0],
+      [0, 3],
+      [3, 3],
+      [3, 2],
+      [1, 2],
+      [1, 1],
+      [3, 1],
+      [3, 0],
+    ];
+    mesh.addFace(outline.map(([x, z]) => mesh.addVert({ x, y: 0, z })));
+
+    const result = evaluateModifiers(mesh, [bend({ z: 0.001 }, { segments: 3 })]);
+
+    // Every cut through the face is shared by the pieces either side of it, so
+    // the outline is all the border there is.
+    expect(boundaryLength(result)).toBeCloseTo(16, 6);
+    expect(result.validate()).toEqual([]);
+  });
+
+  it('carries the picture of an image plane onto the strips', () => {
+    const image = createImagePlane(2, 1);
+
+    const result = evaluateModifiers(image, [bend({ y: 90 }, { segments: 4 })]);
+
+    // Around Y the width curls toward +Z. Each corner's U follows how far round
+    // the curl it is, and V how high it is, which the bend leaves alone.
+    const radius = 2 / (Math.PI / 2);
+    expect(result.faces.size).toBe(4);
+    for (const face of result.faces.values()) {
+      for (const loop of result.faceLoops(face)) {
+        const turn = Math.atan2(loop.vert.co.x, radius - loop.vert.co.z);
+        expect(loop.uv.u).toBeCloseTo((turn * radius + 1) / 2, 9);
+        expect(loop.uv.v).toBeCloseTo(loop.vert.co.y + 0.5, 9);
+      }
+    }
+  });
+
+  it('keeps both sides of a sharp edge it cuts, but not the cuts', () => {
+    const plane = createPlane(2);
+    for (const edge of plane.edges.values()) edge.sharp = true;
+
+    const result = evaluateModifiers(plane, [bend({ z: 90 }, { segments: 4 })]);
+
+    // The two sides along X come out in four pieces each; the ends are whole.
+    expect([...result.edges.values()].filter((edge) => edge.sharp)).toHaveLength(10);
+  });
+
+  it('turns a wire the length of the bend into an arc of vertices', () => {
+    const mesh = new BMesh();
+    let previous: Vert | null = null;
+    for (const x of [-1, 0, 1]) {
+      const vert = mesh.addVert({ x, y: 0, z: 0 });
+      if (previous) mesh.addEdge(previous, vert);
+      previous = vert;
+    }
+
+    const result = evaluateModifiers(mesh, [bend({ z: 180 }, { segments: 6 })]);
+
+    expect(result.verts.size).toBe(7);
+    expect(result.edges.size).toBe(6);
+    expect([...result.verts.values()].every((vert) => vert.edges.length > 0)).toBe(true);
   });
 });
 

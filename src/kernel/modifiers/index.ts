@@ -1,6 +1,20 @@
-import { type Axis, type Vec3, add, lerp, mul, sub, vec3 } from '../math';
-import { BMesh, cloneMesh } from '../mesh';
-import type { Edge, Face, Vert } from '../mesh/types';
+import {
+  AXES,
+  type Axis,
+  type Vec3,
+  add,
+  clamp,
+  cross,
+  degToRad,
+  dot,
+  lerp,
+  mul,
+  polygonNormal,
+  sub,
+  vec3,
+} from '../math';
+import { BMesh, cloneMesh, triangulatePolygon } from '../mesh';
+import type { Edge, Face, Loop, Vert } from '../mesh/types';
 import { mergeByDistance, weldVerts } from '../ops/merge';
 import { MESH_BUDGET } from '../ops/budget';
 import { carrySharp } from '../ops/normals';
@@ -9,6 +23,7 @@ import { remeshMesh } from '../remesh';
 
 import type {
   ArrayModifier,
+  BendModifier,
   MirrorModifier,
   Modifier,
   RemeshModifier,
@@ -62,6 +77,8 @@ export function applyModifier(
       return applyArray(mesh, modifier);
     case 'solidify':
       return applySolidify(mesh, modifier);
+    case 'bend':
+      return applyBend(mesh, modifier, context);
     case 'weld':
       return applyWeld(mesh, modifier);
     case 'subdivide':
@@ -361,6 +378,224 @@ function applySolidify(mesh: BMesh, modifier: SolidifyModifier): BMesh {
 
   mesh.computeNormals();
   return mesh;
+}
+
+export const MAX_BEND_ANGLE = 360;
+export const MAX_BEND_SEGMENTS = 128;
+
+/**
+ * The two sides square to each bend axis: the first curls when the two are
+ * equally long. Y comes second wherever it is a choice, so a cube or a square
+ * plane on the floor curls up like a sheet of paper rather than across itself.
+ */
+const SQUARE_TO: Record<Axis, readonly [Axis, Axis]> = {
+  x: ['z', 'y'],
+  y: ['x', 'z'],
+  z: ['x', 'y'],
+};
+
+function applyBend(mesh: BMesh, modifier: BendModifier, context: ModifierContext): BMesh {
+  const centre: Vec3 = modifier.origin === 'cursor' && context.cursor ? context.cursor : vec3();
+  const segments = clamp(Math.floor(modifier.segments), 1, MAX_BEND_SEGMENTS);
+  let bent = false;
+  for (const axis of AXES) {
+    const degrees = clamp(modifier.angles[axis], -MAX_BEND_ANGLE, MAX_BEND_ANGLE);
+    if (Math.abs(degrees) < 1e-6) continue;
+    bent = bendAround(mesh, axis, degToRad(degrees), centre, segments) || bent;
+  }
+  if (bent) mesh.computeNormals();
+  return mesh;
+}
+
+/**
+ * Curls the mesh around one axis through `centre`, spreading `angle` over its
+ * whole length along the side that curls. Returns whether anything moved.
+ */
+function bendAround(
+  mesh: BMesh,
+  axis: Axis,
+  angle: number,
+  centre: Vec3,
+  segments: number,
+): boolean {
+  const box = mesh.boundingBox();
+  const extent = (side: Axis) => box.max[side] - box.min[side];
+  const [first, second] = SQUARE_TO[axis];
+  const along = extent(second) > extent(first) * (1 + 1e-6) ? second : first;
+  const toward = along === first ? second : first;
+  const span = extent(along);
+  if (span < 1e-9) return false;
+
+  if (segments > 1) {
+    const cuts: number[] = [];
+    for (let i = 1; i < segments; i++) cuts.push(box.min[along] + (span * i) / segments);
+    sliceAcross(mesh, along, cuts, (span / segments) * 1e-6);
+  }
+
+  // An arc of this radius turning through `angle` is exactly `span` long, so
+  // the line through the centre keeps its length. What sits further toward the
+  // inside of the curl is squeezed and what sits outside it stretched, the way
+  // a bent bar is. The sign of the radius carries the sign of the angle.
+  const radius = span / angle;
+  for (const vert of mesh.verts.values()) {
+    const turn = (vert.co[along] - centre[along]) / radius;
+    const reach = radius - (vert.co[toward] - centre[toward]);
+    vert.co = {
+      ...vert.co,
+      [along]: centre[along] + reach * Math.sin(turn),
+      [toward]: centre[toward] + radius - reach * Math.cos(turn),
+    };
+  }
+  return true;
+}
+
+interface Corner {
+  vert: Vert;
+  uv: Loop['uv'];
+}
+
+/**
+ * Slices every face and wire edge that crosses a plane square to `axis` at one
+ * of `cuts` (ascending), keeping both sides, so a face that was one flat piece
+ * across a bend comes out as strips that can follow it.
+ *
+ * A convex face is clipped to each slab between neighbouring planes in turn. A
+ * concave one is split into triangles first: clipped whole, the piece in a slab
+ * the face runs in and out of more than once would join its parts across the
+ * gap between them, which lies outside the face.
+ *
+ * Like the subdivision modifiers, a slicing that would outgrow the tab is
+ * skipped rather than run. The bend still happens, on the vertices there are.
+ */
+function sliceAcross(mesh: BMesh, axis: Axis, cuts: readonly number[], epsilon: number): void {
+  const level = (vert: Vert) => vert.co[axis];
+  const cutsBetween = (a: number, b: number): number[] => {
+    const low = Math.min(a, b);
+    const high = Math.max(a, b);
+    return cuts.filter((cut) => cut > low + epsilon && cut < high - epsilon);
+  };
+
+  const crossing: Face[] = [];
+  let growth = 0;
+  for (const face of mesh.faces.values()) {
+    let low = Infinity;
+    let high = -Infinity;
+    for (const vert of mesh.faceVerts(face)) {
+      low = Math.min(low, level(vert));
+      high = Math.max(high, level(vert));
+    }
+    const count = cutsBetween(low, high).length;
+    if (count === 0) continue;
+    crossing.push(face);
+    growth += count;
+  }
+  if (mesh.faces.size + growth > MESH_BUDGET.faces) return;
+
+  // Kept per pair of vertices, so the faces either side of an edge (and the
+  // triangles either side of a diagonal) land on the same new vertices.
+  const splits = new Map<string, Vert[]>();
+  const between = (a: Vert, b: Vert): Vert[] => {
+    const [low, high] = a.id < b.id ? [a, b] : [b, a];
+    const key = `${low.id}:${high.id}`;
+    let chain = splits.get(key);
+    if (!chain) {
+      const from = level(low);
+      const to = level(high);
+      const ordered = cutsBetween(from, to);
+      if (from > to) ordered.reverse();
+      chain = ordered.map((cut) =>
+        mesh.addVert({ ...lerp(low.co, high.co, (cut - from) / (to - from)), [axis]: cut }),
+      );
+      splits.set(key, chain);
+    }
+    return low === a ? chain : [...chain].reverse();
+  };
+
+  const withSplits = (ring: readonly Corner[]): Corner[] => {
+    const full: Corner[] = [];
+    ring.forEach((corner, i) => {
+      const next = ring[(i + 1) % ring.length];
+      full.push(corner);
+      const rise = level(next.vert) - level(corner.vert);
+      for (const vert of between(corner.vert, next.vert)) {
+        const t = (level(vert) - level(corner.vert)) / rise;
+        full.push({
+          vert,
+          uv: {
+            u: corner.uv.u + (next.uv.u - corner.uv.u) * t,
+            v: corner.uv.v + (next.uv.v - corner.uv.v) * t,
+          },
+        });
+      }
+    });
+    return full;
+  };
+
+  const wires = [...mesh.edges.values()].filter((edge) => edge.loops.length === 0);
+  const sharp = [...mesh.edges.values()].filter((edge) => edge.sharp);
+  const pieces: { ring: Corner[]; materialIndex: number; smooth: boolean }[] = [];
+
+  for (const face of crossing) {
+    const corners = mesh.faceLoops(face).map((loop) => ({ vert: loop.vert, uv: loop.uv }));
+    for (const part of convexParts(corners)) {
+      const ring = withSplits(part);
+      for (let slab = 0; slab <= cuts.length; slab++) {
+        const floor = slab === 0 ? -Infinity : cuts[slab - 1] - epsilon;
+        const ceiling = slab === cuts.length ? Infinity : cuts[slab] + epsilon;
+        const piece = ring.filter(({ vert }) => level(vert) >= floor && level(vert) <= ceiling);
+        if (piece.length < 3) continue;
+        const levels = piece.map(({ vert }) => level(vert));
+        // A face lying on a plane, or an edge of one, belongs to both slabs it
+        // touches. Only a piece with some depth across them is a real one.
+        if (Math.max(...levels) - Math.min(...levels) <= epsilon) continue;
+        pieces.push({ ring: piece, materialIndex: face.materialIndex, smooth: face.smooth });
+      }
+    }
+  }
+
+  for (const face of crossing) mesh.removeFace(face);
+  for (const piece of pieces) {
+    const face = mesh.addFace(
+      piece.ring.map(({ vert }) => vert),
+      { materialIndex: piece.materialIndex, smooth: piece.smooth },
+    );
+    const uvs = new Map(piece.ring.map(({ vert, uv }) => [vert.id, uv]));
+    for (const loop of mesh.faceLoops(face)) loop.uv = { ...(uvs.get(loop.vert.id) ?? loop.uv) };
+  }
+
+  const keep = new Set<number>();
+  for (const edge of wires) {
+    const chain = [edge.v0, ...between(edge.v0, edge.v1), edge.v1];
+    if (chain.length === 2) {
+      keep.add(edge.id);
+      continue;
+    }
+    for (let i = 0; i < chain.length - 1; i++) keep.add(mesh.addEdge(chain[i], chain[i + 1]).id);
+  }
+  for (const edge of sharp) {
+    carrySharp(mesh, edge, [edge.v0, ...between(edge.v0, edge.v1), edge.v1]);
+  }
+  mesh.removeWireEdges(keep);
+}
+
+/** The face as it is when it is convex, otherwise as triangles. */
+function convexParts(corners: readonly Corner[]): Corner[][] {
+  if (corners.length === 3) return [[...corners]];
+  const points = corners.map(({ vert }) => vert.co);
+  const normal = polygonNormal(points);
+  const convex = points.every((point, i) => {
+    const next = points[(i + 1) % points.length];
+    const after = points[(i + 2) % points.length];
+    return dot(cross(sub(next, point), sub(after, next)), normal) >= -1e-12;
+  });
+  if (convex) return [[...corners]];
+
+  const indices = triangulatePolygon(points, normal);
+  const parts: Corner[][] = [];
+  for (let i = 0; i < indices.length; i += 3) {
+    parts.push([corners[indices[i]], corners[indices[i + 1]], corners[indices[i + 2]]]);
+  }
+  return parts;
 }
 
 /**

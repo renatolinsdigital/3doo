@@ -12,9 +12,9 @@ drive them, see [keymap.md](keymap.md).
 | Selection | Vertex, edge and face modes; click and Shift+click, box / circle / lasso region select, Alt+click edge and face loops, grow / shrink / invert |
 | Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, knife, subdivide (Catmull-Clark), vertex and edge slide, relax, circle, space, merge, merge by distance, connect, delete, dissolve, fill, bridge, triangulate, tris-to-quads |
 | Normals | Recalculate outside, flip, shade smooth / flat, mark / clear sharp edges (drawn in cyan, carried through subdivide, loop cut, merge and the modifiers), face-orientation overlay |
-| Modifiers | Mirror, array, solidify, weld, loop subdivide, subdivision surface (Catmull-Clark or simple, up to 6 levels, edit cage drawn around the result), remesh. All non-destructive, reorderable, with Apply |
+| Modifiers | Mirror, array, solidify, bend (around X, Y and Z at once, up to a full ring, slicing flat faces so they curve), weld, loop subdivide, subdivision surface (Catmull-Clark or simple, up to 6 levels, edit cage drawn around the result), remesh. All non-destructive, reorderable, with Apply |
 | Remesh | A modifier with three methods: voxel quad shell (signed distance field, surface nets, crease and corner constraints), blocks straight off the lattice, and quadric error decimation |
-| 3D cursor | Right-click to place it on a point, vertex, edge or face; snap it to the selection or the selection to it; use it as the transform pivot or as a mirror plane |
+| 3D cursor | Right-click to place it on a point, vertex, edge or face; snap it to the selection or the selection to it; use it as the transform pivot, as a mirror plane or as the centre of a bend |
 | Proportional editing | Six falloff curves, with a viewport ring showing how far the falloff reaches. Scroll to resize it mid-transform, or Ctrl+scroll any time |
 | Viewport | Orbit / pan / zoom, solid / wireframe / x-ray / matcap, adaptive grid, normals overlay |
 | Files | Save and load `.3doo` projects (JSON, with imported images inside), OBJ and FBX import (binary or ASCII, FBX 7 onwards, landing the right way up and the right size), PNG / JPG / BMP import as a plane at the origin |
@@ -234,6 +234,9 @@ Two settings read the cursor:
 - The Mirror modifier's **Origin** picks whether its plane passes through the
   object's origin or through the cursor. That is how you mirror a limb about a
   point other than the object's centre.
+- The Bend modifier's **Origin** does the same for the centre of the bend: the
+  mesh at that point stays where it is. Put the cursor at the foot of a column
+  and the foot stays planted while the top curls over.
 
 Hiding the ring, from the menu or **Overlays → 3D cursor**, does not move it or
 stop anything from using it.
