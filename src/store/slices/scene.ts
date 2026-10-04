@@ -2125,6 +2125,7 @@ export const createSceneSlice: StateCreator<
       {
         mesh: applyModifier(cloneMesh(object.mesh), modifier, {
           cursor: inverseTransformPoint(object.transform, get().cursor),
+          scale: object.transform.scale,
         }),
         modifiers: object.modifiers.filter((candidate) => candidate.id !== id),
         primitive: null,
@@ -2443,6 +2444,7 @@ export function evaluatedMesh(object: SceneObject, cursor: Vec3 = vec3(), versio
 
   const result = evaluateModifiers(object.mesh, object.modifiers, {
     cursor: inverseTransformPoint(object.transform, cursor),
+    scale: object.transform.scale,
   });
 
   if (version !== undefined) {

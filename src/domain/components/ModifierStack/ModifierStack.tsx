@@ -2,11 +2,11 @@ import {
   type Modifier,
   type ModifierType,
   MAX_BEND_ANGLE,
-  MAX_BEND_SEGMENTS,
   MAX_SHARP_ANGLE,
   MAX_SMOOTHING,
   MAX_SUBSURF_LEVELS,
   MAX_TARGET_FACES,
+  MAX_TWIST_ANGLE,
   MAX_VOXEL_SIZE,
   MIN_TARGET_FACES,
   MIN_VOXEL_SIZE,
@@ -36,7 +36,12 @@ const MODIFIER_INFO: Record<ModifierType, { label: string; description: string }
   bend: {
     label: 'BEND',
     description:
-      'Curls the mesh around the X, Y and Z axes, in that order. Around each axis, the longer of the two sides square to it curls toward the other, and the angle is spread along its whole length, so 360° closes it into a ring. SEGMENTS slices flat faces and straight edges into strips first, so they have somewhere to curve.',
+      'Curls the mesh around the X, Y and Z axes, in that order. Around each axis, the longer of the two sides square to it curls toward the other, and the angle is spread along its whole length, so 360° closes it into a ring. It only moves the vertices already there, so loop cut the length you want curved.',
+  },
+  twist: {
+    label: 'TWIST',
+    description:
+      'Turns the mesh about the X, Y and Z axes, in that order. The further along the axis a part lies, the further it turns, so one end turns the whole angle past the other. It only moves the vertices already there, so loop cut the length you want twisted.',
   },
   weld: {
     label: 'WELD',
@@ -349,15 +354,36 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
             onChange={(degrees) => onChange({ angles: { ...modifier.angles, [axis]: degrees } })}
           />
         ))}
-        <NumberField
-          label="SEGMENTS"
-          value={modifier.segments}
-          integer
-          min={1}
-          max={MAX_BEND_SEGMENTS}
-          hint="How many strips to slice the mesh into along each bend, so flat faces and straight edges can follow the curve. 1 only moves the vertices already there"
-          onChange={(segments) => onChange({ segments })}
+      </>
+    );
+  }
+
+  if (modifier.type === 'twist') {
+    return (
+      <>
+        <Select
+          label="ORIGIN"
+          value={modifier.origin}
+          options={[
+            { value: 'object', label: 'OBJECT' },
+            { value: 'cursor', label: '3D CURSOR' },
+          ]}
+          hint="Whether the twist turns about the object's origin or the 3D cursor. The mesh level with it holds still"
+          onChange={(origin) => onChange({ origin })}
         />
+        {(['x', 'y', 'z'] as const).map((axis) => (
+          <NumberField
+            key={axis}
+            label={`TWIST ${axis.toUpperCase()}`}
+            value={modifier.angles[axis]}
+            step={1}
+            min={-MAX_TWIST_ANGLE}
+            max={MAX_TWIST_ANGLE}
+            suffix="°"
+            hint={`Degrees one end of the mesh turns past the other about the ${axis.toUpperCase()} axis. A positive angle turns anticlockwise, looking down the axis from its positive end`}
+            onChange={(degrees) => onChange({ angles: { ...modifier.angles, [axis]: degrees } })}
+          />
+        ))}
       </>
     );
   }

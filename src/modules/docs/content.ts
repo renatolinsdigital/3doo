@@ -702,7 +702,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ['Solidify', 'Gives a surface thickness by generating an inner shell and a rim.'],
           [
             'Bend',
-            'Curls the mesh around X, Y and Z at once, applied in that order. Around each axis, the longer of the two sides square to it curls toward the other. The angle is spread along the whole of that length, so 360° closes any length into a ring. SEGMENTS slices flat faces and straight edges into strips first, so they curve rather than only moving their corners. ORIGIN keeps the mesh at the object origin or the 3D cursor where it is.',
+            'Curls the mesh around X, Y and Z at once, applied in that order. Around each axis, the longer of the two sides square to it, as the object is drawn, curls toward the other. The angle is spread along the whole of that length, so 360° closes any length into a ring. It only moves the vertices already there and adds none, so a face curves only where loops cross it: loop cut the length you want curved, or put LOOP SUBDIVIDE above the bend. ORIGIN keeps the mesh at the object origin or the 3D cursor where it is.',
+          ],
+          [
+            'Twist',
+            'Turns the mesh about X, Y and Z at once, applied in that order. The further along the axis a part lies, the further it turns, so one end turns the whole angle past the other, up to four full turns. Like bend, it only moves the vertices already there: loop cut the length you want twisted. ORIGIN sets the line it turns about and the level that holds still: the object origin or the 3D cursor.',
           ],
           [
             'Weld',
@@ -811,7 +815,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'The mirror modifier can use the cursor as its mirror plane instead of the object origin, which is how you mirror a part about a point other than its centre. The bend modifier can use it as the point that stays put, so a column bent about a cursor at its foot keeps its foot planted.',
+        text: 'The mirror modifier can use the cursor as its mirror plane instead of the object origin, which is how you mirror a part about a point other than its centre. The bend and twist modifiers can use it as the point that stays put, so a column bent or twisted about a cursor at its foot keeps its foot planted.',
       },
     ],
   },

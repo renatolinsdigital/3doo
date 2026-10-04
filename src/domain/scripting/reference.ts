@@ -1,10 +1,10 @@
 import {
   MAX_BEND_ANGLE,
-  MAX_BEND_SEGMENTS,
   MAX_SHARP_ANGLE,
   MAX_SMOOTHING,
   MAX_SUBSURF_LEVELS,
   MAX_TARGET_FACES,
+  MAX_TWIST_ANGLE,
   MAX_VOXEL_SIZE,
   MIN_OBJECT_SIZE,
   MIN_TARGET_FACES,
@@ -589,11 +589,14 @@ export const MODIFIER_FIELDS: Record<ModifierType, readonly FieldSpec[]> = {
       description: `Degrees to curl around X, Y and Z, from -${MAX_BEND_ANGLE} to ${MAX_BEND_ANGLE}.`,
     },
     origin,
+  ],
+  twist: [
     {
-      name: 'segments',
-      value: integer(1, MAX_BEND_SEGMENTS),
-      description: `Strips to slice the mesh into first, 1 to ${MAX_BEND_SEGMENTS}.`,
+      name: 'angles',
+      value: { kind: 'vector', min: -MAX_TWIST_ANGLE, max: MAX_TWIST_ANGLE },
+      description: `Degrees one end turns past the other about X, Y and Z, from -${MAX_TWIST_ANGLE} to ${MAX_TWIST_ANGLE}.`,
     },
+    origin,
   ],
   weld: [{ name: 'threshold', value: number(0), description: 'Vertices closer than this fuse.' }],
   subdivide: [

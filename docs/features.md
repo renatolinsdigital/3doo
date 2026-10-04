@@ -12,9 +12,9 @@ drive them, see [keymap.md](keymap.md).
 | Selection | Vertex, edge and face modes; click and Shift+click, box / circle / lasso region select, Alt+click edge and face loops, grow / shrink / invert |
 | Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, knife, subdivide (Catmull-Clark), vertex and edge slide, relax, circle, space, merge, merge by distance, connect, delete, dissolve, fill, bridge, triangulate, tris-to-quads |
 | Normals | Recalculate outside, flip, shade smooth / flat, mark / clear sharp edges (drawn in cyan, carried through subdivide, loop cut, merge and the modifiers), face-orientation overlay |
-| Modifiers | Mirror, array, solidify, bend (around X, Y and Z at once, up to a full ring, slicing flat faces so they curve), weld, loop subdivide, subdivision surface (Catmull-Clark or simple, up to 6 levels, edit cage drawn around the result), remesh. All non-destructive, reorderable, with Apply |
+| Modifiers | Mirror, array, solidify, bend (around X, Y and Z at once, up to a full ring, moving only the vertices already there), twist (about X, Y and Z at once, up to four full turns), weld, loop subdivide, subdivision surface (Catmull-Clark or simple, up to 6 levels, edit cage drawn around the result), remesh. All non-destructive, reorderable, with Apply |
 | Remesh | A modifier with three methods: voxel quad shell (signed distance field, surface nets, crease and corner constraints), blocks straight off the lattice, and quadric error decimation |
-| 3D cursor | Right-click to place it on a point, vertex, edge or face; snap it to the selection or the selection to it; use it as the transform pivot, as a mirror plane or as the centre of a bend |
+| 3D cursor | Right-click to place it on a point, vertex, edge or face; snap it to the selection or the selection to it; use it as the transform pivot, as a mirror plane or as the centre of a bend or a twist |
 | Proportional editing | Six falloff curves, with a viewport ring showing how far the falloff reaches. Scroll to resize it mid-transform, or Ctrl+scroll any time |
 | Viewport | Orbit / pan / zoom, solid / wireframe / x-ray / matcap, adaptive grid, normals overlay |
 | Touch | Pinch to zoom, two-finger slide to pan, two-finger twist to turn, drag the axis widget to orbit, long press for the right-click menus. Panels become drawers on narrow screens, and a quick bar holds undo, redo, ADD, delete and the knife's CUT / UNDO POINT / CANCEL |
@@ -281,6 +281,9 @@ Two settings read the cursor:
 - The Bend modifier's **Origin** does the same for the centre of the bend: the
   mesh at that point stays where it is. Put the cursor at the foot of a column
   and the foot stays planted while the top curls over.
+- The Twist modifier's **Origin** sets the line the twist turns about and the
+  level that holds still. With the cursor at the foot of a column, the foot
+  stays square to the floor and the top turns the whole angle.
 
 Hiding the ring, from the menu or **Overlays → 3D cursor**, does not move it or
 stop anything from using it.

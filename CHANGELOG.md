@@ -18,8 +18,14 @@ New entries go under `Unreleased` until a version is cut. Group them under
   through its faces.
 - Bend modifier: curls the mesh around X, Y and Z at once, each by up to 360°
   spread along the whole length that curls, so a full turn closes it into a
-  ring. SEGMENTS slices flat faces and straight edges into strips first so
-  they curve, and ORIGIN centres the bend on the object or the 3D cursor.
+  ring. It bends the object as drawn, so a cube scaled into a column curls
+  along its length, and it only moves the vertices already there: loop cut
+  the length you want curved. ORIGIN centres the bend on the object or the 3D
+  cursor.
+- Twist modifier: turns the mesh about X, Y and Z at once, each by up to four
+  full turns, so one end turns the whole angle past the other. Like bend, it
+  twists the object as drawn and only moves the vertices already there, and
+  ORIGIN picks the line it turns about: the object's or the 3D cursor's.
 - Scripting: the `<>` button in the top bar opens a code editor that builds
   and edits the scene with JavaScript: primitives and custom meshes,
   transforms, colours, every modelling operation on a scripted selection,

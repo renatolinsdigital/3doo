@@ -204,13 +204,13 @@ box.edit((mesh) => {
   it('adds and sets modifiers, merging a nested setting into the rest of it', async () => {
     await run(`
       const bar = scene.add('cube');
-      const bend = bar.addModifier('bend', { angles: { z: 90 }, segments: 8 });
+      const bend = bar.addModifier('bend', { angles: { z: 90 }, origin: 'cursor' });
       bend.set({ angles: { x: 15 } });
       bar.addModifier('array', { count: 3, relativeOffset: [1.5, 0, 0] });
     `);
 
     const [bend, array] = store().objects[0].modifiers;
-    expect(bend).toMatchObject({ type: 'bend', angles: { x: 15, y: 0, z: 90 }, segments: 8 });
+    expect(bend).toMatchObject({ type: 'bend', angles: { x: 15, y: 0, z: 90 }, origin: 'cursor' });
     expect(array).toMatchObject({
       type: 'array',
       count: 3,

@@ -135,7 +135,19 @@ const arch = scene.add('cylinder', {
   segments: 16,
   position: [0, 0, -2],
 });
-arch.addModifier('bend', { angles: { z: 180 }, segments: 48 });
+// A bend only moves the vertices there are, so the length needs loops to curve at.
+arch.edit((mesh) => {
+  mesh.selectEdges((edge) => Math.abs(edge.a.y - edge.b.y) > 1);
+  mesh.loopCut({ cuts: 32 });
+});
+arch.addModifier('bend', { angles: { z: 180 } });
+
+const column = scene.add('cube', { name: 'COLUMN', scale: [0.5, 3, 0.5], position: [-2.5, 1.5, -2] });
+column.edit((mesh) => {
+  mesh.selectEdges((edge) => Math.abs(edge.a.y - edge.b.y) > 0.5);
+  mesh.loopCut({ cuts: 32 });
+});
+column.addModifier('twist', { angles: { y: 90 } });
 
 const tile = scene.add('cube', { name: 'TILES', scale: [0.5, 0.1, 0.5], position: [-2, 0, 1] });
 tile.addModifier('array', { count: 8, relativeOffset: [1.1, 0, 0] });

@@ -1,7 +1,7 @@
 import { DEFAULT_REMESH_SETTINGS, type RemeshSettings } from '../remesh';
 
 export type ModifierType =
-  'mirror' | 'array' | 'solidify' | 'bend' | 'weld' | 'subdivide' | 'subsurf' | 'remesh';
+  'mirror' | 'array' | 'solidify' | 'bend' | 'twist' | 'weld' | 'subdivide' | 'subsurf' | 'remesh';
 
 export interface ModifierBase {
   id: string;
@@ -52,7 +52,8 @@ export interface SolidifyModifier extends ModifierBase {
 /**
  * Curls the mesh around X, then Y, then Z, as three bends stacked one after
  * another would. Around each axis, the longer of the two sides square to it is
- * the one that curls, toward the other.
+ * the one that curls, toward the other. It only moves the vertices there are:
+ * a face curves as far as the loops already across it let it.
  */
 export interface BendModifier extends ModifierBase {
   type: 'bend';
@@ -63,11 +64,22 @@ export interface BendModifier extends ModifierBase {
   angles: { x: number; y: number; z: number };
   /** Where the bend is centred. The mesh there stays where it was. */
   origin: ModifierOrigin;
+}
+
+/**
+ * Turns the mesh about X, then Y, then Z, as three twists stacked one after
+ * another would. About each axis, the further along it a vertex lies, the
+ * further it turns. Like the bend, it only moves the vertices there are.
+ */
+export interface TwistModifier extends ModifierBase {
+  type: 'twist';
   /**
-   * How many strips the mesh is sliced into along each bend before it curls,
-   * so a long flat face has edges to curve at. 1 slices nothing.
+   * Degrees about each axis, from -1440 to 1440: how far one end of the mesh
+   * turns past the other, spread evenly along its length.
    */
-  segments: number;
+  angles: { x: number; y: number; z: number };
+  /** The twist turns about a line through this, and the mesh level with it holds still. */
+  origin: ModifierOrigin;
 }
 
 export interface WeldModifier extends ModifierBase {
@@ -115,6 +127,7 @@ export type Modifier =
   | ArrayModifier
   | SolidifyModifier
   | BendModifier
+  | TwistModifier
   | WeldModifier
   | SubdivideModifier
   | SubsurfModifier
@@ -180,7 +193,15 @@ export function createModifier(type: ModifierType): Modifier {
         enabled: true,
         angles: { x: 0, y: 0, z: 45 },
         origin: 'object',
-        segments: 16,
+      };
+    case 'twist':
+      return {
+        id: nextId(type),
+        type,
+        name: 'TWIST',
+        enabled: true,
+        angles: { x: 0, y: 90, z: 0 },
+        origin: 'object',
       };
     case 'weld':
       return {

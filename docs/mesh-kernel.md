@@ -480,7 +480,7 @@ any real level they would bury the surface. Object mode draws the result alone.
 ### Bend
 
 Bend is the Bend mode of Blender's Simple Deform modifier, with three changes
-that make it usable without an empty to steer it:
+that make it usable without an empty to steer it or a scale to apply first:
 
 - **One modifier carries all three axes.** The bends run around X, then Y, then
   Z, each on the result of the one before, which is exactly what three
@@ -490,15 +490,19 @@ that make it usable without an empty to steer it:
   per axis, which is why a plane lying flat cannot be curled up there without
   rotating an origin object first. On a tie the side lying flat curls up toward
   +Y (`SQUARE_TO`), so a cube or a square plane bends like a sheet of paper.
-- **It slices before it bends.** A deform only moves vertices, so a plane of
-  four corners bent through 90° stays one flat face. `sliceAcross` first cuts
-  every face and wire edge crossing one of `segments - 1` evenly spaced planes
-  square to the side that curls, keeping both sides of each cut. A vertex
-  already on a plane is not cut again, so a mesh with enough loops gains
-  nothing. Cut vertices are shared per pair of vertices, which keeps the seams
-  welded, and they carry interpolated UVs and the sharp marks of the edge they
-  split. A slicing that would outgrow `MESH_BUDGET` is skipped and the bend
-  runs on the vertices there are.
+- **It bends the object as it is drawn.** `ModifierContext.scale` carries the
+  object's scale, and `bendAround` measures, curls and writes back each vertex
+  at that scale. Measured as stored, a cube scaled into a column is still a
+  cube: it curled across its width, and the scale then stretched that curl
+  into a leaf. A uniform scale changes nothing.
+
+Like Blender's, the bend only moves the vertices there are and adds none: a
+plane of four corners bent through 90° stays one flat face. A face curves as
+far as the loops already across it let it, so the length that should curve
+wants loop cuts, or a LOOP SUBDIVIDE above the bend in the stack. Slicing the
+mesh into strips before bending was tried and dropped: the strips ran across
+whatever loops the mesh already had, which left a sphere or a cylinder crossed
+with stray edges and n-gons nobody asked for.
 
 The angle is spread over the whole length that curls, as Blender does: the
 radius is `span / angle`, so 360° wraps any length into exactly one ring and
@@ -507,10 +511,23 @@ the two ends land on each other (a WELD below the bend joins them). The centre
 mesh stays put. The line through it keeps its length; what lies toward the
 inside of the curl is squeezed and what lies outside is stretched.
 
-A convex face is clipped to each slab between neighbouring planes. A concave
-face is triangulated first: the part of it inside a slab it enters and leaves
-more than once is several pieces, and clipping the ring whole would join them
-across the gap outside the face.
+### Twist
+
+Twist is the Twist mode of Blender's Simple Deform modifier, carrying all three
+axes the way Bend does: the twists run about X, then Y, then Z, each on the
+result of the one before. About each axis, every vertex turns by
+`angle * (distance along the axis from the centre) / (length of the mesh along
+it)`, so one end turns the whole angle past the other however long the mesh is.
+The centre (the object origin, or the 3D cursor) fixes both the line the mesh
+turns about and the level that holds still. Positive angles are right-handed
+(`TURNS`): anticlockwise, looking down the axis from its positive end.
+
+It shares `drawnShape` with Bend, so the cross-section turns as it is drawn: a
+cube scaled into a flat bar keeps its flat section all the way up, where turned
+as stored the section would shear into a rhombus partway round. The angle is clamped to
+`MAX_TWIST_ANGLE`, four full turns. Like Bend it only moves the vertices there
+are, so a side twists as smoothly as the loops across it allow: four corners
+and nothing between them twist into a single warped quad.
 
 ### Weld
 
