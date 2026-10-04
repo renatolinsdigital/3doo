@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseProject } from '@kernel/index';
 import { useEditorStore } from '@store/index';
 
+import { projectText } from '../services/assets';
+import { sceneLink } from '../services/sceneLink';
+
 import {
   allowAutosaveLocation,
   chooseAutosaveLocation,
@@ -272,6 +275,88 @@ describe('what the editor opens on', () => {
 
     expect(objects()).toHaveLength(1);
     expect(objects()[0].name).toBe('TORUS');
+  });
+});
+
+describe('opening a scene link', () => {
+  afterEach(() => window.history.replaceState(null, '', '/'));
+
+  async function linkTo(build: () => void) {
+    build();
+    const state = useEditorStore.getState();
+    const text = await projectText(state.snapshotDocument(), state.assets);
+    useEditorStore.getState().resetScene();
+    const link = await sceneLink('http://localhost', text);
+    window.history.replaceState(null, '', link.slice('http://localhost'.length));
+  }
+
+  it('opens the scene the link carries instead of the cube', async () => {
+    await linkTo(() => {
+      useEditorStore.getState().addPrimitive('cylinder');
+      useEditorStore.getState().setProjectName('lamp');
+    });
+
+    renderHook(() => useAutosave());
+
+    await waitFor(() => expect(objects().map((object) => object.name)).toEqual(['CYLINDER']));
+    expect(useEditorStore.getState().projectName).toBe('lamp');
+    expect(lastToast()?.message).toBe('Opened lamp from the link');
+  });
+
+  it('takes the link off the address bar, so a reload does not open it over later work', async () => {
+    await linkTo(() => useEditorStore.getState().addPrimitive('cylinder'));
+
+    renderHook(() => useAutosave());
+
+    await waitFor(() => expect(objects()).toHaveLength(1));
+    expect(window.location.hash).toBe('');
+    expect(window.location.pathname).toBe('/modeling');
+  });
+
+  it('counts the linked scene as work in no file, and leaves nothing to undo into', async () => {
+    await linkTo(() => useEditorStore.getState().addPrimitive('cylinder'));
+
+    renderHook(() => useAutosave());
+
+    await waitFor(() => expect(objects()).toHaveLength(1));
+    expect(useEditorStore.getState().dirty).toBe(true);
+    expect(useEditorStore.getState().savedToFile).toBe(false);
+    expect(useEditorStore.getState().canUndo).toBe(false);
+  });
+
+  it('offers to save before a link pasted over this tab reloads it onto the linked scene', async () => {
+    window.history.replaceState(null, '', '/modeling');
+    renderHook(() => useAutosave());
+    await waitFor(() => expect(objects()).toHaveLength(1));
+    act(() => useEditorStore.getState().addPrimitive('cylinder'));
+
+    act(() => {
+      window.history.replaceState(null, '', '/modeling#scene=abc');
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+    });
+
+    expect(useEditorStore.getState().dialog).toBe('reload');
+  });
+
+  it('pays no attention to a hash without a scene in it', async () => {
+    renderHook(() => useAutosave());
+    await waitFor(() => expect(objects()).toHaveLength(1));
+    act(() => useEditorStore.getState().addPrimitive('cylinder'));
+
+    act(() => window.dispatchEvent(new HashChangeEvent('hashchange')));
+
+    expect(useEditorStore.getState().dialog).toBeNull();
+  });
+
+  it('falls back to the cube, and says why, when the link was cut short', async () => {
+    window.history.replaceState(null, '', '/modeling#scene=abc');
+
+    renderHook(() => useAutosave());
+
+    await waitFor(() => expect(objects()).toHaveLength(1));
+    expect(objects()[0].name).toBe('CUBE');
+    expect(lastToast()?.variant).toBe('error');
+    expect(lastToast()?.message).toMatch(/^Could not open the scene in the link/);
   });
 });
 

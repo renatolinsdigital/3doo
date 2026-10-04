@@ -42,7 +42,8 @@ just run the path every operation takes.
   /shared          presentation-only component library
   /global-styles   Sass design system
   /modules         home, modeling and docs, one per path
-  /app             shell: module registry, router, brand switcher
+  /app             shell: module registry, router, brand switcher, automation API
+/mcp               the MCP server for AI assistants, run by Node (docs/mcp.md)
 ```
 
 Imports use path aliases: `@kernel`, `@store`, `@domain`, `@shared`,

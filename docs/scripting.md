@@ -233,6 +233,8 @@ where it is.
 The draft is kept in `localStorage` under `3doo:script`, not in the project: a
 script is a tool for making the scene rather than a part of it.
 
-There is still no `window.app` global for the browser console. The API is
-built per run by `createScriptApi()`, and exposing it there is one line when
-there is a reason to.
+The API is built per run by `createScriptApi()`. Outside the editor it is
+reached through `window.threedoo`, the automation API in `src/app/automation`:
+`threedoo.run(source)` runs a script exactly as RUN does and returns the scene
+afterwards. That is what the MCP server drives, and it works from the browser
+console too. See [mcp.md](mcp.md).

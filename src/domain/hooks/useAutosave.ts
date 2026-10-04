@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
 
-import type { ProjectDocument } from '@kernel/index';
+import { type ProjectDocument, parseProject } from '@kernel/index';
 import { useEditorStore } from '@store/index';
 import type { SceneAsset } from '@store/types';
 
-import { projectText } from '../services/assets';
+import { hydrateAssets, projectText } from '../services/assets';
 import {
   type NumberedCopy,
   autosaveLocationLabel,
@@ -18,6 +18,7 @@ import {
   writeNumberedCopy,
 } from '../services/autosave';
 import { canPickFolder, mayWrite, mayWriteNow } from '../services/download';
+import { decodeScenePayload, scenePayloadIn } from '../services/sceneLink';
 
 /**
  * Whether this page load has already put its opening scene on screen.
@@ -180,13 +181,38 @@ async function copyTo(
 }
 
 /**
+ * Opens the scene a `#scene=` link carries, in place of the cube.
+ *
+ * The link is taken off the address bar first, whatever happens next: a reload
+ * is a fresh tab, and opening the link a second time over work done since
+ * would throw that work away without a word. The scene is in no file, so it
+ * counts as unsaved work, and leaving the tab asks first.
+ */
+async function openLinkedScene(payload: string): Promise<void> {
+  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+  const state = useEditorStore.getState();
+  try {
+    const document = parseProject(await decodeScenePayload(payload));
+    state.loadProjectDocument(document, true, hydrateAssets(document.assets ?? []));
+    state.clearHistory();
+    state.pushToast('success', `Opened ${document.name} from the link`);
+  } catch (error) {
+    state.addPrimitive('cube');
+    state.markSaved();
+    state.pushToast('error', `Could not open the scene in the link: ${(error as Error).message}`);
+  }
+}
+
+/**
  * What the editor opens on, and the autosave that keeps it.
  *
  * On mount it opens on a cube, the way Blender does: an empty viewport gives
  * you nothing to try a tool against, and the first thing anybody does with a
  * fresh tab is add a cube to have something to press keys at. The browser
  * keeps no copy of a project, so there is no earlier session to come back to:
- * the numbered copies are files, and FILE > OPEN is the way back to one.
+ * the numbered copies are files, and FILE > OPEN is the way back to one. A
+ * page opened from a scene link (`#scene=`, see `services/sceneLink.ts`) opens
+ * on the scene the link carries instead.
  *
  * After that it writes on an interval, to one place only: a new numbered
  * `.3doo` in the `3doo-auto-saves` folder of the location the user chose,
@@ -213,12 +239,33 @@ export function useAutosave(): void {
     // Something is already on the table: a scene built before this mounted.
     if (state.objects.length > 0) return;
 
+    // A link handed over a scene to open, which takes the cube's place.
+    const linked = scenePayloadIn(window.location.hash);
+    if (linked) {
+      void openLinkedScene(linked);
+      return;
+    }
+
     // Undoable like any other add, so anyone who wants the empty viewport is
     // one Ctrl+Z from it.
     state.addPrimitive('cube');
     // The cube is the editor's doing, not the user's. A tab opened and left
     // alone has nothing worth keeping, so it is not counted as a change.
     state.markSaved();
+  }, []);
+
+  useEffect(() => {
+    // A scene link pasted over this tab's own address changes only the hash,
+    // which reloads nothing. A reload is what opens it, behind the same offer
+    // to save that F5 gets when there is work in no file.
+    const openPastedLink = () => {
+      if (!scenePayloadIn(window.location.hash)) return;
+      const state = useEditorStore.getState();
+      if (state.dirty) state.openDialog('reload');
+      else window.location.reload();
+    };
+    window.addEventListener('hashchange', openPastedLink);
+    return () => window.removeEventListener('hashchange', openPastedLink);
   }, []);
 
   useEffect(() => {
