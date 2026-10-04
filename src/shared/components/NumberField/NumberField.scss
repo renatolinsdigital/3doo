@@ -15,6 +15,9 @@
     @include field-label;
 
     cursor: ew-resize;
+    // A finger moving up the label scrolls the panel, and one moving across
+    // it scrubs: the browser keeps the sideways direction out of its panning.
+    touch-action: pan-y pinch-zoom;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

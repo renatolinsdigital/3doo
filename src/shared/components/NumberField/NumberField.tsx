@@ -47,6 +47,14 @@ export interface NumberFieldProps {
  */
 const NUMBER_DRAFT = /^-?\d*\.?\d*$/;
 
+/**
+ * How far a finger has to travel across a label before it scrubs. Most of a
+ * panel is labels, so a finger on one is as likely to be scrolling the panel,
+ * and the few pixels it wobbles sideways before the scroll takes over would
+ * otherwise nudge the value on the way.
+ */
+const TOUCH_SCRUB_SLOP_PX = 8;
+
 function clamp(value: number, min?: number, max?: number): number {
   if (min !== undefined && value < min) return min;
   if (max !== undefined && value > max) return max;
@@ -78,7 +86,13 @@ export function NumberField({
   const id = useId();
   const [draft, setDraft] = useState(() => String(value));
   const [editing, setEditing] = useState(false);
-  const scrubbing = useRef<{ startX: number; startValue: number } | null>(null);
+  const scrubbing = useRef<{
+    startX: number;
+    startY: number;
+    startValue: number;
+    /** False while a finger has yet to show it is scrubbing rather than scrolling. */
+    engaged: boolean;
+  } | null>(null);
   const tooltip = useTooltipTrigger(hint);
 
   const resolvedStep = step ?? (integer ? 1 : 0.1);
@@ -108,20 +122,36 @@ export function NumberField({
 
   const handlePointerDown = (event: React.PointerEvent<HTMLLabelElement>) => {
     if (disabled) return;
-    scrubbing.current = { startX: event.clientX, startValue: value };
+    const engaged = event.pointerType !== 'touch';
+    scrubbing.current = {
+      startX: event.clientX,
+      startY: event.clientY,
+      startValue: value,
+      engaged,
+    };
     event.currentTarget.setPointerCapture(event.pointerId);
-    onScrubStart?.();
+    if (engaged) onScrubStart?.();
   };
 
   const handlePointerMove = (event: React.PointerEvent<HTMLLabelElement>) => {
     const state = scrubbing.current;
     if (!state) return;
+    if (!state.engaged) {
+      const across = Math.abs(event.clientX - state.startX);
+      if (across < TOUCH_SCRUB_SLOP_PX || across < Math.abs(event.clientY - state.startY)) return;
+      // Measured on from here, so the value does not jump by the slop.
+      state.engaged = true;
+      state.startX = event.clientX;
+      onScrubStart?.();
+    }
     const delta = (event.clientX - state.startX) * resolvedStep;
     onChange(quantize(state.startValue + delta));
   };
 
+  // A cancel too: a finger that turns out to be scrolling the panel is
+  // cancelled by the browser rather than lifted.
   const handlePointerUp = (event: React.PointerEvent<HTMLLabelElement>) => {
-    const wasScrubbing = scrubbing.current !== null;
+    const wasScrubbing = scrubbing.current?.engaged === true;
     scrubbing.current = null;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
@@ -137,6 +167,7 @@ export function NumberField({
         onPointerDown={hideLabel ? undefined : handlePointerDown}
         onPointerMove={hideLabel ? undefined : handlePointerMove}
         onPointerUp={hideLabel ? undefined : handlePointerUp}
+        onPointerCancel={hideLabel ? undefined : handlePointerUp}
       >
         {label}
       </label>

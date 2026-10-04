@@ -8,6 +8,7 @@ import { DEFAULT_PREFERENCES } from '@store/index';
 import type { SceneObject, SelectMode, ShadingMode, ViewportSettings } from '@store/types';
 
 import {
+  POINT_MARK_SIZES,
   VIEWPORT_COLORS,
   createFaceOrientationMaterial,
   createHoverPointMaterial,
@@ -57,6 +58,16 @@ const INACTIVE_OUTLINE_TINT = 0.68;
  * about three quarters of the ink. 1.4 reads as the same line.
  */
 const WIRE_WIDTH_DEVICE_PX = 1.4;
+
+/**
+ * The wireframe for a finger, in CSS pixels. A device pixel on a phone is a
+ * third of a CSS one, so the desktop line all but vanishes there, and an edge
+ * has to be seen before it can be tapped.
+ */
+const TOUCH_WIRE_WIDTH_PX = 1.75;
+
+/** How much bigger the point marks are drawn for a finger than for a mouse. */
+const TOUCH_POINT_SCALE = 2.25;
 
 /**
  * A held cull table and what it was built from.
@@ -608,8 +619,10 @@ export class ObjectView {
    * pixels comes out that much heavier on every display with more than one
    * device pixel to them. The outline is left alone: its width is a user
    * preference, given in the CSS pixels the preference is written in.
+   *
+   * `touch` draws the wire and the point marks for a finger instead.
    */
-  setResolution(width: number, height: number, pixelRatio: number): void {
+  setResolution(width: number, height: number, pixelRatio: number, touch = false): void {
     for (const line of [
       this.outline,
       this.wire,
@@ -619,8 +632,20 @@ export class ObjectView {
     ]) {
       (line.material as LineMaterial).resolution.set(width, height);
     }
+    const wireWidth = touch ? TOUCH_WIRE_WIDTH_PX : WIRE_WIDTH_DEVICE_PX / Math.max(1, pixelRatio);
     for (const line of [this.wire, this.sharpEdges, this.selectedEdges, this.previewWire]) {
-      (line.material as LineMaterial).linewidth = WIRE_WIDTH_DEVICE_PX / Math.max(1, pixelRatio);
+      (line.material as LineMaterial).linewidth = wireWidth;
+    }
+
+    const scale = touch ? TOUCH_POINT_SCALE : 1;
+    const marks: [THREE.Points, number][] = [
+      [this.points, POINT_MARK_SIZES.vertex],
+      [this.hoverPoint, POINT_MARK_SIZES.hover],
+      [this.recentPoints, POINT_MARK_SIZES.recent],
+      [this.origin, POINT_MARK_SIZES.origin],
+    ];
+    for (const [points, size] of marks) {
+      (points.material as THREE.PointsMaterial).size = size * scale;
     }
   }
 

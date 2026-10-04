@@ -319,6 +319,12 @@ box.position = [1, 0, 0];`);
       await run(source);
 
       for (const object of store().objects) expect(object.mesh.validate()).toEqual([]);
+      // The examples are what people learn the API from, so they model the way a
+      // finished asset is modelled: quads, and triangles where a point needs them.
+      const ngons = store().objects.filter((object) =>
+        [...object.mesh.faces.values()].some((face) => object.mesh.faceLoopCount(face) > 4),
+      );
+      expect(ngons.map((object) => object.name)).toEqual([]);
     },
   );
 

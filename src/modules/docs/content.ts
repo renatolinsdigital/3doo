@@ -900,7 +900,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'The editor works with fingers as well as with a mouse and keyboard. One finger is the left button, two fingers are the camera, and a long press is the right button. Every control grows to a size a fingertip can hit.',
+        text: 'The editor works with fingers as well as with a mouse and keyboard. One finger is the left button, two fingers are the camera, and a long press is the right button. Every control grows to a size a fingertip can hit, and the gizmo, the vertex dots and the edges are drawn larger, to be seen and aimed at.',
       },
       {
         kind: 'table',

@@ -35,7 +35,12 @@ New entries go under `Unreleased` until a version is cut. Group them under
   section of the docs. RUN (Ctrl+Enter) reports success in a toast and closes
   the dialog; a failure is reported in a toast and under the code, marks the
   failing line, keeps the dialog open and leaves the scene untouched. A whole
-  run is one step to undo.
+  run is one step to undo. LOAD AN EXAMPLE fills the editor with a finished
+  model to learn from: a stylised axe, a gnome's mushroom house, a low poly
+  character, a wizard's staff, a wooden bridge, a treasure chest and potion
+  bottles. Each is modelled the way a game asset is: no face has more than
+  four sides, and parts meet surface to surface rather than passing through
+  one another.
 - Touch screens: pinch to zoom about the point between the fingers, slide two
   fingers to pan, and twist them to turn the scene round like a turntable. One
   finger keeps doing what the left mouse button does, and a second finger
@@ -56,6 +61,8 @@ New entries go under `Unreleased` until a version is cut. Group them under
   top bar scrolls sideways instead of widening the page.
 - On touch screens the controls grow to fingertip size and the smallest text
   comes up a point. The desktop is unchanged.
+- On touch screens the transform gizmo, the vertex dots and the wireframe's
+  edges are drawn larger, so they can be seen and aimed at with a finger.
 - On a phone the docs read as one scrolling page, instead of an article boxed
   into a third of the screen under the contents.
 - The camera jumps to a view instead of turning to it when the system asks for
@@ -71,6 +78,10 @@ New entries go under `Unreleased` until a version is cut. Group them under
   was every active button.
 - On a touch screen a tap left the control's hint stuck on screen.
 - iOS no longer zooms the page into a field when it is tapped.
+- On an iPhone or iPad, panels taller than the screen could not be scrolled.
+- A finger swiping up the panels over a field's label scrolls them, rather
+  than nudging the value on the way, and a scroll that starts on the edge
+  LENGTH label no longer leaves an empty step in the undo history.
 
 - In orthographic view, zoomed in, a click on an object could select the one
   behind it, and the gizmo on that object could not be grabbed.

@@ -136,6 +136,62 @@ describe('NumberField', () => {
     expect(onScrubEnd).toHaveBeenCalledTimes(1);
   });
 
+  it('lets a finger scroll past a label without touching the value', () => {
+    const onChange = vi.fn();
+    const onScrubStart = vi.fn();
+    const onScrubEnd = vi.fn();
+    render(
+      <NumberField
+        label="LENGTH"
+        value={1}
+        onChange={onChange}
+        onScrubStart={onScrubStart}
+        onScrubEnd={onScrubEnd}
+      />,
+    );
+
+    const handle = screen.getByText('LENGTH');
+    const finger = { pointerId: 1, pointerType: 'touch' };
+    fireEvent.pointerDown(handle, { ...finger, clientX: 0, clientY: 0 });
+    // The sideways wobble of a finger on its way up the panel.
+    fireEvent.pointerMove(handle, { ...finger, clientX: 5, clientY: 4 });
+    fireEvent.pointerMove(handle, { ...finger, clientX: 9, clientY: 30 });
+    // The browser takes the gesture over as a scroll.
+    fireEvent.pointerCancel(handle, finger);
+
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onScrubStart).not.toHaveBeenCalled();
+    expect(onScrubEnd).not.toHaveBeenCalled();
+  });
+
+  it('scrubs once a finger moves across the label, from where it set off', () => {
+    const onChange = vi.fn();
+    const onScrubStart = vi.fn();
+    const onScrubEnd = vi.fn();
+    render(
+      <NumberField
+        label="LENGTH"
+        value={1}
+        step={0.1}
+        onChange={onChange}
+        onScrubStart={onScrubStart}
+        onScrubEnd={onScrubEnd}
+      />,
+    );
+
+    const handle = screen.getByText('LENGTH');
+    const finger = { pointerId: 1, pointerType: 'touch' };
+    fireEvent.pointerDown(handle, { ...finger, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(handle, { ...finger, clientX: 10, clientY: 1 });
+    fireEvent.pointerMove(handle, { ...finger, clientX: 20, clientY: 1 });
+    fireEvent.pointerCancel(handle, finger);
+
+    expect(onScrubStart).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenNthCalledWith(1, 1);
+    expect(onChange).toHaveBeenLastCalledWith(2);
+    expect(onScrubEnd).toHaveBeenCalledTimes(1);
+  });
+
   it('leaves a disabled field unscrubbable', () => {
     const onScrubStart = vi.fn();
     const onChange = vi.fn();

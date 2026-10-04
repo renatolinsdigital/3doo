@@ -167,7 +167,9 @@ decided separately:
   that scrolls sideways rather than pushing the page wider than the screen.
 - **Pointer.** On a coarse pointer every control grows to a fingertip's size
   (44px for the default target) and the quick bar gains the keys a hand
-  without a keyboard cannot press. A laptop with a touch screen keeps the
+  without a keyboard cannot press. The viewport follows suit: the gizmo, the
+  vertex dots and the wireframe are drawn larger, since a desktop's few pixels
+  all but vanish on a phone's dense screen. A laptop with a touch screen keeps the
   desktop layout, since its main pointer is the mouse, but its screen still
   takes every gesture below.
 

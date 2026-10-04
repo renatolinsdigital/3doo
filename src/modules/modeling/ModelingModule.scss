@@ -78,6 +78,26 @@
     }
   }
 
+  // Safari on iOS will not touch-scroll a box with pointer-events: none, even
+  // under a finger resting on a child that turned them back on (WebKit bug
+  // 183870), so on a touch screen a tall column could not be scrolled at all.
+  // There the column hugs its panels instead, down to the bottom of the
+  // viewport, which lets it take events itself without covering any of the
+  // scene with empty column.
+  @media (pointer: coarse) {
+    &__left,
+    &__right {
+      inset-block-end: auto;
+      max-height: calc(100% - var(--panel-gap) * 2);
+      pointer-events: auto;
+    }
+
+    // The column no longer has a height of its own for a percentage to be of.
+    &__right > .outliner {
+      max-height: 25dvh;
+    }
+  }
+
   // Below desktop width the columns are drawers, put away until the quick
   // bar's TOOLS or SCENE brings them out over the viewport.
   @include tablet-down {

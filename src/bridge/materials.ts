@@ -511,6 +511,16 @@ const HOVER_POINT_SCALE = 1.8;
 /** Bigger than a vertex dot: one object has one, and it has to read at a glance. */
 const ORIGIN_POINT_SIZE = 8;
 
+const RECENT_POINT_SIZE = 11;
+
+/** Each point mark's size in CSS pixels, as drawn for a mouse. */
+export const POINT_MARK_SIZES = {
+  vertex: POINT_SIZE,
+  hover: POINT_SIZE * HOVER_POINT_SCALE,
+  recent: RECENT_POINT_SIZE,
+  origin: ORIGIN_POINT_SIZE,
+} as const;
+
 /**
  * The vertex dots of edit mode.
  *
@@ -578,7 +588,7 @@ export function createHoverPointMaterial(): THREE.PointsMaterial {
 export function createRecentPointMaterial(): THREE.PointsMaterial {
   return liftPoints(
     new THREE.PointsMaterial({
-      size: 11,
+      size: RECENT_POINT_SIZE,
       sizeAttenuation: false,
       color: VIEWPORT_COLORS.cyan,
       depthTest: true,

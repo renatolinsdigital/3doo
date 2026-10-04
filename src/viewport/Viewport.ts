@@ -168,6 +168,12 @@ const MAX_SCALE_RATIO = 100;
  */
 const GIZMO_SIZE = 2 / 3;
 
+/**
+ * The gizmo for a finger. A fingertip covers a desktop handle whole, and on a
+ * phone the handles were too close together to tell which one a press meant.
+ */
+const TOUCH_GIZMO_SIZE = 1;
+
 /** What one wheel notch multiplies the proportional falloff radius by. */
 const PROPORTIONAL_WHEEL_STEP = 1.1;
 const MIN_PROPORTIONAL_RADIUS = 0.01;
@@ -669,6 +675,13 @@ export class Viewport {
     typeof window.matchMedia === 'function'
       ? window.matchMedia('(prefers-reduced-motion: reduce)')
       : null;
+  /**
+   * Whether a finger is the main way in, which draws the gizmo and the marks
+   * on the geometry large enough to see and aim at. The same question as
+   * `TOUCH_FIRST`, which the panels grow to fingertip size by.
+   */
+  private readonly touchFirst: MediaQueryList | null =
+    typeof window.matchMedia === 'function' ? window.matchMedia('(pointer: coarse)') : null;
   /** The edges the cut will make, and the line on from its last click to the pointer. */
   private readonly knifeLines: LineSegments2;
   /** Where the cut will put its vertices: its clicks and the edges it crosses. */
@@ -772,7 +785,7 @@ export class Viewport {
     this.applyMotionPreference();
 
     this.gizmo = new TransformControls(this.camera, canvas);
-    this.gizmo.size = GIZMO_SIZE;
+    this.gizmo.size = this.fingerSized ? TOUCH_GIZMO_SIZE : GIZMO_SIZE;
     this.gizmoHelper = resolveGizmoHelper(this.gizmo);
     aimGizmoRays(this.gizmo);
     paintGizmoAxes(this.gizmoHelper, this.gizmo);
@@ -1078,6 +1091,7 @@ export class Viewport {
     window.addEventListener('keyup', this.handleModifierKey);
     window.addEventListener('blur', this.handleWindowBlur);
     this.reducedMotion?.addEventListener('change', this.applyMotionPreference);
+    this.touchFirst?.addEventListener('change', this.applyTouchSizing);
 
     this.gizmo.addEventListener('dragging-changed', this.handleGizmoDragging);
     this.gizmo.addEventListener('objectChange', this.handleGizmoChange);
@@ -1352,6 +1366,7 @@ export class Viewport {
           this.outlineResolution.x,
           this.outlineResolution.y,
           this.renderer.getPixelRatio(),
+          this.fingerSized,
         );
         this.views.set(object.id, view);
         this.scene.add(view.group);
@@ -1552,6 +1567,16 @@ export class Viewport {
    * relates to the next, but it is a fifth of a second of the whole picture
    * swinging round, which is the motion that setting exists to stop.
    */
+  private get fingerSized(): boolean {
+    return this.touchFirst?.matches ?? false;
+  }
+
+  /** A mouse plugged into a tablet, or unplugged again, resizes what it aims at. */
+  private applyTouchSizing = (): void => {
+    this.gizmo.size = this.fingerSized ? TOUCH_GIZMO_SIZE : GIZMO_SIZE;
+    this.resize();
+  };
+
   private applyMotionPreference = (): void => {
     this.controls.viewTweenMs = this.reducedMotion?.matches ? 0 : VIEW_TWEEN_MS;
   };
@@ -4233,7 +4258,7 @@ export class Viewport {
     (this.slideGuide.material as LineMaterial).resolution.set(width, height);
     (this.knifeLines.material as LineMaterial).resolution.set(width, height);
     for (const view of this.views.values()) {
-      view.setResolution(width, height, this.renderer.getPixelRatio());
+      view.setResolution(width, height, this.renderer.getPixelRatio(), this.fingerSized);
     }
 
     const aspect = width / height;
@@ -4587,6 +4612,7 @@ export class Viewport {
     window.removeEventListener('keyup', this.handleModifierKey);
     window.removeEventListener('blur', this.handleWindowBlur);
     this.reducedMotion?.removeEventListener('change', this.applyMotionPreference);
+    this.touchFirst?.removeEventListener('change', this.applyTouchSizing);
 
     for (const view of this.views.values()) view.dispose();
     this.views.clear();
