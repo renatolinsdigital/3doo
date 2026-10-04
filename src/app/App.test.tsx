@@ -931,10 +931,10 @@ describe('App shell', () => {
     render(<App />);
     const glyphs = [...document.querySelectorAll('.top-bar .top-bar__glyph')];
 
-    // Snap, proportional, auto merge, ortho, smooth, history and the two frame
-    // buttons. They were Unicode glyphs, and the crosshair on FRAME SEL came
-    // out at about half the height of the ruled square on SNAP.
-    expect(glyphs).toHaveLength(8);
+    // Snap, proportional, auto merge, ortho, smooth, script, history and the
+    // two frame buttons. They were Unicode glyphs, and the crosshair on FRAME
+    // SEL came out at about half the height of the ruled square on SNAP.
+    expect(glyphs).toHaveLength(9);
     for (const glyph of glyphs) {
       expect(glyph.tagName.toLowerCase()).toBe('svg');
       // One box, and drawings that fill it, so no font gets a say in the size.
@@ -947,7 +947,7 @@ describe('App shell', () => {
   it('gives each icon button a picture rather than a character', () => {
     render(<App />);
 
-    for (const name of ['HISTORY', 'FRAME SEL', 'FRAME ALL', 'SNAP', 'ORTHO']) {
+    for (const name of ['SCRIPT', 'HISTORY', 'FRAME SEL', 'FRAME ALL', 'SNAP', 'ORTHO']) {
       const button = screen.getByRole('button', { name });
       expect(button.querySelector('.top-bar__glyph')).not.toBeNull();
     }
@@ -981,6 +981,23 @@ describe('App shell', () => {
       vi.advanceTimersByTime(1000);
     });
     expect(screen.getByRole('tooltip')).toHaveTextContent(/run out of zoom/);
+  });
+
+  it('opens the script editor from the top bar and runs what is in it', async () => {
+    window.localStorage.removeItem('3doo:script');
+    render(<App />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'SCRIPT' }));
+    const dialog = screen.getByRole('dialog', { name: 'SCRIPT' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'RUN' }));
+
+    // The starter script adds a box and extrudes its top, and a run that works
+    // gets out of the way of the result.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const [box] = useEditorStore.getState().objects;
+    expect(box.name).toBe('BOX');
+    expect(box.mesh.faces.size).toBe(10);
+    expect(screen.getByText('Script ran: 1 object added', { selector: 'p' })).toBeInTheDocument();
   });
 
   it('opens the history from the top bar and travels back through it', async () => {

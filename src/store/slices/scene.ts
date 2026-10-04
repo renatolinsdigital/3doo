@@ -5,6 +5,7 @@ import {
   type BooleanOp,
   type ImportedObject,
   type Modifier,
+  type OperatorResult,
   type PrimitiveKind,
   type PrimitiveParams,
   type ProjectAssetData,
@@ -93,6 +94,13 @@ const BOOLEAN_LABELS: Record<BooleanOp, string> = {
  * once the store exists, in `useEditorStore`.
  */
 const history = new History(DEFAULT_PREFERENCES.historySize);
+
+/**
+ * How many `transact` calls are running. While any is, the actions inside it
+ * record no steps and drop none: the transaction keeps the one step that
+ * stands for all of them.
+ */
+let historyHold = 0;
 
 /** The mirror the undo buttons and the history dialog render from. */
 function historyState() {
@@ -655,19 +663,34 @@ export interface SceneSlice {
   applyModifierToMesh: (id: string) => void;
 
   /**
-   * Runs a named operator, recording a step to undo back to.
+   * Runs a named operator, recording a step to undo back to, and hands back
+   * what it reported, or null when it never ran.
    *
    * `record: false` runs it without one, for a tick of a continuous edit: a
    * scrubbed field hands the operator a new value on every pointer move, and
    * the gesture records its own step when the drag begins rather than one per
    * tick. Whoever passes it owns that step.
+   *
+   * `throws: true` hands a failure or a refusal back as an error instead of
+   * putting it on screen, for a caller that reports it itself: a script stops
+   * at the first one, and a toast per refusal on top of its own would say the
+   * same thing twice.
    */
   exec: (
     name: string,
     params?: Record<string, unknown>,
     label?: string,
-    options?: { record?: boolean },
-  ) => void;
+    options?: { record?: boolean; throws?: boolean },
+  ) => OperatorResult | null;
+  /**
+   * Runs `work` as one step to undo, or as nothing at all.
+   *
+   * The edits inside it record no steps of their own, and the one step is only
+   * kept when the scene changed. When `work` throws, the scene goes back to how
+   * it stood before it began and the error carries on to the caller: a script
+   * that fails halfway leaves nothing behind for the next run to pile onto.
+   */
+  transact: <T>(label: string, work: () => Promise<T>) => Promise<T>;
   /**
    * Says the scene now matches what is stored, for the autosave and for
    * whatever put the opening scene on screen. `fingerprint` is the stored
@@ -799,8 +822,36 @@ export const createSceneSlice: StateCreator<
   recordHistory: (label) => get().recordHistoryDocument(label, get().snapshotDocument()),
 
   recordHistoryDocument: (label, document) => {
+    if (historyHold > 0) return;
     history.record(label, document);
     set(historyState());
+  },
+
+  transact: async (label, work) => {
+    const before = get().snapshotDocument();
+    const { selectedObjectIds } = get();
+    const signal = (state: EditorStore) =>
+      [state.meshVersion, state.objects, state.groups, state.cursor, state.assets] as const;
+    const untouched = signal(get());
+
+    historyHold += 1;
+    let result: Awaited<ReturnType<typeof work>>;
+    try {
+      result = await work();
+    } catch (error) {
+      get().loadProjectDocument({ ...before, name: get().projectName });
+      // The load keeps only the active object selected; what else was picked
+      // before the run was not the run's to drop.
+      const restored = new Set(get().objects.map((object) => object.id));
+      set({ selectedObjectIds: selectedObjectIds.filter((id) => restored.has(id)) });
+      throw error;
+    } finally {
+      historyHold -= 1;
+    }
+
+    const changed = signal(get()).some((value, index) => value !== untouched[index]);
+    if (changed) get().recordHistoryDocument(label, before);
+    return result;
   },
 
   addPrimitive: (kind, params) => {
@@ -2084,21 +2135,25 @@ export const createSceneSlice: StateCreator<
 
   exec: (name, params = {}, label, options) => {
     const { selectMode, cursor, proportional } = get();
+    const throws = options?.throws ?? false;
     const object = activeObject(get());
     if (!object) {
+      if (throws) throw new Error('No active object');
       set({ status: 'No active object' });
-      return;
+      return null;
     }
     if (object.locked) {
+      if (throws) throw new Error(`${object.name} is locked`);
       get().noteLockedAttempt(object.id);
-      return;
+      return null;
     }
 
     const record = options?.record ?? true;
     if (record) get().recordHistory(label ?? name);
 
+    let result: OperatorResult;
     try {
-      const result = execOperator(
+      result = execOperator(
         {
           mesh: object.mesh,
           selectMode,
@@ -2109,39 +2164,47 @@ export const createSceneSlice: StateCreator<
         name,
         params,
       );
-      // An operator that declined changed nothing, so there is nothing to
-      // undo back to and nothing on screen to say what happened.
-      if (result.refused) {
-        // Only the step this call put there: a tick of a continuous edit
-        // recorded none, and dropping one anyway would take back the step the
-        // gesture reserved before it started.
-        if (record) get().discardHistory();
-        set({ status: result.status });
-        get().pushToast('warning', result.status);
-        return;
-      }
-
-      // A structural edit invalidates the primitive's live parameters. The
-      // object is replaced rather than mutated so the panels see the change.
-      set((state) => ({
-        objects: state.objects.map((candidate) =>
-          candidate.id === object.id ? { ...candidate, primitive: null } : candidate,
-        ),
-        meshVersion: state.meshVersion + 1,
-        status: result.status,
-        recentVerts: result.createdVerts?.length
-          ? { objectId: object.id, vertIds: result.createdVerts, token: ++recentVertsCounter }
-          : null,
-        lastOperator: { name, label: label ?? name, params },
-      }));
     } catch (error) {
       const message = `${name} failed: ${(error as Error).message}`;
+      if (throws) throw new Error(message);
       set({ status: message });
       get().pushToast('error', message);
+      return null;
     }
+
+    // An operator that declined changed nothing, so there is nothing to
+    // undo back to and nothing on screen to say what happened.
+    if (result.refused) {
+      // Only the step this call put there: a tick of a continuous edit
+      // recorded none, and dropping one anyway would take back the step the
+      // gesture reserved before it started.
+      if (record) get().discardHistory();
+      if (throws) throw new Error(result.status);
+      set({ status: result.status });
+      get().pushToast('warning', result.status);
+      return result;
+    }
+
+    // A structural edit invalidates the primitive's live parameters. The
+    // object is replaced rather than mutated so the panels see the change.
+    set((state) => ({
+      objects: state.objects.map((candidate) =>
+        candidate.id === object.id ? { ...candidate, primitive: null } : candidate,
+      ),
+      meshVersion: state.meshVersion + 1,
+      status: result.status,
+      recentVerts: result.createdVerts?.length
+        ? { objectId: object.id, vertIds: result.createdVerts, token: ++recentVertsCounter }
+        : null,
+      lastOperator: { name, label: label ?? name, params },
+    }));
+    return result;
   },
 
   discardHistory: () => {
+    // The step being taken back was never recorded while a transaction held
+    // them, so dropping one here would take an older, real step with it.
+    if (historyHold > 0) return;
     history.drop();
     set(historyState());
   },

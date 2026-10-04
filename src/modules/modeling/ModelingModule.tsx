@@ -21,6 +21,7 @@ import {
   PropertiesPanel,
   ReloadDialog,
   ReplaceProjectDialog,
+  ScriptDialog,
   ShortcutOverlay,
   StatusBar,
   ToolRail,
@@ -124,6 +125,7 @@ export function ModelingModule() {
       <ReloadDialog onSave={saveProject} />
       <ReplaceProjectDialog onNew={newProject} onOpen={openProject} onSave={saveProject} />
       <AutosaveLocationDialog />
+      <ScriptDialog />
       <ShortcutOverlay />
       <ToastHost />
       <TooltipHost bounds={mainRef} />

@@ -9,14 +9,25 @@ import { type DocsBlock, type DocsResult, DOCS_SECTIONS, searchDocs, searchTerms
 
 import './DocsModule.scss';
 
-/** The section named by the URL fragment, falling back to the first one. */
-function sectionFromHash(): string {
-  const id = window.location.hash.replace('#', '');
-  return DOCS_SECTIONS.some((section) => section.id === id) ? id : DOCS_SECTIONS[0].id;
+/**
+ * What the URL fragment points at: a section, and optionally one row of it,
+ * as `#scripting/scene.add`. An unknown section falls back to the first.
+ */
+function placeFromHash(): { section: string; row: string | null } {
+  const [id, ...rest] = window.location.hash.replace('#', '').split('/');
+  const known = DOCS_SECTIONS.some((section) => section.id === id);
+  return {
+    section: known ? id : DOCS_SECTIONS[0].id,
+    row: known && rest.length > 0 ? rest.join('/') : null,
+  };
 }
 
+/** The element id a row anchored as `id` carries. */
+const rowAnchor = (id: string) => `docs-${id}`;
+
 export function DocsModule() {
-  const [activeId, setActiveId] = useState(sectionFromHash);
+  const [activeId, setActiveId] = useState(() => placeFromHash().section);
+  const [targetRow, setTargetRow] = useState(() => placeFromHash().row);
   const [query, setQuery] = useState('');
   const search = useRef<HTMLDivElement>(null);
 
@@ -29,14 +40,25 @@ export function DocsModule() {
   // so reading through the docs does not bury the previous module under a dozen
   // back-button steps.
   useEffect(() => {
-    window.history.replaceState(null, '', `/docs#${activeId}`);
-  }, [activeId]);
+    const row = targetRow ? `/${targetRow}` : '';
+    window.history.replaceState(null, '', `/docs#${activeId}${row}`);
+  }, [activeId, targetRow]);
 
   useEffect(() => {
-    const onHashChange = () => setActiveId(sectionFromHash());
+    const onHashChange = () => {
+      const place = placeFromHash();
+      setActiveId(place.section);
+      setTargetRow(place.row);
+    };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
+
+  // A link to one row lands on it, rather than at the top of a long section.
+  useEffect(() => {
+    if (!targetRow) return;
+    document.getElementById(rowAnchor(targetRow))?.scrollIntoView?.({ block: 'center' });
+  }, [activeId, targetRow]);
 
   // The one shortcut this module has, and the same key the docs sites people
   // arrive from use for it.
@@ -57,6 +79,7 @@ export function DocsModule() {
   // content no longer shows.
   const open = (id: string) => {
     setQuery('');
+    setTargetRow(null);
     setActiveId(id);
   };
 
@@ -125,7 +148,7 @@ export function DocsModule() {
                 <h1 className="docs__title">{active.title}</h1>
                 <p className="docs__blurb">{active.blurb}</p>
                 {active.blocks.map((block, index) => (
-                  <DocsBlockView key={index} block={block} />
+                  <DocsBlockView key={index} block={block} targetRow={targetRow} />
                 ))}
               </>
             )}
@@ -222,7 +245,15 @@ function Marked({ text, terms }: { text: string; terms?: readonly string[] }) {
   );
 }
 
-function DocsBlockView({ block, terms }: { block: DocsBlock; terms?: readonly string[] }) {
+function DocsBlockView({
+  block,
+  terms,
+  targetRow,
+}: {
+  block: DocsBlock;
+  terms?: readonly string[];
+  targetRow?: string | null;
+}) {
   if (block.kind === 'prose') {
     return (
       <p className="docs__prose">
@@ -264,7 +295,13 @@ function DocsBlockView({ block, terms }: { block: DocsBlock; terms?: readonly st
           {/* Indexed, not keyed by the term: the keymap binds X and Delete
               once per mode, so the terms are not unique within a table. */}
           {block.rows.map(([term, description], index) => (
-            <tr key={index}>
+            <tr
+              key={index}
+              id={block.ids?.[index] ? rowAnchor(block.ids[index]) : undefined}
+              className={
+                targetRow && block.ids?.[index] === targetRow ? 'docs__row--target' : undefined
+              }
+            >
               <th scope="row">
                 <Marked text={term} terms={terms} />
               </th>

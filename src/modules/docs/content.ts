@@ -1,9 +1,32 @@
+import { PRIMITIVE_FIELDS } from '@kernel/index';
 import { DEFAULT_KEYMAP, formatBinding } from '@domain/keymap/keymap';
+import {
+  API_ENTRIES,
+  type ApiEntry,
+  type ApiOwner,
+  type FieldSpec,
+  MODIFIER_FIELDS,
+  MODIFIER_TYPES,
+  OPERATOR_SPECS,
+  PLACEMENT_OPTIONS,
+  PRIMITIVE_KINDS,
+  PRIMITIVE_OPTIONS,
+  describeNeed,
+} from '@domain/scripting/reference';
 
 export type DocsBlock =
   | { kind: 'prose'; text: string }
   | { kind: 'steps'; items: readonly string[] }
-  | { kind: 'table'; head: readonly [string, string]; rows: readonly (readonly [string, string])[] }
+  | {
+      kind: 'table';
+      head: readonly [string, string];
+      rows: readonly (readonly [string, string])[];
+      /**
+       * An anchor per row, for a link straight to it: the script editor's
+       * balloons link here, one row per name the API has.
+       */
+      ids?: readonly string[];
+    }
   | { kind: 'note'; text: string };
 
 export interface DocsSection {
@@ -46,6 +69,134 @@ function shortcutTables(): DocsBlock[] {
     head: [group.toUpperCase(), 'DOES'] as const,
     rows,
   }));
+}
+
+/** One row per API name an owner has, anchored by the name's id. */
+function apiTable(head: string, owners: readonly ApiOwner[], skip?: (entry: ApiEntry) => boolean) {
+  const entries = API_ENTRIES.filter(
+    (entry) => owners.includes(entry.owner) && !(skip?.(entry) ?? false),
+  );
+  return {
+    kind: 'table' as const,
+    head: [head, 'DOES'] as const,
+    rows: entries.map((entry) => [entry.signature, entry.summary] as const),
+    ids: entries.map((entry) => entry.id),
+  };
+}
+
+const fieldText = (fields: readonly FieldSpec[]) =>
+  fields.map((field) => `${field.name}: ${field.description}`).join(' ');
+
+const OPERATION_NAMES = new Set(OPERATOR_SPECS.map((spec) => spec.name));
+
+/**
+ * The scripting reference, built from the catalogue the editor itself reads.
+ *
+ * The same entries feed the editor's balloons, its suggestions and the checks a
+ * script's options go through, so this page cannot describe an API the editor
+ * does not have.
+ */
+function scriptingBlocks(): DocsBlock[] {
+  return [
+    {
+      kind: 'prose',
+      text: 'The <> button at the right of the top bar opens SCRIPT, an editor where you build and change the scene with JavaScript. Everything the panels do can be done from it: add primitives or your own geometry, place and colour objects, select vertices, edges and faces and run any modelling operation on them, stack modifiers, cut booleans, fill outliner folders, move the 3D cursor and frame the view.',
+    },
+    {
+      kind: 'steps',
+      items: [
+        'Click <> in the top bar. The editor opens on the script you were last writing, or on a short starter the first time.',
+        'Write a script, or pick one under EXAMPLE to start from. Rest the pointer on any name the API has, such as scene or extrude, for a balloon that says what it does and links to its row on this page.',
+        'Press RUN, or Ctrl+Enter. When the script works, the dialog closes, a toast says what it did, and the result is in the viewport.',
+        'When it fails, a toast and the strip under the code say why, the line that failed is marked and the caret is put on it, and the dialog stays open. The scene is left exactly as it was before the run, so you can fix the line and run again.',
+      ],
+    },
+    {
+      kind: 'note',
+      text: 'A whole run is one step to undo: Ctrl+Z takes back everything it did at once. A script runs in this browser tab, so a loop that never ends freezes the page. Save before running anything long.',
+    },
+    {
+      kind: 'table',
+      head: ['IN THE EDITOR', 'DOES'],
+      rows: [
+        ['Ctrl+Enter', 'Runs the script. Cmd+Enter on a Mac.'],
+        [
+          'Ctrl+Space',
+          'Suggests the names that fit where the caret is. Typing a dot after scene or view, or the first letters of a name, opens the list by itself. Arrow keys pick, Enter or Tab inserts, Esc closes it.',
+        ],
+        ['Ctrl+/', 'Comments the selected lines out, or back in.'],
+        ['Tab, Shift+Tab', 'Indents or outdents the selected lines by two spaces.'],
+        [
+          'Brackets and quotes',
+          'Close themselves as you open them, wrap a selection when typed over one, and are stepped over when typed again. Enter after an opening bracket indents the next line.',
+        ],
+        [
+          'Esc',
+          'Closes a suggestion list or a balloon first, then leaves the editor, and then closes the dialog.',
+        ],
+        [
+          'The status line',
+          'Shows the line and column of the caret, and the full form of the API name the caret is on.',
+        ],
+      ],
+    },
+    {
+      kind: 'prose',
+      text: 'A script gets two names to start from: scene, for the objects, and view, for the camera. Every object it adds or finds is handed back as an object you can keep in a variable and change later in the script. Positions are in metres and written [x, y, z] or { x, y, z }; rotations are in degrees.',
+    },
+    apiTable('NAME', ['global']),
+    apiTable('SCENE', ['scene']),
+    apiTable('OBJECT', ['object']),
+    {
+      kind: 'table',
+      head: ['PRIMITIVE', 'SHAPE OPTIONS'],
+      rows: PRIMITIVE_KINDS.map(
+        (kind) => [`scene.add('${kind}')`, PRIMITIVE_FIELDS[kind].join(', ')] as const,
+      ),
+    },
+    {
+      kind: 'table',
+      head: ['OPTION', 'MEANS'],
+      rows: [...PRIMITIVE_OPTIONS, ...PLACEMENT_OPTIONS].map(
+        (field) => [field.name, field.description] as const,
+      ),
+    },
+    {
+      kind: 'prose',
+      text: "object.edit((mesh) => { ... }) hands you the mesh of one object. Pick what to work on with selectVerts, selectEdges or selectFaces, then call an operation: each one works on the selection, exactly as its button does in edit mode, and the selection it leaves is what the next one starts from. Coordinates inside edit are in the object's own space, before its position, rotation and scale. If the object is the one you are editing in edit mode, the script starts from what you selected by hand; otherwise it starts with nothing selected.",
+    },
+    apiTable('MESH', ['mesh'], (entry) => OPERATION_NAMES.has(entry.name)),
+    {
+      kind: 'table',
+      head: ['OPERATION', 'DOES'],
+      rows: OPERATOR_SPECS.map(
+        (spec) =>
+          [
+            API_ENTRIES.find((entry) => entry.id === `mesh.${spec.name}`)?.signature ??
+              `mesh.${spec.name}()`,
+            [
+              spec.summary,
+              spec.needs ? `Needs ${describeNeed(spec.needs)} selected.` : '',
+              fieldText(spec.params),
+            ]
+              .filter(Boolean)
+              .join(' '),
+          ] as const,
+      ),
+      ids: OPERATOR_SPECS.map((spec) => `mesh.${spec.name}`),
+    },
+    apiTable('MODIFIER', ['modifier']),
+    {
+      kind: 'table',
+      head: ['MODIFIER TYPE', 'SETTINGS'],
+      rows: MODIFIER_TYPES.map((type) => [`'${type}'`, fieldText(MODIFIER_FIELDS[type])] as const),
+    },
+    apiTable('VIEW', ['view']),
+    {
+      kind: 'note',
+      text: 'Everything a script hands over is checked before it is used. A misspelt option, a value outside the range its panel allows, a property that does not exist or an operation with nothing selected to work on stops the script with the reason and the line, rather than quietly running with a default. Where a name is one letter or two away from a real one, the message suggests it.',
+    },
+  ];
 }
 
 export const DOCS_SECTIONS: readonly DocsSection[] = [
@@ -98,7 +249,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Top bar',
-            'Left: FILE, PREFS and the project name. Middle: the object/edit mode switch; the snap, proportional, auto merge, orthographic and smooth-shading flags; the pivot picker; the SHADING and OVERLAYS menus. Right: the history list, the two framing buttons and the shortcut list.',
+            'Left: FILE, PREFS and the project name. Middle: the object/edit mode switch; the snap, proportional, auto merge, orthographic and smooth-shading flags; the pivot picker; the SHADING and OVERLAYS menus. Right: the script editor, the history list, the two framing buttons and the shortcut list.',
           ],
           [
             'Tool rail, far left',
@@ -553,7 +704,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Weld',
             'Merges vertices closer together than a threshold, across the whole evaluated result.',
           ],
-          ['Loop Subdivide', 'Splits every face into quads, one level at a time, keeping the shape or rounding it off.'],
+          [
+            'Loop Subdivide',
+            'Splits every face into quads, one level at a time, keeping the shape or rounding it off.',
+          ],
           [
             'Subdivision Surface',
             'Splits every face into quads for each of up to six SUBDIVISION LEVELS. With CATMULL-CLARK on, each level rounds the mesh toward a smooth surface; off, it only adds faces. In edit mode the original mesh stays drawn as a cage around the smooth result, and the cage is what you select and move. Object mode and Apply show the result alone.',
@@ -841,6 +995,12 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     ],
   },
   {
+    id: 'scripting',
+    title: 'SCRIPTING',
+    blurb: 'Building and editing the scene with code',
+    blocks: scriptingBlocks(),
+  },
+  {
     id: 'shortcuts',
     title: 'KEYBOARD SHORTCUTS',
     blurb: 'The full keymap, straight from the editor',
@@ -893,9 +1053,11 @@ export function searchDocs(query: string): DocsResult[] {
 
     for (const block of section.blocks) {
       if (block.kind === 'table') {
-        const rows = block.rows.filter((row) => hasEvery(row.join(' '), terms));
+        const kept = block.rows.map((row) => hasEvery(row.join(' '), terms));
+        const rows = block.rows.filter((_, index) => kept[index]);
+        const ids = block.ids?.filter((_, index) => kept[index]);
         if (rows.length > 0) {
-          blocks.push({ ...block, rows });
+          blocks.push({ ...block, rows, ids });
           count += rows.length;
         }
       } else if (block.kind === 'steps') {

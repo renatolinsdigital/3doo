@@ -1,0 +1,64 @@
+@use '@global-styles/helpers' as *;
+
+// Wider than the other dialogs: code wants its line length, and a script cut
+// at 496px wraps every other line of an options object.
+.script-dialog.modal__dialog {
+  width: min(920px, 100%);
+  max-height: min(92vh, 860px);
+}
+
+.script-dialog {
+  &__toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: var(--space-3);
+
+    .select {
+      flex: 0 1 300px;
+    }
+  }
+
+  &__reference {
+    @include label-text;
+    @include brutal-focus;
+
+    display: inline-flex;
+    align-items: center;
+    padding: 0 var(--space-3);
+    white-space: nowrap;
+    color: var(--void);
+    border: var(--border-thin) solid var(--void);
+
+    &:hover {
+      color: var(--bone);
+      background: var(--void);
+    }
+  }
+
+  // Filled as well as coloured, and led by the line it failed on, so the
+  // reason reads at a glance and does not rest on red alone.
+  &__problem {
+    @include mono-value;
+
+    display: flex;
+    gap: var(--space-3);
+    align-items: baseline;
+    padding: var(--space-2) var(--space-3);
+    color: var(--bone);
+    background: var(--oxblood);
+    border: var(--border-thin) solid var(--void);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  &__problem-where {
+    @include label-text;
+
+    flex: none;
+    padding: 0 var(--space-2);
+    color: var(--void);
+    background: var(--amber);
+  }
+}

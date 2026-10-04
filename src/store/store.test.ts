@@ -1902,3 +1902,89 @@ describe('edge length', () => {
     expect(store().status).toBe('Select the edge(s) to set a length for');
   });
 });
+
+describe('transactions', () => {
+  beforeEach(() => {
+    store().resetScene();
+    store().setHistoryLimit(50);
+  });
+
+  it('keeps one step for everything done inside it', async () => {
+    await store().transact('Build', async () => {
+      store().addPrimitive('cube');
+      store().addPrimitive('cone');
+      store().setCursor(vec3(1, 0, 0));
+    });
+
+    expect(store().historyUndo).toEqual(['Build']);
+    store().undo();
+    expect(store().objects).toHaveLength(0);
+    expect(store().cursor).toEqual(vec3());
+  });
+
+  it('puts the scene back and passes the error on when the work throws', async () => {
+    store().addPrimitive('cube');
+    const [cube] = store().objects;
+
+    await expect(
+      store().transact('Build', async () => {
+        store().addPrimitive('cone');
+        store().setObjectTransform(cube.id, { position: vec3(4, 0, 0) });
+        throw new Error('halfway');
+      }),
+    ).rejects.toThrow('halfway');
+
+    expect(store().objects.map((object) => object.id)).toEqual([cube.id]);
+    expect(store().objects[0].transform.position).toEqual(vec3());
+    expect(store().historyUndo).toEqual(['Add CUBE']);
+  });
+
+  it('keeps no step when nothing changed', async () => {
+    store().addPrimitive('cube');
+    await store().transact('Look', async () => store().objects.length);
+    expect(store().historyUndo).toEqual(['Add CUBE']);
+  });
+
+  it('does not let a refusal inside it drop a step recorded before it', async () => {
+    store().addPrimitive('cube');
+    activeObject().mesh.deselectAll();
+
+    await store().transact('Try', async () => {
+      store().exec('subdivide');
+    });
+
+    expect(store().historyUndo).toEqual(['Add CUBE']);
+  });
+});
+
+describe('exec', () => {
+  beforeEach(() => {
+    store().resetScene();
+    store().addPrimitive('cube');
+    useEditorStore.setState({ toasts: [] });
+  });
+
+  it('hands back what the operator reported', () => {
+    selectTopFace();
+    const result = store().exec('extrude', { offset: 1 });
+    expect(result?.status).toBe('Extruded 1 face(s) by 1');
+  });
+
+  it('throws a refusal instead of raising a toast when asked to', () => {
+    activeObject().mesh.deselectAll();
+    const steps = store().historyUndo.length;
+
+    expect(() => store().exec('subdivide', {}, 'Subdivide', { throws: true })).toThrow(
+      'Select faces to subdivide',
+    );
+    expect(store().toasts).toEqual([]);
+    expect(store().historyUndo).toHaveLength(steps);
+  });
+
+  it('throws for a locked object when asked to', () => {
+    store().toggleObjectLock(activeObject().id);
+    expect(() => store().exec('selectAll', {}, 'Select all', { throws: true })).toThrow(
+      'CUBE is locked',
+    );
+  });
+});
