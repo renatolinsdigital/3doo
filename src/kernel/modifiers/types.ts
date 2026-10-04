@@ -1,7 +1,7 @@
 import { DEFAULT_REMESH_SETTINGS, type RemeshSettings } from '../remesh';
 
 export type ModifierType =
-  'mirror' | 'array' | 'solidify' | 'weld' | 'subdivide' | 'subsurf' | 'remesh';
+  'mirror' | 'array' | 'solidify' | 'bend' | 'weld' | 'subdivide' | 'subsurf' | 'remesh';
 
 export interface ModifierBase {
   id: string;
@@ -49,6 +49,27 @@ export interface SolidifyModifier extends ModifierBase {
   rimFill: boolean;
 }
 
+/**
+ * Curls the mesh around X, then Y, then Z, as three bends stacked one after
+ * another would. Around each axis, the longer of the two sides square to it is
+ * the one that curls, toward the other.
+ */
+export interface BendModifier extends ModifierBase {
+  type: 'bend';
+  /**
+   * Degrees around each axis, from -360 to 360. The angle is spread over the
+   * whole length that curls, so 360 closes it into a ring however long it is.
+   */
+  angles: { x: number; y: number; z: number };
+  /** Where the bend is centred. The mesh there stays where it was. */
+  origin: ModifierOrigin;
+  /**
+   * How many strips the mesh is sliced into along each bend before it curls,
+   * so a long flat face has edges to curve at. 1 slices nothing.
+   */
+  segments: number;
+}
+
 export interface WeldModifier extends ModifierBase {
   type: 'weld';
   /** Vertices closer together than this are fused, mesh-wide. */
@@ -93,6 +114,7 @@ export type Modifier =
   | MirrorModifier
   | ArrayModifier
   | SolidifyModifier
+  | BendModifier
   | WeldModifier
   | SubdivideModifier
   | SubsurfModifier
@@ -149,6 +171,16 @@ export function createModifier(type: ModifierType): Modifier {
         thickness: 0.1,
         evenOffset: false,
         rimFill: true,
+      };
+    case 'bend':
+      return {
+        id: nextId(type),
+        type,
+        name: 'BEND',
+        enabled: true,
+        angles: { x: 0, y: 0, z: 45 },
+        origin: 'object',
+        segments: 16,
       };
     case 'weld':
       return {

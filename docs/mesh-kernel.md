@@ -477,6 +477,41 @@ Edit mode draws the cage's wire around the shaded result, as Blender does, and
 leaves out the result's own edges (`drawsPreviewWire` in `ObjectView.ts`): at
 any real level they would bury the surface. Object mode draws the result alone.
 
+### Bend
+
+Bend is the Bend mode of Blender's Simple Deform modifier, with three changes
+that make it usable without an empty to steer it:
+
+- **One modifier carries all three axes.** The bends run around X, then Y, then
+  Z, each on the result of the one before, which is exactly what three
+  single-axis bends stacked in that order would give.
+- **The side that curls is read off the mesh.** Around each axis, the longer of
+  the two sides square to it curls toward the other. Blender fixes that pairing
+  per axis, which is why a plane lying flat cannot be curled up there without
+  rotating an origin object first. On a tie the side lying flat curls up toward
+  +Y (`SQUARE_TO`), so a cube or a square plane bends like a sheet of paper.
+- **It slices before it bends.** A deform only moves vertices, so a plane of
+  four corners bent through 90° stays one flat face. `sliceAcross` first cuts
+  every face and wire edge crossing one of `segments - 1` evenly spaced planes
+  square to the side that curls, keeping both sides of each cut. A vertex
+  already on a plane is not cut again, so a mesh with enough loops gains
+  nothing. Cut vertices are shared per pair of vertices, which keeps the seams
+  welded, and they carry interpolated UVs and the sharp marks of the edge they
+  split. A slicing that would outgrow `MESH_BUDGET` is skipped and the bend
+  runs on the vertices there are.
+
+The angle is spread over the whole length that curls, as Blender does: the
+radius is `span / angle`, so 360° wraps any length into exactly one ring and
+the two ends land on each other (a WELD below the bend joins them). The centre
+(the object origin, or the 3D cursor through `ModifierContext`) is where the
+mesh stays put. The line through it keeps its length; what lies toward the
+inside of the curl is squeezed and what lies outside is stretched.
+
+A convex face is clipped to each slab between neighbouring planes. A concave
+face is triangulated first: the part of it inside a slab it enters and leaves
+more than once is several pieces, and clipping the ring whole would join them
+across the gap outside the face.
+
 ### Weld
 
 Weld is `mergeByDistance` run over every vertex in the mesh. There is no
