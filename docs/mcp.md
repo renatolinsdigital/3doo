@@ -37,7 +37,7 @@ AI ASSISTANTS section of the in-app docs (`src/modules/docs/content.ts`).
 
 | Command | When |
 | --- | --- |
-| `npm run build` | Once, and again after changing the code. The server draws models from `dist/`, so the built app is the only 3DOO it needs. |
+| `npm run build` | Once, and again after changing the code. The server draws models from `dist/`. Optional when `THREEDOO_APP_URL` names a hosted 3DOO ([below](#local-or-hosted)). |
 | `claude mcp add 3doo ...` | Once, to register the server with the assistant. |
 | `npm run dev` | Not needed to build models. Only a link that points at `localhost` needs it, and that link opens only while it runs. |
 | `npm run mcp` | Never in normal use. It starts the server by hand, for debugging. |
@@ -54,6 +54,31 @@ computer while the dev server is up, and the tool's result says so for the
 assistant to pass on. Point `THREEDOO_APP_URL` at a hosted 3DOO for links that
 work anywhere.
 
+## Local or hosted
+
+The editor is also hosted (for example https://3doo.vercel.app), and the server
+works with either copy. What cannot be hosted is the server itself: it speaks
+stdio to a client on the user's machine, writes files there, and needs a
+Chromium, so it always runs locally. Only the 3DOO it draws in, and the 3DOO
+links open in, can be online.
+
+| Setup | Variables | Models drawn in | Links open in |
+| --- | --- | --- | --- |
+| Local build | `THREEDOO_APP_URL` optional | `dist/`, served by the server | `THREEDOO_APP_URL`, if set |
+| Hosted, from npm | `THREEDOO_APP_URL=https://3doo.vercel.app` | the hosted editor | the hosted editor |
+| Hosted, from the repository | the same | the hosted editor, with no `dist/` | the hosted editor |
+| Hosted, build present | `THREEDOO_ENGINE_URL=https://3doo.vercel.app` | the hosted editor | `THREEDOO_APP_URL`, else the engine address |
+
+- The hosted setup still needs the repository, for `mcp/server.ts`, but not
+  `npm run build`. It needs the internet to load the app, and the hosted
+  version must match the server's `AUTOMATION_VERSION`, or the server stops
+  at the first call and says which side to update.
+- The page is loaded fresh for each session, so a hosted scene is as private as
+  a local one: it lives in the server's own headless tab.
+- `vercel.json` rewrites every path that is not a file to `index.html`.
+  Without it a scene link to `/modeling` is a 404 on Vercel, since the app
+  routes by path.
+
 ## Running it
 
 ### Requirements
@@ -64,7 +89,8 @@ work anywhere.
   already installed (found through Playwright's `chrome` and `msedge`
   channels), or any build named by `THREEDOO_CHROMIUM`.
 - The app, built: `npm run build`. The server serves `dist/` itself, on a free
-  local port, so the page it drives is the same version as the server.
+  local port, so the page it drives is the same version as the server. Or a
+  hosted 3DOO, see [Local or hosted](#local-or-hosted).
 
 ### Connecting a client
 
@@ -321,16 +347,19 @@ The same text is offered as the resource `3doo://reference/scripting`
 ## The MCP dialog
 
 The MCP button beside `<>` in the top bar opens `McpDialog`
-(`src/domain/components/McpDialog`), the user's guide to this server: how a
-call travels from the assistant to the scripting API, the commands to set it
-up with COPY buttons, every tool with its arguments and what it returns, a
-sample `run_script` result, and the environment variables. The commands put
-the page's own `window.location.origin` in `THREEDOO_APP_URL`, so someone
-setting up from the hosted editor gets links that open back on it.
+(`src/domain/components/McpDialog`), a short guide to connecting: how a call
+travels from the assistant to the scripting API, what a local and a hosted
+setup each mean, and the commands for both with COPY buttons. It holds no
+tables. The tool and setting tables live in the AI ASSISTANTS docs section.
 
-The app cannot import `mcp/`, which is Node, so the dialog reads its lists from
+The local commands put the page's own `window.location.origin` in
+`THREEDOO_APP_URL`. The hosted ones always use `HOSTED_URL`
+(`src/domain/mcp/guide.ts`), so they work whichever address the dialog was
+opened from.
+
+The app cannot import `mcp/`, which is Node, so the docs read their lists from
 a catalogue of its own: `MCP_TOOLS` and `MCP_SETTINGS` in
-`src/domain/mcp/guide.ts`, which the AI ASSISTANTS docs section reads too. Tests
+`src/domain/mcp/guide.ts`. Tests
 in `mcp/tools.test.ts` hold it to the server: the same tools in the same order
 as `TOOLS`, the same arguments as each input schema, and the same variables as
 `config.ts` reads. A tool or a setting added to the server without its line in
@@ -476,7 +505,7 @@ assistant, and is not a sandbox for scripts from strangers.
 | `src/domain/hooks/useAutosave.test.tsx` | Opening a link, taking it off the address bar, the fallback, a pasted link |
 | `mcp/protocol.test.ts` | The JSON-RPC transport |
 | `mcp/tools.test.ts` | Each tool against a fake engine, the call queue, protocol negotiation, configuration, and the editor's catalogue of tools, arguments and settings against the server's |
-| `src/domain/components/McpDialog/McpDialog.test.tsx` | The dialog lists every tool and setting, fills in the page's address, and copies a command |
+| `src/domain/components/McpDialog/McpDialog.test.tsx` | The dialog explains local and hosted, fills in the page's address and the hosted one, and copies a command |
 
 The browser engine itself (`mcp/engine.ts`) has no unit test: what it does is
 launch Chromium. To check it end to end, build, then drive the server by hand:

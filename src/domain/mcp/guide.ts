@@ -10,6 +10,9 @@
 
 export const REPOSITORY_URL = 'https://github.com/renatolinsdigital/3doo';
 
+/** The hosted editor, which a server with no local build draws in and links open on. */
+export const HOSTED_URL = 'https://3doo.vercel.app';
+
 /** Where the server is, as the setup commands write it until the reader puts in their own. */
 export const SERVER_PLACEHOLDER = '/path/to/3doo/mcp/server.ts';
 
@@ -105,6 +108,20 @@ export const MCP_SETTINGS: readonly McpSetting[] = [
     means: 'How long one call may run, in milliseconds, before it is stopped.',
   },
 ];
+
+/** The npm package that runs the server with no copy of the code. */
+export const NPM_PACKAGE = '3doo-mcp';
+
+/** The command that adds the published server to Claude Code, drawing in the hosted editor. */
+export function hostedClaudeCodeCommand(appUrl = HOSTED_URL): string {
+  return `claude mcp add 3doo -e THREEDOO_APP_URL=${appUrl} -- npx -y ${NPM_PACKAGE}`;
+}
+
+/** The `mcpServers` entry that runs the published server, for a client set up by a JSON file. */
+export function hostedClientConfig(appUrl = HOSTED_URL): string {
+  const entry = { command: 'npx', args: ['-y', NPM_PACKAGE], env: { THREEDOO_APP_URL: appUrl } };
+  return JSON.stringify({ mcpServers: { '3doo': entry } }, null, 2);
+}
 
 /** The command that adds the server to Claude Code, pointing links at `appUrl`. */
 export function claudeCodeCommand(appUrl: string, server = SERVER_PLACEHOLDER): string {

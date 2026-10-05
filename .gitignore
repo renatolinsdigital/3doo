@@ -7,3 +7,4 @@ coverage
 .vite
 .eslintcache
 *.log
+mcp-package/dist

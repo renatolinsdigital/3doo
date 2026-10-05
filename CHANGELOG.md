@@ -12,19 +12,20 @@ New entries go under `Unreleased` until a version is cut. Group them under
 
 ## [Unreleased]
 
+### Added
+
+- The MCP server is packaged for npm as `3doo-mcp` (`mcp-package/`, built with
+  `npm run build:mcp`). Add it with `npx -y 3doo-mcp` and the hosted editor:
+  no clone, no install and no build.
+- `vercel.json` rewrites unknown paths to `index.html`, so scene links to
+  `/modeling` and `/docs` open on the hosted editor.
+
 ### Changed
 
-- The MCP `scripting_reference` tool now returns a short quickstart by default
-  (about 1,500 tokens instead of about 13,000): the conventions, a script that
-  runs, every name the API has and the rules a table does not say. The full API,
-  the finished examples or one example are asked for with `topic` and `example`.
-  An assistant starts building sooner and spends far fewer tokens reading.
-- The MCP server's instructions now lay out the workflow in four steps and tell
-  the assistant to check once and hand the result over.
-- `share_link` says when a link points at localhost, which opens only while 3DOO
-  is being served there.
-- The MCP dialog and the AI ASSISTANTS docs say which commands to run and when,
-  and that the assistant starts the server itself.
+- The MCP dialog no longer carries tables. It explains what a local and a
+  hosted setup each mean and gives the commands for both.
+- The MCP server can draw in a hosted 3DOO instead of a local build, through
+  `THREEDOO_APP_URL` or `THREEDOO_ENGINE_URL`.
 
 ## [1.0.0] - 2026-10-05
 

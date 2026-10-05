@@ -5,7 +5,12 @@ import {
   type PrimitiveKind,
 } from '@kernel/index';
 import { DEFAULT_KEYMAP, formatBinding } from '@domain/keymap/keymap';
-import { MCP_TOOLS, REPOSITORY_URL, claudeCodeCommand } from '@domain/mcp/guide';
+import {
+  MCP_TOOLS,
+  REPOSITORY_URL,
+  claudeCodeCommand,
+  hostedClaudeCodeCommand,
+} from '@domain/mcp/guide';
 import {
   API_ENTRIES,
   type ApiEntry,
@@ -1184,15 +1189,15 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'prose',
-        text: 'Setting it up takes a few minutes, once. The assistant talks to 3DOO through an MCP server that comes with the code, and it needs the code on your computer. The MCP button beside <> in the top bar has every command ready to copy, with this site already filled in as the place links open:',
+        text: 'Setting it up takes a few minutes, once. The assistant talks to 3DOO through an MCP server that runs on your computer. It can draw models in this hosted site, with nothing to download, or in a copy of the code you build yourself. The MCP button beside <> in the top bar has every command ready to copy, with this site already filled in as the place links open:',
       },
       {
         kind: 'steps',
         items: [
-          `Get the code with git clone ${REPOSITORY_URL}.git, then in its folder run npm install and npm run build. It needs Node 22.18 or newer.`,
-          'If you have no Chrome or Edge installed, run npx playwright-core install chromium. The server runs 3DOO in a hidden browser of its own to build and draw the models.',
-          `Add the server to your assistant. In Claude Code: ${claudeCodeCommand('https://your-3doo-address')}. In Claude Desktop: add a 3doo entry under mcpServers in its configuration file, with node as the command and the path to mcp/server.ts as its argument.`,
-          'That is all you run. The assistant starts the server itself when it needs it, so there is nothing to keep open, and npm run dev is not needed to build models. THREEDOO_APP_URL only sets where links open: a link to localhost opens only while 3DOO is served there, and files and pictures work without it.',
+          'You need Node 22.18 or newer. If you have no Chrome or Edge installed, run npx playwright-core install chromium. The server runs 3DOO in a hidden browser of its own to build and draw the models.',
+          `Hosted, with nothing to download: in Claude Code run ${hostedClaudeCodeCommand()}. In Claude Desktop: add a 3doo entry under mcpServers in its configuration file, with npx as the command and -y 3doo-mcp as its arguments. This needs the internet, and links it makes open here for anyone.`,
+          `Local, from your own copy: git clone ${REPOSITORY_URL}.git, then in its folder run npm install and npm run build, and add the server with ${claudeCodeCommand('https://your-3doo-address')}, putting the path to mcp/server.ts in its place. It works offline, and a link to localhost opens only while 3DOO is served there.`,
+          'That is all you run. The assistant starts the server itself when it needs it, so there is nothing to keep open, and npm run dev is not needed to build models. THREEDOO_APP_URL sets where links open, and is also the 3DOO the server draws in when there is no build.',
           'Ask for a model. "Build a low poly chair in 3DOO, show me the front and side views, then export it as FBX for Unity" is enough.',
         ],
       },

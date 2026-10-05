@@ -1,10 +1,10 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useEditorStore } from '@store/index';
 
-import { MCP_SETTINGS, MCP_TOOLS } from '../../mcp/guide';
+import { HOSTED_URL } from '../../mcp/guide';
 
 import { McpDialog } from './McpDialog';
 
@@ -21,32 +21,27 @@ describe('McpDialog', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('lists every tool the server gives an assistant, and what each returns', () => {
+  it('holds no tables: those belong to the app docs', () => {
     render(<McpDialog />);
-
-    const table = screen.getByRole('heading', { name: 'TOOLS IT GIVES THE ASSISTANT' })
-      .nextElementSibling as HTMLElement;
-    const rows = within(table).getAllByRole('row').slice(1);
-    expect(
-      rows.map((row) => within(row).getByRole('rowheader').querySelector('code')?.textContent),
-    ).toEqual(MCP_TOOLS.map((tool) => tool.name));
-    expect(within(rows[1]).getByText(/names the line and changes nothing/)).toBeInTheDocument();
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
-  it('lists every setting the server reads', () => {
+  it('explains what local and hosted each mean', () => {
     render(<McpDialog />);
-    for (const setting of MCP_SETTINGS) {
-      expect(screen.getAllByText(setting.name, { selector: 'code' }).length).toBeGreaterThan(0);
-    }
+    expect(screen.getByRole('heading', { name: 'LOCAL OR HOSTED' })).toBeInTheDocument();
+    expect(screen.getByText(/work with no internet connection/)).toBeInTheDocument();
+    expect(screen.getByText(/Nothing to download or build/)).toBeInTheDocument();
   });
 
-  it('fills in this site as the place links open', () => {
+  it('fills in this site as the place links open for a local build', () => {
     render(<McpDialog />);
-    const command = screen.getByLabelText('Claude Code command');
+    const command = screen.getByLabelText('Claude Code command, local');
     expect(command.textContent).toBe(
       `claude mcp add 3doo -e THREEDOO_APP_URL=${window.location.origin} -- node /path/to/3doo/mcp/server.ts`,
     );
-    expect(JSON.parse(screen.getByLabelText('Client configuration').textContent ?? '')).toEqual({
+    expect(
+      JSON.parse(screen.getByLabelText('Client configuration, local').textContent ?? ''),
+    ).toEqual({
       mcpServers: {
         '3doo': {
           command: 'node',
@@ -57,20 +52,32 @@ describe('McpDialog', () => {
     });
   });
 
-  it('says which commands to run and when, and that the assistant starts the server', () => {
+  it('runs the published package for the hosted setup, with no code to download', () => {
     render(<McpDialog />);
-    const table = screen.getByRole('heading', { name: 'WHAT YOU RUN, AND WHEN' })
-      .nextElementSibling as HTMLElement;
-    const commands = within(table)
-      .getAllByRole('rowheader')
-      .map((cell) => cell.textContent);
-    expect(commands).toEqual(['npm run build', 'claude mcp add 3doo ...', 'npm run dev', 'npm run mcp']);
+    expect(screen.getByLabelText('Claude Code command, hosted').textContent).toBe(
+      `claude mcp add 3doo -e THREEDOO_APP_URL=${HOSTED_URL} -- npx -y 3doo-mcp`,
+    );
+    expect(
+      JSON.parse(screen.getByLabelText('Client configuration, hosted').textContent ?? ''),
+    ).toEqual({
+      mcpServers: {
+        '3doo': {
+          command: 'npx',
+          args: ['-y', '3doo-mcp'],
+          env: { THREEDOO_APP_URL: HOSTED_URL },
+        },
+      },
+    });
+  });
+
+  it('says the assistant starts the server', () => {
+    render(<McpDialog />);
     expect(screen.getByText(/starts the server by itself/)).toBeInTheDocument();
   });
 
   it('warns that links to localhost open only while the app is served', () => {
     render(<McpDialog />);
-    expect(screen.getByText(/open only while 3DOO is served there/)).toBeInTheDocument();
+    expect(screen.getAllByText(/open only while 3DOO is served there/).length).toBeGreaterThan(0);
   });
 
   it('copies a command and says so', async () => {

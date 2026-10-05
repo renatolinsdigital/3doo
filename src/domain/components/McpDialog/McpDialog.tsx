@@ -4,8 +4,9 @@ import { Button, Modal } from '@shared/components';
 import { useEditorStore } from '@store/index';
 
 import {
-  MCP_SETTINGS,
-  MCP_TOOLS,
+  HOSTED_URL,
+  hostedClaudeCodeCommand,
+  hostedClientConfig,
   REPOSITORY_URL,
   SERVER_PLACEHOLDER,
   claudeCodeCommand,
@@ -24,7 +25,7 @@ const CHAIN: readonly { name: string; detail: string; link?: string }[] = [
   {
     name: 'THE MCP SERVER',
     detail: 'node mcp/server.ts, running on your own computer.',
-    link: 'opens the built app in a hidden browser',
+    link: 'opens 3DOO in a hidden browser, built locally or hosted',
   },
   {
     name: 'A HIDDEN 3DOO',
@@ -37,37 +38,10 @@ const CHAIN: readonly { name: string; detail: string; link?: string }[] = [
   },
 ];
 
-const COMMANDS: readonly { name: string; when: string }[] = [
-  {
-    name: 'npm run build',
-    when: 'Once, and again after you change the code. The server draws its models from the built app, so this is the only 3DOO it needs.',
-  },
-  {
-    name: 'claude mcp add 3doo ...',
-    when: 'Once, to tell your assistant the server exists. Copy it from SET IT UP below.',
-  },
-  {
-    name: 'npm run dev',
-    when: 'Not needed to build models. Only a link that points at localhost needs it, and that link opens only while it runs.',
-  },
-  {
-    name: 'npm run mcp',
-    when: 'Never in normal use. It starts the server by hand, which only helps when you debug it.',
-  },
-];
-
-const SAMPLE_RESULT =`Script ran: 1 object added
-
-Scene: {"name":"untitled","totals":{"objects":1,"vertices":8,"faces":6},"bounds":{"min":{"x":-1,"y":0.95,"z":-0.5},"max":{"x":1,"y":1.05,"z":0.5},"size":{"x":2,"y":0.1,"z":1}}}
-Objects (1):
-{"name":"TOP","vertices":8,"edges":12,"faces":6,"position":{"x":0,"y":1,"z":0},"rotation":{"x":0,"y":0,"z":0},"scale":{"x":2,"y":0.1,"z":1},"dimensions":{"x":2,"y":0.1,"z":1},"color":"#b8452f","modifiers":[],"visible":true,"group":null}`;
-
 /**
  * How to use 3DOO as a tool for an AI assistant: what the MCP server is, how
- * it reaches the editor, how to connect one, and what comes back.
- *
- * The commands carry this page's own address as the place links open, so
- * someone setting up from the hosted editor gets links back to it.
+ * it reaches the editor, and how to connect one to a local build or to the
+ * hosted editor.
  */
 export function McpDialog() {
   const open = useEditorStore((state) => state.dialog === 'mcp');
@@ -118,37 +92,54 @@ export function McpDialog() {
           ))}
         </ol>
         <p className="mcp-dialog__note">
-          The server runs on your computer, not on this website, and its 3DOO is not this tab: it
-          cannot see or change the scene in front of you. To bring a model here, ask for a link or a
-          .3doo file.
+          The server always runs on your computer, never on this website, and its 3DOO is not this
+          tab: it cannot see or change the scene in front of you. To bring a model here, ask for a
+          link or a .3doo file. Where that hidden 3DOO comes from is your choice, below.
         </p>
       </section>
 
-      <section className="mcp-dialog__section" aria-labelledby="mcp-run">
-        <h3 id="mcp-run" className="mcp-dialog__heading">
-          WHAT YOU RUN, AND WHEN
+      <section className="mcp-dialog__section" aria-labelledby="mcp-modes">
+        <h3 id="mcp-modes" className="mcp-dialog__heading">
+          LOCAL OR HOSTED
         </h3>
-        <table className="mcp-dialog__table">
-          <thead>
-            <tr>
-              <th scope="col">COMMAND</th>
-              <th scope="col">WHEN</th>
-            </tr>
-          </thead>
-          <tbody>
-            {COMMANDS.map((command) => (
-              <tr key={command.name}>
-                <th scope="row">
-                  <code>{command.name}</code>
-                </th>
-                <td data-label="WHEN">{command.when}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="mcp-dialog__modes">
+          <div className="mcp-dialog__mode">
+            <span className="mcp-dialog__mode-name">LOCAL</span>
+            <p className="mcp-dialog__text">
+              The server draws in a copy of 3DOO you built on your own computer.
+            </p>
+            <ul>
+              <li>Builds, renders and exports work with no internet connection.</li>
+              <li>The 3DOO it uses is always the same version as the server.</li>
+              <li>Needs the code built once, and again after you change it.</li>
+              <li>
+                Links open on the address you set. One to localhost opens only on your computer,
+                while 3DOO is served there.
+              </li>
+            </ul>
+          </div>
+          <div className="mcp-dialog__mode">
+            <span className="mcp-dialog__mode-name">HOSTED</span>
+            <p className="mcp-dialog__text">
+              The server draws in the hosted 3DOO at {HOSTED_URL.replace('https://', '')}.
+            </p>
+            <ul>
+              <li>Nothing to download or build: one command adds the published server.</li>
+              <li>Needs the internet, since the hidden browser loads the editor from the web.</li>
+              <li>
+                Links open on the hosted editor, so they work on any computer and for anyone you
+                send them to.
+              </li>
+              <li>
+                The hosted editor has to be on the same version as the server, or the first call
+                says which one to update.
+              </li>
+            </ul>
+          </div>
+        </div>
         <p className="mcp-dialog__note">
-          The assistant starts the server by itself the moment it needs it, and stops it when it
-          closes. Once it is added, you never start or stop anything to use it.
+          Either way the server runs on your computer, so files and pictures are saved there, and
+          the scene the assistant builds is private to it.
         </p>
       </section>
 
@@ -159,20 +150,8 @@ export function McpDialog() {
         <ol className="mcp-dialog__steps">
           <li>
             <p>
-              Get the code and build it. It needs Node 22.18 or newer.{' '}
-              <a href={REPOSITORY_URL} target="_blank" rel="noopener noreferrer">
-                Source on GitHub ↗
-              </a>
-            </p>
-            <CopyBlock
-              label="Commands to get and build the code"
-              text={`git clone ${REPOSITORY_URL}.git\ncd 3doo\nnpm install\nnpm run build`}
-            />
-          </li>
-          <li>
-            <p>
-              The server draws the models in Chrome, Edge or Chromium. With neither Chrome nor Edge
-              installed, fetch a Chromium of its own:
+              Both ways need Node 22.18 or newer, and Chrome, Edge or Chromium to draw the models
+              in. With neither Chrome nor Edge installed, fetch a Chromium of its own:
             </p>
             <CopyBlock
               label="Command to install Chromium"
@@ -181,22 +160,37 @@ export function McpDialog() {
           </li>
           <li>
             <p>
-              Add the server to your assistant, with the path to your copy in place of{' '}
-              <code>{SERVER_PLACEHOLDER}</code>. In Claude Code:
+              <strong>HOSTED:</strong> nothing to download. Add the server to your assistant and it
+              fetches the published package itself the first time it starts. In Claude Code:
             </p>
-            <CopyBlock label="Claude Code command" text={claudeCodeCommand(appUrl)} />
-            {isLocal ? (
-              <p>
-                This page is on your own computer, so the links the assistant makes point at{' '}
-                <code>{appUrl}</code> and open only while 3DOO is served there. For links that work
-                anywhere, put the address of a hosted 3DOO in place of it.
-              </p>
-            ) : null}
+            <CopyBlock label="Claude Code command, hosted" text={hostedClaudeCodeCommand()} />
             <p>
               In Claude Desktop, or any client set up by a JSON file, add the entry under{' '}
               <code>mcpServers</code> (for Claude Desktop, in claude_desktop_config.json):
             </p>
-            <CopyBlock label="Client configuration" text={clientConfig(appUrl)} />
+            <CopyBlock label="Client configuration, hosted" text={hostedClientConfig()} />
+          </li>
+          <li>
+            <p>
+              <strong>LOCAL:</strong> get the code, build it, then add the server with the path to
+              your copy in place of <code>{SERVER_PLACEHOLDER}</code>.{' '}
+              <a href={REPOSITORY_URL} target="_blank" rel="noopener noreferrer">
+                Source on GitHub ↗
+              </a>
+            </p>
+            <CopyBlock
+              label="Commands to get and build the code"
+              text={`git clone ${REPOSITORY_URL}.git\ncd 3doo\nnpm install\nnpm run build`}
+            />
+            <CopyBlock label="Claude Code command, local" text={claudeCodeCommand(appUrl)} />
+            {isLocal ? (
+              <p>
+                This page is on your own computer, so the links the assistant makes point at{' '}
+                <code>{appUrl}</code> and open only while 3DOO is served there. Use the hosted
+                address in place of it for links that work anywhere.
+              </p>
+            ) : null}
+            <CopyBlock label="Client configuration, local" text={clientConfig(appUrl)} />
           </li>
           <li>
             <p>
@@ -205,81 +199,10 @@ export function McpDialog() {
             </p>
           </li>
         </ol>
-      </section>
-
-      <section className="mcp-dialog__section" aria-labelledby="mcp-tools">
-        <h3 id="mcp-tools" className="mcp-dialog__heading">
-          TOOLS IT GIVES THE ASSISTANT
-        </h3>
-        <table className="mcp-dialog__table">
-          <thead>
-            <tr>
-              <th scope="col">TOOL</th>
-              <th scope="col">DOES</th>
-              <th scope="col">RETURNS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {MCP_TOOLS.map((tool) => (
-              <tr key={tool.name}>
-                <th scope="row">
-                  <code>{tool.name}</code>
-                  {tool.args.length > 0 ? (
-                    <span className="mcp-dialog__args">{tool.args.join(', ')}</span>
-                  ) : null}
-                </th>
-                <td data-label="DOES">{tool.does}</td>
-                <td data-label="RETURNS">{tool.returns}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </section>
-
-      <section className="mcp-dialog__section" aria-labelledby="mcp-returns">
-        <h3 id="mcp-returns" className="mcp-dialog__heading">
-          WHAT COMES BACK
-        </h3>
-        <p className="mcp-dialog__text">
-          After every script the assistant reads the scene back as text, one line per object, in
-          metres and degrees, with the counts of the shape as drawn and exported:
+        <p className="mcp-dialog__note">
+          The assistant starts the server by itself the moment it needs it, and stops it when it
+          closes. Once it is added, you never start or stop anything to use it.
         </p>
-        <pre className="mcp-dialog__sample">{SAMPLE_RESULT}</pre>
-        <p className="mcp-dialog__text">
-          Pictures come back as images it can look at before it answers you. Files are written to
-          the output folder on your computer, and the reply says where. A link opens this editor
-          with the model in it, unsaved, ready to keep working on.
-        </p>
-      </section>
-
-      <section className="mcp-dialog__section" aria-labelledby="mcp-settings">
-        <h3 id="mcp-settings" className="mcp-dialog__heading">
-          SETTINGS
-        </h3>
-        <p className="mcp-dialog__text">
-          Environment variables the server reads as it starts. Pass them with -e in Claude Code, or
-          under env in a JSON configuration.
-        </p>
-        <table className="mcp-dialog__table">
-          <thead>
-            <tr>
-              <th scope="col">VARIABLE</th>
-              <th scope="col">DEFAULT</th>
-              <th scope="col">MEANS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {MCP_SETTINGS.map((setting) => (
-              <tr key={setting.name}>
-                <th scope="row">
-                  <code>{setting.name}</code>
-                </th>
-                <td data-label="DEFAULT">{setting.fallback}</td>
-                <td data-label="MEANS">{setting.means}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
       </section>
     </Modal>
   );
