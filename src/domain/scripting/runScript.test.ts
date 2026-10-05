@@ -203,6 +203,26 @@ const b = undefinedThing + a;`);
     expect(store().objects[0].primitive).toBeNull();
   });
 
+  it('selects the vertices, edges and faces standing on a list of points', async () => {
+    const outcome = await run(`
+      return scene.add('cube').edit((mesh) => [
+        mesh.selectFaces([[0, 0.5, 0], [0, -0.5, 0.00001]]),
+        mesh.selectEdges([[0.5, 0.5, 0]]),
+        mesh.selectVerts([{ x: -0.5, y: 0.5, z: 0.5 }, [9, 9, 9]]),
+        mesh.selectFaces([]),
+      ]);
+    `);
+
+    expect(outcome.message).toBe('[2,1,1,0]');
+  });
+
+  it('asks for brackets round a point handed to a select call on its own', async () => {
+    const outcome = await fail(`scene.add('cube').edit((mesh) => mesh.selectFaces([0, 0.5, 0]));`);
+    expect(outcome.message).toBe(
+      'mesh.selectFaces takes a list of points, so one point goes in brackets of its own: [[x, y, z]].',
+    );
+  });
+
   it('turns a refused operation into an error on its line', async () => {
     store().addPrimitive('cube');
     const outcome = await fail(`const box = scene.active;

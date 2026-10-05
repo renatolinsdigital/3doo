@@ -1,9 +1,15 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 
-import { Button, Modal, Select } from '@shared/components';
+import { Button, Modal, SegmentedControl, type SegmentedOption, Select } from '@shared/components';
 import { useEditorStore } from '@store/index';
 
 import { SCRIPT_EXAMPLES, STARTER_SCRIPT } from '../../scripting/examples';
+import {
+  actionLogIsEmpty,
+  actionLogText,
+  clearActionLog,
+  subscribeActionLog,
+} from '../../scripting/recorder';
 import { runScript } from '../../scripting/runScript';
 import { ScriptEditor, type ScriptEditorHandle } from '../ScriptEditor/ScriptEditor';
 
@@ -43,6 +49,25 @@ const EXAMPLE_OPTIONS = [
   ...SCRIPT_EXAMPLES.map((example) => ({ value: example.id, label: example.label })),
 ];
 
+type Tab = 'actions' | 'editor';
+
+const TABS: readonly SegmentedOption<Tab>[] = [
+  { value: 'actions', label: 'ACTIONS', hint: 'What you do in the viewport, written as script' },
+  { value: 'editor', label: 'EDITOR', hint: 'Write a script and run it against the scene' },
+];
+
+/** Stands in for an empty log, so the tab says what is going to appear in it. */
+export const EMPTY_LOG = '// What you do in the viewport is written here as script.';
+
+/**
+ * The log, read only. Its own component so that only an open dialog follows
+ * every change to it: a drag changes it on every pointer move.
+ */
+function ActionLog({ autoFocus }: { autoFocus: boolean }) {
+  const log = useSyncExternalStore(subscribeActionLog, actionLogText);
+  return <ScriptEditor label="Actions" value={log || EMPTY_LOG} readOnly autoFocus={autoFocus} />;
+}
+
 interface Problem {
   message: string;
   line: number | null;
@@ -51,7 +76,12 @@ interface Problem {
 }
 
 /**
- * The scripting window: write JavaScript against the scene, then run it.
+ * The scripting window, in two tabs.
+ *
+ * ACTIONS shows what has been done in the viewport, written as the script
+ * that would do it, and can hand that script to the editor. EDITOR is where a
+ * script is written and run. Both stay mounted while the dialog is open, so
+ * switching between them keeps the editor's own undo.
  *
  * A run that fails says why twice over, in a toast and under the code, and
  * leaves the dialog open on the line that failed with the scene untouched. A
@@ -63,13 +93,24 @@ export function ScriptDialog() {
   const closeDialog = useEditorStore((state) => state.closeDialog);
   const pushToast = useEditorStore((state) => state.pushToast);
 
+  const [tab, setTab] = useState<Tab>('actions');
   const [source, setSource] = useState(readDraft);
   const [running, setRunning] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
+  const logEmpty = useSyncExternalStore(subscribeActionLog, actionLogIsEmpty);
   const failures = useRef(0);
   const editor = useRef<ScriptEditorHandle>(null);
+  /** The log on its way into the editor, which can only take it once it is showing. */
+  const handover = useRef<string | null>(null);
 
   useEffect(() => writeDraft(source), [source]);
+
+  useLayoutEffect(() => {
+    if (tab !== 'editor' || handover.current === null) return;
+    editor.current?.replaceAll(handover.current);
+    handover.current = null;
+    setProblem(null);
+  }, [tab]);
 
   const run = async () => {
     if (running) return;
@@ -102,6 +143,11 @@ export function ScriptDialog() {
     setProblem(null);
   };
 
+  const openInEditor = () => {
+    handover.current = actionLogText();
+    setTab('editor');
+  };
+
   return (
     <Modal
       title="SCRIPT"
@@ -109,26 +155,50 @@ export function ScriptDialog() {
       onClose={closeDialog}
       className="script-dialog"
       footer={
-        <>
-          <Button label="CLOSE" onClick={closeDialog} />
-          <Button
-            label={running ? 'RUNNING' : 'RUN'}
-            variant="primary"
-            disabled={running}
-            hint="Run the script against the scene (Ctrl+Enter). The whole run is one step to undo"
-            onClick={() => void run()}
-          />
-        </>
+        tab === 'actions' ? (
+          <>
+            <Button
+              label="CLEAR"
+              disabled={logEmpty}
+              hint="Empty the log. The scene stays as it is"
+              onClick={clearActionLog}
+            />
+            <Button label="CLOSE" onClick={closeDialog} />
+            <Button
+              label="OPEN IN EDITOR"
+              variant="primary"
+              disabled={logEmpty}
+              hint="Replace the script in the editor with this log. Ctrl+Z in the editor brings yours back"
+              onClick={openInEditor}
+            />
+          </>
+        ) : (
+          <>
+            <Button label="CLOSE" onClick={closeDialog} />
+            <Button
+              label={running ? 'RUNNING' : 'RUN'}
+              variant="primary"
+              disabled={running}
+              hint="Run the script against the scene (Ctrl+Enter). The whole run is one step to undo"
+              onClick={() => void run()}
+            />
+          </>
+        )
       }
     >
       <div className="script-dialog__toolbar">
-        <Select
-          label="EXAMPLE"
-          value={PICK}
-          options={EXAMPLE_OPTIONS}
-          hint="Replace the script with a worked example. Ctrl+Z in the editor brings yours back"
-          onChange={loadExample}
-        />
+        <div className="script-dialog__controls">
+          <SegmentedControl label="Script tabs" options={TABS} value={tab} onChange={setTab} />
+          {tab === 'editor' && (
+            <Select
+              label="EXAMPLE"
+              value={PICK}
+              options={EXAMPLE_OPTIONS}
+              hint="Replace the script with a worked example. Ctrl+Z in the editor brings yours back"
+              onChange={loadExample}
+            />
+          )}
+        </div>
         <a
           className="script-dialog__reference"
           href="/docs#scripting"
@@ -139,24 +209,31 @@ export function ScriptDialog() {
         </a>
       </div>
 
-      <ScriptEditor
-        ref={editor}
-        label="Script"
-        value={source}
-        onChange={setSource}
-        onRun={() => void run()}
-        errorLine={problem?.line ?? null}
-        errorKey={problem?.key ?? 0}
-      />
+      <div className="script-dialog__panel" hidden={tab !== 'actions'}>
+        <ActionLog autoFocus={tab === 'actions'} />
+      </div>
 
-      {problem && (
-        <p className="script-dialog__problem">
-          <span className="script-dialog__problem-where">
-            {problem.line === null ? 'FAILED' : `LINE ${problem.line}`}
-          </span>
-          <span>{problem.message}</span>
-        </p>
-      )}
+      <div className="script-dialog__panel" hidden={tab !== 'editor'}>
+        <ScriptEditor
+          ref={editor}
+          label="Script"
+          value={source}
+          onChange={setSource}
+          onRun={() => void run()}
+          autoFocus={tab === 'editor'}
+          errorLine={problem?.line ?? null}
+          errorKey={problem?.key ?? 0}
+        />
+
+        {problem && (
+          <p className="script-dialog__problem">
+            <span className="script-dialog__problem-where">
+              {problem.line === null ? 'FAILED' : `LINE ${problem.line}`}
+            </span>
+            <span>{problem.message}</span>
+          </p>
+        )}
+      </div>
     </Modal>
   );
 }

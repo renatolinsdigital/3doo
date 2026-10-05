@@ -531,6 +531,7 @@ export interface SceneSlice {
   /** What each redo would put back, the next one first. */
   historyRedo: string[];
   status: string;
+  /** The operator that last changed a mesh, run through `exec` or by a gesture. */
   lastOperator: LastOperator | null;
   /**
    * Set whenever an edit is denied because its object is locked. The token
@@ -682,6 +683,13 @@ export interface SceneSlice {
     label?: string,
     options?: { record?: boolean; throws?: boolean },
   ) => OperatorResult | null;
+  /**
+   * Says which operator a gesture ran, for one that ran it itself rather than
+   * through `exec`: a bevel, inset or extrude drag previews on a copy of the
+   * mesh and keeps the last copy, so only the gesture knows the distance it
+   * ended on.
+   */
+  noteOperator: (name: string, params: Record<string, unknown>, label?: string) => void;
   /**
    * Runs `work` as one step to undo, or as nothing at all.
    *
@@ -2201,6 +2209,9 @@ export const createSceneSlice: StateCreator<
     }));
     return result;
   },
+
+  noteOperator: (name, params, label) =>
+    set({ lastOperator: { name, label: label ?? name, params } }),
 
   discardHistory: () => {
     // The step being taken back was never recorded while a transaction held

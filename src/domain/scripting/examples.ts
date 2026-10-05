@@ -32,8 +32,8 @@ box.edit((mesh) => {
 export const SCRIPT_EXAMPLES: readonly ScriptExample[] = [
   {
     id: 'axe',
-    label: 'STYLISED AXE',
-    source: `// A stylised axe, all quads. The handle is built in sections that meet ring to ring, so the
+    label: 'LOW POLY AXE',
+    source: `// A low poly axe, all quads. The handle is built in sections that meet ring to ring, so the
 // leather grip can take its own colour without a second mesh hidden inside it.
 const SEGMENTS = 8;
 const HEAD_Y = 1.42; // the middle of the head

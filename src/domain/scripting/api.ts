@@ -318,7 +318,7 @@ function readColor(value: unknown, what: string): { r: number; g: number; b: num
   );
 }
 
-function toHex(color: { r: number; g: number; b: number }): string {
+export function toHex(color: { r: number; g: number; b: number }): string {
   const channel = (value: number) =>
     Math.round(Math.min(1, Math.max(0, value)) * 255)
       .toString(16)
@@ -553,10 +553,76 @@ function readSlot(object: SceneObject, value: unknown, what: string): number {
   throw new Error(`${what} takes a material, its index or its name, not ${describe(value)}.`);
 }
 
-function readWhere<T>(where: unknown, what: string): ((info: T) => unknown) | null {
+/** How far, in metres, an element may stand from a point that names it. */
+export const POINT_TOLERANCE = 1e-4;
+
+/**
+ * Whether a point is within `POINT_TOLERANCE` of any of `points`.
+ *
+ * The points are filed by the cell of that size they fall in, so each test
+ * looks at the 27 cells around it rather than at every point: a selection
+ * written out by the ACTIONS tab can name thousands of faces of a mesh with
+ * many thousands more.
+ */
+function pointMatcher(points: readonly Vec3[]): (point: Vec3) => boolean {
+  const cell = (value: number) => Math.floor(value / POINT_TOLERANCE);
+  const cells = new Map<string, Vec3[]>();
+  for (const point of points) {
+    const key = `${cell(point.x)},${cell(point.y)},${cell(point.z)}`;
+    const filed = cells.get(key);
+    if (filed) filed.push(point);
+    else cells.set(key, [point]);
+  }
+
+  return (point) => {
+    const x = cell(point.x);
+    const y = cell(point.y);
+    const z = cell(point.z);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          for (const candidate of cells.get(`${x + dx},${y + dy},${z + dz}`) ?? []) {
+            const distance = Math.hypot(
+              candidate.x - point.x,
+              candidate.y - point.y,
+              candidate.z - point.z,
+            );
+            if (distance <= POINT_TOLERANCE) return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+}
+
+/**
+ * Which elements a select call picks: by a function of each one, or by a list
+ * of points, each naming the element whose `anchor` stands on it.
+ */
+function readWhere<T>(
+  where: unknown,
+  what: string,
+  anchor: (info: T) => Vec3,
+): ((info: T) => unknown) | null {
   if (where === undefined || where === null) return null;
+
+  if (Array.isArray(where)) {
+    if (where.length === 3 && where.every(finite)) {
+      throw new Error(
+        `${what} takes a list of points, so one point goes in brackets of its own: [[x, y, z]].`,
+      );
+    }
+    const near = pointMatcher(
+      where.map((point, index) => readVector(point, `${what}: point ${index}`)),
+    );
+    return (info) => near(anchor(info));
+  }
+
   if (typeof where !== 'function') {
-    throw new Error(`${what} takes a function that says which to select, not ${describe(where)}.`);
+    throw new Error(
+      `${what} takes a function that says which to select, or a list of [x, y, z] points, not ${describe(where)}.`,
+    );
   }
   return where as (info: T) => unknown;
 }
@@ -588,9 +654,9 @@ export interface MeshTools {
   readonly edges: EdgeInfo[];
   readonly faces: FaceInfo[];
   readonly selection: { verts: number; edges: number; faces: number };
-  selectVerts(where?: (vert: VertInfo) => unknown, options?: { add?: boolean }): number;
-  selectEdges(where?: (edge: EdgeInfo) => unknown, options?: { add?: boolean }): number;
-  selectFaces(where?: (face: FaceInfo) => unknown, options?: { add?: boolean }): number;
+  selectVerts(where?: ((vert: VertInfo) => unknown) | Vec3[], options?: { add?: boolean }): number;
+  selectEdges(where?: ((edge: EdgeInfo) => unknown) | Vec3[], options?: { add?: boolean }): number;
+  selectFaces(where?: ((face: FaceInfo) => unknown) | Vec3[], options?: { add?: boolean }): number;
   deform(move: (vert: VertInfo) => unknown): number;
   assignMaterial(material: unknown): number;
   run(name: string, params?: Record<string, unknown>): string;
@@ -635,7 +701,7 @@ function meshTools(objectId: string, lastName: string, startMode: SelectMode): M
   const tools: Record<string, unknown> = {
     run,
     selectVerts(where?: unknown, options?: unknown) {
-      const test = readWhere<VertInfo>(where, 'mesh.selectVerts');
+      const test = readWhere<VertInfo>(where, 'mesh.selectVerts', (vert) => vert.position);
       const add = readAdd(options, 'mesh.selectVerts');
       const target = mesh();
       if (!add) target.deselectAll();
@@ -651,7 +717,7 @@ function meshTools(objectId: string, lastName: string, startMode: SelectMode): M
       return count;
     },
     selectEdges(where?: unknown, options?: unknown) {
-      const test = readWhere<EdgeInfo>(where, 'mesh.selectEdges');
+      const test = readWhere<EdgeInfo>(where, 'mesh.selectEdges', (edge) => edge.center);
       const add = readAdd(options, 'mesh.selectEdges');
       const target = mesh();
       if (!add) target.deselectAll();
@@ -667,7 +733,7 @@ function meshTools(objectId: string, lastName: string, startMode: SelectMode): M
       return count;
     },
     selectFaces(where?: unknown, options?: unknown) {
-      const test = readWhere<FaceInfo>(where, 'mesh.selectFaces');
+      const test = readWhere<FaceInfo>(where, 'mesh.selectFaces', (face) => face.center);
       const add = readAdd(options, 'mesh.selectFaces');
       const target = mesh();
       if (!add) target.deselectAll();

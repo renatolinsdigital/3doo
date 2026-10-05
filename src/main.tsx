@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 
 import { App } from './app/App';
 import { installAutomation } from './app/automation/automation';
+import { installRecorder } from './domain/scripting/recorder';
 
 import './global-styles/index.scss';
 
@@ -21,6 +22,9 @@ if (ios) {
 
 // What an assistant drives the editor through, by way of the MCP server.
 installAutomation();
+
+// Before the first render, so the cube a fresh tab opens on is the log's first line.
+installRecorder();
 
 const container = document.getElementById('root');
 if (!container) throw new Error('Root element #root is missing from index.html');

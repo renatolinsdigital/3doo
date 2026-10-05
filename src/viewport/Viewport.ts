@@ -2732,6 +2732,8 @@ export class Viewport {
     if (abandoned) {
       state.patchActiveObject({ mesh: drag.original });
       state.discardHistory();
+    } else {
+      state.noteOperator(drag.kind, offsetParams(drag.kind, drag.amount), OFFSET_LABELS[drag.kind]);
     }
 
     // Cleared before the store is told, so the modal subscription sees nothing

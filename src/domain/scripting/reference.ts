@@ -918,21 +918,21 @@ export const API_ENTRIES: readonly ApiEntry[] = [
       kind: 'function',
       args: 'where?, { add }?',
       summary:
-        'Selects the vertices where(v) is true for, or all of them. v has id, x, y, z, position and normal. { add: true } keeps what was selected.',
+        'Selects the vertices where(v) is true for, or all of them. v has id, x, y, z, position and normal. where can also be a list of [x, y, z] points, picking the vertices on them. { add: true } keeps what was selected.',
     },
     {
       name: 'selectEdges',
       kind: 'function',
       args: 'where?, { add }?',
       summary:
-        'Selects the edges where(e) is true for, or all of them. e has id, center, length, a and b, its two ends.',
+        'Selects the edges where(e) is true for, or all of them. e has id, center, length, a and b, its two ends. A list of [x, y, z] points picks the edges centred on them.',
     },
     {
       name: 'selectFaces',
       kind: 'function',
       args: 'where?, { add }?',
       summary:
-        'Selects the faces where(f) is true for, or all of them. f has id, center, normal, area, sides and material, the index of the slot it wears.',
+        'Selects the faces where(f) is true for, or all of them. f has id, center, normal, area, sides and material, the index of the slot it wears. A list of [x, y, z] points picks the faces centred on them.',
     },
     { name: 'verts', kind: 'property', summary: 'Every vertex, as selectVerts describes them.' },
     { name: 'edges', kind: 'property', summary: 'Every edge, as selectEdges describes them.' },

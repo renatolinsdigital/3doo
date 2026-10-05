@@ -133,12 +133,12 @@ function scriptEditorBlocks(): DocsBlock[] {
   return [
     {
       kind: 'prose',
-      text: 'The <> button at the right of the top bar opens SCRIPT, an editor where you build and change the scene with JavaScript. Everything the panels do can be done from it: add primitives or your own geometry, place and colour objects, select vertices, edges and faces and run any modelling operation on them, give parts of a mesh colours of their own, stack modifiers, cut booleans, fill outliner folders, move the 3D cursor and frame the view.',
+      text: 'The <> button at the right of the top bar opens SCRIPT, in two tabs. ACTIONS writes down what you do in the viewport as the script that would do it. EDITOR is where you build and change the scene with JavaScript. Everything the panels do can be done from a script: add primitives or your own geometry, place and colour objects, select vertices, edges and faces and run any modelling operation on them, give parts of a mesh colours of their own, stack modifiers, cut booleans, fill outliner folders, move the 3D cursor and frame the view.',
     },
     {
       kind: 'steps',
       items: [
-        'Click <> in the top bar. The editor opens on the script you were last writing, or on a short starter the first time.',
+        'Click <> in the top bar, then EDITOR. The editor opens on the script you were last writing, or on a short starter the first time.',
         'Write a script, or pick one under EXAMPLE to start from. Rest the pointer on any name the API has, such as scene or extrude, for a balloon that says what it does and links to its row on this page.',
         'Press RUN, or Ctrl+Enter. When the script works, the dialog closes, a toast says what it did, and the result is in the viewport.',
         'When it fails, a toast and the strip under the code say why, the line that failed is marked and the caret is put on it, and the dialog stays open. The scene is left exactly as it was before the run, so you can fix the line and run again.',
@@ -176,6 +176,14 @@ function scriptEditorBlocks(): DocsBlock[] {
     {
       kind: 'prose',
       text: "A script tells you what it found in two ways. End it with return and a value, and that value is the toast and the status line when the run finishes: text as it is, anything else as JSON, so return box.bounds shows where the box sits. console.log writes to the browser's own console, which F12 opens in most browsers.",
+    },
+    {
+      kind: 'prose',
+      text: 'ACTIONS keeps a log of what you do, as script: adding, moving, selecting, renaming and deleting objects, their materials and modifiers, the 3D cursor and the shading, and every operation in edit mode with the vertices, edges or faces it ran on. Dragging a handle or a value writes one line with where it ended, and a move called off with Esc leaves nothing behind. Rest the pointer on a name for its reference, as in the editor. OPEN IN EDITOR puts the log in EDITOR to change and run, and CLEAR empties it.',
+    },
+    {
+      kind: 'note',
+      text: 'An edit mode selection is written as the points the vertices stand on, or the middles of the edges or faces, so it still picks the right ones after an undo has rebuilt the mesh. A few things have no script that repeats them, such as importing a file, turning about the view or sliding along edges: the log says so in a comment where they happened. A script you run and an undo are noted as comments too, and an undo takes nothing off the log.',
     },
     {
       kind: 'note',

@@ -38,9 +38,17 @@ const HOVER_GRACE_MS = 220;
 
 export interface ScriptEditorProps {
   value: string;
-  onChange: (value: string) => void;
+  onChange?: (value: string) => void;
   /** Ctrl+Enter, or Cmd+Enter on a Mac. */
-  onRun: () => void;
+  onRun?: () => void;
+  /**
+   * Shows the code without letting it be edited, scrolled to its last line, as
+   * a log is read. It can still be selected and copied, and its names still
+   * open their reference on hover.
+   */
+  readOnly?: boolean;
+  /** Takes the focus as its dialog opens. Off for one that opens hidden behind another. */
+  autoFocus?: boolean;
   /** Line to mark as the one that failed, counted from 1. */
   errorLine?: number | null;
   /** Changes on every failed run, so the same line failing twice still takes the caret there. */
@@ -81,7 +89,16 @@ interface HoverState {
  * takes back exactly what one keystroke did.
  */
 export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(function ScriptEditor(
-  { value, onChange, onRun, errorLine = null, errorKey = 0, label },
+  {
+    value,
+    onChange,
+    onRun,
+    readOnly = false,
+    autoFocus = true,
+    errorLine = null,
+    errorKey = 0,
+    label,
+  },
   ref,
 ) {
   const textarea = useRef<HTMLTextAreaElement>(null);
@@ -174,6 +191,15 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(fu
     }
   }, [errorLine, errorKey]);
 
+  // A log is read from its newest line.
+  useLayoutEffect(() => {
+    const field = textarea.current;
+    if (!field || !readOnly) return;
+    field.setSelectionRange(value.length, value.length);
+    setCaret(value.length);
+    field.scrollTop = field.scrollHeight;
+  }, [readOnly, value]);
+
   /**
    * Replaces part of the text the way typing would, so Ctrl+Z takes it back.
    *
@@ -199,7 +225,7 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(fu
       }
       if (!done) {
         field.setRangeText(text, start, end, 'end');
-        onChange(field.value);
+        onChange?.(field.value);
       }
 
       programmatic.current = false;
@@ -325,10 +351,13 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(fu
       return;
     }
 
+    // The field refuses typing itself; everything below edits the text for it.
+    if (readOnly) return;
+
     if (mod && event.key === 'Enter') {
       event.preventDefault();
       setCompletion(null);
-      onRun();
+      onRun?.();
       return;
     }
 
@@ -423,7 +452,7 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(fu
   };
 
   const handleChange = (next: string, at: number) => {
-    onChange(next);
+    onChange?.(next);
     setCaret(at);
     closeHover();
     if (programmatic.current) return;
@@ -595,12 +624,13 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(fu
             className="script-editor__input"
             aria-label={label}
             value={value}
+            readOnly={readOnly}
             wrap="off"
             spellCheck={false}
             autoCapitalize="off"
             autoComplete="off"
             autoCorrect="off"
-            {...{ [AUTOFOCUS]: '', [OWNS_ESCAPE]: '' }}
+            {...{ [OWNS_ESCAPE]: '', ...(autoFocus ? { [AUTOFOCUS]: '' } : {}) }}
             onChange={(event) => handleChange(event.target.value, event.target.selectionStart)}
             onKeyDown={handleKeyDown}
             onSelect={(event) => setCaret(event.currentTarget.selectionStart)}
@@ -683,7 +713,9 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(fu
         <span className="script-editor__context">
           {caretEntry
             ? caretEntry.signature
-            : 'CTRL+ENTER RUNS · CTRL+SPACE SUGGESTS · CTRL+/ COMMENTS'}
+            : readOnly
+              ? 'READ ONLY · HOVER A NAME FOR ITS REFERENCE'
+              : 'CTRL+ENTER RUNS · CTRL+SPACE SUGGESTS · CTRL+/ COMMENTS'}
         </span>
       </p>
     </div>

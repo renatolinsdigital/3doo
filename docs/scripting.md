@@ -107,21 +107,23 @@ The status string is user-visible: `Extruded 1 face(s) by 1` is useful,
 
 ## The scripting API
 
-The `<>` button in the top bar opens the SCRIPT dialog, where a user writes
-JavaScript against the scene and runs it. The user-facing reference is the
-SCRIPTING section of the in-app docs, generated from the same catalogue the
-editor reads; this section is about how the layer is built.
+The `<>` button in the top bar opens the SCRIPT dialog. Its EDITOR tab is where
+a user writes JavaScript against the scene and runs it; its ACTIONS tab shows
+what the user did in the viewport, written as that JavaScript. The user-facing
+reference is the SCRIPTING section of the in-app docs, generated from the same
+catalogue the editor reads; this section is about how the layer is built.
 
 ```text
 src/domain/scripting/
   reference.ts   the catalogue: every API name, operator spec and modifier field
   api.ts         the scene and view globals, object, mesh and modifier handles
   runScript.ts   compile, run as one transaction, map an error to a script line
+  recorder.ts    the ACTIONS log: store actions written as the calls that repeat them
   syntax.ts      tokenizer, bracket check and completion, for the editor
   examples.ts    the starter script and the EXAMPLE menu, all run by a test
 src/domain/components/
   ScriptEditor/  textarea over a highlighted layer, hovers, suggestions
-  ScriptDialog/  the modal: toolbar, editor, RUN, toasts, the saved draft
+  ScriptDialog/  the modal: ACTIONS and EDITOR tabs, RUN, toasts, the saved draft
 ```
 
 ### One catalogue, five readers
@@ -267,3 +269,57 @@ reached through `window.threedoo`, the automation API in `src/app/automation`:
 `threedoo.run(source)` runs a script exactly as RUN does and returns the scene
 afterwards. That is what the MCP server drives, and it works from the browser
 console too. See [mcp.md](mcp.md).
+
+### The action log
+
+The ACTIONS tab works like Blender's Info editor: what the user does is written
+out as the call that would do it. `installRecorder()` in `recorder.ts` runs once
+from `main.tsx`, before the first render, and wraps the store actions a script
+can repeat. Each wrapper lets the action run, then compares the store before and
+after and writes the call: `addPrimitive` becomes `scene.add(...)`,
+`setObjectTransform` an assignment to `position`, `exec` a line inside
+`object.edit((mesh) => { ... })`. Store actions are the only mutation path (see
+[state-management.md](state-management.md#store-actions-are-the-only-mutation-path)),
+so this one place sees everything.
+
+Only the outermost call is written. An action that calls another is one thing
+the user did, and a script run calls every action from inside `transact`, so a
+run is written as one `// Ran a script` comment, not as a copy of its source.
+
+A few rules keep the log readable and true:
+
+- **Repeated settings merge.** Each line can carry a key, and a line with the
+  same key as the one before it replaces it. A drag sends a position on every
+  pointer move and leaves one line; so does a slider on a modifier.
+- **Edit mode gestures are read off their undo step.** A move, turn or scale
+  in the viewport changes vertices in place and calls `recordHistory` when it
+  starts. The recorder snapshots the vertices then, and describes the step when
+  the next action runs or the dialog opens: one offset for every selected
+  vertex is `mesh.translate`, a factor or a turn about one axis through their
+  middle is `mesh.scale` or `mesh.rotate`. Anything else (a turn about the view,
+  a pivot on the cursor, proportional editing, a slide) is written as a comment
+  saying it has no script equivalent.
+- **A gesture called off takes its lines with it.** The log is marked when a
+  step opens and goes back to the mark on `discardHistory`, which is what every
+  cancel calls.
+- **The bevel, inset and extrude drags say what they ran.** They preview on a
+  copy of the mesh, so the vertices alone cannot tell the recorder the distance.
+  The viewport calls `noteOperator` on confirm, which sets `lastOperator` the way
+  `exec` does, and the step is written as that operation.
+- **Selections are points, not ids.** `cloneMesh` and every undo rebuild the
+  mesh from its saved form and number its elements afresh, and the drags above
+  keep a copy. A replay does neither, so an id would name a different face by
+  then. The log writes `mesh.selectFaces([[0, 0.5, 0]])` instead: the select
+  calls take a list of points and pick the elements standing on them (vertex
+  positions, edge and face middles) within `POINT_TOLERANCE`. A selection is
+  only written again when it differs from what the last line left.
+
+The knife is the exception: its cuts name vertices, edges and faces by id,
+because that is the form `mesh.knife` takes, so a knife line replays correctly
+only on a mesh that has not been rebuilt since. Changes with no script call at
+all, an import or an outliner folder removed, are comments with the undo
+step's label. An undo is noted as a comment and takes nothing off the log.
+
+`recorder.test.ts` holds the log to its promise: each test does something
+through the store, runs the log on an empty scene, and expects the same objects,
+transforms and vertex positions back.

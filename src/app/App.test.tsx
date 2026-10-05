@@ -989,6 +989,7 @@ describe('App shell', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'SCRIPT' }));
     const dialog = screen.getByRole('dialog', { name: 'SCRIPT' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'EDITOR' }));
     await userEvent.click(within(dialog).getByRole('button', { name: 'RUN' }));
 
     // The starter script adds a box and extrudes its top, and a run that works
