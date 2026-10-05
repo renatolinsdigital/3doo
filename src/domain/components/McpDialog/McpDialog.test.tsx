@@ -26,15 +26,24 @@ describe('McpDialog', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
   });
 
-  it('explains what local and hosted each mean', () => {
+  it('opens on the hosted setup, with the local one a tab away', async () => {
+    const user = userEvent.setup();
     render(<McpDialog />);
-    expect(screen.getByRole('heading', { name: 'LOCAL OR HOSTED' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'HOSTED (DEFAULT)' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    expect(screen.getByText(/Nothing to download/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Claude Code command, local')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('tab', { name: 'LOCAL FILES' }));
     expect(screen.getByText(/work with no internet connection/)).toBeInTheDocument();
-    expect(screen.getByText(/Nothing to download or build/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Claude Code command, hosted')).not.toBeInTheDocument();
   });
 
-  it('fills in this site as the place links open for a local build', () => {
+  it('fills in this site as the place links open for a local build', async () => {
     render(<McpDialog />);
+    await userEvent.click(screen.getByRole('tab', { name: 'LOCAL FILES' }));
     const command = screen.getByLabelText('Claude Code command, local');
     expect(command.textContent).toBe(
       `claude mcp add 3doo -e THREEDOO_APP_URL=${window.location.origin} -- node /path/to/3doo/mcp/server.ts`,
@@ -75,8 +84,9 @@ describe('McpDialog', () => {
     expect(screen.getByText(/starts the server by itself/)).toBeInTheDocument();
   });
 
-  it('warns that links to localhost open only while the app is served', () => {
+  it('warns that links to localhost open only while the app is served', async () => {
     render(<McpDialog />);
+    await userEvent.click(screen.getByRole('tab', { name: 'LOCAL FILES' }));
     expect(screen.getAllByText(/open only while 3DOO is served there/).length).toBeGreaterThan(0);
   });
 

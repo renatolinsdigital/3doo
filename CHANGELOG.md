@@ -10,23 +10,6 @@ All notable changes to 3DOO are recorded here. Versions follow
 New entries go under `Unreleased` until a version is cut. Group them under
 `Added`, `Changed`, `Fixed` or `Removed`.
 
-## [Unreleased]
-
-### Added
-
-- The MCP server is packaged for npm as `3doo-mcp` (`mcp-package/`, built with
-  `npm run build:mcp`). Add it with `npx -y 3doo-mcp` and the hosted editor:
-  no clone, no install and no build.
-- `vercel.json` rewrites unknown paths to `index.html`, so scene links to
-  `/modeling` and `/docs` open on the hosted editor.
-
-### Changed
-
-- The MCP dialog no longer carries tables. It explains what a local and a
-  hosted setup each mean and gives the commands for both.
-- The MCP server can draw in a hosted 3DOO instead of a local build, through
-  `THREEDOO_APP_URL` or `THREEDOO_ENGINE_URL`.
-
 ## [1.0.0] - 2026-10-05
 
 First tracked release. It marks the state of the project at this point,

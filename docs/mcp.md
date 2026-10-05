@@ -69,10 +69,16 @@ links open in, can be online.
 | Hosted, from the repository | the same | the hosted editor, with no `dist/` | the hosted editor |
 | Hosted, build present | `THREEDOO_ENGINE_URL=https://3doo.vercel.app` | the hosted editor | `THREEDOO_APP_URL`, else the engine address |
 
-- The hosted setup still needs the repository, for `mcp/server.ts`, but not
-  `npm run build`. It needs the internet to load the app, and the hosted
-  version must match the server's `AUTOMATION_VERSION`, or the server stops
-  at the first call and says which side to update.
+- The hosted setup needs no copy of the code: the server is published as
+  `3doo-mcp` on npm, and the client runs it with `npx -y 3doo-mcp`. It needs
+  Node, a Chromium and the internet to load the app, and the hosted version
+  must match the server's `AUTOMATION_VERSION`, or the server stops at the
+  first call and says which side to update.
+- The package is the server bundled by `npm run build:mcp` into
+  `mcp-package/`. It has no `dist/` beside it, so it always draws in
+  `THREEDOO_APP_URL` or `THREEDOO_ENGINE_URL`. How to release it, bump its
+  version and keep it in step with the app is in
+  [mcp-package.md](mcp-package.md).
 - The page is loaded fresh for each session, so a hosted scene is as private as
   a local one: it lives in the server's own headless tab.
 - `vercel.json` rewrites every path that is not a file to `index.html`.
@@ -94,7 +100,15 @@ links open in, can be online.
 
 ### Connecting a client
 
-Claude Code:
+Hosted, with nothing to download. In Claude Code:
+
+```bash
+claude mcp add 3doo   -e THREEDOO_APP_URL=https://3doo.vercel.app   -- npx -y 3doo-mcp
+```
+
+In a JSON client, the entry is `{ "command": "npx", "args": ["-y", "3doo-mcp"], "env": { "THREEDOO_APP_URL": "https://3doo.vercel.app" } }`.
+
+From a copy of the repository, which draws in its own build. In Claude Code:
 
 ```bash
 claude mcp add 3doo \

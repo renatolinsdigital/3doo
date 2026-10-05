@@ -38,6 +38,13 @@ const CHAIN: readonly { name: string; detail: string; link?: string }[] = [
   },
 ];
 
+type SetupId = 'hosted' | 'local';
+
+const SETUP_TABS: readonly { id: SetupId; label: string }[] = [
+  { id: 'hosted', label: 'HOSTED (DEFAULT)' },
+  { id: 'local', label: 'LOCAL FILES' },
+];
+
 /**
  * How to use 3DOO as a tool for an AI assistant: what the MCP server is, how
  * it reaches the editor, and how to connect one to a local build or to the
@@ -46,6 +53,7 @@ const CHAIN: readonly { name: string; detail: string; link?: string }[] = [
 export function McpDialog() {
   const open = useEditorStore((state) => state.dialog === 'mcp');
   const closeDialog = useEditorStore((state) => state.closeDialog);
+  const [setup, setSetup] = useState<SetupId>('hosted');
   const appUrl = window.location.origin;
   const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|$)/.test(appUrl);
 
@@ -98,33 +106,59 @@ export function McpDialog() {
         </p>
       </section>
 
-      <section className="mcp-dialog__section" aria-labelledby="mcp-modes">
-        <h3 id="mcp-modes" className="mcp-dialog__heading">
-          LOCAL OR HOSTED
+      <section className="mcp-dialog__section" aria-labelledby="mcp-setup">
+        <h3 id="mcp-setup" className="mcp-dialog__heading">
+          SET IT UP
         </h3>
-        <div className="mcp-dialog__modes">
-          <div className="mcp-dialog__mode">
-            <span className="mcp-dialog__mode-name">LOCAL</span>
+        <p className="mcp-dialog__text">
+          Both ways need Node 22.18 or newer, and Chrome, Edge or Chromium to draw the models in.
+          With neither Chrome nor Edge installed, fetch a Chromium of its own:
+        </p>
+        <CopyBlock
+          label="Command to install Chromium"
+          text="npx playwright-core install chromium"
+        />
+
+        <div className="mcp-dialog__tabs" role="tablist" aria-label="Where the server gets 3DOO">
+          {SETUP_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              id={`mcp-tab-${tab.id}`}
+              aria-selected={setup === tab.id}
+              aria-controls={`mcp-panel-${tab.id}`}
+              tabIndex={setup === tab.id ? 0 : -1}
+              className="mcp-dialog__tab"
+              onClick={() => setSetup(tab.id)}
+              onKeyDown={(event) => {
+                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+                event.preventDefault();
+                const other = SETUP_TABS.find((candidate) => candidate.id !== tab.id);
+                if (other) {
+                  setSetup(other.id);
+                  document.getElementById(`mcp-tab-${other.id}`)?.focus();
+                }
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {setup === 'hosted' ? (
+          <div
+            className="mcp-dialog__panel"
+            role="tabpanel"
+            id="mcp-panel-hosted"
+            aria-labelledby="mcp-tab-hosted"
+          >
             <p className="mcp-dialog__text">
-              The server draws in a copy of 3DOO you built on your own computer.
+              The server draws in the hosted 3DOO at {HOSTED_URL.replace('https://', '')}. Nothing
+              to download: add the server to your assistant and it fetches the published package
+              itself the first time it starts.
             </p>
-            <ul>
-              <li>Builds, renders and exports work with no internet connection.</li>
-              <li>The 3DOO it uses is always the same version as the server.</li>
-              <li>Needs the code built once, and again after you change it.</li>
-              <li>
-                Links open on the address you set. One to localhost opens only on your computer,
-                while 3DOO is served there.
-              </li>
-            </ul>
-          </div>
-          <div className="mcp-dialog__mode">
-            <span className="mcp-dialog__mode-name">HOSTED</span>
-            <p className="mcp-dialog__text">
-              The server draws in the hosted 3DOO at {HOSTED_URL.replace('https://', '')}.
-            </p>
-            <ul>
-              <li>Nothing to download or build: one command adds the published server.</li>
+            <ul className="mcp-dialog__points">
               <li>Needs the internet, since the hidden browser loads the editor from the web.</li>
               <li>
                 Links open on the hosted editor, so they work on any computer and for anyone you
@@ -135,73 +169,66 @@ export function McpDialog() {
                 says which one to update.
               </li>
             </ul>
-          </div>
-        </div>
-        <p className="mcp-dialog__note">
-          Either way the server runs on your computer, so files and pictures are saved there, and
-          the scene the assistant builds is private to it.
-        </p>
-      </section>
-
-      <section className="mcp-dialog__section" aria-labelledby="mcp-setup">
-        <h3 id="mcp-setup" className="mcp-dialog__heading">
-          SET IT UP
-        </h3>
-        <ol className="mcp-dialog__steps">
-          <li>
-            <p>
-              Both ways need Node 22.18 or newer, and Chrome, Edge or Chromium to draw the models
-              in. With neither Chrome nor Edge installed, fetch a Chromium of its own:
-            </p>
-            <CopyBlock
-              label="Command to install Chromium"
-              text="npx playwright-core install chromium"
-            />
-          </li>
-          <li>
-            <p>
-              <strong>HOSTED:</strong> nothing to download. Add the server to your assistant and it
-              fetches the published package itself the first time it starts. In Claude Code:
-            </p>
+            <p className="mcp-dialog__text">In Claude Code:</p>
             <CopyBlock label="Claude Code command, hosted" text={hostedClaudeCodeCommand()} />
-            <p>
+            <p className="mcp-dialog__text">
               In Claude Desktop, or any client set up by a JSON file, add the entry under{' '}
               <code>mcpServers</code> (for Claude Desktop, in claude_desktop_config.json):
             </p>
             <CopyBlock label="Client configuration, hosted" text={hostedClientConfig()} />
-          </li>
-          <li>
-            <p>
-              <strong>LOCAL:</strong> get the code, build it, then add the server with the path to
-              your copy in place of <code>{SERVER_PLACEHOLDER}</code>.{' '}
+          </div>
+        ) : (
+          <div
+            className="mcp-dialog__panel"
+            role="tabpanel"
+            id="mcp-panel-local"
+            aria-labelledby="mcp-tab-local"
+          >
+            <p className="mcp-dialog__text">
+              The server draws in a copy of 3DOO you built on your own computer, from the code on
+              GitHub.{' '}
               <a href={REPOSITORY_URL} target="_blank" rel="noopener noreferrer">
                 Source on GitHub ↗
               </a>
             </p>
+            <ul className="mcp-dialog__points">
+              <li>Builds, renders and exports work with no internet connection.</li>
+              <li>The 3DOO it uses is always the same version as the server.</li>
+              <li>Needs the code built once, and again after you change it.</li>
+              <li>
+                Links open on the address you set. One to localhost opens only on your computer,
+                while 3DOO is served there.
+              </li>
+            </ul>
+            <p className="mcp-dialog__text">Get the code and build it:</p>
             <CopyBlock
               label="Commands to get and build the code"
               text={`git clone ${REPOSITORY_URL}.git\ncd 3doo\nnpm install\nnpm run build`}
             />
+            <p className="mcp-dialog__text">
+              Then add the server with the path to your copy in place of{' '}
+              <code>{SERVER_PLACEHOLDER}</code>:
+            </p>
             <CopyBlock label="Claude Code command, local" text={claudeCodeCommand(appUrl)} />
             {isLocal ? (
-              <p>
+              <p className="mcp-dialog__text">
                 This page is on your own computer, so the links the assistant makes point at{' '}
                 <code>{appUrl}</code> and open only while 3DOO is served there. Use the hosted
                 address in place of it for links that work anywhere.
               </p>
             ) : null}
             <CopyBlock label="Client configuration, local" text={clientConfig(appUrl)} />
-          </li>
-          <li>
-            <p>
-              Ask for a model: &ldquo;Build a low poly chair in 3DOO, show me the front and side
-              views, then export it as FBX for Unity.&rdquo;
-            </p>
-          </li>
-        </ol>
+          </div>
+        )}
+
+        <p className="mcp-dialog__text">
+          Then ask for a model: &ldquo;Build a low poly chair in 3DOO, show me the front and side
+          views, then export it as FBX for Unity.&rdquo;
+        </p>
         <p className="mcp-dialog__note">
-          The assistant starts the server by itself the moment it needs it, and stops it when it
-          closes. Once it is added, you never start or stop anything to use it.
+          Either way the server runs on your computer, so files and pictures are saved there, and
+          the scene the assistant builds is private to it. The assistant starts the server by itself
+          the moment it needs it, and stops it when it closes.
         </p>
       </section>
     </Modal>
