@@ -1,11 +1,12 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { API_ENTRIES } from '@domain/scripting/reference';
 
 import { App } from './App';
 import { moduleForPath } from './modules';
+import { primeModules } from '../tests/primeModules';
 
 // The modeling module mounts the real viewport, which needs a WebGL context
 // jsdom does not provide. Only the Three.js entry point is stubbed; the rest of
@@ -24,6 +25,10 @@ function go(path: string) {
 }
 
 describe('module routing', () => {
+  beforeAll(async () => {
+    await primeModules(['/', '/docs', '/modeling']);
+  }, 30000);
+
   beforeEach(() => {
     go('/');
   });

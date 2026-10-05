@@ -1,11 +1,12 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { setOpeningSceneDone } from '@domain/hooks/useAutosave';
 import { DEFAULT_PREFERENCES, useEditorStore } from '@store/index';
 
 import { App } from './App';
+import { primeModules } from '../tests/primeModules';
 
 // The real viewport needs a WebGL context, which jsdom does not provide. Only
 // the Three.js entry point is stubbed; every panel below is the real component,
@@ -20,6 +21,11 @@ vi.mock('@viewport/index', async (importOriginal) => ({
 }));
 
 describe('App shell', () => {
+  beforeAll(async () => {
+    setOpeningSceneDone(true);
+    await primeModules(['/modeling']);
+  }, 30000);
+
   beforeEach(() => {
     // The editor is a module now, not the whole app, so the tests below have to
     // be standing on its route for it to render at all.

@@ -1,11 +1,18 @@
-import { useEffect } from 'react';
-
-import { DocsModule } from '../modules/docs/DocsModule';
-import { HomeModule } from '../modules/home/HomeModule';
-import { ModelingModule } from '../modules/modeling/ModelingModule';
+import { lazy, Suspense, useEffect } from 'react';
 
 import { moduleForPath } from './modules';
 import { usePathname } from './router';
+
+// One chunk per module, so the page someone lands on is the only code they wait for.
+const DocsModule = lazy(() =>
+  import('../modules/docs/DocsModule').then((m) => ({ default: m.DocsModule })),
+);
+const HomeModule = lazy(() =>
+  import('../modules/home/HomeModule').then((m) => ({ default: m.HomeModule })),
+);
+const ModelingModule = lazy(() =>
+  import('../modules/modeling/ModelingModule').then((m) => ({ default: m.ModelingModule })),
+);
 
 /**
  * Application shell.
@@ -22,7 +29,15 @@ export function App() {
     document.title = `${active.brand}: ${active.summary}`;
   }, [active]);
 
-  if (active.id === 'modeling') return <ModelingModule />;
-  if (active.id === 'docs') return <DocsModule />;
-  return <HomeModule />;
+  return (
+    <Suspense fallback={null}>
+      {active.id === 'modeling' ? (
+        <ModelingModule />
+      ) : active.id === 'docs' ? (
+        <DocsModule />
+      ) : (
+        <HomeModule />
+      )}
+    </Suspense>
+  );
 }

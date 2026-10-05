@@ -1,12 +1,13 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from '@app/App';
 import { setOpeningSceneDone } from '@domain/hooks/useAutosave';
 import { COMPACT_LAYOUT, NARROW_LAYOUT, TOUCH_FIRST } from '@shared/hooks/useMediaQuery';
 import { DEFAULT_PREFERENCES, useEditorStore } from '@store/index';
 import { mockMatchMedia } from '@/tests/matchMedia';
+import { primeModules } from '@/tests/primeModules';
 
 // The viewport needs WebGL, which jsdom does not have. See `App.test.tsx`.
 vi.mock('@viewport/index', async (importOriginal) => ({
@@ -21,6 +22,11 @@ const shell = () => document.querySelector('.modeling-shell') as HTMLElement;
 
 describe('ModelingModule on phones and tablets', () => {
   let restore: (() => void) | null = null;
+
+  beforeAll(async () => {
+    setOpeningSceneDone(true);
+    await primeModules(['/modeling']);
+  }, 30000);
 
   beforeEach(() => {
     window.history.pushState(null, '', '/modeling');
