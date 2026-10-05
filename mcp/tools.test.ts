@@ -5,7 +5,10 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AUTOMATION_VERSION, type SceneSummary } from '../src/app/automation/types';
+<<<<<<< HEAD
 import { MCP_SETTINGS, MCP_TOOLS } from '../src/domain/mcp/guide';
+=======
+>>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd
 import { SNAPSHOT_VIEWS } from '../src/viewport/snapshot';
 
 import { type Config, engineSource, linkTarget, readConfig } from './config';
@@ -336,6 +339,7 @@ describe('the configuration', () => {
     ).toBe('https://x.example.com');
   });
 });
+<<<<<<< HEAD
 
 // The editor's MCP dialog and docs describe this server from a catalogue of
 // their own, since the app cannot import Node code. These hold the two
@@ -361,3 +365,5 @@ describe("the editor's guide to the server", () => {
     expect(MCP_SETTINGS.map((setting) => setting.name).sort()).toEqual([...new Set(read)].sort());
   });
 });
+=======
+>>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd

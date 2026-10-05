@@ -1157,20 +1157,32 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'prose',
+<<<<<<< HEAD
         text: 'Setting it up takes a few minutes, once. The assistant talks to 3DOO through an MCP server that comes with the code, and it needs the code on your computer. The MCP button beside <> in the top bar has every command ready to copy, with this site already filled in as the place links open:',
+=======
+        text: 'Setting it up takes a few minutes, once. The assistant talks to 3DOO through an MCP server that comes with the code, and it needs the code on your computer:',
+>>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd
       },
       {
         kind: 'steps',
         items: [
+<<<<<<< HEAD
           `Get the code with git clone ${REPOSITORY_URL}.git, then in its folder run npm install and npm run build. It needs Node 22.18 or newer.`,
           'If you have no Chrome or Edge installed, run npx playwright-core install chromium. The server runs 3DOO in a hidden browser of its own to build and draw the models.',
           `Add the server to your assistant. In Claude Code: ${claudeCodeCommand('https://your-3doo-address')}. In Claude Desktop: add a 3doo entry under mcpServers in its configuration file, with node as the command and the path to mcp/server.ts as its argument.`,
           'THREEDOO_APP_URL tells the server where 3DOO is hosted, which is where its links open. Files and pictures work without it.',
+=======
+          'In the 3DOO folder, run npm install and then npm run build.',
+          'If you have no Chrome or Edge installed, run npx playwright-core install chromium. The server runs 3DOO in a hidden browser of its own to build and draw the models.',
+          'Add the server to your assistant. In Claude Code: claude mcp add 3doo -- node /path/to/3doo/mcp/server.ts. In Claude Desktop: add a 3doo entry under mcpServers in its configuration file, with node as the command and the path to mcp/server.ts as its argument.',
+          'For links, tell the server where 3DOO is hosted by setting THREEDOO_APP_URL to its address. Files and pictures work without it.',
+>>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd
           'Ask for a model. "Build a low poly chair in 3DOO, show me the front and side views, then export it as FBX for Unity" is enough.',
         ],
       },
       {
         kind: 'table',
+<<<<<<< HEAD
         head: ['TOOL', 'WHAT THE ASSISTANT USES IT FOR'],
         rows: MCP_TOOLS.map(
           (tool) =>
@@ -1182,6 +1194,8 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'table',
+=======
+>>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd
         head: ['TRY ASKING', 'THE ASSISTANT'],
         rows: [
           [

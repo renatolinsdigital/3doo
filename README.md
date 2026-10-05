@@ -44,9 +44,6 @@ New to the code? Start with [docs/get-started.md](docs/get-started.md).
   nothing.
 - **AI assistants**: an MCP server lets Claude and other assistants build
   models with the scripting API and hand them back as files, pictures from any
-  of the editor's views, or a link that opens the editor on the result. The
-  MCP button in the top bar has the setup commands ready to copy; the details
-  are in [docs/mcp.md](docs/mcp.md).
 
 The full list, and how each tool behaves, is in
 [docs/features.md](docs/features.md). Every shortcut is in
