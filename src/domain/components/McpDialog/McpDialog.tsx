@@ -37,7 +37,26 @@ const CHAIN: readonly { name: string; detail: string; link?: string }[] = [
   },
 ];
 
-const SAMPLE_RESULT = `Script ran: 1 object added
+const COMMANDS: readonly { name: string; when: string }[] = [
+  {
+    name: 'npm run build',
+    when: 'Once, and again after you change the code. The server draws its models from the built app, so this is the only 3DOO it needs.',
+  },
+  {
+    name: 'claude mcp add 3doo ...',
+    when: 'Once, to tell your assistant the server exists. Copy it from SET IT UP below.',
+  },
+  {
+    name: 'npm run dev',
+    when: 'Not needed to build models. Only a link that points at localhost needs it, and that link opens only while it runs.',
+  },
+  {
+    name: 'npm run mcp',
+    when: 'Never in normal use. It starts the server by hand, which only helps when you debug it.',
+  },
+];
+
+const SAMPLE_RESULT =`Script ran: 1 object added
 
 Scene: {"name":"untitled","totals":{"objects":1,"vertices":8,"faces":6},"bounds":{"min":{"x":-1,"y":0.95,"z":-0.5},"max":{"x":1,"y":1.05,"z":0.5},"size":{"x":2,"y":0.1,"z":1}}}
 Objects (1):
@@ -54,6 +73,7 @@ export function McpDialog() {
   const open = useEditorStore((state) => state.dialog === 'mcp');
   const closeDialog = useEditorStore((state) => state.closeDialog);
   const appUrl = window.location.origin;
+  const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|$)/.test(appUrl);
 
   return (
     <Modal
@@ -104,6 +124,34 @@ export function McpDialog() {
         </p>
       </section>
 
+      <section className="mcp-dialog__section" aria-labelledby="mcp-run">
+        <h3 id="mcp-run" className="mcp-dialog__heading">
+          WHAT YOU RUN, AND WHEN
+        </h3>
+        <table className="mcp-dialog__table">
+          <thead>
+            <tr>
+              <th scope="col">COMMAND</th>
+              <th scope="col">WHEN</th>
+            </tr>
+          </thead>
+          <tbody>
+            {COMMANDS.map((command) => (
+              <tr key={command.name}>
+                <th scope="row">
+                  <code>{command.name}</code>
+                </th>
+                <td data-label="WHEN">{command.when}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="mcp-dialog__note">
+          The assistant starts the server by itself the moment it needs it, and stops it when it
+          closes. Once it is added, you never start or stop anything to use it.
+        </p>
+      </section>
+
       <section className="mcp-dialog__section" aria-labelledby="mcp-setup">
         <h3 id="mcp-setup" className="mcp-dialog__heading">
           SET IT UP
@@ -137,6 +185,13 @@ export function McpDialog() {
               <code>{SERVER_PLACEHOLDER}</code>. In Claude Code:
             </p>
             <CopyBlock label="Claude Code command" text={claudeCodeCommand(appUrl)} />
+            {isLocal ? (
+              <p>
+                This page is on your own computer, so the links the assistant makes point at{' '}
+                <code>{appUrl}</code> and open only while 3DOO is served there. For links that work
+                anywhere, put the address of a hosted 3DOO in place of it.
+              </p>
+            ) : null}
             <p>
               In Claude Desktop, or any client set up by a JSON file, add the entry under{' '}
               <code>mcpServers</code> (for Claude Desktop, in claude_desktop_config.json):

@@ -2,10 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useEditorStore } from '@store/index';
 
-import { API_ENTRIES } from '@domain/scripting/reference';
+import { API_ENTRIES, OPERATOR_SPECS } from '@domain/scripting/reference';
 import { decodeScenePayload, scenePayloadIn } from '@domain/services/sceneLink';
 
-import { createAutomationApi, installAutomation, scriptingReference } from './automation';
+import {
+  QUICKSTART_SCRIPT,
+  createAutomationApi,
+  installAutomation,
+  scriptingReference,
+} from './automation';
 
 const store = () => useEditorStore.getState();
 const api = createAutomationApi();
@@ -169,8 +174,44 @@ describe('the automation API', () => {
   });
 });
 
+describe('the scripting quickstart', () => {
+  const quickstart = scriptingReference();
+
+  it('is what the reference gives when nothing is asked for, and is short', () => {
+    expect(quickstart).toMatch(/^# 3DOO scripting quickstart/);
+    expect(quickstart.length).toBeLessThan(9000);
+    expect(quickstart).not.toContain('## Examples');
+  });
+
+  it('names every API entry and every operation, primitive and modifier', () => {
+    for (const entry of API_ENTRIES.filter((candidate) => candidate.owner !== 'mesh'))
+      expect(quickstart).toContain(`\`${entry.signature}\``);
+    for (const spec of OPERATOR_SPECS) expect(quickstart).toContain(`mesh.${spec.name}(`);
+    expect(quickstart).toContain('torus');
+    expect(quickstart).toContain('subsurf');
+  });
+
+  it('has a first script that runs and leaves the objects it names', async () => {
+    api.reset();
+    const report = await api.run(QUICKSTART_SCRIPT);
+    expect(report.ok).toBe(true);
+    expect(report.scene.objects.map((object) => object.name)).toEqual(['TOP', 'LEG']);
+  });
+
+  it('lists the examples and the way to ask for one', () => {
+    expect(quickstart).toContain('axe (LOW POLY AXE)');
+    expect(api.reference({ example: 'axe' })).toContain('### LOW POLY AXE');
+    expect(api.reference({ example: 'Wooden Bridge' })).toContain('### WOODEN BRIDGE');
+  });
+
+  it('refuses an unknown example or topic and names the ones there are', () => {
+    expect(() => api.reference({ example: 'chair' })).toThrow(/The examples are axe/);
+    expect(() => api.reference({ topic: 'everything' })).toThrow(/The topics are quickstart/);
+  });
+});
+
 describe('the scripting reference', () => {
-  const reference = scriptingReference();
+  const reference = scriptingReference({ topic: 'all' });
 
   it('covers the whole API and the shipped examples', () => {
     expect(reference).toMatch(/^# 3DOO scripting reference/);

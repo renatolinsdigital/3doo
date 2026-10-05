@@ -1192,7 +1192,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           `Get the code with git clone ${REPOSITORY_URL}.git, then in its folder run npm install and npm run build. It needs Node 22.18 or newer.`,
           'If you have no Chrome or Edge installed, run npx playwright-core install chromium. The server runs 3DOO in a hidden browser of its own to build and draw the models.',
           `Add the server to your assistant. In Claude Code: ${claudeCodeCommand('https://your-3doo-address')}. In Claude Desktop: add a 3doo entry under mcpServers in its configuration file, with node as the command and the path to mcp/server.ts as its argument.`,
-          'THREEDOO_APP_URL tells the server where 3DOO is hosted, which is where its links open. Files and pictures work without it.',
+          'That is all you run. The assistant starts the server itself when it needs it, so there is nothing to keep open, and npm run dev is not needed to build models. THREEDOO_APP_URL only sets where links open: a link to localhost opens only while 3DOO is served there, and files and pictures work without it.',
           'Ask for a model. "Build a low poly chair in 3DOO, show me the front and side views, then export it as FBX for Unity" is enough.',
         ],
       },

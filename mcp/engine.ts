@@ -12,6 +12,7 @@ import {
   type ExportRequest,
   type ExportedFile,
   type OpenRequest,
+  type ReferenceRequest,
   type RenderRequest,
   type RenderedView,
   type RunReport,
@@ -30,7 +31,7 @@ export interface Engine {
   exportFile(request: ExportRequest): Promise<ExportedFile[]>;
   render(request: RenderRequest): Promise<RenderedView[]>;
   shareLink(appUrl: string): Promise<ShareLink>;
-  reference(): Promise<string>;
+  reference(request?: ReferenceRequest): Promise<string>;
   close(): Promise<void>;
 }
 
@@ -264,8 +265,8 @@ export class BrowserEngine implements Engine {
     return this.call('The link', 'shareLink', appUrl);
   }
 
-  reference(): Promise<string> {
-    return this.call('Reading the reference', 'reference');
+  reference(request?: ReferenceRequest): Promise<string> {
+    return this.call('Reading the reference', 'reference', request);
   }
 
   async close(): Promise<void> {

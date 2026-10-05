@@ -57,6 +57,22 @@ describe('McpDialog', () => {
     });
   });
 
+  it('says which commands to run and when, and that the assistant starts the server', () => {
+    render(<McpDialog />);
+    const table = screen.getByRole('heading', { name: 'WHAT YOU RUN, AND WHEN' })
+      .nextElementSibling as HTMLElement;
+    const commands = within(table)
+      .getAllByRole('rowheader')
+      .map((cell) => cell.textContent);
+    expect(commands).toEqual(['npm run build', 'claude mcp add 3doo ...', 'npm run dev', 'npm run mcp']);
+    expect(screen.getByText(/starts the server by itself/)).toBeInTheDocument();
+  });
+
+  it('warns that links to localhost open only while the app is served', () => {
+    render(<McpDialog />);
+    expect(screen.getByText(/open only while 3DOO is served there/)).toBeInTheDocument();
+  });
+
   it('copies a command and says so', async () => {
     const user = userEvent.setup();
     const writeText = vi.spyOn(navigator.clipboard, 'writeText').mockResolvedValue();

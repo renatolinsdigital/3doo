@@ -63,7 +63,7 @@ function fakeEngine() {
       note('shareLink', appUrl),
       { url: `${appUrl}/modeling#scene=abc`, length: 1 }
     ),
-    reference: async () => (note('reference'), '# 3DOO scripting reference'),
+    reference: async (request) => (note('reference', request), '# 3DOO scripting reference'),
     close: async () => {},
   };
   return { engine, calls };
@@ -288,6 +288,33 @@ describe('the server', () => {
       contents: { text: string }[];
     };
     expect(read.contents[0].text).toBe('# 3DOO scripting reference');
+  });
+
+  it('hands the reference topic and example on to the page', async () => {
+    const { engine, calls } = fakeEngine();
+    const context = { engine, config, protocolVersion: '' };
+    await callTool('scripting_reference', {}, context);
+    expect(calls.at(-1)).toEqual({
+      method: 'reference',
+      argument: { topic: undefined, example: undefined },
+    });
+    await callTool('scripting_reference', { topic: 'api' }, context);
+    expect(calls.at(-1)).toEqual({
+      method: 'reference',
+      argument: { topic: 'api', example: undefined },
+    });
+  });
+
+  it('says a link to localhost only opens while the app is being served', async () => {
+    const { engine } = fakeEngine();
+    const context = {
+      engine,
+      config: { ...config, appUrl: 'http://localhost:5173' },
+      protocolVersion: '',
+    };
+    const linked = textOf(await callTool('share_link', {}, context));
+    expect(linked).toContain('http://localhost:5173/modeling#scene=abc');
+    expect(linked).toMatch(/only on the user's own computer/);
   });
 
   it('speaks the automation version the app does', () => {

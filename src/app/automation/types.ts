@@ -109,6 +109,13 @@ export interface AutomationApi {
   render(request: RenderRequest): Promise<RenderedView[]>;
   /** A link that opens the scene in the editor served from `appUrl`. */
   shareLink(appUrl: string): Promise<ShareLink>;
-  /** The scripting reference and the worked examples, as Markdown. */
-  reference(): string;
+  /** The scripting reference as Markdown: the quickstart unless the request asks for more. */
+  reference(request?: ReferenceRequest): string;
+}
+
+export interface ReferenceRequest {
+  /** `quickstart` (the default), `api`, `examples` or `all`. */
+  topic?: string;
+  /** One finished example, by id or label. Wins over `topic`. */
+  example?: string;
 }

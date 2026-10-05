@@ -18,9 +18,15 @@ export const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
 const REFERENCE_URI = '3doo://reference/scripting';
 
-const INSTRUCTIONS = `3DOO is a browser 3D mesh editor. These tools drive it to build models from JavaScript: primitives and custom meshes, every edit-mode modelling operation on selected vertices, edges and faces, modifiers, booleans, and colours down to single faces.
+const INSTRUCTIONS = `3DOO is a browser 3D mesh editor. These tools drive a private copy of it, on the user's computer, to build models from JavaScript. Nothing needs starting first and nothing the user has open is touched: the scene lives inside this server, and the user gets it back as pictures, files or a link.
 
-Workflow: read scripting_reference once, build the model with run_script (the scene persists between calls; reset: true starts over), check it with render_views, then hand it over with export_model (.3doo, .obj or .fbx files), render_views (pictures), or share_link (a link that opens the editor on the model). When the user asks to see the model from several sides, render the views they name: front, back, right, left, top, bottom, or perspective.`;
+Workflow:
+1. scripting_reference, once. The default is a short quickstart with every name the API has; it is enough to write scripts. Do not fetch topic "api", "examples" or "all" up front: use them only to look up one name or copy one finished model.
+2. run_script builds the model. The scene persists between calls, so build in several short scripts. reset: true starts over. A failed script changes nothing and names the line.
+3. render_views once to check the result. Send it back to the user as it is: do not keep refining a model that already matches the request.
+4. Hand over only what was asked: export_model (.3doo, .obj or .fbx files), share_link (a link that opens the editor on the model), or the pictures from render_views. For several sides, render the views named: front, back, right, left, top, bottom, or perspective.
+
+Units are metres and degrees, +Y is up, and the front view looks from +Z.`;
 
 /** The MCP methods, answered against `engine`. */
 export function createHandlers(
@@ -78,7 +84,7 @@ export function createHandlers(
       const { uri } = params as { uri?: unknown };
       if (uri !== REFERENCE_URI)
         throw new RpcError(INVALID_PARAMS, `Unknown resource: ${String(uri)}`);
-      const text = await inTurn(() => engine.reference());
+      const text = await inTurn(() => engine.reference({ topic: 'all' }));
       return { contents: [{ uri, mimeType: 'text/markdown', text }] };
     },
   };

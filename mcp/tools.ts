@@ -48,6 +48,7 @@ const SHADINGS = ['solid', 'solidWire', 'wireframe', 'xray', 'matcap'] as const;
 const PROJECTIONS = ['auto', 'perspective', 'orthographic'] as const;
 const FORMATS = ['3doo', 'obj', 'fbx'] as const;
 const PRESETS = ['unity', 'unreal', 'blender', 'maya'] as const;
+const TOPICS = ['quickstart', 'api', 'examples', 'all'] as const;
 
 // ------------------------------------------------------------- arguments
 
@@ -95,11 +96,29 @@ const scriptingReference: Tool = {
   name: 'scripting_reference',
   title: 'Scripting reference',
   description:
-    'Returns the 3DOO scripting API as Markdown: every function of `scene`, objects, meshes, modifiers and `view`, every modelling operation with its options and ranges, and worked examples. Read it before writing the first script of a session.',
-  inputSchema: { type: 'object', properties: {} },
+    'Returns the 3DOO scripting reference as Markdown. With no arguments it is a short quickstart (about 1,500 tokens): the conventions, a script that runs, every name the API has, and the rules a table does not say. That is enough to write scripts, so read it once, first. Ask for `topic: "api"` only to look up what a name does and the options and ranges it takes, or `example` for one finished model to copy from. `topic: "all"` is long.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      topic: {
+        type: 'string',
+        enum: [...TOPICS],
+        default: 'quickstart',
+        description:
+          'quickstart: conventions, a first script, every name. api: what each name does, with options and ranges. examples: every finished model. all: everything.',
+      },
+      example: {
+        type: 'string',
+        description:
+          'One finished model by id (the quickstart lists them), such as "axe". Wins over topic.',
+      },
+    },
+  },
   annotations: { readOnlyHint: true, openWorldHint: false },
-  async run(_args, { engine }) {
-    return { content: [text(await engine.reference())] };
+  async run(args, { engine }) {
+    const topic = optional<string>(args, 'topic', 'string');
+    const example = optional<string>(args, 'example', 'string');
+    return { content: [text(await engine.reference({ topic, example }))] };
   },
 };
 
@@ -330,7 +349,16 @@ const shareLink: Tool = {
   async run(args, context) {
     const target = linkTarget(context.config, optional<string>(args, 'app_url', 'string') ?? null);
     const { url } = await context.engine.shareLink(target);
-    return { content: [text(url)] };
+    const local = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(target);
+    return {
+      content: [
+        text(
+          local
+            ? `${url}\n\nThis link opens only on the user's own computer, and only while 3DOO is being served at ${target} (npm run dev or npm run preview). Say so when you hand it over.`
+            : url,
+        ),
+      ],
+    };
   },
 };
 

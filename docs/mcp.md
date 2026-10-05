@@ -33,6 +33,27 @@ AI ASSISTANTS section of the in-app docs (`src/modules/docs/content.ts`).
 - A link carries the whole project in its hash, so a static host serving the
   built files is all the hosted editor needs.
 
+## What you run, and when
+
+| Command | When |
+| --- | --- |
+| `npm run build` | Once, and again after changing the code. The server draws models from `dist/`, so the built app is the only 3DOO it needs. |
+| `claude mcp add 3doo ...` | Once, to register the server with the assistant. |
+| `npm run dev` | Not needed to build models. Only a link that points at `localhost` needs it, and that link opens only while it runs. |
+| `npm run mcp` | Never in normal use. It starts the server by hand, for debugging. |
+
+The assistant launches `node mcp/server.ts` itself over stdio when it connects,
+and the server opens its own headless browser on `dist/`. That is why an
+assistant builds models with no dev server running, and why the scene it works
+on is a private copy: it never touches a tab you have open.
+
+Links are the one place a running app matters. `share_link` builds them for
+`THREEDOO_APP_URL`. When that is `http://localhost:5173`, which is what the MCP
+dialog fills in when it is opened from `npm run dev`, the link works on that
+computer while the dev server is up, and the tool's result says so for the
+assistant to pass on. Point `THREEDOO_APP_URL` at a hosted 3DOO for links that
+work anywhere.
+
 ## Running it
 
 ### Requirements
@@ -98,7 +119,7 @@ paragraph.
 
 | Tool | Arguments | Returns |
 | --- | --- | --- |
-| `scripting_reference` | none | The scripting API and examples, as Markdown |
+| `scripting_reference` | `topic`, `example` | The quickstart by default; `api`, `examples`, `all` or one example on request, as Markdown |
 | `run_script` | `script` (required), `reset` | What the run did, console output, the scene summary |
 | `render_views` | `views`, `width`, `height`, `shading`, `projection`, `grid`, `save`, `name` | One PNG image per view |
 | `export_model` | `format` (required), `name`, `preset`, `triangulate`, `directory`, `embed` | The path of each file written, a resource link to each, and the files themselves with `embed` |
@@ -267,22 +288,25 @@ read by the server and handed to the page as base64.
 ### `scripting_reference` and the resource
 
 The reference is built in the page by `scriptingReference()`
-(`src/app/automation/automation.ts`), in four parts:
+(`src/app/automation/automation.ts`). The whole of it is about 50 KB, three
+quarters of that the six examples, which a model took a long time to read
+before building anything. So it is served in pieces, and the default piece is
+small (about 6 KB):
 
-1. The conventions a model needs that a person in the editor does not: the
-   units and axes, `await`, `return` and `console.log`, and that `view` moves
-   the editor's camera rather than the pictures'.
-2. **What a script can do**: the whole of the API in six lines, so the model
-   knows before it reads the tables that it can colour single faces or read
-   an object's world bounds.
-3. **How a script works**: the rules that are not obvious from a table. An
-   operation acts on the selection and leaves what it made selected; `edit`
-   coordinates are local; modifiers do not change the mesh `edit` sees;
-   booleans refuse a live stack and use their cutters up; `object.bounds`
-   places one part against another; and short runs fail on their own.
-4. The API half of the SCRIPTING docs section (`scriptingApiBlocks` in
-   `src/modules/docs/content.ts`) turned into Markdown, then every example in
-   the EXAMPLE menu.
+| Request | Gives |
+| --- | --- |
+| none, or `topic: "quickstart"` | The conventions (units, axes, `await`, `return`, `console.log`), a first script that runs, every name the API has as a signature, the rules that are not obvious from a table, and how to ask for more |
+| `topic: "api"` | The API half of the SCRIPTING docs section (`scriptingApiBlocks` in `src/modules/docs/content.ts`) as Markdown: what each name does, with its options and ranges |
+| `topic: "examples"` | Every example in the EXAMPLE menu |
+| `example: "axe"` | One example, by id or label. Wins over `topic` |
+| `topic: "all"` | Everything. This is what the resource below serves |
+
+The rules in the quickstart are the ones that bite: an operation acts on the
+selection and leaves what it made selected; `edit` coordinates are local;
+modifiers do not change the mesh `edit` sees; booleans refuse a live stack and
+use their cutters up; `object.bounds` places one part against another; and short
+runs fail on their own. The name lists are generated from the same catalogue as
+the API, and a test runs the first script, so neither can drift.
 
 The API half is generated from the catalogue the API validates against
 (`src/domain/scripting/reference.ts`), so the model reads the same names and

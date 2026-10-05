@@ -19,6 +19,14 @@ import { exportObjects, exportPictures, hydrateAssets, projectText } from '@doma
 import { withoutProjectSuffix } from '@domain/services/download';
 import { MAX_SCENE_LINK_LENGTH, sceneLink } from '@domain/services/sceneLink';
 
+import {
+  API_ENTRIES,
+  type ApiOwner,
+  MODIFIER_TYPES,
+  OPERATOR_SPECS,
+  PRIMITIVE_KINDS,
+} from '@domain/scripting/reference';
+
 import { type DocsBlock, scriptingApiBlocks } from '../../modules/docs/content';
 
 import {
@@ -28,6 +36,7 @@ import {
   type ExportedFile,
   type ObjectSummary,
   type OpenRequest,
+  type ReferenceRequest,
   type RenderRequest,
   type RenderedView,
   type SceneSummary,
@@ -290,9 +299,7 @@ function blockMarkdown(block: DocsBlock): string {
   ].join('\n');
 }
 
-const REFERENCE_INTRO = `# 3DOO scripting reference
-
-A script is the body of an async JavaScript function that gets two globals,
+const CONVENTIONS = `A script is the body of an async JavaScript function that gets two globals,
 \`scene\` and \`view\`. It runs against the scene as it stands: empty after a
 reset, or whatever earlier scripts and opened files left. Everything a script
 hands the API is checked, and a mistake stops the run with the reason and the
@@ -307,11 +314,9 @@ line, leaving the scene exactly as it was before the run.
   \`return box.modifiers\` its stack with every setting.
 - \`console.log\` lines come back too, one per call, values as JSON the same way.
 - \`view\` moves the editor's own camera, which pictures do not use:
-  \`render_views\` frames the model itself and takes the shading as an argument.
+  \`render_views\` frames the model itself and takes the shading as an argument.`;
 
-## What a script can do
-
-- Add the ten primitives, or build any mesh from a list of points and faces
+const WHAT_A_SCRIPT_CAN_DO = `- Add the ten primitives, or build any mesh from a list of points and faces
   (\`scene.add\`, \`scene.addMesh\`), each named, placed, turned, scaled and
   coloured as it is added.
 - Move, turn, scale, rename, hide, lock, duplicate (plain or linked) and delete
@@ -326,11 +331,9 @@ line, leaving the scene exactly as it was before the run.
 - Colour objects, and give parts of one mesh colours of their own through
   material slots (\`object.addMaterial\`, \`mesh.assignMaterial\`).
 - Read the scene back: transforms, world bounds, counts, modifier settings,
-  colours and the project name, which exported files are named after.
+  colours and the project name, which exported files are named after.`;
 
-## How a script works
-
-- An operation acts on the selection, as its button does in edit mode, and
+const HOW_A_SCRIPT_WORKS = `- An operation acts on the selection, as its button does in edit mode, and
   leaves what it made selected: select the top face, extrude, then inset, and
   the inset lands on the extruded face.
 - Inside \`object.edit\`, coordinates are the object's own, before its position,
@@ -344,17 +347,109 @@ line, leaving the scene exactly as it was before the run.
 - Build a model over several short scripts rather than one long one. Each run
   is checked on its own, and a failure takes back only that run.`;
 
-/**
- * The scripting reference as Markdown: the API half of the SCRIPTING section
- * of the in-app docs, which is built from the catalogue the API validates
- * against, followed by the examples the editor ships.
- */
-export function scriptingReference(): string {
-  const body = scriptingApiBlocks().map(blockMarkdown);
-  const examples = SCRIPT_EXAMPLES.map(
-    (example) => `### ${example.label}\n\n\`\`\`js\n${example.source.trim()}\n\`\`\``,
+/** Runs as it is written: a test holds it to the API. */
+export const QUICKSTART_SCRIPT = `const top = scene.add('cube', { name: 'TOP', position: [0, 0.75, 0], scale: [1.6, 0.06, 0.8], color: '#b8452f' });
+const leg = scene.add('cylinder', { name: 'LEG', radius: 0.04, height: 0.72, position: [0.7, 0.36, 0.3], color: '#3a2a20' });
+top.edit((mesh) => {
+  mesh.selectFaces((face) => face.normal.y > 0.9);
+  mesh.inset({ thickness: 0.05 });
+});
+scene.group([top, leg], 'TABLE');
+return top.bounds;`;
+
+const OWNERS: readonly ApiOwner[] = ['scene', 'object', 'mesh', 'modifier', 'material', 'view'];
+
+/** Every name a script can reach as a signature, with what each does left to the `api` topic. */
+function nameIndex(): string {
+  const operations = new Set(OPERATOR_SPECS.map((spec) => spec.name));
+  const lines = OWNERS.map((owner) => {
+    const signatures = API_ENTRIES.filter(
+      (entry) => entry.owner === owner && !(owner === 'mesh' && operations.has(entry.name)),
+    ).map((entry) => entry.signature);
+    return `- ${signatures.map((signature) => `\`${signature}\``).join(', ')}`;
+  });
+  const operationList = OPERATOR_SPECS.map((spec) => {
+    const params = spec.params.map((field) => field.name).join(', ');
+    return `\`mesh.${spec.name}(${params ? `{ ${params} }` : ''})\``;
+  });
+  return [
+    ...lines,
+    `- Operations, on the selection: ${operationList.join(', ')}`,
+    `- Primitives for \`scene.add\`: ${PRIMITIVE_KINDS.join(', ')}`,
+    `- Modifier types for \`object.addModifier\`: ${MODIFIER_TYPES.join(', ')}`,
+  ].join('\n');
+}
+
+const exampleMarkdown = (example: { label: string; source: string }) =>
+  `### ${example.label}\n\n\`\`\`js\n${example.source.trim()}\n\`\`\``;
+
+const apiMarkdown = () => ['## API', ...scriptingApiBlocks().map(blockMarkdown)];
+const examplesMarkdown = () => ['## Examples', ...SCRIPT_EXAMPLES.map(exampleMarkdown)];
+
+const REFERENCE_TOPICS = ['quickstart', 'api', 'examples', 'all'];
+
+function quickstart(): string {
+  const ids = SCRIPT_EXAMPLES.map((example) => `${example.id} (${example.label})`).join(', ');
+  return (
+    [
+      '# 3DOO scripting quickstart',
+      CONVENTIONS,
+      '## A first script',
+      `\`\`\`js\n${QUICKSTART_SCRIPT}\n\`\`\``,
+      '## Every name',
+      nameIndex(),
+      '## How a script works',
+      HOW_A_SCRIPT_WORKS,
+      '## Going further',
+      [
+        'This page is enough to write a script. Ask for more only when a name or option is unclear:',
+        '- `topic: "api"`: what every name does, with its options, ranges and the values a choice takes.',
+        `- \`example: "<id>"\`: one finished model to copy from. The ids are ${ids}.`,
+        '- `topic: "all"`: everything at once, which is long.',
+      ].join('\n'),
+    ].join('\n\n') + '\n'
   );
-  return [REFERENCE_INTRO, '## API', ...body, '## Examples', ...examples].join('\n\n') + '\n';
+}
+
+/**
+ * The scripting reference as Markdown. With no request it is the quickstart:
+ * the conventions, a script that runs, every name and the rules a table does
+ * not say. `api` adds what each name does, from the catalogue the API validates
+ * against, and the finished examples the editor ships come with `examples` or
+ * one at a time with `example`.
+ */
+export function scriptingReference(request: ReferenceRequest = {}): string {
+  const { topic = 'quickstart', example } = request;
+  if (example !== undefined) {
+    const wanted = example.trim().toLowerCase();
+    const found = SCRIPT_EXAMPLES.find(
+      (candidate) => candidate.id === wanted || candidate.label.toLowerCase() === wanted,
+    );
+    if (!found) {
+      const ids = SCRIPT_EXAMPLES.map((candidate) => candidate.id).join(', ');
+      throw new Error(`There is no example "${example}". The examples are ${ids}.`);
+    }
+    return `${exampleMarkdown(found)}\n`;
+  }
+  if (!REFERENCE_TOPICS.includes(topic)) {
+    throw new Error(`There is no topic "${topic}". The topics are ${REFERENCE_TOPICS.join(', ')}.`);
+  }
+  if (topic === 'quickstart') return quickstart();
+  if (topic === 'api') return ['# 3DOO scripting API', ...apiMarkdown().slice(1)].join('\n\n') + '\n';
+  if (topic === 'examples')
+    return ['# 3DOO scripting examples', ...examplesMarkdown().slice(1)].join('\n\n') + '\n';
+  return (
+    [
+      '# 3DOO scripting reference',
+      CONVENTIONS,
+      '## What a script can do',
+      WHAT_A_SCRIPT_CAN_DO,
+      '## How a script works',
+      HOW_A_SCRIPT_WORKS,
+      ...apiMarkdown(),
+      ...examplesMarkdown(),
+    ].join('\n\n') + '\n'
+  );
 }
 
 // ---------------------------------------------------------------- install

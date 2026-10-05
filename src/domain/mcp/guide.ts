@@ -26,10 +26,10 @@ export interface McpToolGuide {
 export const MCP_TOOLS: readonly McpToolGuide[] = [
   {
     name: 'scripting_reference',
-    args: [],
-    does: 'Hands the assistant the scripting API and the worked examples, which it reads before its first script.',
+    args: ['topic', 'example'],
+    does: 'Hands the assistant the scripting reference, which it reads before its first script. By default that is a short quickstart; the full API and the finished examples are fetched only when needed.',
     returns:
-      'The reference as Markdown: what a script can do, every name, option and range, and the examples.',
+      'Markdown: the conventions, a script that runs, every name and the rules a table does not say. With topic api, every option and range; with example, one finished model.',
   },
   {
     name: 'run_script',
