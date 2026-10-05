@@ -319,10 +319,15 @@ proxy object.
 
 - In **object mode** the proxy carries the object's transform, and changes are
   written back through `setObjectTransform`.
-- In **edit mode** the proxy sits at the selection's median point, and each
-  drag delta is applied to the selected vertices via `translateVerts`. The
-  delta is divided by the object's scale first, because the gizmo drags in
-  world space while the mesh edit happens in object space.
+- In **edit mode** the proxy sits on the pivot (the selection's median point,
+  the object's origin or the 3D cursor). The move, turn or scale since the drag
+  began is brought back through the object's frame, because the gizmo drags in
+  world space while the mesh edit happens in object space, and applied whole by
+  `EditMoveDrag` (`src/viewport/editMove.ts`): every pointer move puts back
+  what the last one moved and applies the total again. The drag never
+  compounds, the wheel can change the proportional radius under it, and on
+  confirm it is exactly one `translate`, `rotate` or `scale` call, which the
+  ACTIONS log writes (see [scripting.md](scripting.md#the-action-log)).
 
 `TransformControls` stopped being an `Object3D` in newer Three.js releases and
 now exposes its visual through `getHelper()`. `resolveGizmoHelper` supports both

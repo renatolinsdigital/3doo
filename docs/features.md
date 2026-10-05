@@ -23,7 +23,8 @@ drive them, see [keymap.md](keymap.md).
 | Opening scene | A fresh tab starts on a cube, as Blender does, and so does FILE > NEW. One Ctrl+Z takes it away |
 | Preferences | Tooltips, panel visibility, viewport background, grid, snapping, undo depth, autosave and the selection outline, kept in localStorage per browser, with import / export as a `.pref` file |
 | Export | OBJ + MTL, **binary FBX 7.4**, with Unity / Unreal / Blender / Maya axis and unit presets; image planes keep their picture |
-| Scripting | A JavaScript editor behind the `<>` button: primitives and custom meshes, transforms, colours, every modelling operation on a scripted selection, modifiers, booleans and folders. Syntax colours, suggestions, hover help linked to the docs, examples. One undo step per run, and a failed run changes nothing |
+| Scripting | A JavaScript editor behind the `<>` button: primitives and custom meshes, transforms, colours down to single faces through material slots, every modelling operation on a scripted selection, modifiers, booleans, folders, and world bounds for placing parts. Syntax colours, suggestions, hover help linked to the docs, examples. One undo step per run, and a failed run changes nothing |
+| AI assistants | An MCP server that drives the editor in a headless browser: an assistant runs scripts, renders the perspective view and the six Shift+number views, exports `.3doo`, OBJ and FBX, and hands out links that open the editor on the result. The MCP button beside `<>` explains how it connects and what it returns, with the setup commands ready to copy. See [mcp.md](mcp.md) |
 | Undo | Whole-scene snapshot history, 50 steps by default and 10 to 100 under UNDO STEPS, with a history list to click straight back to any of them |
 
 ## How the editor behaves, and why

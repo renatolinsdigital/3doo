@@ -1,4 +1,4 @@
-import { type Vec3, axisVector, degToRad, vec3 } from '../math';
+import { EPSILON, type Vec3, axisVector, degToRad, length, normalize, vec3 } from '../math';
 import type { BMesh } from '../mesh';
 import type { SelectMode } from '../mesh/types';
 import {
@@ -7,6 +7,7 @@ import {
   type ProportionalOptions,
   type SlideWay,
   DISSOLVE_ANGLE_LIMIT_DEGREES,
+  FALLOFF_CURVES,
   applySlideDistance,
   bevelEdges,
   budgetRefusal,
@@ -61,7 +62,6 @@ export interface OperatorContext {
   mesh: BMesh;
   selectMode: SelectMode;
   cursor: Vec3;
-  proportional?: ProportionalOptions;
   /**
    * The scale of the object being edited, for the operators that work in
    * metres. The mesh is stored in the object's own space, so this is what
@@ -133,6 +133,31 @@ function readVector(params: OperatorParams, key: string, fallback: Vec3): Vec3 {
     typeof candidate.y === 'number' ? candidate.y : fallback.y,
     typeof candidate.z === 'number' ? candidate.z : fallback.z,
   );
+}
+
+/**
+ * The falloff a transform carries nearby vertices with, or none.
+ *
+ * Named in the call rather than read off the editor's toggle, so a call does
+ * the same thing whether proportional editing was left on or not.
+ */
+function readProportional(params: OperatorParams): ProportionalOptions | undefined {
+  const radius = readNumber(params, 'proportional', 0);
+  if (radius <= 0) return undefined;
+  return {
+    enabled: true,
+    radius,
+    falloff: readString(params, 'falloff', FALLOFF_CURVES, 'smooth'),
+  };
+}
+
+/** `'x'`, `'y'` or `'z'`, or any direction as `{ x, y, z }`. */
+function readAxis(params: OperatorParams): Vec3 {
+  if (typeof params.axis === 'string') {
+    return axisVector(readString(params, 'axis', ['x', 'y', 'z'] as const, 'y'));
+  }
+  const direction = readVector(params, 'axis', vec3(0, 1, 0));
+  return length(direction) > EPSILON ? normalize(direction) : vec3(0, 1, 0);
 }
 
 /** An integer id, or null for anything else. */
@@ -643,24 +668,25 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     return { status: `Merged ${created.length} quads` };
   },
 
-  translate: ({ mesh, proportional }, params) => {
+  translate: ({ mesh }, params) => {
     const verts = mesh.selectedVerts();
-    translateVerts(mesh, verts, readVector(params, 'offset', vec3()), proportional);
+    translateVerts(mesh, verts, readVector(params, 'offset', vec3()), readProportional(params));
     return { status: `Moved ${verts.length} vertices` };
   },
 
-  rotate: ({ mesh, proportional }, params) => {
+  rotate: ({ mesh }, params) => {
     const verts = mesh.selectedVerts();
-    const axis = readString(params, 'axis', ['x', 'y', 'z'] as const, 'y');
     const angle = degToRad(readNumber(params, 'angle', 0));
-    rotateVerts(mesh, verts, axisVector(axis), angle, medianPoint(verts), proportional);
+    const pivot = readVector(params, 'pivot', medianPoint(verts));
+    rotateVerts(mesh, verts, readAxis(params), angle, pivot, readProportional(params));
     return { status: `Rotated ${verts.length} vertices` };
   },
 
-  scale: ({ mesh, proportional }, params) => {
+  scale: ({ mesh }, params) => {
     const verts = mesh.selectedVerts();
     const factor = readVector(params, 'scale', vec3(1, 1, 1));
-    scaleVerts(mesh, verts, factor, medianPoint(verts), proportional);
+    const pivot = readVector(params, 'pivot', medianPoint(verts));
+    scaleVerts(mesh, verts, factor, pivot, readProportional(params));
     return { status: `Scaled ${verts.length} vertices` };
   },
 

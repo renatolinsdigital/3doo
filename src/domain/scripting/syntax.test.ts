@@ -162,9 +162,10 @@ describe('completions', () => {
     expect(names('sc')).toEqual(['scene']);
   });
 
-  it('offers object, mesh and modifier members after any other variable', () => {
+  it('offers object, mesh, modifier and material members after any other variable', () => {
     const offered = names('box.addM');
-    expect(offered).toEqual(['addModifier']);
+    expect(offered).toEqual(['addModifier', 'addMaterial']);
+    expect(names('slot.ind')).toEqual(['index']);
     expect(names('mesh.selectF')).toEqual(['selectFaces', 'selectFaceLoop']);
   });
 

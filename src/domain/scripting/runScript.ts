@@ -10,10 +10,12 @@ import { findImbalance } from './syntax';
  */
 export const SCRIPT_URL = '3doo-script.js';
 
+/** `logs` holds what the script wrote with `console`, one line per call, failed or not. */
 export type ScriptOutcome =
-  { ok: true; message: string } | { ok: false; message: string; line: number | null };
+  | { ok: true; message: string; logs: string[] }
+  | { ok: false; message: string; line: number | null; logs: string[] };
 
-type ScriptBody = (scene: unknown, view: unknown) => Promise<unknown>;
+type ScriptBody = (scene: unknown, view: unknown, console: unknown) => Promise<unknown>;
 
 const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
   ...args: string[]
@@ -23,14 +25,52 @@ const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
  * Turns the source into a function of the two globals.
  *
  * Asynchronous so a script can `await scene.boolean(...)`, and strict so a
- * misspelt variable is an error rather than a new global.
+ * misspelt variable is an error rather than a new global. `console` is a
+ * parameter too, so the script's own logging can be told from the editor's.
  */
 function compile(source: string): ScriptBody {
   return new AsyncFunction(
     'scene',
     'view',
+    'console',
     `'use strict';\n${source}\n//# sourceURL=${SCRIPT_URL}`,
   );
+}
+
+/**
+ * A value as the person or the assistant reading a run sees it: text as it
+ * is, anything else as JSON. The handles turn themselves into their names and
+ * settings, so `return box.bounds` or `console.log(box)` reads as data rather
+ * than as the browser's `Object` or `Proxy` preview.
+ */
+export function valueText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+/**
+ * The `console` a script is handed: it still writes to the browser's own,
+ * and keeps a line of text per call for the run to hand back.
+ */
+function scriptConsole(logs: string[]): Console {
+  const real = globalThis.console;
+  const write =
+    (level: 'log' | 'info' | 'debug' | 'warn' | 'error', prefix = '') =>
+    (...values: unknown[]) => {
+      logs.push(prefix + values.map(valueText).join(' '));
+      real[level](...values);
+    };
+  return Object.assign(Object.create(real) as Console, {
+    log: write('log'),
+    info: write('info'),
+    debug: write('debug'),
+    warn: write('warn', 'warning: '),
+    error: write('error', 'error: '),
+  });
 }
 
 const FRAME = new RegExp(`${SCRIPT_URL.replace(/[.]/g, '\\.')}:(\\d+)`);
@@ -51,7 +91,7 @@ let measuredOffset: Promise<number | null> | null = null;
  * measured once, off a body that throws on its first line.
  */
 function lineOffset(): Promise<number | null> {
-  measuredOffset ??= compile('throw new Error();')(null, null).then(
+  measuredOffset ??= compile('throw new Error();')(null, null, null).then(
     () => null,
     (error: unknown) => {
       const line = reportedLine(error);
@@ -111,24 +151,32 @@ const plural = (count: number, noun: string) => `${count} ${noun}${count === 1 ?
  * without first having to clear away what the broken run had built.
  */
 export async function runScript(source: string): Promise<ScriptOutcome> {
+  const logs: string[] = [];
   if (source.trim() === '')
-    return { ok: false, message: 'There is nothing to run yet.', line: null };
+    return { ok: false, message: 'There is nothing to run yet.', line: null, logs };
 
   let body: ScriptBody;
   try {
     body = compile(source);
   } catch (error) {
-    return { ok: false, ...(await syntaxProblem(error, source)) };
+    return { ok: false, ...(await syntaxProblem(error, source)), logs };
   }
 
   const store = useEditorStore.getState();
-  const before = { objects: store.objects, meshVersion: store.meshVersion, cursor: store.cursor };
+  const before = {
+    objects: store.objects,
+    meshVersion: store.meshVersion,
+    cursor: store.cursor,
+    name: store.projectName,
+  };
   const api = createScriptApi();
 
   let returned: unknown;
   let failure: unknown = null;
   try {
-    returned = await store.transact('Run script', () => body(api.scene, api.view));
+    returned = await store.transact('Run script', () =>
+      body(api.scene, api.view, scriptConsole(logs)),
+    );
   } catch (error) {
     failure = error ?? new Error('The script threw nothing to say why.');
   }
@@ -138,7 +186,15 @@ export async function runScript(source: string): Promise<ScriptOutcome> {
   if (state.mode === 'edit' && !activeObject(state)) state.setMode('object');
 
   if (failure !== null) {
-    return { ok: false, message: messageOf(failure), line: await errorLine(failure, source) };
+    // The project name is not part of undo, so the rollback keeps whatever it
+    // is now; a name the failed run set goes back with the rest of the run.
+    state.setProjectName(before.name);
+    return {
+      ok: false,
+      message: messageOf(failure),
+      line: await errorLine(failure, source),
+      logs,
+    };
   }
 
   const after = useEditorStore.getState();
@@ -149,16 +205,18 @@ export async function runScript(source: string): Promise<ScriptOutcome> {
   const changed =
     after.objects !== before.objects ||
     after.meshVersion !== before.meshVersion ||
-    after.cursor !== before.cursor;
+    after.cursor !== before.cursor ||
+    after.projectName !== before.name;
 
   const counts = [
     added > 0 ? `${plural(added, 'object')} added` : '',
     removed > 0 ? `${plural(removed, 'object')} removed` : '',
   ].filter(Boolean);
 
+  const said = returned === undefined ? '' : valueText(returned).trim();
   const message =
-    typeof returned === 'string' && returned.trim() !== ''
-      ? returned.trim()
+    said !== ''
+      ? said
       : counts.length > 0
         ? `Script ran: ${counts.join(', ')}`
         : changed
@@ -166,5 +224,5 @@ export async function runScript(source: string): Promise<ScriptOutcome> {
           : 'Script ran, and left the scene as it was';
 
   useEditorStore.setState({ status: message });
-  return { ok: true, message };
+  return { ok: true, message, logs };
 }

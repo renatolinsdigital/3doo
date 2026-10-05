@@ -1,4 +1,5 @@
 import {
+  FALLOFF_CURVES,
   MAX_BEND_ANGLE,
   MAX_SHARP_ANGLE,
   MAX_SMOOTHING,
@@ -34,8 +35,12 @@ export type ValueSpec =
   | { kind: 'vector'; min?: number; max?: number; uniform?: boolean }
   /** `{ x, y, z }` switches, written the same two ways. */
   | { kind: 'flags' }
-  /** The knife's runs of points, passed through for the kernel to sort out. */
-  | { kind: 'knifeCuts' };
+  /** `"#rrggbb"`, `"#rgb"` or `[r, g, b]` from 0 to 1. */
+  | { kind: 'color' }
+  /** The knife's runs of points, each point checked for its kind and fields. */
+  | { kind: 'knifeCuts' }
+  /** `"x"`, `"y"` or `"z"`, or any direction as `[x, y, z]`. */
+  | { kind: 'axis' };
 
 export interface FieldSpec {
   name: string;
@@ -90,6 +95,21 @@ const number = (min?: number, max?: number): ValueSpec => ({ kind: 'number', min
 const integer = (min?: number, max?: number): ValueSpec => ({ kind: 'integer', min, max });
 const boolean: ValueSpec = { kind: 'boolean' };
 const oneOf = (...values: string[]): ValueSpec => ({ kind: 'enum', values });
+
+/** Proportional editing, as a move, a turn and a scale all take it. */
+const PROPORTIONAL_FIELDS: readonly FieldSpec[] = [
+  {
+    name: 'proportional',
+    value: number(0),
+    description:
+      'Carries the unselected vertices within this many metres along too, less the further out they are. Default 0, which carries none.',
+  },
+  {
+    name: 'falloff',
+    value: oneOf(...FALLOFF_CURVES),
+    description: 'How that pull fades toward the edge of the radius. Default "smooth".',
+  },
+];
 
 /**
  * Every modelling operation a script can run on a mesh, with its parameters.
@@ -176,7 +196,7 @@ export const OPERATOR_SPECS: readonly OperatorSpec[] = [
     name: 'knife',
     group: 'modelling',
     summary:
-      'Cuts new edges along runs of points: { kind: "vert", vert }, { kind: "edge", edge, t } or { kind: "face", face, co }.',
+      'Cuts new edges along runs of points: { kind: "vert", vert }, { kind: "edge", edge, t } or { kind: "face", face, co }. vert, edge and face are ids from mesh.verts, mesh.edges and mesh.faces; t runs from 0 at the edge\'s a end to 1 at its b end; co is a point on the face, as [x, y, z]. Leaves the cut selected.',
     params: [
       {
         name: 'cuts',
@@ -314,7 +334,8 @@ export const OPERATOR_SPECS: readonly OperatorSpec[] = [
       {
         name: 'angle',
         value: number(0, 180),
-        description: 'The sharpest fold, in degrees, still dissolved.',
+        description:
+          'The sharpest fold, in degrees, still dissolved. Default 40, or 5 for "limited".',
       },
     ],
   },
@@ -404,29 +425,46 @@ export const OPERATOR_SPECS: readonly OperatorSpec[] = [
     summary: 'Moves the selected vertices.',
     params: [
       { name: 'offset', value: { kind: 'vector' }, description: 'In metres, as [x, y, z].' },
+      ...PROPORTIONAL_FIELDS,
     ],
   },
   {
     name: 'rotate',
     group: 'transform',
     needs: { of: 'verts' },
-    summary: 'Turns the selected vertices about their middle.',
+    summary: 'Turns the selected vertices about their middle, or about a pivot.',
     params: [
-      { name: 'axis', value: oneOf('x', 'y', 'z'), description: 'The axis. Default "y".' },
+      {
+        name: 'axis',
+        value: { kind: 'axis' },
+        description: 'What it turns about: "x", "y", "z" or a direction [x, y, z]. Default "y".',
+      },
       { name: 'angle', value: number(), description: 'In degrees.' },
+      {
+        name: 'pivot',
+        value: { kind: 'vector' },
+        description: 'The point it turns about, as [x, y, z]. Default the middle of the selection.',
+      },
+      ...PROPORTIONAL_FIELDS,
     ],
   },
   {
     name: 'scale',
     group: 'transform',
     needs: { of: 'verts' },
-    summary: 'Scales the selected vertices about their middle.',
+    summary: 'Scales the selected vertices about their middle, or about a pivot.',
     params: [
       {
         name: 'scale',
         value: { kind: 'vector', uniform: true },
         description: 'Factor along each axis, as [x, y, z], or one number for all three.',
       },
+      {
+        name: 'pivot',
+        value: { kind: 'vector' },
+        description: 'The point it scales from, as [x, y, z]. Default the middle of the selection.',
+      },
+      ...PROPORTIONAL_FIELDS,
     ],
   },
   {
@@ -516,7 +554,13 @@ export const PRIMITIVE_OPTIONS: readonly FieldSpec[] = [
   },
 ];
 
-/** What any object can be placed with as it is added. */
+const color: FieldSpec = {
+  name: 'color',
+  value: { kind: 'color' },
+  description: '"#rrggbb", "#rgb" or [r, g, b] from 0 to 1.',
+};
+
+/** What any object can be named, placed and coloured with as it is added. */
 export const PLACEMENT_OPTIONS: readonly FieldSpec[] = [
   { name: 'name', value: { kind: 'string' }, description: 'What the outliner calls it.' },
   {
@@ -530,6 +574,13 @@ export const PLACEMENT_OPTIONS: readonly FieldSpec[] = [
     value: { kind: 'vector', uniform: true },
     description: 'Along X, Y and Z, or one number.',
   },
+  { ...color, description: `Colour of its first material, ${color.description}` },
+];
+
+/** What a material slot can be made with. */
+export const MATERIAL_OPTIONS: readonly FieldSpec[] = [
+  { name: 'name', value: { kind: 'string' }, description: 'What the MATERIALS list calls it.' },
+  { ...color, description: `Its colour, ${color.description}` },
 ];
 
 const origin: FieldSpec = {
@@ -566,13 +617,14 @@ export const MODIFIER_FIELDS: Record<ModifierType, readonly FieldSpec[]> = {
     {
       name: 'relativeOffset',
       value: { kind: 'vector' },
-      description: 'Offset per copy, as a fraction of the mesh size.',
+      description:
+        'Offset per copy as [x, y, z], in sizes of the mesh: [1, 0, 0] sets the copies side by side along X.',
     },
     { name: 'useConstant', value: boolean, description: 'Offset by a fixed distance too.' },
     {
       name: 'constantOffset',
       value: { kind: 'vector' },
-      description: 'Offset per copy, in metres.',
+      description: 'Offset per copy as [x, y, z], in metres.',
     },
     { name: 'merge', value: boolean, description: 'Weld where copies touch.' },
     { name: 'mergeThreshold', value: number(0), description: 'How close counts as touching.' },
@@ -586,7 +638,7 @@ export const MODIFIER_FIELDS: Record<ModifierType, readonly FieldSpec[]> = {
     {
       name: 'angles',
       value: { kind: 'vector', min: -MAX_BEND_ANGLE, max: MAX_BEND_ANGLE },
-      description: `Degrees to curl around X, Y and Z, from -${MAX_BEND_ANGLE} to ${MAX_BEND_ANGLE}.`,
+      description: `Degrees to curl around X, Y and Z, from -${MAX_BEND_ANGLE} to ${MAX_BEND_ANGLE}, as [x, y, z] or { z: 90 } for one axis.`,
     },
     origin,
   ],
@@ -594,7 +646,7 @@ export const MODIFIER_FIELDS: Record<ModifierType, readonly FieldSpec[]> = {
     {
       name: 'angles',
       value: { kind: 'vector', min: -MAX_TWIST_ANGLE, max: MAX_TWIST_ANGLE },
-      description: `Degrees one end turns past the other about X, Y and Z, from -${MAX_TWIST_ANGLE} to ${MAX_TWIST_ANGLE}.`,
+      description: `Degrees one end turns past the other about X, Y and Z, from -${MAX_TWIST_ANGLE} to ${MAX_TWIST_ANGLE}, as [x, y, z] or { y: 180 } for one axis.`,
     },
     origin,
   ],
@@ -651,7 +703,7 @@ export const MODIFIER_FIELDS: Record<ModifierType, readonly FieldSpec[]> = {
 
 export const MODIFIER_TYPES = Object.keys(MODIFIER_FIELDS) as ModifierType[];
 
-export type ApiOwner = 'global' | 'scene' | 'object' | 'mesh' | 'modifier' | 'view';
+export type ApiOwner = 'global' | 'scene' | 'object' | 'mesh' | 'modifier' | 'material' | 'view';
 
 /** One name a script can reach, as the editor's hover and the docs describe it. */
 export interface ApiEntry {
@@ -671,6 +723,7 @@ export const OWNER_NAMES: Record<Exclude<ApiOwner, 'global'>, string> = {
   object: 'object',
   mesh: 'mesh',
   modifier: 'modifier',
+  material: 'material',
   view: 'view',
 };
 
@@ -716,12 +769,12 @@ export const API_ENTRIES: readonly ApiEntry[] = [
       name: 'add',
       kind: 'function',
       args: 'kind, options?',
-      summary: `Adds a primitive at the 3D cursor and returns it. kind is ${PRIMITIVE_KINDS.join(', ')}. options takes the shape (size, radius, segments...) and name, position, rotation, scale.`,
+      summary: `Adds a primitive at the 3D cursor and returns it. kind is ${PRIMITIVE_KINDS.join(', ')}. options takes the shape (size, radius, segments...) and name, position, rotation, scale and color.`,
     },
     {
       name: 'addMesh',
       kind: 'function',
-      args: '{ verts, faces, name?, position?, rotation?, scale? }',
+      args: '{ verts, faces, name?, position?, rotation?, scale?, color? }',
       summary:
         'Builds an object from your own geometry and returns it. verts lists [x, y, z] points, faces lists the vertex indices around each face, three or more per face.',
     },
@@ -778,13 +831,20 @@ export const API_ENTRIES: readonly ApiEntry[] = [
       name: 'group',
       kind: 'function',
       args: 'objects, name?',
-      summary: 'Puts the objects in one outliner folder, named name when given.',
+      summary:
+        'Puts the objects in a new outliner folder, named name when given, and returns its name. An object is in one folder at most and folders do not nest, so group every part at once.',
     },
     {
       name: 'cursor',
       kind: 'property',
       summary:
         'Where the 3D cursor is, as { x, y, z }. Set it with [x, y, z] or { x, y, z }: new objects are added there.',
+    },
+    {
+      name: 'name',
+      kind: 'property',
+      summary:
+        'The project name, which saved and exported files are named after. Set it to rename.',
     },
   ]),
   ...entries('object', [
@@ -818,7 +878,19 @@ export const API_ENTRIES: readonly ApiEntry[] = [
       kind: 'property',
       summary: 'How many { verts, edges, faces, tris } its mesh holds, before modifiers.',
     },
+    {
+      name: 'bounds',
+      kind: 'property',
+      summary:
+        'Where its shape sits in the world as drawn, modifiers and all: { min, max, size, center }, in metres. null when it has no vertices. Read it to place one part against another.',
+    },
     { name: 'modifiers', kind: 'property', summary: 'Its modifier stack, top to bottom.' },
+    {
+      name: 'materials',
+      kind: 'property',
+      summary:
+        'Its material slots, in order. Every face wears one; the first is the one color sets.',
+    },
     {
       name: 'select',
       kind: 'function',
@@ -837,6 +909,13 @@ export const API_ENTRIES: readonly ApiEntry[] = [
       kind: 'function',
       args: 'type, settings?',
       summary: `Adds a modifier to the bottom of its stack and returns it. type is ${MODIFIER_TYPES.join(', ')}.`,
+    },
+    {
+      name: 'addMaterial',
+      kind: 'function',
+      args: '{ name?, color? }',
+      summary:
+        'Adds a material slot and returns it. No face wears it until mesh.assignMaterial puts some on it.',
     },
     {
       name: 'edit',
@@ -874,21 +953,21 @@ export const API_ENTRIES: readonly ApiEntry[] = [
       kind: 'function',
       args: 'where?, { add }?',
       summary:
-        'Selects the vertices where(v) is true for, or all of them. v has id, x, y, z, position and normal. { add: true } keeps what was selected.',
+        'Selects the vertices where(v) is true for, or all of them. v has id, x, y, z, position and normal. where can also be a list of [x, y, z] points, picking the vertices on them. { add: true } keeps what was selected.',
     },
     {
       name: 'selectEdges',
       kind: 'function',
       args: 'where?, { add }?',
       summary:
-        'Selects the edges where(e) is true for, or all of them. e has id, center, length, a and b, its two ends.',
+        'Selects the edges where(e) is true for, or all of them. e has id, center, length, a and b, its two ends. A list of [x, y, z] points picks the edges centred on them.',
     },
     {
       name: 'selectFaces',
       kind: 'function',
       args: 'where?, { add }?',
       summary:
-        'Selects the faces where(f) is true for, or all of them. f has id, center, normal, area and sides.',
+        'Selects the faces where(f) is true for, or all of them. f has id, center, normal, area, sides and material, the index of the slot it wears. A list of [x, y, z] points picks the faces centred on them.',
     },
     { name: 'verts', kind: 'property', summary: 'Every vertex, as selectVerts describes them.' },
     { name: 'edges', kind: 'property', summary: 'Every edge, as selectEdges describes them.' },
@@ -903,13 +982,20 @@ export const API_ENTRIES: readonly ApiEntry[] = [
       kind: 'function',
       args: '(v) => [x, y, z]',
       summary:
-        'Moves every vertex to the point the function returns for it. Returning nothing leaves that vertex where it is.',
+        'Moves every vertex to the point the function returns for it. v is a vertex as selectVerts describes it. Returning nothing leaves that vertex where it is.',
     },
     {
       name: 'run',
       kind: 'function',
       args: 'name, params?',
       summary: 'Runs an operation by its name, the same as calling it as a method.',
+    },
+    {
+      name: 'assignMaterial',
+      kind: 'function',
+      args: 'material',
+      summary:
+        "Puts the selected faces on one of the object's material slots, given as the material, its index or its name. Needs at least one face selected.",
     },
     ...OPERATOR_SPECS.map((spec): EntrySource => ({
       name: spec.name,
@@ -942,6 +1028,28 @@ export const API_ENTRIES: readonly ApiEntry[] = [
     { name: 'remove', kind: 'function', summary: 'Takes it off the stack.' },
     { name: 'moveUp', kind: 'function', summary: 'Moves it one place up the stack.' },
     { name: 'moveDown', kind: 'function', summary: 'Moves it one place down the stack.' },
+  ]),
+  ...entries('material', [
+    {
+      name: 'name',
+      kind: 'property',
+      summary: 'What the MATERIALS list calls it. Set it to rename.',
+    },
+    {
+      name: 'color',
+      kind: 'property',
+      summary: 'Its colour, as "#rrggbb". Set it with "#rrggbb", "#rgb" or [r, g, b] from 0 to 1.',
+    },
+    {
+      name: 'index',
+      kind: 'property',
+      summary: 'Its place among the slots, counted from 0: the number a face wears.',
+    },
+    {
+      name: 'remove',
+      kind: 'function',
+      summary: 'Takes the slot off. Faces that wore it go back to the first slot.',
+    },
   ]),
   ...entries('view', [
     { name: 'frameAll', kind: 'function', summary: 'Points the camera at the whole scene.' },

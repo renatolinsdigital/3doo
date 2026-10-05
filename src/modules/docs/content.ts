@@ -1,10 +1,17 @@
-import { PRIMITIVE_FIELDS } from '@kernel/index';
+import {
+  DEFAULT_PRIMITIVE_PARAMS,
+  PRIMITIVE_DEFAULT_OVERRIDES,
+  PRIMITIVE_FIELDS,
+  type PrimitiveKind,
+} from '@kernel/index';
 import { DEFAULT_KEYMAP, formatBinding } from '@domain/keymap/keymap';
+import { MCP_TOOLS, REPOSITORY_URL, claudeCodeCommand } from '@domain/mcp/guide';
 import {
   API_ENTRIES,
   type ApiEntry,
   type ApiOwner,
   type FieldSpec,
+  type ValueSpec,
   MODIFIER_FIELDS,
   MODIFIER_TYPES,
   OPERATOR_SPECS,
@@ -84,28 +91,54 @@ function apiTable(head: string, owners: readonly ApiOwner[], skip?: (entry: ApiE
   };
 }
 
+/** `"a", "b" or "c"`. */
+function either(values: readonly string[]): string {
+  const quoted = values.map((value) => `"${value}"`);
+  if (quoted.length < 2) return quoted.join('');
+  return `${quoted.slice(0, -1).join(', ')} or ${quoted[quoted.length - 1]}`;
+}
+
+/** The form a field is written in, where its description cannot be relied on to say. */
+function valueHint(value: ValueSpec): string {
+  if (value.kind === 'enum') return ` Takes ${either(value.values)}.`;
+  if (value.kind === 'flags') return ' Written { x, y, z } of true and false, such as { x: true }.';
+  return '';
+}
+
 const fieldText = (fields: readonly FieldSpec[]) =>
-  fields.map((field) => `${field.name}: ${field.description}`).join(' ');
+  fields.map((field) => `${field.name}: ${field.description}${valueHint(field.value)}`).join(' ');
 
 const OPERATION_NAMES = new Set(OPERATOR_SPECS.map((spec) => spec.name));
 
+/** `radius 0.5, height 1, segments 24`: the shape a kind arrives in when no option is given. */
+function primitiveDefaults(kind: PrimitiveKind): string {
+  const params = { ...DEFAULT_PRIMITIVE_PARAMS, ...PRIMITIVE_DEFAULT_OVERRIDES[kind] };
+  return PRIMITIVE_FIELDS[kind].map((field) => `${field} ${params[field]}`).join(', ');
+}
+
 /**
- * The scripting reference, built from the catalogue the editor itself reads.
+ * The scripting section: how to work in the SCRIPT dialog, then the API.
  *
- * The same entries feed the editor's balloons, its suggestions and the checks a
+ * The API half is built from the catalogue the editor itself reads. The same
+ * entries feed the editor's balloons, its suggestions and the checks a
  * script's options go through, so this page cannot describe an API the editor
  * does not have.
  */
 function scriptingBlocks(): DocsBlock[] {
+  return [...scriptEditorBlocks(), ...scriptingApiBlocks()];
+}
+
+/** Reaching the SCRIPT dialog and working in it, which only a person at the editor needs. */
+function scriptEditorBlocks(): DocsBlock[] {
   return [
     {
       kind: 'prose',
-      text: 'The <> button at the right of the top bar opens SCRIPT, an editor where you build and change the scene with JavaScript. Everything the panels do can be done from it: add primitives or your own geometry, place and colour objects, select vertices, edges and faces and run any modelling operation on them, stack modifiers, cut booleans, fill outliner folders, move the 3D cursor and frame the view.',
+      text: 'The <> button at the right of the top bar opens SCRIPT, in two tabs. ACTIONS writes down what you do in the viewport as the script that would do it. EDITOR is where you build and change the scene with JavaScript. Everything the panels do can be done from a script: add primitives or your own geometry, place and colour objects, select vertices, edges and faces and run any modelling operation on them, give parts of a mesh colours of their own, stack modifiers, cut booleans, fill outliner folders, move the 3D cursor and frame the view.',
     },
     {
       kind: 'steps',
       items: [
-        'Click <> in the top bar. The editor opens on the script you were last writing, or on a short starter the first time.',
+        'Click <> in the top bar, then EDITOR. The editor opens on the script you were last writing, or on a short starter the first time.',
         'Write a script, or pick one under EXAMPLE to start from. Rest the pointer on any name the API has, such as scene or extrude, for a balloon that says what it does and links to its row on this page.',
         'Press RUN, or Ctrl+Enter. When the script works, the dialog closes, a toast says what it did, and the result is in the viewport.',
         'When it fails, a toast and the strip under the code say why, the line that failed is marked and the caret is put on it, and the dialog stays open. The scene is left exactly as it was before the run, so you can fix the line and run again.',
@@ -142,16 +175,47 @@ function scriptingBlocks(): DocsBlock[] {
     },
     {
       kind: 'prose',
+      text: "A script tells you what it found in two ways. End it with return and a value, and that value is the toast and the status line when the run finishes: text as it is, anything else as JSON, so return box.bounds shows where the box sits. console.log writes to the browser's own console, which F12 opens in most browsers.",
+    },
+    {
+      kind: 'prose',
+      text: 'ACTIONS keeps a log of what you do, as script: adding, moving, selecting, renaming and deleting objects, their materials and modifiers, the 3D cursor and the shading, and every operation in edit mode with the vertices, edges or faces it ran on, the selection moved, turned or scaled by hand included, proportional falloff and all. Dragging a handle or a value writes one line with where it ended, and a move called off with Esc leaves nothing behind. Rest the pointer on a name for its reference, as in the editor. COPY puts the log on the clipboard as a script: paste it into EDITOR and run it, and it clears the scene and builds the one you made again. OPEN IN EDITOR puts that same script in EDITOR to change and run, and CLEAR empties the log.',
+    },
+    {
+      kind: 'note',
+      text: 'An edit mode selection is written as the points the vertices stand on, or the middles of the edges or faces, so it still picks the right ones after an undo has rebuilt the mesh. An undo takes its lines off the log and a redo puts them back, so the log always builds the scene on screen. A few things have no script that repeats them, such as importing a file or sliding along edges: the log says so in a comment where they happened, and so does a script you run. COPY warns when the log holds one of these, since a run leaves it out.',
+    },
+    {
+      kind: 'note',
+      text: 'An AI assistant can write and run these scripts for you, and hand the model back as a file, pictures or a link. The MCP button beside <> in the top bar says how to connect one, and AI ASSISTANTS below says what to ask it.',
+    },
+  ];
+}
+
+/**
+ * The API itself, generated from the catalogue.
+ *
+ * It is also the body of the reference the MCP server hands an assistant, so
+ * it says nothing about the dialog's own keys and buttons.
+ */
+export function scriptingApiBlocks(): DocsBlock[] {
+  return [
+    {
+      kind: 'prose',
       text: 'A script gets two names to start from: scene, for the objects, and view, for the camera. Every object it adds or finds is handed back as an object you can keep in a variable and change later in the script. Positions are in metres and written [x, y, z] or { x, y, z }; rotations are in degrees.',
     },
     apiTable('NAME', ['global']),
     apiTable('SCENE', ['scene']),
     apiTable('OBJECT', ['object']),
     {
+      kind: 'prose',
+      text: "A primitive arrives centred on its origin, at the 3D cursor or at the position you give, and sized by the defaults below: a cube is 1 m on a side and a sphere 1 m across. A cylinder, cone or capsule stands along Y, a cone with its point up, a torus lies flat around Y, and a plane, circle or grid lies flat facing up. So scene.add('cylinder', { height: 2 }) runs from y -1 to 1, and stands on the ground at position: [0, 1, 0].",
+    },
+    {
       kind: 'table',
-      head: ['PRIMITIVE', 'SHAPE OPTIONS'],
+      head: ['PRIMITIVE', 'SHAPE OPTIONS AND THEIR DEFAULTS'],
       rows: PRIMITIVE_KINDS.map(
-        (kind) => [`scene.add('${kind}')`, PRIMITIVE_FIELDS[kind].join(', ')] as const,
+        (kind) => [`scene.add('${kind}')`, primitiveDefaults(kind)] as const,
       ),
     },
     {
@@ -163,7 +227,15 @@ function scriptingBlocks(): DocsBlock[] {
     },
     {
       kind: 'prose',
+      text: 'Whatever a script can set, it can read back: positions, rotations, colours, stats, modifier settings and the project name. object.bounds is the one to place parts with, because it says where the shape is drawn in the world, modifiers and all: a lamp stands on a table at table.bounds.max.y.',
+    },
+    {
+      kind: 'prose',
       text: "object.edit((mesh) => { ... }) hands you the mesh of one object. Pick what to work on with selectVerts, selectEdges or selectFaces, then call an operation: each one works on the selection, exactly as its button does in edit mode, and the selection it leaves is what the next one starts from. Coordinates inside edit are in the object's own space, before its position, rotation and scale. If the object is the one you are editing in edit mode, the script starts from what you selected by hand; otherwise it starts with nothing selected.",
+    },
+    {
+      kind: 'prose',
+      text: 'A mesh you build with scene.addMesh keeps the order of your lists: in its first edit, mesh.verts[i] is verts[i] and mesh.faces[i] is faces[i], so you can pick parts of it by where they sit in your own lists. Operations put the faces they make or remake at the end, recalculateNormals and flipNormals among them, so pick by index before running any.',
     },
     apiTable('MESH', ['mesh'], (entry) => OPERATION_NAMES.has(entry.name)),
     {
@@ -185,12 +257,21 @@ function scriptingBlocks(): DocsBlock[] {
       ),
       ids: OPERATOR_SPECS.map((spec) => `mesh.${spec.name}`),
     },
+    {
+      kind: 'prose',
+      text: "object.addModifier('mirror', { axes: { x: true } }) puts a modifier at the bottom of the stack, and modifier.set changes it later. Settings left out keep the values the MODIFIERS panel starts from. A modifier changes what is drawn and exported, not the mesh object.edit works on, until modifier.apply bakes it in.",
+    },
     apiTable('MODIFIER', ['modifier']),
     {
       kind: 'table',
       head: ['MODIFIER TYPE', 'SETTINGS'],
       rows: MODIFIER_TYPES.map((type) => [`'${type}'`, fieldText(MODIFIER_FIELDS[type])] as const),
     },
+    {
+      kind: 'prose',
+      text: "Every face wears one of its object's material slots, and an object starts with one, the slot object.color colours. To give part of a mesh a colour of its own, add a slot with object.addMaterial({ name: 'TRIM', color: '#b8452f' }), then inside object.edit select the faces and call mesh.assignMaterial with it. Joining objects keeps each one's colours, as slots of the result, and OBJ and FBX export carry every slot.",
+    },
+    apiTable('MATERIAL', ['material']),
     apiTable('VIEW', ['view']),
     {
       kind: 'note',
@@ -249,7 +330,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Top bar',
-            'Left: FILE, PREFS and the project name. Middle: the object/edit mode switch; the snap, proportional, auto merge, orthographic and smooth-shading flags; the pivot picker; the SHADING and OVERLAYS menus. Right: the script editor, the history list, the two framing buttons and the shortcut list. On a narrow screen the bar is one row that scrolls sideways: swipe it to reach the rest.',
+            'Left: FILE, PREFS and the project name. Middle: the object/edit mode switch; the snap, proportional, auto merge, orthographic and smooth-shading flags; the pivot picker; the SHADING and OVERLAYS menus. Right: the script editor, the MCP server guide (connecting an AI assistant), the history list, the two framing buttons and the shortcut list. On a narrow screen the bar is one row that scrolls sideways: swipe it to reach the rest.',
           ],
           [
             'Tool rail, far left',
@@ -981,6 +1062,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Reads a PNG, JPG or BMP in as a plane at the world origin, standing upright and facing the front view, with the picture drawn on it.',
           ],
           [
+            'A scene link',
+            'Opens the editor on the scene the link carries, in place of the starting cube. AI assistants hand these out: see AI ASSISTANTS. The scene is in no file until you save it.',
+          ],
+          [
             'Export (Ctrl+E)',
             'Writes OBJ with a matching MTL, or binary FBX 7.4, which Unity, Unreal, Blender, Maya and 3ds Max all import.',
           ],
@@ -1065,6 +1150,102 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     title: 'SCRIPTING',
     blurb: 'Building and editing the scene with code',
     blocks: scriptingBlocks(),
+  },
+  {
+    id: 'assistants',
+    title: 'AI ASSISTANTS',
+    blurb: 'Asking an assistant to build a model for you',
+    blocks: [
+      {
+        kind: 'prose',
+        text: 'An AI assistant such as Claude can build models in 3DOO for you. Describe what you want in your own words, the way you would to a person: "a low poly wooden chair", "a hex nut 2 cm across", "the table from before, with a drawer". The assistant writes a script with the same API as SCRIPT, runs it, looks at pictures of the result, fixes what is off, and hands the model back to you.',
+      },
+      {
+        kind: 'table',
+        head: ['ASK FOR', 'WHAT YOU GET'],
+        rows: [
+          [
+            'A project file',
+            'A .3doo you open with FILE > OPEN. Every object, modifier and colour arrives editable, exactly as if you had built it yourself.',
+          ],
+          [
+            'An OBJ or FBX',
+            'A model ready for a game engine or another 3D program, with modifiers applied. Say which engine it is for and the assistant picks the matching axis and unit preset.',
+          ],
+          [
+            'Pictures',
+            'Renders of the model, drawn the way the viewport draws it. One in perspective by default, or any of the straight-on views the camera keys give: front (Shift+1), right (Shift+3), top (Shift+7), back, left and bottom (Ctrl+Shift with the same numbers). Ask to "see it from every side" for all of them.',
+          ],
+          [
+            'A link',
+            'A link that opens this editor on the model, ready to keep working on. The whole model travels inside the link, so nothing is uploaded and the link works for anyone you send it to.',
+          ],
+        ],
+      },
+      {
+        kind: 'prose',
+        text: 'Setting it up takes a few minutes, once. The assistant talks to 3DOO through an MCP server that comes with the code, and it needs the code on your computer. The MCP button beside <> in the top bar has every command ready to copy, with this site already filled in as the place links open:',
+      },
+      {
+        kind: 'steps',
+        items: [
+          `Get the code with git clone ${REPOSITORY_URL}.git, then in its folder run npm install and npm run build. It needs Node 22.18 or newer.`,
+          'If you have no Chrome or Edge installed, run npx playwright-core install chromium. The server runs 3DOO in a hidden browser of its own to build and draw the models.',
+          `Add the server to your assistant. In Claude Code: ${claudeCodeCommand('https://your-3doo-address')}. In Claude Desktop: add a 3doo entry under mcpServers in its configuration file, with node as the command and the path to mcp/server.ts as its argument.`,
+          'THREEDOO_APP_URL tells the server where 3DOO is hosted, which is where its links open. Files and pictures work without it.',
+          'Ask for a model. "Build a low poly chair in 3DOO, show me the front and side views, then export it as FBX for Unity" is enough.',
+        ],
+      },
+      {
+        kind: 'table',
+        head: ['TOOL', 'WHAT THE ASSISTANT USES IT FOR'],
+        rows: MCP_TOOLS.map(
+          (tool) =>
+            [
+              tool.name,
+              `${tool.does} Answers with ${tool.returns[0].toLowerCase()}${tool.returns.slice(1)}`,
+            ] as const,
+        ),
+      },
+      {
+        kind: 'table',
+        head: ['TRY ASKING', 'THE ASSISTANT'],
+        rows: [
+          [
+            'Build a coffee mug and show it to me',
+            'Builds it and replies with a picture in perspective.',
+          ],
+          [
+            'Show me the front, side and top views',
+            'Replies with three straight-on pictures, drawn flat so proportions can be compared.',
+          ],
+          [
+            'Make the handle thicker',
+            'Changes the model it already built, rather than starting again.',
+          ],
+          [
+            'Give me a link to open it in 3DOO',
+            'Replies with a link. Open it and the model is in the editor.',
+          ],
+          [
+            'Export it as OBJ for Unreal',
+            'Writes the .obj and its .mtl, the right way up and the right size for Unreal, and says where they are.',
+          ],
+          [
+            'Open lamp.3doo and add a shade',
+            'Loads your project, adds to it and gives it back as a new file or link.',
+          ],
+        ],
+      },
+      {
+        kind: 'note',
+        text: 'A model opened from a link is in no file yet, like a new project: save it with Ctrl+S to keep it. Pasting a link over a tab that has unsaved work in it offers to save that work first.',
+      },
+      {
+        kind: 'note',
+        text: 'The assistant works on a copy of 3DOO of its own and never touches the scene in your tab. Its files go to a 3doo-output folder in your home folder unless you or the assistant choose another.',
+      },
+    ],
   },
   {
     id: 'shortcuts',

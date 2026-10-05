@@ -19,6 +19,7 @@ npm run dev      # http://localhost:5173
 npm test
 npm run build    # typecheck + production bundle
 npm run lint
+npm run mcp      # the MCP server for AI assistants, after a build (docs/mcp.md)
 ```
 
 New to the code? Start with [docs/get-started.md](docs/get-started.md).
@@ -41,6 +42,11 @@ New to the code? Start with [docs/get-started.md](docs/get-started.md).
   with JavaScript, in the spirit of Blender's Python console, with hover help
   linked to the docs. A run is one step to undo, and a failed run changes
   nothing.
+- **AI assistants**: an MCP server lets Claude and other assistants build
+  models with the scripting API and hand them back as files, pictures from any
+  of the editor's views, or a link that opens the editor on the result. The
+  MCP button in the top bar has the setup commands ready to copy; the details
+  are in [docs/mcp.md](docs/mcp.md).
 
 The full list, and how each tool behaves, is in
 [docs/features.md](docs/features.md). Every shortcut is in
@@ -98,6 +104,7 @@ Sass. No Tailwind, no CSS-in-JS, no component library.
 | [saving.md](docs/saving.md) | Project files, autosave, and what the browser keeps |
 | [design-system.md](docs/design-system.md) | Brutalist tokens, mixins, and usability guardrails |
 | [scripting.md](docs/scripting.md) | The operator registry, `exec`, and the scripting API behind the SCRIPT editor |
+| [mcp.md](docs/mcp.md) | The MCP server for AI assistants: tools, payloads, the page API, snapshots and scene links |
 | [testing.md](docs/testing.md) | What is tested and how to add to it |
 
 The user manual is not in this folder. It is the in-app Docs module, written in

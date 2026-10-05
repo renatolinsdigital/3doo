@@ -1,5 +1,12 @@
-import { type ProjectAssetData, type ProjectDocument, stringifyProject } from '@kernel/index';
-import type { SceneAsset } from '@store/types';
+import {
+  type ExportObject,
+  type ExportTexture,
+  type ProjectAssetData,
+  type ProjectDocument,
+  stringifyProject,
+} from '@kernel/index';
+import { evaluatedMesh } from '@store/index';
+import type { SceneAsset, SceneObject } from '@store/types';
 
 /**
  * The assets a document names, with their bytes.
@@ -106,6 +113,54 @@ export function exportFileName(asset: SceneAsset, taken: Set<string>): string {
   }
   taken.add(candidate.toLowerCase());
   return candidate;
+}
+
+export interface ExportPicture extends ExportTexture {
+  blob: Blob;
+  type: string;
+}
+
+/**
+ * The pictures on the image planes being exported, by asset id: one file per
+ * picture however many planes show it, each named once for the whole export.
+ *
+ * A plane whose image went missing on load goes out bare, which is also how
+ * the viewport draws it.
+ */
+export async function exportPictures(
+  objects: readonly SceneObject[],
+  assets: Record<string, SceneAsset>,
+): Promise<Map<string, ExportPicture>> {
+  const pictures = new Map<string, ExportPicture>();
+  const taken = new Set<string>();
+
+  for (const object of objects) {
+    const asset = object.image ? assets[object.image.assetId] : undefined;
+    if (!asset?.blob || pictures.has(asset.id)) continue;
+    pictures.set(asset.id, {
+      fileName: exportFileName(asset, taken),
+      data: await blobBytes(asset.blob),
+      blob: asset.blob,
+      type: asset.type,
+    });
+  }
+
+  return pictures;
+}
+
+/** The scene objects as the exporters take them, each with its picture if it has one. */
+export function exportObjects(
+  objects: readonly SceneObject[],
+  pictures: ReadonlyMap<string, ExportPicture>,
+): ExportObject[] {
+  return objects.map((object) => ({
+    name: object.name.replace(/\s+/g, '_'),
+    // Export the evaluated mesh so modifiers are baked into the output.
+    mesh: evaluatedMesh(object),
+    transform: object.transform,
+    materials: object.materials,
+    texture: object.image ? pictures.get(object.image.assetId) : undefined,
+  }));
 }
 
 export function base64ToBlob(data: string, type: string): Blob {

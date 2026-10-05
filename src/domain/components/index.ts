@@ -24,6 +24,7 @@ export { AutosaveLocationDialog } from './AutosaveLocationDialog/AutosaveLocatio
 export { ExportDialog } from './ExportDialog/ExportDialog';
 export { HistoryDialog } from './HistoryDialog/HistoryDialog';
 export { ScriptDialog } from './ScriptDialog/ScriptDialog';
+export { McpDialog } from './McpDialog/McpDialog';
 export { PreferencesDialog } from './PreferencesDialog/PreferencesDialog';
 export { ShortcutOverlay } from './ShortcutOverlay/ShortcutOverlay';
 export { CursorMenu } from './CursorMenu/CursorMenu';

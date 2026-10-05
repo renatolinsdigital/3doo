@@ -1,20 +1,12 @@
 import { useCallback } from 'react';
 
-import {
-  type ExportObject,
-  type ExportTexture,
-  exportFBX,
-  exportOBJ,
-  importFBX,
-  importOBJ,
-  parseProject,
-} from '@kernel/index';
-import { evaluatedMesh, useEditorStore } from '@store/index';
-import type { SceneAsset, SceneObject } from '@store/types';
+import { exportFBX, exportOBJ, importFBX, importOBJ, parseProject } from '@kernel/index';
+import { useEditorStore } from '@store/index';
 
 import {
   blobBytes,
-  exportFileName,
+  exportObjects,
+  exportPictures,
   hydrateAssets,
   imageDimensions,
   imageTypeFor,
@@ -74,39 +66,6 @@ async function writeProject(write: (contents: string) => Promise<SaveResult>): P
   const toast = saveResultToast(result);
   if (toast) state.pushToast(toast.variant, toast.message);
   return result;
-}
-
-interface ExportPicture extends ExportTexture {
-  blob: Blob;
-  type: string;
-}
-
-/**
- * The pictures on the image planes being exported, by asset id: one file per
- * picture however many planes show it, each named once for the whole export.
- *
- * A plane whose image went missing on load goes out bare, which is also how
- * the viewport draws it.
- */
-async function exportPictures(
-  objects: readonly SceneObject[],
-  assets: Record<string, SceneAsset>,
-): Promise<Map<string, ExportPicture>> {
-  const pictures = new Map<string, ExportPicture>();
-  const taken = new Set<string>();
-
-  for (const object of objects) {
-    const asset = object.image ? assets[object.image.assetId] : undefined;
-    if (!asset?.blob || pictures.has(asset.id)) continue;
-    pictures.set(asset.id, {
-      fileName: exportFileName(asset, taken),
-      data: await blobBytes(asset.blob),
-      blob: asset.blob,
-      type: asset.type,
-    });
-  }
-
-  return pictures;
 }
 
 /** New / save / load / import / export, kept out of the components that trigger them. */
@@ -257,14 +216,7 @@ export function useProjectFiles() {
     const name = state.projectName || 'model';
     try {
       const pictures = await exportPictures(chosen, state.assets);
-      const objects: ExportObject[] = chosen.map((object) => ({
-        name: object.name.replace(/\s+/g, '_'),
-        // Export the evaluated mesh so modifiers are baked into the output.
-        mesh: evaluatedMesh(object),
-        transform: object.transform,
-        materials: object.materials,
-        texture: object.image ? pictures.get(object.image.assetId) : undefined,
-      }));
+      const objects = exportObjects(chosen, pictures);
 
       if (format === 'obj') {
         // The .obj names its material file, so the name has to be one an OBJ

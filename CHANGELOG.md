@@ -14,87 +14,41 @@ New entries go under `Unreleased` until a version is cut. Group them under
 
 ### Added
 
-- Knife tool (K, edit mode): click out a line on the mesh to cut new edges
-  through its faces.
-- Bend modifier: curls the mesh around X, Y and Z at once, each by up to 360°
-  spread along the whole length that curls, so a full turn closes it into a
-  ring. It bends the object as drawn, so a cube scaled into a column curls
-  along its length, and it only moves the vertices already there: loop cut
-  the length you want curved. ORIGIN centres the bend on the object or the 3D
-  cursor.
-- Twist modifier: turns the mesh about X, Y and Z at once, each by up to four
-  full turns, so one end turns the whole angle past the other. Like bend, it
-  twists the object as drawn and only moves the vertices already there, and
-  ORIGIN picks the line it turns about: the object's or the 3D cursor's.
-- Scripting: the `<>` button in the top bar opens a code editor that builds
-  and edits the scene with JavaScript: primitives and custom meshes,
-  transforms, colours, every modelling operation on a scripted selection,
-  modifiers, booleans, folders, the 3D cursor and the view. The editor colours
-  the code in the app's palette, suggests names as you type, and shows a
-  balloon for every API name with a link to its row in the new SCRIPTING
-  section of the docs. RUN (Ctrl+Enter) reports success in a toast and closes
-  the dialog; a failure is reported in a toast and under the code, marks the
-  failing line, keeps the dialog open and leaves the scene untouched. A whole
-  run is one step to undo. LOAD AN EXAMPLE fills the editor with a finished
-  model to learn from: a stylised axe, a gnome's mushroom house, a low poly
-  character, a wizard's staff, a wooden bridge, a treasure chest and potion
-  bottles. Each is modelled the way a game asset is: no face has more than
-  four sides, and parts meet surface to surface rather than passing through
-  one another.
-- Touch screens: pinch to zoom about the point between the fingers, slide two
-  fingers to pan, and twist them to turn the scene round like a turntable. One
-  finger keeps doing what the left mouse button does, and a second finger
-  takes over from it.
-- Dragging the axis widget in the viewport's corner orbits the view, with a
-  finger or a mouse.
-- A long press opens the menus a right-click does (the 3D cursor menu, the
-  outliner rows, the material slots), and on any other control shows its hint.
-  A tap on an unavailable control shows why it is unavailable.
-- A quick bar under the viewport on phones, tablets and narrow windows. TOOLS
-  and SCENE open the panel columns as drawers. On a touch screen it also has
-  undo, redo, ADD (a tap builds on the selection, as Shift+click does), delete,
-  and CUT, UNDO POINT and CANCEL while the knife is cutting.
+- ACTIONS tab in SCRIPT: what you do in the viewport, written as the script
+  that would do it. Objects added, moved, selected, renamed, joined, cut or
+  deleted, their materials and modifiers, the 3D cursor and the shading are
+  all logged, and so is every edit mode operation with the selection it ran
+  on. A drag writes one line with where it ended, a move called off leaves
+  nothing, and an undo takes its lines back off the log. COPY puts the log on
+  the clipboard as a script that clears the scene and builds it again when
+  run in EDITOR, and warns when the log holds something no script repeats.
+  OPEN IN EDITOR hands the same script to the script editor.
+- `mesh.selectVerts`, `selectEdges` and `selectFaces` also take a list of
+  points, `[[x, y, z], ...]`, and pick the elements standing on them.
+- `mesh.translate`, `rotate` and `scale` take `proportional` (the falloff
+  radius) and `falloff`, and `rotate` and `scale` take a `pivot`. `rotate`
+  turns about any direction, `axis: [x, y, z]`, as well as `"x"`, `"y"` and
+  `"z"`.
+- ACTIONS writes every edit mode move, turn and scale as the one call that
+  repeats it, proportional editing, a turn about the view and a pivot on the
+  cursor or the origin included, where these used to be comments saying there
+  was no script equivalent.
 
 ### Changed
 
-- Below 1024px the panel columns are drawers instead of disappearing, and the
-  top bar scrolls sideways instead of widening the page.
-- On touch screens the controls grow to fingertip size and the smallest text
-  comes up a point. The desktop is unchanged.
-- On touch screens the transform gizmo, the vertex dots and the wireframe's
-  edges are drawn larger, so they can be seen and aimed at with a finger.
-- On a phone the docs read as one scrolling page, instead of an article boxed
-  into a third of the screen under the contents.
-- The camera jumps to a view instead of turning to it when the system asks for
-  reduced motion.
-- The viewport is announced to screen readers as a named region, with a
-  description of how to steer it, and the editor area is the page's main
-  landmark.
+- SCRIPT opens on ACTIONS. The script editor is one click away, under EDITOR,
+  and keeps its draft and its undo across the switch.
+- An edit mode move, turn or scale applies its whole amount from where the
+  vertices began on every pointer move. Rolling the wheel to resize the
+  proportional falloff mid-drag now spreads the whole move again, rather than
+  only what comes after, and pinning another axis mid-turn starts the turn
+  over about it, as it already did in object mode.
 
 ### Fixed
 
-- An active button being hovered drew its light label on a light fill, which
-  could not be read. A touch screen keeps the hover after a tap, so there it
-  was every active button.
-- On a touch screen a tap left the control's hint stuck on screen.
-- iOS no longer zooms the page into a field when it is tapped.
-- On an iPhone or iPad, panels taller than the screen could not be scrolled.
-- A finger swiping up the panels over a field's label scrolls them, rather
-  than nudging the value on the way, and a scroll that starts on the edge
-  LENGTH label no longer leaves an empty step in the undo history.
-
-- In orthographic view, zoomed in, a click on an object could select the one
-  behind it, and the gizmo on that object could not be grabbed.
-- The in-app docs said the tool rail switches to vertex, edge and face select
-  in edit mode. It holds the same tools in both modes, and the select modes are
-  in the SELECT panel.
-
-## [1.0.1] - 2026-10-02
-
-### Relevant Changes
-
-- Redesigned the home page
-- Improved the module switcher on the home page reads `3DOO - HOME`
+- ACTIONS no longer takes a selection clicked after a move for the one the
+  move left, which wrote the next move without selecting first and replayed
+  it on the wrong vertices.
 
 ## [1.0.0] - 2026-10-02
 

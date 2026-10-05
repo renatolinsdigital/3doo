@@ -57,9 +57,10 @@ place where both worlds are imported together. See [rendering.md](rendering.md).
 ### `/src/viewport`
 
 The imperative Three.js application: renderer, camera controller, gizmo,
-picking, grid, and the knife's view of the mesh (`knife.ts`: where a click lands
-and what a line cuts). Created once against a canvas ref and never re-rendered
-by React.
+picking, grid, the knife's view of the mesh (`knife.ts`: where a click lands
+and what a line cuts) and edit mode transforms (`editMove.ts`: a drag applied
+whole from where it began, and the one call that repeats it). Created once
+against a canvas ref and never re-rendered by React.
 
 ### `/src/store`
 
@@ -100,7 +101,11 @@ A **module** is one whole area of the application, reachable at its own path:
 
 `/src/app` holds only what all of them share: the registry in `modules.ts`, the
 router, the `ModuleSwitcher` brand plate, and an `App` whose entire job is to read
-the path and hand the screen to one module.
+the path and hand the screen to one module. `app/automation` sits here too:
+`window.threedoo`, the API an AI assistant drives the editor through, which
+reaches into scripting, the file services, the docs and the snapshot renderer
+alike, so it belongs at the top of the arrows. The MCP server that drives it
+lives outside `/src`, in `/mcp`, and runs in Node (see [mcp.md](mcp.md)).
 
 Each module owns its own layout **and its own lifecycle hooks**. `useKeymap` and
 `useAutosave` are mounted inside `ModelingModule`, not in `App`. That has two
