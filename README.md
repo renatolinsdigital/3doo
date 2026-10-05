@@ -11,6 +11,10 @@ engine.
 
 ![Modelling an apple with proportional editing](docs/gifs/apple.gif)
 
+### Simple 3D assets can be generated using AI (Just call it via the MCP Connection)
+
+![Asking Claude to create assets via MCP connection](docs/gifs/ai_generation.gif)
+
 ## Quick start
 
 ```bash

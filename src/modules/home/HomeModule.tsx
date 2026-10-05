@@ -12,6 +12,7 @@ const FACTS = [
   { label: 'PLUGIN', value: 'NONE' },
   { label: 'ACCOUNT', value: 'NONE' },
   { label: 'RUNS IN', value: 'A BROWSER TAB' },
+  { label: 'WORKS WITH AI', value: 'ABSOLUTELY' },
 ];
 
 const STATS = [
@@ -104,6 +105,10 @@ export function HomeModule() {
             <p className="home__lede">
               3DOO puts desktop-grade modeling in a browser tab: real topology, real mesh
               operations, real export. Open it and start building.
+            </p>
+            <p className="home__lede">
+              It also ships an MCP server, so an AI assistant can use 3DOO as a tool: it builds
+              and edits models while you watch.
             </p>
             <div className="home__actions">
               <Button
