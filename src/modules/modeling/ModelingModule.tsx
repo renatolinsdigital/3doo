@@ -20,6 +20,7 @@ import {
   ExportDialog,
   HistoryDialog,
   LoopOperationsPanel,
+  McpDialog,
   MergeDialog,
   ModifierStack,
   ObjectPanel,
@@ -182,6 +183,7 @@ export function ModelingModule() {
       <ReplaceProjectDialog onNew={newProject} onOpen={openProject} onSave={saveProject} />
       <AutosaveLocationDialog />
       <ScriptDialog />
+      <McpDialog />
       <ShortcutOverlay />
       <ToastHost />
       <TooltipHost bounds={mainRef} />

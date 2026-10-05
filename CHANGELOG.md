@@ -19,6 +19,26 @@ New entries go under `Unreleased` until a version is cut. Group them under
   perspective view or any of the Shift+number views, and hand them back as a
   `.3doo`, an OBJ or FBX, PNG pictures, or a link that opens the editor on the
   result. The new AI ASSISTANTS section of the docs says how to set it up.
+- MCP button beside `<>` in the top bar: a guide to using 3DOO from an AI
+  assistant. It shows how a call travels from the assistant to the scripting
+  API, the commands to set the server up with COPY buttons and this site
+  already filled in as the place links open, every tool the server offers
+  with what it returns, and the settings the server reads.
+- Scripts can give parts of one mesh colours of their own: `object.addMaterial`
+  adds a material slot, `mesh.assignMaterial` puts the selected faces on it,
+  and `object.materials` lists the slots to rename, recolour or remove. A face
+  read in a script says which slot it wears.
+- `object.bounds` says where an object's shape is drawn in the world,
+  modifiers and all, for placing one part against another. `scene.name` reads
+  and sets the project name, and `scene.add` and `scene.addMesh` take a
+  `color`.
+- The SCRIPTING docs list the values every choice takes, such as the modes of
+  merge, delete and dissolve and the modifiers' `origin`. The reference an
+  assistant reads now opens with what a script can do and how it works, and
+  leaves out the notes about the SCRIPT dialog.
+- A knife point in a script is checked like every other option: `co` may be
+  written `[x, y, z]`, and a point that cannot be read stops the script with
+  its place in the list instead of being dropped from the cut.
 - Scene links: a `/modeling#scene=...` link opens the editor on the scene it
   carries, in place of the starting cube. The whole scene travels inside the
   link, so nothing is uploaded.
@@ -44,9 +64,8 @@ New entries go under `Unreleased` until a version is cut. Group them under
   the dialog; a failure is reported in a toast and under the code, marks the
   failing line, keeps the dialog open and leaves the scene untouched. A whole
   run is one step to undo. LOAD AN EXAMPLE fills the editor with a finished
-  model to learn from: a stylised axe, a gnome's mushroom house, a low poly
-  character, a wizard's staff, a wooden bridge, a treasure chest and potion
-  bottles. Each is modelled the way a game asset is: no face has more than
+  model to learn from: a stylised axe, a low poly character, a wizard's
+  staff, a wooden bridge, a treasure chest and potion bottles. Each is modelled the way a game asset is: no face has more than
   four sides, and parts meet surface to surface rather than passing through
   one another.
 - Touch screens: pinch to zoom about the point between the fingers, slide two

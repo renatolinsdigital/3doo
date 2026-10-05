@@ -384,6 +384,13 @@ export function TopBar({ brand }: TopBarProps) {
           onClick={() => openDialog('script')}
         />
         <IconButton
+          label="MCP"
+          icon={<PlugIcon />}
+          className="top-bar__icon"
+          hint="MCP server: let an AI assistant build models here, and see how it connects and what it returns"
+          onClick={() => openDialog('mcp')}
+        />
+        <IconButton
           label="HISTORY"
           icon={<HistoryIcon />}
           className="top-bar__icon"
@@ -560,6 +567,17 @@ function CodeIcon() {
   return (
     <Glyph>
       <path d="M5.5 4 1.5 8l4 4M10.5 4l4 4-4 4" />
+    </Glyph>
+  );
+}
+
+/** A plug on its lead: something from outside connecting to the editor. */
+function PlugIcon() {
+  return (
+    <Glyph>
+      <path d="M6 1.5v3.5M10 1.5v3.5" />
+      <path d="M3.5 5h9v2.5a4.5 4.5 0 0 1-9 0Z" />
+      <path d="M8 12v2.5" />
     </Glyph>
   );
 }

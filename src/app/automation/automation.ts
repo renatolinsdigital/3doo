@@ -1,6 +1,5 @@
 import {
   type Vec3,
-  composeMatrix,
   exportFBX,
   exportOBJ,
   importFBX,
@@ -8,19 +7,19 @@ import {
   parseProject,
   radToDeg,
   resolveExportOptions,
-  transformPoint,
 } from '@kernel/index';
 import { evaluatedMesh, useEditorStore } from '@store/index';
-import type { SceneObject, ShadingMode } from '@store/types';
+import type { ShadingMode } from '@store/types';
 import { SNAPSHOT_VIEWS, type SnapshotProjection, renderSnapshots } from '@viewport/snapshot';
 
+import { worldBounds } from '@domain/scripting/api';
 import { SCRIPT_EXAMPLES } from '@domain/scripting/examples';
 import { runScript } from '@domain/scripting/runScript';
 import { exportObjects, exportPictures, hydrateAssets, projectText } from '@domain/services/assets';
 import { withoutProjectSuffix } from '@domain/services/download';
 import { MAX_SCENE_LINK_LENGTH, sceneLink } from '@domain/services/sceneLink';
 
-import { type DocsBlock, DOCS_SECTIONS } from '../../modules/docs/content';
+import { type DocsBlock, scriptingApiBlocks } from '../../modules/docs/content';
 
 import {
   AUTOMATION_VERSION,
@@ -75,52 +74,15 @@ function hex(color: { r: number; g: number; b: number }): string {
   return `#${channel(color.r)}${channel(color.g)}${channel(color.b)}`;
 }
 
-type Box = { min: Vec3; max: Vec3 };
-
-/** The world-space box of one object's shape as drawn, or null for one with no vertices. */
-function worldBox(object: SceneObject): Box | null {
-  const matrix = composeMatrix(object.transform);
-  let box: Box | null = null;
-  for (const vert of evaluatedMesh(object).verts.values()) {
-    const p = transformPoint(matrix, vert.co);
-    box = box ? union(box, { min: p, max: p }) : { min: { ...p }, max: { ...p } };
-  }
-  return box;
-}
-
-function union(a: Box, b: Box): Box {
-  return {
-    min: {
-      x: Math.min(a.min.x, b.min.x),
-      y: Math.min(a.min.y, b.min.y),
-      z: Math.min(a.min.z, b.min.z),
-    },
-    max: {
-      x: Math.max(a.max.x, b.max.x),
-      y: Math.max(a.max.y, b.max.y),
-      z: Math.max(a.max.z, b.max.z),
-    },
-  };
-}
-
-const size = (box: Box): Vec3 => ({
-  x: box.max.x - box.min.x,
-  y: box.max.y - box.min.y,
-  z: box.max.z - box.min.z,
-});
-
 /** What is in the scene, in the terms a script uses: names, metres and degrees. */
 export function sceneSummary(): SceneSummary {
   const state = store();
-  const shown: Box[] = [];
   let vertices = 0;
   let faces = 0;
 
   const objects = state.objects.map((object): ObjectSummary => {
     const mesh = evaluatedMesh(object);
-    const box = worldBox(object);
-    if (object.visible && box) {
-      shown.push(box);
+    if (object.visible) {
       vertices += mesh.verts.size;
       faces += mesh.faces.size;
     }
@@ -133,7 +95,7 @@ export function sceneSummary(): SceneSummary {
       position: vec(object.transform.position),
       rotation: vec({ x: radToDeg(rotation.x), y: radToDeg(rotation.y), z: radToDeg(rotation.z) }),
       scale: vec(object.transform.scale),
-      dimensions: vec(box ? size(box) : { x: 0, y: 0, z: 0 }),
+      dimensions: vec(worldBounds([object])?.size ?? { x: 0, y: 0, z: 0 }),
       color: hex((object.materials[0] ?? { color: { r: 0.8, g: 0.8, b: 0.8 } }).color),
       modifiers: object.modifiers.map((modifier) => modifier.type),
       visible: object.visible,
@@ -141,12 +103,12 @@ export function sceneSummary(): SceneSummary {
     };
   });
 
-  const bounds = shown.reduce<Box | null>((all, box) => (all ? union(all, box) : box), null);
+  const bounds = worldBounds(state.objects.filter((object) => object.visible));
   return {
     name: state.projectName,
     objects,
     totals: { objects: objects.length, vertices, faces },
-    bounds: bounds ? { min: vec(bounds.min), max: vec(bounds.max), size: vec(size(bounds)) } : null,
+    bounds: bounds ? { min: vec(bounds.min), max: vec(bounds.max), size: vec(bounds.size) } : null,
   };
 }
 
@@ -342,22 +304,52 @@ line, leaving the scene exactly as it was before the run.
 - \`await\` works at the top level, which \`scene.boolean\` needs.
 - \`return 'some text'\` sends that text back as the run's message, which is
   the way to read values out of the scene.
-- \`console.log\` output is sent back as well.`;
+- \`console.log\` output is sent back as well.
+- \`view\` moves the editor's own camera, which pictures do not use:
+  \`render_views\` frames the model itself and takes the shading as an argument.
+
+## What a script can do
+
+- Add the ten primitives, or build any mesh from a list of points and faces
+  (\`scene.add\`, \`scene.addMesh\`), each named, placed, turned, scaled and
+  coloured as it is added.
+- Move, turn, scale, rename, hide, lock, duplicate (plain or linked) and delete
+  objects; join them, split them into loose parts, put them in outliner
+  folders, and cut them with booleans.
+- Edit a mesh the way edit mode does (\`object.edit\`): select vertices, edges or
+  faces with a test function, run any modelling operation on the selection,
+  move vertices to computed points with \`mesh.deform\`, and read every vertex,
+  edge and face back.
+- Stack, set, reorder and apply modifiers: mirror, array, solidify, bend,
+  twist, weld, subdivide, subsurf and remesh.
+- Colour objects, and give parts of one mesh colours of their own through
+  material slots (\`object.addMaterial\`, \`mesh.assignMaterial\`).
+- Read the scene back: transforms, world bounds, counts, modifier settings,
+  colours and the project name, which exported files are named after.
+
+## How a script works
+
+- An operation acts on the selection, as its button does in edit mode, and
+  leaves what it made selected: select the top face, extrude, then inset, and
+  the inset lands on the extruded face.
+- Inside \`object.edit\`, coordinates are the object's own, before its position,
+  rotation and scale. \`object.applyTransform()\` bakes rotation and scale into
+  the vertices first, when edit coordinates should match the world's.
+- A modifier changes what is drawn and exported, not the mesh \`object.edit\`
+  works on, until it is applied. \`scene.boolean\` refuses an object with a
+  live modifier, and uses its cutters up: duplicate one first to keep it.
+- \`object.bounds\` places one part against another: a lamp stands on a table
+  at \`table.bounds.max.y\`.
+- Build a model over several short scripts rather than one long one. Each run
+  is checked on its own, and a failure takes back only that run.`;
 
 /**
- * The scripting reference as Markdown: the SCRIPTING section of the in-app
- * docs, which is built from the catalogue the API validates against, followed
- * by the examples the editor ships. Written for a language model, so the parts
- * about the editor's own keys and buttons are left out.
+ * The scripting reference as Markdown: the API half of the SCRIPTING section
+ * of the in-app docs, which is built from the catalogue the API validates
+ * against, followed by the examples the editor ships.
  */
 export function scriptingReference(): string {
-  const section = DOCS_SECTIONS.find((candidate) => candidate.id === 'scripting');
-  const blocks = (section?.blocks ?? []).filter(
-    (block) =>
-      block.kind !== 'steps' && !(block.kind === 'table' && block.head[0] === 'IN THE EDITOR'),
-  );
-  // The section opens on how to reach the editor, which is not a script's business.
-  const body = blocks.slice(1).map(blockMarkdown);
+  const body = scriptingApiBlocks().map(blockMarkdown);
   const examples = SCRIPT_EXAMPLES.map(
     (example) => `### ${example.label}\n\n\`\`\`js\n${example.source.trim()}\n\`\`\``,
   );

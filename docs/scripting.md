@@ -151,15 +151,24 @@ src/domain/components/
   ScriptDialog/  the modal: toolbar, editor, RUN, toasts, the saved draft
 ```
 
-### One catalogue, four readers
+### One catalogue, five readers
 
 `reference.ts` holds data rather than code: `API_ENTRIES` (every name, its
 signature and a one-line summary), `OPERATOR_SPECS` (each operator's
-parameters and selection needs), `MODIFIER_FIELDS` and the primitive options.
-The API validates against it, the tokenizer marks names from it, the hover
-balloons and the suggestion list read from it, and the docs section is built
-from it. A name added to the API without an entry has no hover, no suggestion
-and no docs row, which is why the entries are written first.
+parameters and selection needs), `MODIFIER_FIELDS`, `MATERIAL_OPTIONS` and the
+primitive and placement options. The API validates against it, the tokenizer
+marks names from it, the hover balloons and the suggestion list read from it,
+and the docs section is built from it. The fifth reader is an assistant: the
+MCP server's `scripting_reference` is the API half of that docs section
+(`scriptingApiBlocks` in `src/modules/docs/content.ts`), so a model reads the
+names and ranges the checks enforce. A name added to the API without an entry
+has no hover, no suggestion, no docs row and no line in the reference, which
+is why the entries are written first.
+
+The docs write each option from its spec, not only its description: a choice
+lists the values it takes (`Takes "center", "cursor", "first", "last" or
+"collapse"`) and a set of switches says how it is written, so neither has to
+be repeated by hand in a description that could drift from the spec.
 
 ### A script is checked, not coerced
 
@@ -177,6 +186,14 @@ Several operators answer an empty selection with a status line and no
 disabled, but a script would run straight past them. `OPERATOR_SPECS` gives
 those operators a `needs`, and the API checks it before running the operator.
 
+The knife's cuts are the one parameter the kernel parses itself, and it drops
+a point it cannot read so that one stray click in the viewport does not cost
+the whole cut. A script's points are read first instead (`readKnifeCuts` in
+`api.ts`): each must have a known `kind` and the fields that kind needs, and a
+face point's `co` is written `[x, y, z]` or `{ x, y, z }` like every other
+point in the API. Without the check, `co: [0, 1, 0]` would be dropped without
+a word, and the cut would run straight past the point the script asked for.
+
 Errors raised inside the store's `exec` reach the script too: it takes
 `throws: true`, which turns a failure or a refusal into a thrown error instead
 of a toast, so a script stops on its first one and reports it once.
@@ -192,10 +209,30 @@ of a toast, so a script stops on its first one and reports it once.
 - and on a throw, loads the snapshot back and rethrows, so a failed run leaves
   the scene exactly as it was.
 
+The project name is not part of undo, so the snapshot loaded back after a throw
+keeps whatever name is current. `runScript` puts back a name the failed run
+set through `scene.name`, which the rollback would otherwise leave behind.
+
 Store actions that work on the active object are pointed at another object for
 the length of one call by `onObject`, which puts the active object back
 afterwards. A script that colours or edits one object does not change which
 object the panels show.
+
+### Handles follow ids
+
+An object, modifier or material handle holds an id, not the thing itself, and
+looks it up on every use, so a handle stays good through edits that replace
+the store's objects. A material handle matters most here: slots are addressed
+by position, removing one renumbers the rest, and `material.index` reads the
+slot's place afresh each time. Material ids are copied with a duplicate, so
+the handle cache keys a material by object and id together. `mesh.assignMaterial`
+writes each selected face's `materialIndex` directly and clears the object's
+`primitive`, as the panel's ASSIGN does, because a primitive rebuilt from its
+parameters would lose what its faces wear.
+
+`object.bounds` measures the evaluated mesh, modifiers and all, through the
+object's transform. `worldBounds` in `api.ts` is the one function for it: the
+MCP scene summary reads each object's size and the scene's bounds from it too.
 
 ### Finding the failing line
 

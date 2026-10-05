@@ -18,7 +18,7 @@ export const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
 const REFERENCE_URI = '3doo://reference/scripting';
 
-const INSTRUCTIONS = `3DOO is a browser 3D mesh editor. These tools drive it to build models from JavaScript.
+const INSTRUCTIONS = `3DOO is a browser 3D mesh editor. These tools drive it to build models from JavaScript: primitives and custom meshes, every edit-mode modelling operation on selected vertices, edges and faces, modifiers, booleans, and colours down to single faces.
 
 Workflow: read scripting_reference once, build the model with run_script (the scene persists between calls; reset: true starts over), check it with render_views, then hand it over with export_model (.3doo, .obj or .fbx files), render_views (pictures), or share_link (a link that opens the editor on the model). When the user asks to see the model from several sides, render the views they name: front, back, right, left, top, bottom, or perspective.`;
 

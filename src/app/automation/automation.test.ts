@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { useEditorStore } from '@store/index';
 
+import { API_ENTRIES } from '@domain/scripting/reference';
 import { decodeScenePayload, scenePayloadIn } from '@domain/services/sceneLink';
 
 import { createAutomationApi, installAutomation, scriptingReference } from './automation';
@@ -165,15 +166,27 @@ describe('the scripting reference', () => {
 
   it('covers the whole API and the shipped examples', () => {
     expect(reference).toMatch(/^# 3DOO scripting reference/);
-    expect(reference).toContain('scene.add(');
-    expect(reference).toContain('mesh.extrude');
+    for (const entry of API_ENTRIES) expect(reference).toContain(`\`${entry.signature}\``);
     expect(reference).toContain("'subsurf'");
     expect(reference).toContain('## Examples');
     expect(reference).toContain('```js');
   });
 
+  it('says what a script can do and how it works before the tables', () => {
+    expect(reference.indexOf('## What a script can do')).toBeLessThan(reference.indexOf('## API'));
+    expect(reference).toContain('## How a script works');
+  });
+
+  it('names the values a choice takes', () => {
+    expect(reference).toContain(
+      'mode: Where they meet. Default "center". Takes "center", "cursor", "first", "last" or "collapse".',
+    );
+  });
+
   it('leaves out the parts about the editor window', () => {
     expect(reference).not.toContain('Ctrl+Enter');
+    expect(reference).not.toContain('Ctrl+Z');
     expect(reference).not.toContain('The <> button');
+    expect(reference).not.toContain('MCP button');
   });
 });

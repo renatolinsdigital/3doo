@@ -3,6 +3,7 @@ import {
   type BooleanOp,
   type Edge,
   type Face,
+  type Material,
   type Modifier,
   type ModifierType,
   type PrimitiveKind,
@@ -11,15 +12,18 @@ import {
   type Vec3,
   type Vert,
   PRIMITIVE_FIELDS,
+  composeMatrix,
   degToRad,
   radToDeg,
+  transformPoint,
   vec3,
 } from '@kernel/index';
-import { type SceneObject, useEditorStore } from '@store/index';
+import { type SceneObject, evaluatedMesh, useEditorStore } from '@store/index';
 import type { ShadingMode } from '@store/types';
 
 import {
   type FieldSpec,
+  MATERIAL_OPTIONS,
   MODIFIER_FIELDS,
   MODIFIER_TYPES,
   OPERATOR_SPECS,
@@ -196,10 +200,69 @@ function readValue(spec: ValueSpec, value: unknown, what: string, current?: unkn
           z: false,
         },
       );
-    case 'knifeCuts':
-      if (!Array.isArray(value)) throw new Error(`${what} has to be a list of runs of points.`);
+    case 'color':
+      // Checked here so a bad colour is reported against the option that
+      // carried it; the setter it is handed to reads it again.
+      readColor(value, what);
       return value;
+    case 'knifeCuts':
+      return readKnifeCuts(value, what);
   }
+}
+
+function readId(value: unknown, what: string): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error(`${what} has to be an id from the mesh, not ${describe(value)}.`);
+  }
+  return value;
+}
+
+/**
+ * The knife's runs, checked point by point.
+ *
+ * The kernel drops a point it cannot read and cuts with the rest, which is
+ * right for the viewport's own clicks. A script that wrote `co: [x, y, z]`
+ * would lose that point without a word, so here it is read the way every
+ * other point in the API is, and anything else is refused.
+ */
+function readKnifeCuts(value: unknown, what: string): unknown[][] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`${what} has to be a list of runs, each a list of points.`);
+  }
+  return value.map((run, r) => {
+    if (!Array.isArray(run) || run.length < 2) {
+      throw new Error(`${what}[${r}] has to be a list of two or more points.`);
+    }
+    return run.map((point: unknown, p) => {
+      const at = `${what}[${r}][${p}]`;
+      if (point === null || typeof point !== 'object' || Array.isArray(point)) {
+        throw new Error(`${at} has to be { kind, ... }, not ${describe(point)}.`);
+      }
+      const fields = point as Record<string, unknown>;
+      switch (fields.kind) {
+        case 'vert':
+          return { kind: 'vert', vert: readId(fields.vert, `${at}.vert`) };
+        case 'edge': {
+          if (!finite(fields.t)) throw new Error(`${at}.t has to be a number from 0 to 1.`);
+          return {
+            kind: 'edge',
+            edge: readId(fields.edge, `${at}.edge`),
+            t: inRange(fields.t, { min: 0, max: 1 }, `${at}.t`),
+          };
+        }
+        case 'face':
+          return {
+            kind: 'face',
+            face: readId(fields.face, `${at}.face`),
+            co: readVector(fields.co, `${at}.co`),
+          };
+        default:
+          throw new Error(
+            `${at}.kind has to be "vert", "edge" or "face", not ${describe(fields.kind)}.`,
+          );
+      }
+    });
+  });
 }
 
 /**
@@ -234,7 +297,7 @@ export function readFields(
 }
 
 /** `"#rrggbb"`, `"#rgb"` or `[r, g, b]` from 0 to 1, as the material colour it means. */
-function readColor(value: unknown): { r: number; g: number; b: number } {
+function readColor(value: unknown, what: string): { r: number; g: number; b: number } {
   if (typeof value === 'string') {
     const hex = value.trim().replace(/^#/, '');
     const full = /^[0-9a-f]{3}$/i.test(hex) ? [...hex].map((c) => c + c).join('') : hex;
@@ -247,11 +310,11 @@ function readColor(value: unknown): { r: number; g: number; b: number } {
     }
   }
   if (Array.isArray(value) && value.length === 3 && value.every(finite)) {
-    const [r, g, b] = value.map((channel) => inRange(channel, { min: 0, max: 1 }, 'color'));
+    const [r, g, b] = value.map((channel) => inRange(channel, { min: 0, max: 1 }, what));
     return { r, g, b };
   }
   throw new Error(
-    `color has to be "#rrggbb", "#rgb" or [r, g, b] from 0 to 1, not ${describe(value)}.`,
+    `${what} has to be "#rrggbb", "#rgb" or [r, g, b] from 0 to 1, not ${describe(value)}.`,
   );
 }
 
@@ -284,6 +347,42 @@ function soleUser(object: SceneObject): SceneObject {
     );
   }
   return object;
+}
+
+export interface Bounds {
+  min: Vec3;
+  max: Vec3;
+  size: Vec3;
+  center: Vec3;
+}
+
+/**
+ * The world-space box around the shapes of `objects` as drawn, modifiers and
+ * all, or null when none of them has a vertex.
+ */
+export function worldBounds(objects: readonly SceneObject[]): Bounds | null {
+  let min: Vec3 | null = null;
+  let max: Vec3 | null = null;
+  for (const object of objects) {
+    const matrix = composeMatrix(object.transform);
+    for (const vert of evaluatedMesh(object).verts.values()) {
+      const p = transformPoint(matrix, vert.co);
+      if (!min || !max) {
+        min = { ...p };
+        max = { ...p };
+        continue;
+      }
+      min = vec3(Math.min(min.x, p.x), Math.min(min.y, p.y), Math.min(min.z, p.z));
+      max = vec3(Math.max(max.x, p.x), Math.max(max.y, p.y), Math.max(max.z, p.z));
+    }
+  }
+  if (!min || !max) return null;
+  return {
+    min,
+    max,
+    size: vec3(max.x - min.x, max.y - min.y, max.z - min.z),
+    center: vec3((min.x + max.x) / 2, (min.y + max.y) / 2, (min.z + max.z) / 2),
+  };
 }
 
 /**
@@ -387,6 +486,8 @@ export interface FaceInfo {
   normal: Vec3;
   area: number;
   sides: number;
+  /** The index of the material slot it wears. */
+  material: number;
   selected: boolean;
 }
 
@@ -423,8 +524,33 @@ function faceInfo(mesh: BMesh, face: Face): FaceInfo {
     normal: { ...face.normal },
     area: mesh.faceArea(face),
     sides: mesh.faceLoopCount(face),
+    material: face.materialIndex,
     selected: face.selected,
   };
+}
+
+/** A material slot named by a script: the material, its index or its name. */
+function readSlot(object: SceneObject, value: unknown, what: string): number {
+  const { materials } = object;
+  if (value instanceof MaterialHandle) {
+    const index = materials.findIndex((material) => material.id === value.id);
+    if (index < 0) throw new Error(`${what}: that material belongs to another object.`);
+    return index;
+  }
+  if (typeof value === 'number') {
+    if (Number.isInteger(value) && value >= 0 && value < materials.length) return value;
+    const range = materials.length === 0 ? 'and it has none' : `from 0 to ${materials.length - 1}`;
+    throw new Error(`${what}: ${object.name} has material slots ${range}, not ${value}.`);
+  }
+  if (typeof value === 'string') {
+    const names = materials.map((material) => material.name);
+    const index = names.findIndex((name) => name.toLowerCase() === value.toLowerCase());
+    if (index >= 0) return index;
+    throw new Error(
+      `${what}: ${object.name} has no material called "${value}".${suggestion(value, names)}`,
+    );
+  }
+  throw new Error(`${what} takes a material, its index or its name, not ${describe(value)}.`);
 }
 
 function readWhere<T>(where: unknown, what: string): ((info: T) => unknown) | null {
@@ -466,6 +592,7 @@ export interface MeshTools {
   selectEdges(where?: (edge: EdgeInfo) => unknown, options?: { add?: boolean }): number;
   selectFaces(where?: (face: FaceInfo) => unknown, options?: { add?: boolean }): number;
   deform(move: (vert: VertInfo) => unknown): number;
+  assignMaterial(material: unknown): number;
   run(name: string, params?: Record<string, unknown>): string;
   [operation: string]: unknown;
 }
@@ -572,6 +699,19 @@ function meshTools(objectId: string, lastName: string, startMode: SelectMode): M
       // The primitive's parameters would rebuild the shape over the move.
       onObject(objectId, () => store().patchActiveObject({ primitive: null }));
       return moved;
+    },
+    assignMaterial(material: unknown) {
+      const object = unlocked(sceneObject(objectId, lastName));
+      const slot = readSlot(object, material, 'mesh.assignMaterial');
+      const faces = mesh().selectedFaces();
+      if (faces.length === 0) {
+        throw new Error('mesh.assignMaterial needs at least one face selected first.');
+      }
+      for (const face of faces) face.materialIndex = slot;
+      // As ASSIGN does: the primitive's parameters would rebuild the faces and
+      // lose what they wear.
+      onObject(objectId, () => store().patchActiveObject({ primitive: null }));
+      return faces.length;
     },
   };
 
@@ -710,6 +850,69 @@ export class ModifierHandle {
   }
 }
 
+/**
+ * One material slot of one object, followed by its id rather than its place:
+ * removing an earlier slot renumbers the rest, and the handle still means the
+ * same material afterwards.
+ */
+export class MaterialHandle {
+  constructor(
+    private readonly objectId: string,
+    readonly id: string,
+    private lastName: string,
+  ) {}
+
+  private get slot(): number {
+    const object = sceneObject(this.objectId, this.lastName);
+    const index = object.materials.findIndex((candidate) => candidate.id === this.id);
+    if (index < 0) throw new Error(`That material is no longer on ${object.name}.`);
+    return index;
+  }
+
+  private get material(): Material {
+    return sceneObject(this.objectId, this.lastName).materials[this.slot];
+  }
+
+  private update(patch: Partial<Material>): void {
+    unlocked(sceneObject(this.objectId, this.lastName));
+    const slot = this.slot;
+    onObject(this.objectId, () => store().updateMaterial(slot, patch));
+  }
+
+  get index(): number {
+    return this.slot;
+  }
+
+  get name(): string {
+    return this.material.name;
+  }
+
+  set name(value: string) {
+    if (typeof value !== 'string' || value.trim() === '') {
+      throw new Error(`material.name has to be some text, not ${describe(value)}.`);
+    }
+    this.update({ name: value });
+  }
+
+  get color(): string {
+    return toHex(this.material.color);
+  }
+
+  set color(value: unknown) {
+    this.update({ color: readColor(value, 'material.color') });
+  }
+
+  remove(): void {
+    unlocked(sceneObject(this.objectId, this.lastName));
+    const slot = this.slot;
+    onObject(this.objectId, () => store().removeMaterial(slot));
+  }
+
+  toString(): string {
+    return `Material(${this.material.name})`;
+  }
+}
+
 export class ObjectHandle {
   private lastName: string;
 
@@ -799,7 +1002,7 @@ export class ObjectHandle {
   }
 
   set color(value: unknown) {
-    const color = readColor(value);
+    const color = readColor(value, 'color');
     const object = unlocked(this.object);
     onObject(this.id, () => {
       if (object.materials.length === 0) store().addMaterial();
@@ -812,9 +1015,18 @@ export class ObjectHandle {
     return { verts, edges, faces, tris };
   }
 
+  get bounds(): Bounds | null {
+    return worldBounds([this.object]);
+  }
+
   get modifiers(): ModifierHandle[] {
     const object = this.object;
     return object.modifiers.map((modifier) => this.handles.modifier(object, modifier.id));
+  }
+
+  get materials(): MaterialHandle[] {
+    const object = this.object;
+    return object.materials.map((material) => this.handles.material(object, material.id));
   }
 
   select(add: unknown = false): this {
@@ -847,6 +1059,17 @@ export class ObjectHandle {
     const added = this.object.modifiers[this.object.modifiers.length - 1];
     const handle = this.handles.modifier(object, added.id);
     if (settings !== undefined) handle.set(settings);
+    return handle;
+  }
+
+  addMaterial(options?: unknown): MaterialHandle {
+    const read = readFields('object.addMaterial', MATERIAL_OPTIONS, options);
+    const object = unlocked(this.object);
+    onObject(this.id, () => store().addMaterial());
+    const added = this.object.materials[this.object.materials.length - 1];
+    const handle = this.handles.material(object, added.id);
+    if (read.name !== undefined) handle.name = read.name as string;
+    if (read.color !== undefined) handle.color = read.color;
     return handle;
   }
 
@@ -919,6 +1142,7 @@ export class ObjectHandle {
 class Handles {
   private objects = new Map<string, ObjectHandle>();
   private modifiers = new Map<string, ModifierHandle>();
+  private materials = new Map<string, MaterialHandle>();
 
   object(id: string): ObjectHandle {
     let handle = this.objects.get(id);
@@ -934,6 +1158,17 @@ class Handles {
     if (!handle) {
       handle = guarded(new ModifierHandle(object.id, id, object.name), 'modifier');
       this.modifiers.set(id, handle);
+    }
+    return handle;
+  }
+
+  /** Keyed by object too: a duplicate's slots keep the ids of the original's. */
+  material(object: SceneObject, id: string): MaterialHandle {
+    const key = `${object.id}/${id}`;
+    let handle = this.materials.get(key);
+    if (!handle) {
+      handle = guarded(new MaterialHandle(object.id, id, object.name), 'material');
+      this.materials.set(key, handle);
     }
     return handle;
   }
@@ -965,12 +1200,13 @@ export function createScriptApi(): ScriptApi {
   const resolveAll = (items: readonly unknown[], what: string): ObjectHandle[] =>
     items.flat().map((item) => resolve(item, what));
 
-  /** Puts a newly added object where `placement` says, and names it. */
+  /** Puts a newly added object where `placement` says, and names and colours it. */
   const place = (handle: ObjectHandle, placement: Record<string, unknown>) => {
     if (placement.name !== undefined) handle.name = placement.name as string;
     if (placement.position !== undefined) handle.position = placement.position;
     if (placement.rotation !== undefined) handle.rotation = placement.rotation;
     if (placement.scale !== undefined) handle.scale = placement.scale;
+    if (placement.color !== undefined) handle.color = placement.color;
   };
 
   const split = (read: Record<string, unknown>) => {
@@ -1165,6 +1401,17 @@ export function createScriptApi(): ScriptApi {
 
     set cursor(value: unknown) {
       store().setCursor(readVector(value, 'scene.cursor'), 'Cursor placed');
+    },
+
+    get name(): string {
+      return store().projectName;
+    },
+
+    set name(value: unknown) {
+      if (typeof value !== 'string' || value.trim() === '') {
+        throw new Error(`scene.name has to be some text, not ${describe(value)}.`);
+      }
+      store().setProjectName(value.trim());
     },
   };
 

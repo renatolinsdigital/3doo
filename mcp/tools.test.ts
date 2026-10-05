@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AUTOMATION_VERSION, type SceneSummary } from '../src/app/automation/types';
+import { MCP_SETTINGS, MCP_TOOLS } from '../src/domain/mcp/guide';
 import { SNAPSHOT_VIEWS } from '../src/viewport/snapshot';
 
 import { type Config, engineSource, linkTarget, readConfig } from './config';
@@ -333,5 +334,30 @@ describe('the configuration', () => {
     expect(
       linkTarget({ ...config, appUrl: 'https://3doo.example.com' }, 'https://x.example.com'),
     ).toBe('https://x.example.com');
+  });
+});
+
+// The editor's MCP dialog and docs describe this server from a catalogue of
+// their own, since the app cannot import Node code. These hold the two
+// together, so the editor cannot promise a tool, an argument or a setting the
+// server does not have.
+describe("the editor's guide to the server", () => {
+  it('names every tool the server lists, in the same order', () => {
+    expect(MCP_TOOLS.map((tool) => tool.name)).toEqual(toolList().map((tool) => tool.name));
+  });
+
+  it('names every argument of every tool', () => {
+    for (const tool of toolList()) {
+      const guide = MCP_TOOLS.find((candidate) => candidate.name === tool.name);
+      expect([...(guide?.args ?? [])].sort(), tool.name).toEqual(
+        Object.keys(tool.inputSchema.properties).sort(),
+      );
+    }
+  });
+
+  it('names every environment variable the configuration reads', async () => {
+    const source = await readFile(join(import.meta.dirname, 'config.ts'), 'utf8');
+    const read = [...source.matchAll(/env\.(THREEDOO_\w+)/g)].map((match) => match[1]);
+    expect(MCP_SETTINGS.map((setting) => setting.name).sort()).toEqual([...new Set(read)].sort());
   });
 });

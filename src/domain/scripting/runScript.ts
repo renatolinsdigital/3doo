@@ -122,7 +122,12 @@ export async function runScript(source: string): Promise<ScriptOutcome> {
   }
 
   const store = useEditorStore.getState();
-  const before = { objects: store.objects, meshVersion: store.meshVersion, cursor: store.cursor };
+  const before = {
+    objects: store.objects,
+    meshVersion: store.meshVersion,
+    cursor: store.cursor,
+    name: store.projectName,
+  };
   const api = createScriptApi();
 
   let returned: unknown;
@@ -138,6 +143,9 @@ export async function runScript(source: string): Promise<ScriptOutcome> {
   if (state.mode === 'edit' && !activeObject(state)) state.setMode('object');
 
   if (failure !== null) {
+    // The project name is not part of undo, so the rollback keeps whatever it
+    // is now; a name the failed run set goes back with the rest of the run.
+    state.setProjectName(before.name);
     return { ok: false, message: messageOf(failure), line: await errorLine(failure, source) };
   }
 
@@ -149,7 +157,8 @@ export async function runScript(source: string): Promise<ScriptOutcome> {
   const changed =
     after.objects !== before.objects ||
     after.meshVersion !== before.meshVersion ||
-    after.cursor !== before.cursor;
+    after.cursor !== before.cursor ||
+    after.projectName !== before.name;
 
   const counts = [
     added > 0 ? `${plural(added, 'object')} added` : '',

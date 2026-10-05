@@ -931,10 +931,10 @@ describe('App shell', () => {
     render(<App />);
     const glyphs = [...document.querySelectorAll('.top-bar .top-bar__glyph')];
 
-    // Snap, proportional, auto merge, ortho, smooth, script, history and the
-    // two frame buttons. They were Unicode glyphs, and the crosshair on FRAME
-    // SEL came out at about half the height of the ruled square on SNAP.
-    expect(glyphs).toHaveLength(9);
+    // Snap, proportional, auto merge, ortho, smooth, script, MCP, history and
+    // the two frame buttons. They were Unicode glyphs, and the crosshair on
+    // FRAME SEL came out at about half the height of the ruled square on SNAP.
+    expect(glyphs).toHaveLength(10);
     for (const glyph of glyphs) {
       expect(glyph.tagName.toLowerCase()).toBe('svg');
       // One box, and drawings that fill it, so no font gets a say in the size.
@@ -947,7 +947,7 @@ describe('App shell', () => {
   it('gives each icon button a picture rather than a character', () => {
     render(<App />);
 
-    for (const name of ['SCRIPT', 'HISTORY', 'FRAME SEL', 'FRAME ALL', 'SNAP', 'ORTHO']) {
+    for (const name of ['SCRIPT', 'MCP', 'HISTORY', 'FRAME SEL', 'FRAME ALL', 'SNAP', 'ORTHO']) {
       const button = screen.getByRole('button', { name });
       expect(button.querySelector('.top-bar__glyph')).not.toBeNull();
     }
@@ -998,6 +998,21 @@ describe('App shell', () => {
     expect(box.name).toBe('BOX');
     expect(box.mesh.faces.size).toBe(10);
     expect(screen.getByText('Script ran: 1 object added', { selector: 'p' })).toBeInTheDocument();
+  });
+
+  it('opens the MCP guide from the button beside the script editor', async () => {
+    render(<App />);
+
+    const script = screen.getByRole('button', { name: 'SCRIPT' });
+    const mcp = screen.getByRole('button', { name: 'MCP' });
+    expect(script.nextElementSibling).toBe(mcp);
+
+    await userEvent.click(mcp);
+    const dialog = screen.getByRole('dialog', { name: 'MCP SERVER' });
+    expect(within(dialog).getByRole('heading', { name: 'HOW IT CONNECTS' })).toBeInTheDocument();
+
+    await userEvent.click(within(dialog).getByRole('button', { name: 'CLOSE' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
   it('opens the history from the top bar and travels back through it', async () => {

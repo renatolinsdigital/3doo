@@ -121,7 +121,7 @@ const b = undefinedThing + a;`);
   it('refuses a shape option the primitive does not use', async () => {
     const outcome = await fail(`scene.add('cube', { radius: 2 });`);
     expect(outcome.message).toBe(
-      'scene.add("cube") has no option "radius". It takes size, name, position, rotation, scale.',
+      'scene.add("cube") has no option "radius". It takes size, name, position, rotation, scale, color.',
     );
   });
 
@@ -301,6 +301,144 @@ box.position = [1, 0, 0];`);
     await run(`scene.active.edit((mesh) => mesh.extrude({ offset: 0.5 }));`);
 
     expect(activeObject(store())?.mesh.faces.size).toBe(10);
+  });
+
+  it('colours an object as it is added, primitive or custom mesh', async () => {
+    await run(`
+      scene.add('cube', { color: '#ff0000' });
+      scene.addMesh({ verts: [[0, 0, 0], [1, 0, 0], [0, 1, 0]], faces: [[0, 1, 2]], color: [0, 0, 1] });
+    `);
+
+    expect(store().objects.map((object) => object.materials[0].color)).toEqual([
+      { r: 1, g: 0, b: 0 },
+      { r: 0, g: 0, b: 1 },
+    ]);
+  });
+
+  it('names the option a bad colour came in', async () => {
+    const outcome = await fail(`scene.add('cube', { color: 'red' });`);
+    expect(outcome.message).toBe(
+      'scene.add("cube"): color has to be "#rrggbb", "#rgb" or [r, g, b] from 0 to 1, not "red".',
+    );
+  });
+
+  it('puts the faces a script selects on a material slot of their own', async () => {
+    const outcome = await run(`
+      const box = scene.add('cube', { color: '#ffffff' });
+      const trim = box.addMaterial({ name: 'TRIM', color: '#b8452f' });
+      const count = box.edit((mesh) => {
+        mesh.selectFaces((face) => face.normal.y > 0.9);
+        return mesh.assignMaterial(trim);
+      });
+      const worn = box.edit((mesh) => mesh.faces.filter((face) => face.material === trim.index).length);
+      return [count, worn, trim.name, box.materials.map((slot) => slot.color)].join(' ');
+    `);
+
+    expect(outcome.message).toBe('1 1 TRIM #ffffff,#b8452f');
+    const object = store().objects[0];
+    const top = [...object.mesh.faces.values()].find((face) => face.normal.y > 0.9);
+    expect(top?.materialIndex).toBe(1);
+    expect(object.primitive).toBeNull();
+  });
+
+  it('finds a slot by index or by name, and suggests the nearest name', async () => {
+    await run(`
+      const box = scene.add('cube');
+      box.addMaterial({ name: 'GLASS' });
+      box.edit((mesh) => {
+        mesh.selectFaces((face) => face.normal.x > 0.9);
+        mesh.assignMaterial('glass');
+        mesh.selectFaces((face) => face.normal.x < -0.9);
+        mesh.assignMaterial(1);
+      });
+    `);
+    const faces = [...store().objects[0].mesh.faces.values()];
+    expect(faces.filter((face) => face.materialIndex === 1)).toHaveLength(2);
+
+    const outcome = await fail(`
+      scene.find('CUBE').edit((mesh) => {
+        mesh.selectFaces();
+        mesh.assignMaterial('GLAS');
+      });
+    `);
+    expect(outcome.message).toBe(
+      'mesh.assignMaterial: CUBE has no material called "GLAS". Did you mean "GLASS"?',
+    );
+    expect(outcome.line).toBe(4);
+  });
+
+  it('refuses to assign a material with no face selected', async () => {
+    const outcome = await fail(`scene.add('cube').edit((mesh) => mesh.assignMaterial(0));`);
+    expect(outcome.message).toBe('mesh.assignMaterial needs at least one face selected first.');
+  });
+
+  it('keeps a material handle on its slot when an earlier one is removed', async () => {
+    const outcome = await run(`
+      const box = scene.add('cube');
+      const red = box.addMaterial({ color: '#ff0000' });
+      box.materials[0].remove();
+      red.name = 'RED';
+      return red.index + ' ' + box.materials.length;
+    `);
+
+    expect(outcome.message).toBe('0 1');
+    expect(store().objects[0].materials[0].name).toBe('RED');
+  });
+
+  it('measures an object where it is drawn, modifiers and all', async () => {
+    const outcome = await run(`
+      const bar = scene.add('cube', { size: 2, position: [0, 1, 0], scale: [1, 0.5, 1] });
+      bar.addModifier('array', { count: 3 });
+      return JSON.stringify(bar.bounds);
+    `);
+
+    expect(JSON.parse(outcome.message)).toEqual({
+      min: { x: -1, y: 0.5, z: -1 },
+      max: { x: 5, y: 1.5, z: 1 },
+      size: { x: 6, y: 1, z: 2 },
+      center: { x: 2, y: 1, z: 0 },
+    });
+  });
+
+  it('renames the project, and puts the name back when the run fails', async () => {
+    await run(`scene.name = 'chair';`);
+    expect(store().projectName).toBe('chair');
+
+    await fail(`scene.name = 'table'; throw new Error('no');`);
+    expect(store().projectName).toBe('chair');
+  });
+
+  it('cuts with the knife through a point inside a face written as [x, y, z]', async () => {
+    await run(`
+      const sheet = scene.add('plane', { size: 2 });
+      sheet.edit((mesh) => {
+        const left = mesh.edges.find((edge) => edge.center.x < -0.9);
+        const right = mesh.edges.find((edge) => edge.center.x > 0.9);
+        const face = mesh.faces[0];
+        mesh.knife({
+          cuts: [[
+            { kind: 'edge', edge: left.id, t: 0.5 },
+            { kind: 'face', face: face.id, co: [0, 0, 0.5] },
+            { kind: 'edge', edge: right.id, t: 0.5 },
+          ]],
+        });
+      });
+    `);
+
+    const mesh = store().objects[0].mesh;
+    expect(mesh.verts.size).toBe(7);
+    expect(mesh.faces.size).toBe(2);
+  });
+
+  it('refuses a knife point of a kind it does not know', async () => {
+    const outcome = await fail(`
+      scene.add('plane').edit((mesh) => {
+        mesh.knife({ cuts: [[{ kind: 'vert', vert: 0 }, { kind: 'edg', edge: 1, t: 0.5 }]] });
+      });
+    `);
+    expect(outcome.message).toBe(
+      'mesh.knife: cuts[0][1].kind has to be "vert", "edge" or "face", not "edg".',
+    );
   });
 
   it('drops back to object mode when the script deletes the object being edited', async () => {

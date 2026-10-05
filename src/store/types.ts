@@ -383,6 +383,7 @@ export type DialogId =
   | 'reload'
   | 'autosaveLocation'
   | 'script'
+  | 'mcp'
   | null;
 
 export interface HintState {
