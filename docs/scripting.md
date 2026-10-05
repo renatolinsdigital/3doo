@@ -291,21 +291,40 @@ A few rules keep the log readable and true:
 - **Repeated settings merge.** Each line can carry a key, and a line with the
   same key as the one before it replaces it. A drag sends a position on every
   pointer move and leaves one line; so does a slider on a modifier.
-- **Edit mode gestures are read off their undo step.** A move, turn or scale
-  in the viewport changes vertices in place and calls `recordHistory` when it
-  starts. The recorder snapshots the vertices then, and describes the step when
-  the next action runs or the dialog opens: one offset for every selected
-  vertex is `mesh.translate`, a factor or a turn about one axis through their
-  middle is `mesh.scale` or `mesh.rotate`. Anything else (a turn about the view,
-  a pivot on the cursor, proportional editing, a slide) is written as a comment
-  saying it has no script equivalent.
+- **Edit mode moves say what they did.** A move, turn or scale in the viewport
+  applies its whole amount on every pointer move, from where the vertices
+  stood when it began, rather than adding the step since the last move on top
+  (`EditMoveDrag` in `src/viewport/editMove.ts`). The result is then exactly
+  one `mesh.translate`, `mesh.rotate` or `mesh.scale` with the settings the
+  drag ended on: the axis as a letter or a direction, the pivot when it is not
+  the middle of the selection, and the radius and falloff when proportional
+  editing was on. Steps stacked on top could not be written as one call: a
+  proportional scale multiplies the falloff into every step, and a radius
+  changed with the wheel mid-drag only reached what came after it. Now the
+  wheel spreads the whole move again. On confirm the viewport calls
+  `noteOperator` with that call, which sets `lastOperator` the way `exec`
+  does, and the step is written as that operation.
+- **Proportional editing is a parameter.** The three transform operations take
+  `proportional` (the radius) and `falloff` and never read the editor's toggle,
+  so a line replays the same whether it was left on or not.
+- **The bevel, inset and extrude drags say what they ran** in the same way.
+  They preview on a copy of the mesh, so the vertices alone cannot tell the
+  recorder the distance.
+- **A step that names its operation is written there and then.** A click in
+  edit mode changes the selection without any store action, so a step left for
+  the next action to close would take a selection clicked after the gesture
+  for the one the gesture left. `noteOperator` closes the step at once.
+- **Anything else is read off its undo step.** The recorder snapshots the
+  vertices when `recordHistory` opens a step, and describes it when the next
+  action runs or the dialog opens: one offset for every selected vertex is
+  `mesh.translate`, a factor or a turn about one axis through their middle is
+  `mesh.scale` or `mesh.rotate`. The selection it leaves is read off the
+  elements it started with, by id, for the reason above. A slide, or a move
+  that auto merge welded on the way out, is written as a comment saying it has
+  no script equivalent.
 - **A gesture called off takes its lines with it.** The log is marked when a
   step opens and goes back to the mark on `discardHistory`, which is what every
   cancel calls.
-- **The bevel, inset and extrude drags say what they ran.** They preview on a
-  copy of the mesh, so the vertices alone cannot tell the recorder the distance.
-  The viewport calls `noteOperator` on confirm, which sets `lastOperator` the way
-  `exec` does, and the step is written as that operation.
 - **Selections are points, not ids.** `cloneMesh` and every undo rebuild the
   mesh from its saved form and number its elements afresh, and the drags above
   keep a copy. A replay does neither, so an id would name a different face by
@@ -318,8 +337,27 @@ The knife is the exception: its cuts name vertices, edges and faces by id,
 because that is the form `mesh.knife` takes, so a knife line replays correctly
 only on a mesh that has not been rebuilt since. Changes with no script call at
 all, an import or an outliner folder removed, are comments with the undo
-step's label. An undo is noted as a comment and takes nothing off the log.
+step's label.
+
+**An undo takes its lines off the log.** `recordHistoryDocument`, which every
+step goes through, keeps the log as the step found it, and an undo puts that
+back; a redo puts back the log the undo replaced. So the log is always the
+script for the scene on screen, not a record of everything tried. The kept logs
+line up with the history from its newest end and are cut to its length before
+they are read, which follows the history through its size limit, a new project
+and a file opened. CLEAR forgets them, so an undo of a step from before it is
+noted as a comment instead.
+
+**COPY and OPEN IN EDITOR hand over `actionScript()`**, the log with a header
+when it began on an empty scene: `scene.clear()` and the cursor where it stood.
+Every primitive is named after its kind, so the bare log run over the scene it
+was written from would add a second `CUBE` and send its edits to the first one.
+With the header the run ends on the scene the log describes, whatever it runs
+on. `actionScript()` also counts the comments that note something no call
+repeats, and says when the log began on objects none of its lines made (CLEAR
+on a full scene, or the first lines lost to the size limit). The dialog warns on
+either, since a run will not rebuild the scene then.
 
 `recorder.test.ts` holds the log to its promise: each test does something
-through the store, runs the log on an empty scene, and expects the same objects,
-transforms and vertex positions back.
+through the store, runs the copied script on the scene as it stands, edit mode
+included, and expects the same objects, transforms and vertex positions back.

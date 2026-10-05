@@ -2143,7 +2143,7 @@ export const createSceneSlice: StateCreator<
   },
 
   exec: (name, params = {}, label, options) => {
-    const { selectMode, cursor, proportional } = get();
+    const { selectMode, cursor } = get();
     const throws = options?.throws ?? false;
     const object = activeObject(get());
     if (!object) {
@@ -2167,7 +2167,6 @@ export const createSceneSlice: StateCreator<
           mesh: object.mesh,
           selectMode,
           cursor,
-          proportional,
           objectScale: object.transform.scale,
         },
         name,

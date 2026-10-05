@@ -13,7 +13,7 @@ import {
 } from '@kernel/index';
 import { activeObject, useEditorStore } from '@store/index';
 
-import { clearActionLog, installRecorder, readActionLog } from './recorder';
+import { actionScript, clearActionLog, installRecorder, readActionLog } from './recorder';
 import { runScript } from './runScript';
 
 const store = () => useEditorStore.getState();
@@ -60,14 +60,15 @@ function scene() {
   }));
 }
 
-/** Runs the log on an empty scene and expects the scene it was written from. */
+/**
+ * Runs the script the log copies on the scene it was written from, mode and
+ * all, as pasting it into the editor would, and expects that scene back.
+ */
 async function replay() {
-  const log = readActionLog();
+  const { source } = actionScript();
   const expected = scene();
-  store().resetScene();
-  store().setMode('object');
-  const outcome = await runScript(log);
-  expect(outcome, log).toMatchObject({ ok: true });
+  const outcome = await runScript(source);
+  expect(outcome, source).toMatchObject({ ok: true });
   expect(scene()).toEqual(expected);
 }
 
@@ -165,6 +166,36 @@ describe('the action log', () => {
     await replay();
   });
 
+  it('selects again for a move made after a click, which no action records', async () => {
+    store().addPrimitive('cube');
+    store().setMode('edit');
+    store().setSelectMode('vertex');
+    const { mesh } = editing();
+    const pick = (x: number) => {
+      mesh.deselectAll();
+      for (const vert of mesh.verts.values()) {
+        if (vert.co.x === x && vert.co.y > 0 && vert.co.z > 0) mesh.selectVert(vert);
+      }
+      mesh.flushSelection('vertex');
+      store().touchMesh();
+    };
+
+    pick(0.5);
+    gesture('MOVE selection', () => translateVerts(mesh, mesh.selectedVerts(), vec3(0, 0.25, 0)));
+    pick(-0.5);
+    gesture('MOVE selection', () => translateVerts(mesh, mesh.selectedVerts(), vec3(0, 0.5, 0)));
+
+    expect(readActionLog()).toContain(
+      [
+        '  mesh.selectVerts([[0.5, 0.5, 0.5]]);',
+        '  mesh.translate({ offset: [0, 0.25, 0] });',
+        '  mesh.selectVerts([[-0.5, 0.5, 0.5]]);',
+        '  mesh.translate({ offset: [0, 0.5, 0] });',
+      ].join('\n'),
+    );
+    await replay();
+  });
+
   it('describes a turn or a scale about the middle of the selection as one operation', async () => {
     store().addPrimitive('cube');
     store().setMode('edit');
@@ -185,6 +216,61 @@ describe('the action log', () => {
         '  mesh.selectFaces([[0, 0.5, 0]]);',
         "  mesh.rotate({ axis: 'y', angle: 30 });",
         '  mesh.scale({ scale: [1.5, 1, 0.5] });',
+      ].join('\n'),
+    );
+    await replay();
+  });
+
+  it('writes the move a drag reports, falloff, direction and pivot included', async () => {
+    store().addPrimitive('cube');
+    store().setMode('edit');
+    store().setSelectMode('vertex');
+    const { mesh } = editing();
+    mesh.deselectAll();
+    for (const vert of mesh.verts.values()) {
+      if (vert.co.x > 0 && vert.co.y > 0 && vert.co.z > 0) mesh.selectVert(vert);
+    }
+    mesh.flushSelection('vertex');
+    store().touchMesh();
+
+    // As the viewport does: the whole move made from where it began, drawn,
+    // then said.
+    const spread = { enabled: true, radius: 1.5, falloff: 'sharp' as const };
+    gesture('MOVE selection', () => {
+      translateVerts(mesh, mesh.selectedVerts(), vec3(0, 0.4, 0), spread);
+      store().touchMesh();
+      store().noteOperator('translate', {
+        offset: vec3(0, 0.4, 0),
+        proportional: 1.5,
+        falloff: 'sharp',
+      });
+    });
+    const axis = vec3(0.6, 0.8, 0);
+    gesture('ROTATE selection', () => {
+      rotateVerts(mesh, mesh.selectedVerts(), axis, degToRad(40), vec3(0, 0, 0));
+      store().touchMesh();
+      store().noteOperator('rotate', { axis, angle: 40, pivot: vec3(0, 0, 0) });
+    });
+    mesh.selectAll();
+    store().touchMesh();
+    gesture('SCALE selection', () => {
+      scaleVerts(
+        mesh,
+        mesh.selectedVerts(),
+        vec3(1.5, 1.5, 1.5),
+        medianPoint(mesh.selectedVerts()),
+      );
+      store().touchMesh();
+      store().noteOperator('scale', { scale: vec3(1.5, 1.5, 1.5) });
+    });
+
+    expect(readActionLog()).toContain(
+      [
+        '  mesh.selectVerts([[0.5, 0.5, 0.5]]);',
+        "  mesh.translate({ offset: [0, 0.4, 0], proportional: 1.5, falloff: 'sharp' });",
+        '  mesh.rotate({ axis: [0.6, 0.8, 0], angle: 40, pivot: [0, 0, 0] });',
+        '  mesh.selectVerts();',
+        '  mesh.scale({ scale: 1.5 });',
       ].join('\n'),
     );
     await replay();
@@ -213,8 +299,8 @@ describe('the action log', () => {
     // As the drag does: previews on a copy, keeps the last copy, says what ran.
     store().recordHistory('INSET');
     const copy = cloneMesh(editing().mesh);
-    const { cursor, proportional } = store();
-    execOperator({ mesh: copy, selectMode: 'face', cursor, proportional }, 'inset', {
+    const { cursor } = store();
+    execOperator({ mesh: copy, selectMode: 'face', cursor }, 'inset', {
       thickness: 0.15,
     });
     store().patchActiveObject({ mesh: copy });
@@ -272,10 +358,88 @@ describe('the action log', () => {
     await replay();
   });
 
-  it('notes an undo rather than taking anything off the log', () => {
+  it('copies a script that clears the scene and puts the cursor back before it adds anything', async () => {
     store().addPrimitive('cube');
+    store().setCursor(vec3(3, 0, 0));
+    store().addPrimitive('cone');
+
+    expect(actionScript()).toEqual({
+      source: [
+        '// Start from an empty scene, as the log did',
+        'scene.clear();',
+        'scene.cursor = [0, 0, 0];',
+        "scene.add('cube');",
+        'scene.cursor = [3, 0, 0];',
+        "scene.add('cone');",
+      ].join('\n'),
+      gaps: 0,
+      fromEmpty: true,
+    });
+    await replay();
+  });
+
+  it('takes an undone step off the log, and a redo puts it back', async () => {
+    store().addPrimitive('cube');
+    store().addPrimitive('cone');
+    // As the gizmo does: a step for the drag, then the transform.
+    store().recordHistory('Move CONE');
+    store().setObjectTransform(id('CONE'), { position: vec3(0, 2, 0) });
     store().undo();
-    expect(readActionLog()).toBe("scene.add('cube');\n// Undo: Add CUBE");
+    store().undo();
+    expect(readActionLog()).toBe("scene.add('cube');");
+
+    store().redo();
+    expect(readActionLog()).toBe("scene.add('cube');\nscene.add('cone');");
+    await replay();
+  });
+
+  it('takes back an edit mode move and the operation after it, one undo each', async () => {
+    store().addPrimitive('cube');
+    store().setMode('edit');
+    store().setSelectMode('face');
+    pickTop();
+    const { mesh } = editing();
+    gesture('MOVE selection', () => translateVerts(mesh, mesh.selectedVerts(), vec3(0, 0.25, 0)));
+    store().recordHistory('MOVE selection');
+    store().discardHistory();
+    store().exec('extrude', { offset: 1 }, 'Extrude');
+
+    store().undo();
+    expect(readActionLog()).toBe(
+      [
+        "scene.add('cube');",
+        "scene.find('CUBE').edit((mesh) => {",
+        '  mesh.selectFaces([[0, 0.5, 0]]);',
+        '  mesh.translate({ offset: [0, 0.25, 0] });',
+        '});',
+      ].join('\n'),
+    );
+    store().undo();
+    expect(readActionLog()).toBe("scene.add('cube');");
+    await replay();
+  });
+
+  it('keeps in step with a history that has dropped its oldest steps', async () => {
+    store().setHistoryLimit(2);
+    store().addPrimitive('cube');
+    store().addPrimitive('cone');
+    store().addPrimitive('torus');
+    store().undo();
+    store().undo();
+    store().undo();
+
+    expect(readActionLog()).toBe("scene.add('cube');");
+    await replay();
+  });
+
+  it('notes an undo of a step taken before the log was cleared, which it cannot take back', () => {
+    store().addPrimitive('cube');
+    clearActionLog();
+    store().addPrimitive('cone');
+    store().undo();
+    store().undo();
+
+    expect(actionScript()).toEqual({ source: '// Undo: Add CUBE', gaps: 1, fromEmpty: false });
   });
 
   it('notes a change no script can make', () => {
@@ -289,5 +453,6 @@ describe('the action log', () => {
         '\n',
       ),
     );
+    expect(actionScript().gaps).toBe(1);
   });
 });

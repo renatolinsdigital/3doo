@@ -18,6 +18,15 @@ import { MIN_OBJECT_SIZE } from '../primitives';
 
 export type FalloffCurve = 'smooth' | 'sphere' | 'root' | 'linear' | 'sharp' | 'constant';
 
+export const FALLOFF_CURVES: readonly FalloffCurve[] = [
+  'smooth',
+  'sphere',
+  'root',
+  'linear',
+  'sharp',
+  'constant',
+];
+
 export interface ProportionalOptions {
   enabled: boolean;
   radius: number;

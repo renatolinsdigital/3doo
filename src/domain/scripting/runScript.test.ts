@@ -246,6 +246,57 @@ box.edit((mesh) => {
     expect(xs.sort()).toEqual([0.5, 0.5, 0.5, 0.5, 1, 1, 1, 1]);
   });
 
+  it('spreads a move to the vertices around it only when the call says how far', async () => {
+    // Left on in the editor, which a script's result must not hang on.
+    store().setProportional({ enabled: true, radius: 5 });
+    const heights = () =>
+      [...store().objects[0].mesh.verts.values()].map((vert) => vert.co.y).sort((a, b) => a - b);
+
+    await run(`
+      scene.add('cube').edit((mesh) => {
+        mesh.selectVerts([[0.5, 0.5, 0.5]]);
+        mesh.translate({ offset: [0, 1, 0] });
+      });
+    `);
+    expect(heights()).toEqual([-0.5, -0.5, -0.5, -0.5, 0.5, 0.5, 0.5, 1.5]);
+
+    await run(`
+      scene.find('CUBE').edit((mesh) => {
+        mesh.selectVerts([[0.5, 1.5, 0.5]]);
+        mesh.translate({ offset: [0, 1, 0], proportional: 3, falloff: 'constant' });
+      });
+    `);
+    expect(heights()).toEqual([0.5, 0.5, 0.5, 0.5, 1.5, 1.5, 1.5, 2.5]);
+  });
+
+  it('turns and scales about any direction and any point', async () => {
+    await run(`
+      scene.add('cube').edit((mesh) => {
+        mesh.selectVerts([[0.5, 0.5, 0.5]]);
+        mesh.rotate({ axis: [0, 0, 3], angle: 90, pivot: [0.5, 0, 0.5] });
+        mesh.scale({ scale: 2, pivot: [0.5, -0.5, 0.5] });
+      });
+    `);
+
+    const moved = [...store().objects[0].mesh.verts.values()].find((vert) => vert.selected);
+    expect(moved?.co.x).toBeCloseTo(-0.5);
+    expect(moved?.co.y).toBeCloseTo(0.5);
+    expect(moved?.co.z).toBeCloseTo(0.5);
+  });
+
+  it('refuses an axis with no direction', async () => {
+    store().addPrimitive('cube');
+    const outcome = await fail(`scene.active.edit((mesh) => {
+  mesh.selectVerts();
+  mesh.rotate({ axis: [0, 0, 0], angle: 90 });
+});`);
+
+    expect(outcome.line).toBe(3);
+    expect(outcome.message).toBe(
+      'mesh.rotate: axis has to point somewhere: [0, 0, 0] has no direction.',
+    );
+  });
+
   it('builds a mesh from a list of points and faces', async () => {
     await run(`
       scene.addMesh({

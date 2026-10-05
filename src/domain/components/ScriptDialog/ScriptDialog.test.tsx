@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { vec3 } from '@kernel/index';
 import { useEditorStore } from '@store/index';
 
 import { SCRIPT_EXAMPLES, STARTER_SCRIPT } from '../../scripting/examples';
@@ -13,6 +14,10 @@ const store = () => useEditorStore.getState();
 const field = () => screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Script' });
 const log = () => screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Actions' });
 const button = (name: string) => screen.getByRole('button', { name });
+
+/** What a script the log hands over starts with when the log began on an empty scene. */
+const FROM_EMPTY =
+  '// Start from an empty scene, as the log did\nscene.clear();\nscene.cursor = [0, 0, 0];';
 
 /** Puts a whole script in the editor at once, as a paste would. */
 function write(source: string) {
@@ -34,6 +39,10 @@ describe('ScriptDialog', () => {
     store().openDialog('script');
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('opens on the ACTIONS tab, with what was done in the viewport written as script', () => {
     store().addPrimitive('cube');
     store().setShading('wireframe');
@@ -51,6 +60,7 @@ describe('ScriptDialog', () => {
 
     expect(log()).toHaveValue(EMPTY_LOG);
     expect(button('CLEAR')).toHaveAttribute('aria-disabled', 'true');
+    expect(button('COPY')).toHaveAttribute('aria-disabled', 'true');
     expect(button('OPEN IN EDITOR')).toHaveAttribute('aria-disabled', 'true');
   });
 
@@ -70,8 +80,64 @@ describe('ScriptDialog', () => {
 
     await userEvent.click(button('OPEN IN EDITOR'));
 
-    expect(field()).toHaveValue("scene.add('torus');");
+    expect(field()).toHaveValue(`${FROM_EMPTY}\nscene.add('torus');`);
     expect(screen.getByRole('button', { name: 'RUN' })).toBeInTheDocument();
+  });
+
+  it('copies the log as a script that, pasted into the editor and run, builds the same scene', async () => {
+    const user = userEvent.setup();
+    store().addPrimitive('cube');
+    store().setObjectTransform(store().objects[0].id, { position: vec3(1, 2, 0) });
+    const built = store().objects.map(({ name, transform }) => ({ name, transform }));
+    render(<ScriptDialog />);
+
+    await user.click(button('COPY'));
+    const copied = await navigator.clipboard.readText();
+    expect(copied).toBe(
+      `${FROM_EMPTY}\nscene.add('cube');\nscene.find('CUBE').position = [1, 2, 0];`,
+    );
+    expect(button('COPIED')).toBeInTheDocument();
+    expect(store().toasts).toEqual([]);
+
+    await user.click(button('EDITOR'));
+    write(copied);
+    await user.click(button('RUN'));
+
+    await waitFor(() => expect(store().dialog).toBeNull());
+    expect(store().objects.map(({ name, transform }) => ({ name, transform }))).toEqual(built);
+  });
+
+  it('warns on a copy that a run would not rebuild the scene from', async () => {
+    const user = userEvent.setup();
+    store().addPrimitive('cube');
+    clearActionLog();
+    store().addPrimitive('cone');
+    render(<ScriptDialog />);
+
+    await user.click(button('COPY'));
+
+    expect(await navigator.clipboard.readText()).toBe("scene.add('cone');");
+    expect(store().toasts).toEqual([
+      expect.objectContaining({
+        variant: 'warning',
+        message:
+          'Copied. The log began on objects it did not make, so a run repeats only what came after',
+      }),
+    ]);
+  });
+
+  it('says so when the browser refuses the clipboard', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
+    store().addPrimitive('cube');
+    render(<ScriptDialog />);
+
+    await user.click(button('COPY'));
+
+    expect(button('COPY')).toBeInTheDocument();
+    expect(store().toasts).toEqual([
+      expect.objectContaining({ variant: 'error', message: expect.stringMatching(/blocked/) }),
+    ]);
   });
 
   it('opens the editor on the starter script the first time', async () => {

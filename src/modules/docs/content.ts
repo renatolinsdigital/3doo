@@ -179,11 +179,11 @@ function scriptEditorBlocks(): DocsBlock[] {
     },
     {
       kind: 'prose',
-      text: 'ACTIONS keeps a log of what you do, as script: adding, moving, selecting, renaming and deleting objects, their materials and modifiers, the 3D cursor and the shading, and every operation in edit mode with the vertices, edges or faces it ran on. Dragging a handle or a value writes one line with where it ended, and a move called off with Esc leaves nothing behind. Rest the pointer on a name for its reference, as in the editor. OPEN IN EDITOR puts the log in EDITOR to change and run, and CLEAR empties it.',
+      text: 'ACTIONS keeps a log of what you do, as script: adding, moving, selecting, renaming and deleting objects, their materials and modifiers, the 3D cursor and the shading, and every operation in edit mode with the vertices, edges or faces it ran on, the selection moved, turned or scaled by hand included, proportional falloff and all. Dragging a handle or a value writes one line with where it ended, and a move called off with Esc leaves nothing behind. Rest the pointer on a name for its reference, as in the editor. COPY puts the log on the clipboard as a script: paste it into EDITOR and run it, and it clears the scene and builds the one you made again. OPEN IN EDITOR puts that same script in EDITOR to change and run, and CLEAR empties the log.',
     },
     {
       kind: 'note',
-      text: 'An edit mode selection is written as the points the vertices stand on, or the middles of the edges or faces, so it still picks the right ones after an undo has rebuilt the mesh. A few things have no script that repeats them, such as importing a file, turning about the view or sliding along edges: the log says so in a comment where they happened. A script you run and an undo are noted as comments too, and an undo takes nothing off the log.',
+      text: 'An edit mode selection is written as the points the vertices stand on, or the middles of the edges or faces, so it still picks the right ones after an undo has rebuilt the mesh. An undo takes its lines off the log and a redo puts them back, so the log always builds the scene on screen. A few things have no script that repeats them, such as importing a file or sliding along edges: the log says so in a comment where they happened, and so does a script you run. COPY warns when the log holds one of these, since a run leaves it out.',
     },
     {
       kind: 'note',

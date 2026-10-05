@@ -41,10 +41,17 @@ import { MODIFIER_FIELDS, OPERATOR_SPECS } from './reference';
  * from inside `transact`.
  *
  * The viewport's gestures in edit mode move vertices in place rather than
- * through an action, so those are read off the undo step each one opens: where
- * the vertices stood when it opened against where they stand when the next
- * thing happens. A gesture that is called off discards its step, and whatever
- * the log gained since goes with it.
+ * through an action, so those are read off the undo step each one opens. A
+ * gesture that knows the operation it ran (a move, a turn, a scale, a bevel
+ * drag) says so through `noteOperator` as it ends, and is written as that
+ * call. Any other is read off its vertices: where they stood when the step
+ * opened against where they stand when the next thing happens. A gesture that
+ * is called off discards its step, and whatever the log gained since goes with
+ * it.
+ *
+ * An undo takes back the lines its step wrote and a redo puts them back, so
+ * the log is always the script for the scene on screen. `actionScript` hands
+ * it over to be run: on any scene, it ends on the one the log describes.
  */
 
 // ------------------------------------------------------------------ writing code
@@ -128,11 +135,14 @@ interface LineEntry {
   key: string | null;
   /** What a writer needs from the entry it replaces, to say all of it again. */
   data?: unknown;
+  /** A note of something done that no call repeats, which a run of the log leaves out. */
+  gap?: boolean;
 }
 
 interface EditLine {
   code: string;
   key: string | null;
+  gap?: boolean;
 }
 
 /** Work done on one object's mesh, written inside `object.edit((mesh) => { ... })`. */
@@ -157,6 +167,13 @@ let entries: readonly Entry[] = [];
 let text: string | null = '';
 const listeners = new Set<() => void>();
 
+/**
+ * Where the log began, when a run can begin there too: an empty scene with the
+ * 3D cursor here. Null once it began on objects none of its lines made, or
+ * lost its first lines to the size limit.
+ */
+let start: { cursor: Vec3 } | null = { cursor: vec3() };
+
 function render(entry: Entry): string {
   if (entry.kind === 'line') return entry.code;
   const body = entry.lines
@@ -168,6 +185,7 @@ function render(entry: Entry): string {
 
 function commit(next: readonly Entry[]): void {
   if (next === entries) return;
+  if (next.length > MAX_ENTRIES) start = null;
   entries = next.length > MAX_ENTRIES ? next.slice(next.length - MAX_ENTRIES) : next;
   text = null;
   for (const listener of listeners) listener();
@@ -185,8 +203,9 @@ function lastLine(key: string): LineEntry | null {
   return last?.kind === 'line' && last.key === key ? last : null;
 }
 
+/** A note of something done that no call repeats. */
 function comment(note: string): void {
-  writeLine(`// ${note}`);
+  commit([...entries, { kind: 'line', code: `// ${note}`, key: null, gap: true }]);
 }
 
 // ----------------------------------------------------------- edit-mode work
@@ -208,28 +227,45 @@ interface Selection {
 }
 
 function readSelection(mesh: BMesh, mode: SelectMode): Selection {
+  return selectionOf(mesh, mode, selectedIds(mesh, mode)) as Selection;
+}
+
+/** The selected elements of the kind `mode` picks, by id, which hold only until a rebuild. */
+function selectedIds(mesh: BMesh, mode: SelectMode): number[] {
+  const elements =
+    mode === 'vertex'
+      ? mesh.selectedVerts()
+      : mode === 'edge'
+        ? mesh.selectedEdges()
+        : mesh.selectedFaces();
+  return elements.map((element) => element.id);
+}
+
+/** Those elements where they stand now, or null once one of them is gone. */
+function selectionOf(mesh: BMesh, mode: SelectMode, ids: readonly number[]): Selection | null {
+  const points: Vec3[] = [];
+  for (const id of ids) {
+    const point = anchorOf(mesh, mode, id);
+    if (!point) return null;
+    points.push(point);
+  }
+  const total =
+    mode === 'vertex' ? mesh.verts.size : mode === 'edge' ? mesh.edges.size : mesh.faces.size;
+  return { mode, points, all: ids.length === total };
+}
+
+/** Where an element stands: a vertex's position, or the middle of an edge or face. */
+function anchorOf(mesh: BMesh, mode: SelectMode, id: number): Vec3 | undefined {
   if (mode === 'vertex') {
-    const verts = mesh.selectedVerts();
-    return {
-      mode,
-      points: verts.map((vert) => ({ ...vert.co })),
-      all: verts.length === mesh.verts.size,
-    };
+    const vert = mesh.verts.get(id);
+    return vert && { ...vert.co };
   }
   if (mode === 'edge') {
-    const edges = mesh.selectedEdges();
-    return {
-      mode,
-      points: edges.map((edge) => mesh.edgeCenter(edge)),
-      all: edges.length === mesh.edges.size,
-    };
+    const edge = mesh.edges.get(id);
+    return edge && mesh.edgeCenter(edge);
   }
-  const faces = mesh.selectedFaces();
-  return {
-    mode,
-    points: faces.map((face) => mesh.faceCenter(face)),
-    all: faces.length === mesh.faces.size,
-  };
+  const face = mesh.faces.get(id);
+  return face && mesh.faceCenter(face);
 }
 
 const selectionKey = (selection: Selection) =>
@@ -292,8 +328,10 @@ function writeEdit(
   if (reads && block.selection !== selectionKey(before)) {
     lines.push({ code: selectionCode(before), key: null });
   }
-  if (key !== null && lines[lines.length - 1]?.key === key) lines[lines.length - 1] = { code, key };
-  else lines.push({ code, key });
+  // The only comments an edit block holds say that the work has no call.
+  const line = { code, key, gap: code.startsWith('//') };
+  if (key !== null && lines[lines.length - 1]?.key === key) lines[lines.length - 1] = line;
+  else lines.push(line);
 
   const next: EditEntry = { ...block, lines, selection: selectionKey(after) };
   commit(block === last ? [...entries.slice(0, -1), next] : [...entries, next]);
@@ -305,9 +343,18 @@ function operatorCall(operator: { name: string; params: Record<string, unknown> 
   if (!spec) return null;
   const known: Record<string, unknown> = {};
   for (const field of spec.params) {
-    if (operator.params[field.name] !== undefined) known[field.name] = operator.params[field.name];
+    const value = operator.params[field.name];
+    if (value === undefined) continue;
+    known[field.name] =
+      field.value.kind === 'vector' && field.value.uniform ? evenly(value) : value;
   }
   return `mesh.${operator.name}(${options(known)});`;
+}
+
+/** A vector the same along all three axes as the one number a uniform field takes for it. */
+function evenly(value: unknown): unknown {
+  const { x, y, z } = (value ?? {}) as Partial<Vec3>;
+  return typeof x === 'number' && x === y && y === z ? x : value;
 }
 
 /**
@@ -428,6 +475,8 @@ interface Step {
     positions: Map<number, Vec3>;
     selected: Set<number>;
     selection: Selection;
+    /** The elements that selection was read from. */
+    ids: number[];
   } | null;
 }
 
@@ -439,9 +488,25 @@ let step: Step | null = null;
  */
 let mark: readonly Entry[] | null = null;
 
+/**
+ * The log as each step there is to undo found it, oldest first, and as each
+ * step there is to redo left it, the next one last.
+ *
+ * Both line up with the history from their newest end. The history drops its
+ * oldest steps at its size limit and forgets them all on a new project or a
+ * file opened, without a word to the log, so each is cut to the history's
+ * length before it is read.
+ */
+let undoLogs: (readonly Entry[])[] = [];
+let redoLogs: (readonly Entry[])[] = [];
+
+const since = (logs: (readonly Entry[])[], count: number) =>
+  logs.slice(Math.max(0, logs.length - count));
+
 function openStep(label: string): void {
   const state = useEditorStore.getState();
   const object = state.mode === 'edit' ? activeObject(state) : null;
+  const ids = object ? selectedIds(object.mesh, state.selectMode) : [];
   step = {
     label,
     operator: state.lastOperator,
@@ -453,7 +518,8 @@ function openStep(label: string): void {
             [...object.mesh.verts.values()].map((vert) => [vert.id, { ...vert.co }]),
           ),
           selected: new Set(object.mesh.selectedVerts().map((vert) => vert.id)),
-          selection: readSelection(object.mesh, state.selectMode),
+          selection: selectionOf(object.mesh, state.selectMode, ids) as Selection,
+          ids,
         }
       : null,
   };
@@ -470,18 +536,19 @@ function closeStep(): void {
 
   const unscriptable = `// ${sentence(open.label)} (no script equivalent)`;
   if (!open.edit) {
-    writeLine(unscriptable);
+    comment(`${sentence(open.label)} (no script equivalent)`);
     return;
   }
 
   const { target } = open.edit;
   const object = state.objects.find((candidate) => candidate.id === target.id);
   if (!object) return;
-  const after = readSelection(object.mesh, state.selectMode);
 
-  // A gesture that ran an operation of its own said which one.
+  // A gesture that ran an operation of its own said which one, and was
+  // written the moment it did, so what is selected now is what it left.
   const operator = state.lastOperator;
   if (operator && operator !== open.operator) {
+    const after = readSelection(object.mesh, state.selectMode);
     const call = operatorCall(operator);
     writeEdit(target, open.edit.selection, after, call ?? unscriptable, call !== null);
     return;
@@ -494,6 +561,12 @@ function closeStep(): void {
   const moved = [...positions].some(([id, point]) => !near(before.get(id), point));
   if (!rebuilt && !moved) return;
 
+  // Read off the elements the gesture moved rather than off the selection
+  // now: a click in the viewport is no action, so one made since the gesture
+  // ended is already in the mesh by the time the next action closes the step.
+  const after =
+    selectionOf(object.mesh, open.edit.selection.mode, open.edit.ids) ??
+    readSelection(object.mesh, state.selectMode);
   const call = rebuilt ? null : rigidMove(open.edit.selected, before, positions);
   writeEdit(target, open.edit.selection, after, call ?? unscriptable, call !== null);
 }
@@ -924,12 +997,36 @@ writes('setViewportSetting', {
 writes('frameAll', { write: () => writeLine('view.frameAll();', 'frame') });
 writes('frameSelected', { write: () => writeLine('view.frameSelected();', 'frame') });
 
-function writeHistoryMove({ before, after }: { before: EditorStore; after: EditorStore }): void {
-  if (before.historyUndo.length !== after.historyUndo.length) comment(after.status);
+/**
+ * Moves the log as far as the history went: back to how each step found it
+ * on an undo, forward to how each one left it on a redo. A step with no log
+ * kept for it, one taken before the log was last cleared, is noted instead.
+ */
+function writeHistoryMove(back: boolean) {
+  return ({ before, after }: { before: EditorStore; after: EditorStore }) => {
+    const steps = Math.abs(before.historyUndo.length - after.historyUndo.length);
+    if (steps === 0) return;
+    const undo = since(undoLogs, before.historyUndo.length);
+    const redo = since(redoLogs, before.historyRedo.length);
+    const [from, to] = back ? [undo, redo] : [redo, undo];
+
+    let log = entries;
+    let missing = false;
+    for (let taken = 0; taken < steps; taken++) {
+      to.push(log);
+      const kept = from.pop();
+      if (kept) log = kept;
+      else missing = true;
+    }
+    undoLogs = undo;
+    redoLogs = redo;
+    commit(log);
+    if (missing) comment(after.status);
+  };
 }
 
-writes('undoTimes', { write: writeHistoryMove });
-writes('redoTimes', { write: writeHistoryMove });
+writes('undoTimes', { write: writeHistoryMove(true) });
+writes('redoTimes', { write: writeHistoryMove(false) });
 
 writes('transact', {
   write: ({ before, after }) => {
@@ -1031,18 +1128,52 @@ function wrapRecord(original: AnyFn): AnyFn {
   };
 }
 
+/**
+ * `recordHistoryDocument`, which every step goes through, `recordHistory`'s
+ * included: keeps the log as the step found it. Nothing a step does is written
+ * until it is done, so that is the log as it stands now.
+ */
+function wrapStep(original: AnyFn): AnyFn {
+  return (...args) => {
+    const before = useEditorStore.getState().historyUndo;
+    const result = original(...args);
+    const after = useEditorStore.getState().historyUndo;
+    if (after !== before) {
+      undoLogs = since([...undoLogs, entries], after.length);
+      redoLogs = [];
+    }
+    return result;
+  };
+}
+
+/**
+ * `noteOperator`: a gesture saying, as it ends, which operation it ran, which
+ * is when its step is written. Left for the next action, the step would take
+ * a selection clicked after the gesture for the one the gesture left.
+ */
+function wrapNote(original: AnyFn): AnyFn {
+  return (...args) => {
+    const result = original(...args);
+    if (depth === 0) closeStep();
+    return result;
+  };
+}
+
 /** `discardHistory`: the gesture was called off, so the log goes back to where it began. */
 function wrapDiscard(original: AnyFn): AnyFn {
   return (...args) => {
-    if (depth > 0) return original(...args);
-    step = null;
-    if (mark) commit(mark);
-    mark = null;
+    const steps = useEditorStore.getState().historyUndo.length;
+    if (depth === 0) {
+      step = null;
+      if (mark) commit(mark);
+      mark = null;
+    }
     depth += 1;
     try {
       return original(...args);
     } finally {
       depth -= 1;
+      if (useEditorStore.getState().historyUndo.length < steps) undoLogs = undoLogs.slice(0, -1);
     }
   };
 }
@@ -1066,10 +1197,13 @@ export function installRecorder(): void {
   for (const [name, writer] of writers) {
     patch[name] = marked(name, wrap(unwrapped(name), writer));
   }
-  for (const name of ['recordHistory', 'recordHistoryDocument']) {
-    patch[name] = marked(name, wrapRecord(unwrapped(name)));
-  }
+  patch.recordHistory = marked('recordHistory', wrapRecord(unwrapped('recordHistory')));
+  patch.recordHistoryDocument = marked(
+    'recordHistoryDocument',
+    wrapRecord(wrapStep(unwrapped('recordHistoryDocument'))),
+  );
   patch.discardHistory = marked('discardHistory', wrapDiscard(unwrapped('discardHistory')));
+  patch.noteOperator = marked('noteOperator', wrapNote(unwrapped('noteOperator')));
   useEditorStore.setState(patch as Partial<EditorStore>);
 
   // A gesture is only described once the next thing happens, and opening the
@@ -1107,8 +1241,49 @@ export function readActionLog(): string {
   return actionLogText();
 }
 
+export interface ActionScript {
+  source: string;
+  /** Things done that no call repeats, an import or a script run, which a run leaves out. */
+  gaps: number;
+  /** False when the log began on objects none of its lines made, which a run cannot rebuild. */
+  fromEmpty: boolean;
+}
+
+/**
+ * The log as a script to paste into the editor and run.
+ *
+ * Every primitive is named after its kind, so a log run over the scene it was
+ * written from would add a second CUBE and send its edits to the first one.
+ * A log that began on an empty scene therefore clears the scene and puts the
+ * cursor back first, and the run ends on the scene the log describes.
+ */
+export function actionScript(): ActionScript {
+  closeStep();
+  const log = actionLogText();
+  const gaps = entries.reduce(
+    (count, entry) =>
+      count +
+      (entry.kind === 'line'
+        ? Number(entry.gap === true)
+        : entry.lines.filter((line) => line.gap).length),
+    0,
+  );
+  if (!start) return { source: log, gaps, fromEmpty: false };
+  const header = [
+    '// Start from an empty scene, as the log did',
+    'scene.clear();',
+    `scene.cursor = ${vec(start.cursor)};`,
+  ];
+  return { source: [...header, log].join('\n'), gaps, fromEmpty: true };
+}
+
+/** Starts the log again from the scene as it stands. */
 export function clearActionLog(): void {
   step = null;
   mark = null;
+  undoLogs = [];
+  redoLogs = [];
+  const state = useEditorStore.getState();
+  start = state.objects.length === 0 ? { cursor: { ...state.cursor } } : null;
   commit([]);
 }

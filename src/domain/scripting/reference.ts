@@ -1,4 +1,5 @@
 import {
+  FALLOFF_CURVES,
   MAX_BEND_ANGLE,
   MAX_SHARP_ANGLE,
   MAX_SMOOTHING,
@@ -37,7 +38,9 @@ export type ValueSpec =
   /** `"#rrggbb"`, `"#rgb"` or `[r, g, b]` from 0 to 1. */
   | { kind: 'color' }
   /** The knife's runs of points, each point checked for its kind and fields. */
-  | { kind: 'knifeCuts' };
+  | { kind: 'knifeCuts' }
+  /** `"x"`, `"y"` or `"z"`, or any direction as `[x, y, z]`. */
+  | { kind: 'axis' };
 
 export interface FieldSpec {
   name: string;
@@ -92,6 +95,21 @@ const number = (min?: number, max?: number): ValueSpec => ({ kind: 'number', min
 const integer = (min?: number, max?: number): ValueSpec => ({ kind: 'integer', min, max });
 const boolean: ValueSpec = { kind: 'boolean' };
 const oneOf = (...values: string[]): ValueSpec => ({ kind: 'enum', values });
+
+/** Proportional editing, as a move, a turn and a scale all take it. */
+const PROPORTIONAL_FIELDS: readonly FieldSpec[] = [
+  {
+    name: 'proportional',
+    value: number(0),
+    description:
+      'Carries the unselected vertices within this many metres along too, less the further out they are. Default 0, which carries none.',
+  },
+  {
+    name: 'falloff',
+    value: oneOf(...FALLOFF_CURVES),
+    description: 'How that pull fades toward the edge of the radius. Default "smooth".',
+  },
+];
 
 /**
  * Every modelling operation a script can run on a mesh, with its parameters.
@@ -407,29 +425,46 @@ export const OPERATOR_SPECS: readonly OperatorSpec[] = [
     summary: 'Moves the selected vertices.',
     params: [
       { name: 'offset', value: { kind: 'vector' }, description: 'In metres, as [x, y, z].' },
+      ...PROPORTIONAL_FIELDS,
     ],
   },
   {
     name: 'rotate',
     group: 'transform',
     needs: { of: 'verts' },
-    summary: 'Turns the selected vertices about their middle.',
+    summary: 'Turns the selected vertices about their middle, or about a pivot.',
     params: [
-      { name: 'axis', value: oneOf('x', 'y', 'z'), description: 'The axis. Default "y".' },
+      {
+        name: 'axis',
+        value: { kind: 'axis' },
+        description: 'What it turns about: "x", "y", "z" or a direction [x, y, z]. Default "y".',
+      },
       { name: 'angle', value: number(), description: 'In degrees.' },
+      {
+        name: 'pivot',
+        value: { kind: 'vector' },
+        description: 'The point it turns about, as [x, y, z]. Default the middle of the selection.',
+      },
+      ...PROPORTIONAL_FIELDS,
     ],
   },
   {
     name: 'scale',
     group: 'transform',
     needs: { of: 'verts' },
-    summary: 'Scales the selected vertices about their middle.',
+    summary: 'Scales the selected vertices about their middle, or about a pivot.',
     params: [
       {
         name: 'scale',
         value: { kind: 'vector', uniform: true },
         description: 'Factor along each axis, as [x, y, z], or one number for all three.',
       },
+      {
+        name: 'pivot',
+        value: { kind: 'vector' },
+        description: 'The point it scales from, as [x, y, z]. Default the middle of the selection.',
+      },
+      ...PROPORTIONAL_FIELDS,
     ],
   },
   {

@@ -207,6 +207,19 @@ function readValue(spec: ValueSpec, value: unknown, what: string, current?: unkn
       return value;
     case 'knifeCuts':
       return readKnifeCuts(value, what);
+    case 'axis': {
+      if (typeof value === 'string') return readEnum(value, ['x', 'y', 'z'], what);
+      if (value === null || typeof value !== 'object') {
+        throw new Error(
+          `${what} has to be "x", "y", "z" or a direction [x, y, z], not ${describe(value)}.`,
+        );
+      }
+      const direction = readVector(value, what);
+      if (Math.hypot(direction.x, direction.y, direction.z) < 1e-9) {
+        throw new Error(`${what} has to point somewhere: [0, 0, 0] has no direction.`);
+      }
+      return direction;
+    }
   }
 }
 
@@ -682,18 +695,13 @@ function meshTools(objectId: string, lastName: string, startMode: SelectMode): M
     }
 
     return onObject(objectId, () => {
-      const state = store();
-      const saved = { selectMode: state.selectMode, proportional: state.proportional };
-      // The operation reads the select mode off the store, and a script's
-      // result should not hang on whether proportional editing was left on.
-      useEditorStore.setState({
-        selectMode: mode,
-        proportional: { ...state.proportional, enabled: false },
-      });
+      const saved = store().selectMode;
+      // The operation reads the select mode off the store.
+      useEditorStore.setState({ selectMode: mode });
       try {
         return store().exec(name, read, name, { record: false, throws: true })?.status ?? '';
       } finally {
-        useEditorStore.setState(saved);
+        useEditorStore.setState({ selectMode: saved });
       }
     });
   };

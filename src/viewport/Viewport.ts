@@ -15,10 +15,7 @@ import {
 import {
   type Axis,
   type BMesh,
-  type FalloffCurve,
   type PivotTool,
-  type ProportionalInfluence,
-  type ProportionalOptions,
   type SelectMode,
   type SlideAim,
   type SlidePlan,
@@ -44,12 +41,8 @@ import {
   pivotPosition,
   planEdgeSlide,
   planVertexSlide,
-  proportionalInfluence,
-  rotateVerts,
-  scaleVerts,
   selectEdgeLoop,
   sub,
-  translateVerts,
   vec3,
 } from '@kernel/index';
 import {
@@ -70,6 +63,7 @@ import type {
 } from '@store/types';
 
 import { CameraController, VIEW_TWEEN_MS, viewLostReason } from './CameraController';
+import { type EditMove, EditMoveDrag } from './editMove';
 import { type SnapAmounts, ViewportGrid, snapAmounts, snapTo } from './grid';
 import {
   type KnifeAnchor,
@@ -603,8 +597,6 @@ export class Viewport {
     reference: number;
     /** Which axes are being scaled: 'X', 'XY', 'XYZ', … */
     axis: string;
-    /** Per axis, the factor already applied: edit mode scales by the step. */
-    applied: Vec3;
     /** Set for a keyboard-started scale, which can be cancelled; null for a handle drag. */
     modal: { restore: () => void; seeded: boolean } | null;
   } | null = null;
@@ -623,7 +615,7 @@ export class Viewport {
     bearing: number;
     /** Whether that bearing has been read yet from a pointer far enough out to mean one. */
     seeded: boolean;
-    /** Total angle turned so far. Object mode re-applies it whole, never compounding. */
+    /** Total angle turned so far, re-applied whole on every move, never compounding. */
     applied: number;
     /** World axis the turn is pinned to, or null for the axis facing the camera. */
     axis: 'x' | 'y' | 'z' | null;
@@ -705,14 +697,8 @@ export class Viewport {
   /** The camera the knife last aimed from, so a turn of the view re-aims it. */
   private readonly knifeCamera = new Float64Array(32);
   private gizmoBaseline: GizmoBaseline | null = null;
-  /** What `proportionalSpread` last worked out, and what it was worked out from. */
-  private dragSpread: {
-    mesh: BMesh;
-    count: number;
-    radius: number;
-    falloff: FalloffCurve;
-    influence: ProportionalInfluence;
-  } | null = null;
+  /** The edit-mode transform running now, from where its vertices began. */
+  private editMove: EditMoveDrag | null = null;
   /** Ids of the selected, unlocked objects a group gizmo drag in object mode applies to. */
   private transformGroup: string[] = [];
   private readonly objectBaselines = new Map<string, Transform>();
@@ -1807,12 +1793,18 @@ export class Viewport {
    */
   private captureBaselines(state: EditorStore): void {
     this.captureGizmoBaseline();
-    // Every transform measures its own falloff, from wherever the selection
-    // stands now. Cleared here, where every transform starts, rather than where
-    // a gizmo drag ends: the keyboard's S and R end elsewhere, and the spread
-    // they left behind was taken up by the next transform of any selection with
-    // as many vertices, which on a cylinder is every other loop.
-    this.dragSpread = null;
+    // Made afresh here, where every transform starts, rather than cleared where
+    // a gizmo drag ends: the keyboard's S and R end elsewhere, and a falloff
+    // one left behind was once taken up by the next transform of any selection
+    // with as many vertices, which on a cylinder is every other loop.
+    const object = state.mode === 'edit' ? activeObject(state) : undefined;
+    const seat = this.gizmoProxy.position;
+    this.editMove = object
+      ? new EditMoveDrag(
+          object.mesh,
+          inverseTransformPoint(object.transform, vec3(seat.x, seat.y, seat.z)),
+        )
+      : null;
     this.objectBaselines.clear();
     for (const object of state.objects) {
       if (!this.transformGroup.includes(object.id)) continue;
@@ -1850,12 +1842,45 @@ export class Viewport {
 
     this.endScaleDrag();
     this.endRotateDrag();
-    this.autoMergeSelection();
+    this.noteEditMove(this.autoMergeSelection());
 
     // `gizmoDragging` is already false, so this resync is the one that re-seats
     // the gizmo on where the selection actually landed.
     state.touchMesh();
   };
+
+  /**
+   * Tells the ACTIONS log what the edit-mode transform just ended did, as the
+   * one operation that repeats it, the way a bevel drag says what it ran.
+   *
+   * Not after auto merge welded something on the way out: the operation
+   * leaves the weld out, so the log reads the vertices instead.
+   */
+  private noteEditMove(welded: number): void {
+    const drag = this.editMove;
+    this.editMove = null;
+    if (!drag || welded > 0) return;
+
+    const state = useEditorStore.getState();
+    const call = drag.call(state.pivot === 'median');
+    if (call) state.noteOperator(call.name, call.params);
+  }
+
+  /**
+   * Applies a whole edit-mode move to the selection, from where it began.
+   *
+   * The handles are world-aligned and the mesh is edited in object space, so
+   * a move arrives here already brought back through the object's frame.
+   */
+  private applyEditMove(state: EditorStore, object: SceneObject, move: EditMove): void {
+    const drag = this.editMove;
+    if (!drag || drag.mesh !== object.mesh) return;
+
+    const selected = object.mesh.selectedVerts();
+    if (selected.length === 0) return;
+
+    if (drag.apply(move, selected, state.proportional)) state.touchMesh();
+  }
 
   /**
    * What snapping quantises to right now, or null when it is off.
@@ -1907,7 +1932,6 @@ export class Viewport {
       pivotPixels,
       reference: this.pointerPixels.distanceTo(pivotPixels),
       axis,
-      applied: vec3(1, 1, 1),
       modal,
     };
 
@@ -2065,8 +2089,9 @@ export class Viewport {
       // The entry was recorded before anything moved, so with everything back
       // where it was it would undo to the state the scene is already in.
       state.discardHistory();
+      this.editMove = null;
     } else {
-      this.autoMergeSelection();
+      this.noteEditMove(this.autoMergeSelection());
     }
 
     this.endRotateDrag();
@@ -2104,7 +2129,6 @@ export class Viewport {
     drag.bearing = bearing;
     if (Math.abs(step) < 1e-6) return;
 
-    const previous = drag.applied;
     drag.applied += step;
 
     const state = useEditorStore.getState();
@@ -2113,37 +2137,38 @@ export class Viewport {
     // round every one of them to nothing and the turn would never move.
     const snap = this.snapping();
     const total = snap ? snapTo(drag.applied, snap.rotate) : drag.applied;
-    const settled = snap ? snapTo(previous, snap.rotate) : previous;
 
     if (drag.modal) {
       state.updateModal({ value: vec3(THREE.MathUtils.radToDeg(total), 0, 0) });
     }
 
-    const baseline = this.gizmoBaseline;
-    if (!baseline) return;
-
+    // Both modes re-apply the whole turn from where the drag began, so pinning
+    // an axis part-way through re-reads the same total turn about the new one
+    // rather than stacking it on what the old one had already done.
     const axis = drag.axis ? axisVector(drag.axis) : this.viewAxis();
-    const turn = (angle: number) =>
-      new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(axis.x, axis.y, axis.z), angle);
 
     if (state.mode === 'object') {
-      // Re-applied whole against the drag-start baseline, so pinning an axis
-      // part-way through re-reads the same total turn about the new one rather
-      // than stacking it on what the old one had already done.
-      this.gizmoProxy.quaternion.copy(turn(total).multiply(baseline.quaternion));
+      const baseline = this.gizmoBaseline;
+      if (!baseline) return;
+      const turn = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(axis.x, axis.y, axis.z),
+        total,
+      );
+      this.gizmoProxy.quaternion.copy(turn.multiply(baseline.quaternion));
       this.applyObjectGroupTransform(state);
       return;
     }
 
     const object = activeObject(state);
-    if (!object) return;
+    const pivot = this.editMove?.pivot;
+    if (!object || !pivot) return;
 
-    // Edit mode has no per-vertex baseline to re-apply against, so it turns by
-    // the step since the last move and `applyEditTransform` re-seats the
-    // baseline behind it. Snapping leaves that step at zero while the pointer
-    // crosses a notch without reaching the next, which reads as nothing to do.
-    this.gizmoProxy.quaternion.copy(turn(total - settled).multiply(baseline.quaternion));
-    this.applyEditTransform(state, object);
+    this.applyEditMove(state, object, {
+      kind: 'rotate',
+      axis: inverseTransformDirection(object.transform, axis),
+      angle: total,
+      pivot,
+    });
   }
 
   /**
@@ -2175,8 +2200,9 @@ export class Viewport {
       // The entry was recorded before anything moved, so with everything back
       // where it was it would undo to the state the scene is already in.
       state.discardHistory();
+      this.editMove = null;
     } else {
-      this.autoMergeSelection();
+      this.noteEditMove(this.autoMergeSelection());
     }
 
     // Cleared before the store is told, so the modal subscription sees nothing
@@ -2510,9 +2536,8 @@ export class Viewport {
   /**
    * Scales the selection to wherever the pointer has been dragged.
    *
-   * Object mode applies the factor against each object's transform at drag
-   * start, so the drag never compounds; edit mode has no such baseline to
-   * measure against, so it applies the step since the last move instead.
+   * Both modes apply the whole factor against where the drag began, each
+   * object's transform or each vertex, so the drag never compounds.
    */
   private applyScaleDrag(): void {
     const drag = this.scaleDrag;
@@ -2547,25 +2572,14 @@ export class Viewport {
 
     if (state.mode === 'object') {
       this.applyObjectGroupTransform(state, target);
-      drag.applied = target;
       return;
     }
 
-    // Edit mode has no baseline to re-apply against, so it scales by the step
-    // since the last move. Kept per axis so lifting an axis constraint mid-drag
-    // takes the other two back to where they were rather than stranding them.
-    const step = vec3(
-      target.x / drag.applied.x,
-      target.y / drag.applied.y,
-      target.z / drag.applied.z,
-    );
-    if (Math.abs(step.x - 1) + Math.abs(step.y - 1) + Math.abs(step.z - 1) < 1e-6) return;
-
     const object = activeObject(state);
-    if (!object) return;
+    const pivot = this.editMove?.pivot;
+    if (!object || !pivot) return;
 
-    drag.applied = target;
-    this.applyEditTransform(state, object, step);
+    this.applyEditMove(state, object, { kind: 'scale', factor: target, pivot });
   }
 
   /**
@@ -2703,7 +2717,6 @@ export class Viewport {
           mesh,
           selectMode: state.selectMode,
           cursor: state.cursor,
-          proportional: state.proportional,
         },
         drag.kind,
         offsetParams(drag.kind, drag.amount),
@@ -2825,7 +2838,8 @@ export class Viewport {
 
   private handleGizmoChange = (): void => {
     const state = useEditorStore.getState();
-    if (!this.gizmoBaseline) return;
+    const baseline = this.gizmoBaseline;
+    if (!baseline) return;
     // Scale is driven by the pointer in `applyScaleDrag`, and a free rotation
     // in `applyRotateDrag`, rather than by three's own world-space answer.
     if (this.scaleDrag || this.rotateDrag) return;
@@ -2836,114 +2850,36 @@ export class Viewport {
     }
 
     const object = activeObject(state);
-    if (!object) return;
+    const pivot = this.editMove?.pivot;
+    if (!object || !pivot) return;
 
-    this.applyEditTransform(state, object);
-  };
-
-  /**
-   * The vertices a proportional drag carries, worked out once and then reused.
-   *
-   * Finding them means measuring every vertex in the mesh against every
-   * selected one, which on a dense mesh is the slowest thing a pointer move
-   * sets off. It is also supposed to be settled: the falloff is measured from
-   * where the selection stood when the drag began, so recomputing it from the
-   * vertices as they move would let the circle of influence crawl along with
-   * them. Held for the rest of the transform, and measured again only when the
-   * radius or the curve changes, which is what the wheel does mid-drag.
-   */
-  private proportionalSpread(
-    state: EditorStore,
-    object: SceneObject,
-    selected: readonly Vert[],
-  ): ProportionalOptions | ProportionalInfluence {
-    if (!state.proportional.enabled || state.proportional.radius <= 0) return state.proportional;
-
-    const held = this.dragSpread;
-    const same =
-      held &&
-      held.mesh === object.mesh &&
-      held.count === selected.length &&
-      held.radius === state.proportional.radius &&
-      held.falloff === state.proportional.falloff;
-    if (same) return held.influence;
-
-    const influence = proportionalInfluence(object.mesh, selected, state.proportional);
-    this.dragSpread = {
-      mesh: object.mesh,
-      count: selected.length,
-      radius: state.proportional.radius,
-      falloff: state.proportional.falloff,
-      influence,
-    };
-    return influence;
-  }
-
-  /**
-   * Applies a gizmo drag to the selected vertices of the object being edited.
-   *
-   * Rotate and scale turn about wherever the gizmo was seated: the selection's
-   * median, or the 3D cursor when that is the pivot, which is why the pivot
-   * comes back through the object's own frame rather than being read off the
-   * mesh. Move ignores the pivot, because a translation is the same wherever
-   * you measure it from.
-   */
-  private applyEditTransform(state: EditorStore, object: SceneObject, scaleStep?: Vec3): void {
-    const baseline = this.gizmoBaseline;
-    if (!baseline) return;
-
-    const selected = object.mesh.selectedVerts();
-    if (selected.length === 0) return;
-
-    const spread = this.proportionalSpread(state, object, selected);
-    const tool = state.activeTool as PivotTool;
-    const worldPivot = vec3(baseline.position.x, baseline.position.y, baseline.position.z);
-    const pivot = inverseTransformPoint(object.transform, worldPivot);
-
-    if (tool === 'rotate') {
-      const deltaQuaternion = this.gizmoProxy.quaternion
+    // The gizmo's own move and turn handles, measured from where the drag
+    // began: three drives the proxy from its pointer-down pose, and nothing
+    // moves the baseline until the drag ends. A turn is about wherever the
+    // gizmo was seated: the selection's median, the origin or the 3D cursor.
+    if (state.activeTool === 'rotate') {
+      const delta = this.gizmoProxy.quaternion
         .clone()
         .multiply(baseline.quaternion.clone().invert());
-      const { axis, angle } = quaternionToAxisAngle(deltaQuaternion);
-      if (Math.abs(angle) < 1e-6) return;
-
-      rotateVerts(
-        object.mesh,
-        selected,
-        inverseTransformDirection(object.transform, axis),
+      const { axis, angle } = quaternionToAxisAngle(delta);
+      this.applyEditMove(state, object, {
+        kind: 'rotate',
+        axis: inverseTransformDirection(object.transform, axis),
         angle,
         pivot,
-        spread,
-      );
-      this.captureGizmoBaseline();
-      state.touchMesh();
+      });
       return;
     }
 
-    if (tool === 'scale') {
-      if (!scaleStep) return;
-
-      scaleVerts(object.mesh, selected, scaleStep, pivot, spread);
-      state.touchMesh();
-      return;
-    }
-
+    // Brought back through the object's whole frame, its turn as well as its
+    // scale. Undoing the scale alone sent a move along world X off along the
+    // object's own X on anything that had been rotated.
     const delta = this.gizmoProxy.position.clone().sub(baseline.position);
-    if (delta.lengthSq() < 1e-12) return;
-
-    // The handles are world-aligned and the mesh edit is in object space, so
-    // the drag comes back through the object's whole frame, its turn as well as
-    // its scale. Undoing the scale alone sent a move along world X off along
-    // the object's own X on anything that had been rotated.
-    translateVerts(
-      object.mesh,
-      selected,
-      inverseTransformOffset(object.transform, vec3(delta.x, delta.y, delta.z)),
-      spread,
-    );
-    this.captureGizmoBaseline();
-    state.touchMesh();
-  }
+    this.applyEditMove(state, object, {
+      kind: 'translate',
+      offset: inverseTransformOffset(object.transform, vec3(delta.x, delta.y, delta.z)),
+    });
+  };
 
   /**
    * Applies a group gizmo drag to every object in `transformGroup`.
@@ -3276,6 +3212,12 @@ export class Viewport {
     state.setProportional({
       radius: proportionalRadiusStep(state.proportional.radius, event.deltaY),
     });
+
+    // The move so far spreads again at the new radius now, rather than on the
+    // next pointer move.
+    const move = this.editMove?.move;
+    const object = activeObject(state);
+    if (transforming && move && object) this.applyEditMove(useEditorStore.getState(), object, move);
     return true;
   }
 

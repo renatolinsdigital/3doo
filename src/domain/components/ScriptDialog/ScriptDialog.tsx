@@ -5,8 +5,10 @@ import { useEditorStore } from '@store/index';
 
 import { SCRIPT_EXAMPLES, STARTER_SCRIPT } from '../../scripting/examples';
 import {
+  type ActionScript,
   actionLogIsEmpty,
   actionLogText,
+  actionScript,
   clearActionLog,
   subscribeActionLog,
 } from '../../scripting/recorder';
@@ -75,11 +77,22 @@ interface Problem {
   key: number;
 }
 
+/** What a run of the log will not rebuild, or null when it rebuilds the whole scene. */
+function scriptShortfall({ gaps, fromEmpty }: ActionScript): string | null {
+  if (!fromEmpty) {
+    return 'The log began on objects it did not make, so a run repeats only what came after';
+  }
+  if (gaps === 0) return null;
+  return gaps === 1
+    ? 'One step in the log has no script equivalent, so a run leaves it out'
+    : `${gaps} steps in the log have no script equivalent, so a run leaves them out`;
+}
+
 /**
  * The scripting window, in two tabs.
  *
  * ACTIONS shows what has been done in the viewport, written as the script
- * that would do it, and can hand that script to the editor. EDITOR is where a
+ * that would do it, and can copy that script or hand it to the editor. EDITOR is where a
  * script is written and run. Both stay mounted while the dialog is open, so
  * switching between them keeps the editor's own undo.
  *
@@ -97,6 +110,7 @@ export function ScriptDialog() {
   const [source, setSource] = useState(readDraft);
   const [running, setRunning] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
+  const [copied, setCopied] = useState(false);
   const logEmpty = useSyncExternalStore(subscribeActionLog, actionLogIsEmpty);
   const failures = useRef(0);
   const editor = useRef<ScriptEditorHandle>(null);
@@ -104,6 +118,12 @@ export function ScriptDialog() {
   const handover = useRef<string | null>(null);
 
   useEffect(() => writeDraft(source), [source]);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
 
   useLayoutEffect(() => {
     if (tab !== 'editor' || handover.current === null) return;
@@ -144,8 +164,30 @@ export function ScriptDialog() {
   };
 
   const openInEditor = () => {
-    handover.current = actionLogText();
+    const script = actionScript();
+    handover.current = script.source;
     setTab('editor');
+    const shortfall = scriptShortfall(script);
+    if (shortfall) pushToast('warning', shortfall);
+  };
+
+  const copyScript = async () => {
+    const script = actionScript();
+    try {
+      await navigator.clipboard.writeText(script.source);
+    } catch {
+      // The clipboard API is missing outside a secure context and a browser
+      // may refuse it. The log on screen lacks the lines that clear the scene
+      // first, so selecting it for the copy shortcut would hand over less.
+      pushToast(
+        'error',
+        'The browser blocked copying. OPEN IN EDITOR takes the script to the editor instead',
+      );
+      return;
+    }
+    setCopied(true);
+    const shortfall = scriptShortfall(script);
+    if (shortfall) pushToast('warning', `Copied. ${shortfall}`);
   };
 
   return (
@@ -164,6 +206,12 @@ export function ScriptDialog() {
               onClick={clearActionLog}
             />
             <Button label="CLOSE" onClick={closeDialog} />
+            <Button
+              label={copied ? 'COPIED' : 'COPY'}
+              disabled={logEmpty}
+              hint="Copy the log as a script that builds this scene again when run in EDITOR"
+              onClick={() => void copyScript()}
+            />
             <Button
               label="OPEN IN EDITOR"
               variant="primary"
