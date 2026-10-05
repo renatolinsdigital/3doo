@@ -316,7 +316,8 @@ export const OPERATOR_SPECS: readonly OperatorSpec[] = [
       {
         name: 'angle',
         value: number(0, 180),
-        description: 'The sharpest fold, in degrees, still dissolved.',
+        description:
+          'The sharpest fold, in degrees, still dissolved. Default 40, or 5 for "limited".',
       },
     ],
   },
@@ -795,7 +796,8 @@ export const API_ENTRIES: readonly ApiEntry[] = [
       name: 'group',
       kind: 'function',
       args: 'objects, name?',
-      summary: 'Puts the objects in one outliner folder, named name when given.',
+      summary:
+        'Puts the objects in a new outliner folder, named name when given, and returns its name. An object is in one folder at most and folders do not nest, so group every part at once.',
     },
     {
       name: 'cursor',
@@ -945,7 +947,7 @@ export const API_ENTRIES: readonly ApiEntry[] = [
       kind: 'function',
       args: '(v) => [x, y, z]',
       summary:
-        'Moves every vertex to the point the function returns for it. Returning nothing leaves that vertex where it is.',
+        'Moves every vertex to the point the function returns for it. v is a vertex as selectVerts describes it. Returning nothing leaves that vertex where it is.',
     },
     {
       name: 'run',

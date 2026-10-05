@@ -107,15 +107,12 @@ const runScript: Tool = {
   name: 'run_script',
   title: 'Run a 3DOO script',
   description: [
-<<<<<<< HEAD
     "Runs JavaScript against the 3DOO scene with the `scene` and `view` globals, the same API as the editor's SCRIPT dialog (see scripting_reference): add primitives or meshes of your own, edit them with any modelling operation, stack modifiers, cut booleans and colour objects or single faces.",
-=======
-    "Runs JavaScript against the 3DOO scene with the `scene` and `view` globals, the same API as the editor's SCRIPT dialog (see scripting_reference).",
->>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd
     'The scene persists between calls, so a model can be built over several scripts; pass reset: true to start from an empty scene.',
     'Units are metres, rotations degrees, +Y is up, and the front view looks from +Z.',
     'Returns what the run did and a summary of the scene: every object with its vertex and face counts, position, rotation, scale, world size and colour, and the bounds of the whole scene.',
-    'A script that fails reports the reason and the line, and leaves the scene exactly as it was before the run. `return "text"` and console.log send values back.',
+    'A script that fails reports the reason and the line, and leaves the scene exactly as it was before the run.',
+    'To read values out, `return` one or console.log them: text comes back as it is, anything else as JSON, so `return box.bounds` reads where an object sits.',
     'Afterwards, call render_views to look at the result, then export_model or share_link to hand it over.',
   ].join(' '),
   inputSchema: {

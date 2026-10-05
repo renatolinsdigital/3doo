@@ -24,7 +24,7 @@ import { type Config, engineSource } from './config.ts';
 /** What the tools need from the editor, wherever it runs. */
 export interface Engine {
   reset(): Promise<void>;
-  run(script: string): Promise<RunReport & { logs: string[] }>;
+  run(script: string): Promise<RunReport>;
   open(request: OpenRequest): Promise<SceneSummary>;
   scene(): Promise<SceneSummary>;
   exportFile(request: ExportRequest): Promise<ExportedFile[]>;
@@ -119,7 +119,7 @@ export class BrowserEngine implements Engine {
   private server: Server | null = null;
   private url: string | null = null;
   private starting: Promise<Page> | null = null;
-  private logs: string[] | null = null;
+  private pageErrors: string[] | null = null;
 
   constructor(config: Config) {
     this.config = config;
@@ -142,8 +142,10 @@ export class BrowserEngine implements Engine {
     // script takes its renderer process with it.
     this.context = await this.browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await this.context.newPage();
-    page.on('console', (message) => this.logs?.push(`${message.type()}: ${message.text()}`));
-    page.on('pageerror', (error) => this.logs?.push(`error: ${error.message}`));
+    // The script's own console lines come back in the run's report, written
+    // out in full. This adds an error the run could not catch, such as one
+    // thrown in a timer the script set, when it lands while the run lasts.
+    page.on('pageerror', (error) => this.pageErrors?.push(`error: ${error.message}`));
 
     // The home page: it mounts no viewport and adds no starter cube, so the
     // scene starts empty and nothing renders behind the calls.
@@ -231,13 +233,14 @@ export class BrowserEngine implements Engine {
     await this.call('Reset', 'reset');
   }
 
-  async run(script: string): Promise<RunReport & { logs: string[] }> {
-    const logs: string[] = [];
-    this.logs = logs;
+  async run(script: string): Promise<RunReport> {
+    const errors: string[] = [];
+    this.pageErrors = errors;
     try {
-      return { ...(await this.call('The script', 'run', script)), logs };
+      const report = await this.call('The script', 'run', script);
+      return { ...report, logs: [...report.logs, ...errors] };
     } finally {
-      this.logs = null;
+      this.pageErrors = null;
     }
   }
 

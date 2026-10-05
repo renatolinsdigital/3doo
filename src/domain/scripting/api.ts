@@ -848,6 +848,10 @@ export class ModifierHandle {
   toString(): string {
     return `Modifier(${this.modifier.name})`;
   }
+
+  toJSON(): Record<string, unknown> {
+    return { type: this.type, ...this.settings };
+  }
 }
 
 /**
@@ -910,6 +914,10 @@ export class MaterialHandle {
 
   toString(): string {
     return `Material(${this.material.name})`;
+  }
+
+  toJSON(): { name: string; color: string; index: number } {
+    return { name: this.name, color: this.color, index: this.index };
   }
 }
 
@@ -1130,8 +1138,14 @@ export class ObjectHandle {
     return `Object(${this.lastName})`;
   }
 
-  toJSON(): { name: string; position: Vec3; rotation: Vec3; scale: Vec3 } {
-    return { name: this.name, position: this.position, rotation: this.rotation, scale: this.scale };
+  toJSON(): { name: string; position: Vec3; rotation: Vec3; scale: Vec3; color: string | null } {
+    return {
+      name: this.name,
+      position: this.position,
+      rotation: this.rotation,
+      scale: this.scale,
+      color: this.color,
+    };
   }
 }
 

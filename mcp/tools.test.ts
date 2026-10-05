@@ -5,10 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { AUTOMATION_VERSION, type SceneSummary } from '../src/app/automation/types';
-<<<<<<< HEAD
 import { MCP_SETTINGS, MCP_TOOLS } from '../src/domain/mcp/guide';
-=======
->>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd
 import { SNAPSHOT_VIEWS } from '../src/viewport/snapshot';
 
 import { type Config, engineSource, linkTarget, readConfig } from './config';
@@ -38,7 +35,7 @@ function fakeEngine() {
             message: 'Script ran: 1 object added',
             line: null,
             scene: EMPTY,
-            logs: ['log: hi'],
+            logs: ['hi'],
           };
     },
     open: async (request) => (note('open', request), { ...EMPTY, name: request.name }),
@@ -118,7 +115,7 @@ describe('the tools', () => {
     expect(calls.map((call) => call.method)).toEqual(['reset', 'run']);
     expect(result.isError).toBe(false);
     expect(textOf(result)).toContain('Script ran: 1 object added');
-    expect(textOf(result)).toContain('log: hi');
+    expect(textOf(result)).toContain('Console:\nhi');
   });
 
   it('marks a failed script as an error, with its line', async () => {
@@ -339,7 +336,6 @@ describe('the configuration', () => {
     ).toBe('https://x.example.com');
   });
 });
-<<<<<<< HEAD
 
 // The editor's MCP dialog and docs describe this server from a catalogue of
 // their own, since the app cannot import Node code. These hold the two
@@ -365,5 +361,3 @@ describe("the editor's guide to the server", () => {
     expect(MCP_SETTINGS.map((setting) => setting.name).sort()).toEqual([...new Set(read)].sort());
   });
 });
-=======
->>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd

@@ -1,4 +1,9 @@
-import { PRIMITIVE_FIELDS } from '@kernel/index';
+import {
+  DEFAULT_PRIMITIVE_PARAMS,
+  PRIMITIVE_DEFAULT_OVERRIDES,
+  PRIMITIVE_FIELDS,
+  type PrimitiveKind,
+} from '@kernel/index';
 import { DEFAULT_KEYMAP, formatBinding } from '@domain/keymap/keymap';
 import { MCP_TOOLS, REPOSITORY_URL, claudeCodeCommand } from '@domain/mcp/guide';
 import {
@@ -105,6 +110,12 @@ const fieldText = (fields: readonly FieldSpec[]) =>
 
 const OPERATION_NAMES = new Set(OPERATOR_SPECS.map((spec) => spec.name));
 
+/** `radius 0.5, height 1, segments 24`: the shape a kind arrives in when no option is given. */
+function primitiveDefaults(kind: PrimitiveKind): string {
+  const params = { ...DEFAULT_PRIMITIVE_PARAMS, ...PRIMITIVE_DEFAULT_OVERRIDES[kind] };
+  return PRIMITIVE_FIELDS[kind].map((field) => `${field} ${params[field]}`).join(', ');
+}
+
 /**
  * The scripting section: how to work in the SCRIPT dialog, then the API.
  *
@@ -164,7 +175,7 @@ function scriptEditorBlocks(): DocsBlock[] {
     },
     {
       kind: 'prose',
-      text: "A script tells you what it found in two ways. End it with return 'some text' and that text is the toast and the status line when the run finishes. console.log writes to the browser's own console, which F12 opens in most browsers.",
+      text: "A script tells you what it found in two ways. End it with return and a value, and that value is the toast and the status line when the run finishes: text as it is, anything else as JSON, so return box.bounds shows where the box sits. console.log writes to the browser's own console, which F12 opens in most browsers.",
     },
     {
       kind: 'note',
@@ -189,10 +200,14 @@ export function scriptingApiBlocks(): DocsBlock[] {
     apiTable('SCENE', ['scene']),
     apiTable('OBJECT', ['object']),
     {
+      kind: 'prose',
+      text: "A primitive arrives centred on its origin, at the 3D cursor or at the position you give, and sized by the defaults below: a cube is 1 m on a side and a sphere 1 m across. A cylinder, cone or capsule stands along Y, a cone with its point up, a torus lies flat around Y, and a plane, circle or grid lies flat facing up. So scene.add('cylinder', { height: 2 }) runs from y -1 to 1, and stands on the ground at position: [0, 1, 0].",
+    },
+    {
       kind: 'table',
-      head: ['PRIMITIVE', 'SHAPE OPTIONS'],
+      head: ['PRIMITIVE', 'SHAPE OPTIONS AND THEIR DEFAULTS'],
       rows: PRIMITIVE_KINDS.map(
-        (kind) => [`scene.add('${kind}')`, PRIMITIVE_FIELDS[kind].join(', ')] as const,
+        (kind) => [`scene.add('${kind}')`, primitiveDefaults(kind)] as const,
       ),
     },
     {
@@ -209,6 +224,10 @@ export function scriptingApiBlocks(): DocsBlock[] {
     {
       kind: 'prose',
       text: "object.edit((mesh) => { ... }) hands you the mesh of one object. Pick what to work on with selectVerts, selectEdges or selectFaces, then call an operation: each one works on the selection, exactly as its button does in edit mode, and the selection it leaves is what the next one starts from. Coordinates inside edit are in the object's own space, before its position, rotation and scale. If the object is the one you are editing in edit mode, the script starts from what you selected by hand; otherwise it starts with nothing selected.",
+    },
+    {
+      kind: 'prose',
+      text: 'A mesh you build with scene.addMesh keeps the order of your lists: in its first edit, mesh.verts[i] is verts[i] and mesh.faces[i] is faces[i], so you can pick parts of it by where they sit in your own lists. Operations put the faces they make or remake at the end, recalculateNormals and flipNormals among them, so pick by index before running any.',
     },
     apiTable('MESH', ['mesh'], (entry) => OPERATION_NAMES.has(entry.name)),
     {
@@ -1157,32 +1176,20 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'prose',
-<<<<<<< HEAD
         text: 'Setting it up takes a few minutes, once. The assistant talks to 3DOO through an MCP server that comes with the code, and it needs the code on your computer. The MCP button beside <> in the top bar has every command ready to copy, with this site already filled in as the place links open:',
-=======
-        text: 'Setting it up takes a few minutes, once. The assistant talks to 3DOO through an MCP server that comes with the code, and it needs the code on your computer:',
->>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd
       },
       {
         kind: 'steps',
         items: [
-<<<<<<< HEAD
           `Get the code with git clone ${REPOSITORY_URL}.git, then in its folder run npm install and npm run build. It needs Node 22.18 or newer.`,
           'If you have no Chrome or Edge installed, run npx playwright-core install chromium. The server runs 3DOO in a hidden browser of its own to build and draw the models.',
           `Add the server to your assistant. In Claude Code: ${claudeCodeCommand('https://your-3doo-address')}. In Claude Desktop: add a 3doo entry under mcpServers in its configuration file, with node as the command and the path to mcp/server.ts as its argument.`,
           'THREEDOO_APP_URL tells the server where 3DOO is hosted, which is where its links open. Files and pictures work without it.',
-=======
-          'In the 3DOO folder, run npm install and then npm run build.',
-          'If you have no Chrome or Edge installed, run npx playwright-core install chromium. The server runs 3DOO in a hidden browser of its own to build and draw the models.',
-          'Add the server to your assistant. In Claude Code: claude mcp add 3doo -- node /path/to/3doo/mcp/server.ts. In Claude Desktop: add a 3doo entry under mcpServers in its configuration file, with node as the command and the path to mcp/server.ts as its argument.',
-          'For links, tell the server where 3DOO is hosted by setting THREEDOO_APP_URL to its address. Files and pictures work without it.',
->>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd
           'Ask for a model. "Build a low poly chair in 3DOO, show me the front and side views, then export it as FBX for Unity" is enough.',
         ],
       },
       {
         kind: 'table',
-<<<<<<< HEAD
         head: ['TOOL', 'WHAT THE ASSISTANT USES IT FOR'],
         rows: MCP_TOOLS.map(
           (tool) =>
@@ -1194,8 +1201,6 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'table',
-=======
->>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd
         head: ['TRY ASKING', 'THE ASSISTANT'],
         rows: [
           [

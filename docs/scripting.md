@@ -46,54 +46,27 @@ Unknown operator "extrud". Available: bevel, bridge, delete, deselectAll, ...
 
 ## Operators
 
-### Modelling
+Every operator is listed once, with its parameters, their types, ranges and
+defaults, and what it needs selected: `OPERATOR_SPECS` in
+`src/domain/scripting/reference.ts`. The SCRIPTING section of the in-app
+docs is generated from it, and a test fails when an operator in `OPERATORS`
+has no entry there. Read the parameters there rather than in a copy here.
 
-| Name | Parameters | Notes |
-| --- | --- | --- |
-| `extrude` | `offset`, `individual`, `alongNormals` | Falls back to edge extrude when no faces are selected |
-| `inset` | `thickness`, `depth`, `individual` | |
-| `bevel` | `width`, `segments`, `clampOverlap` | Needs an edge selection |
-| `loopCut` | `cuts`, `slide` | Starts from the first selected edge |
-| `knife` | `cuts`: runs of points, each `{ kind: 'vert', vert }`, `{ kind: 'edge', edge, t }` or `{ kind: 'face', face, co }` | Needs no selection. Leaves the cut selected and reports the new vertices; a malformed point is dropped on its own |
-| `subdivide` | `cuts`, `smooth` | Splits edges in edge select mode, faces otherwise; reports the new vertices |
-| `relax` | `factor`, `iterations`, `keepShape` | Straightens and spaces a selected loop, keeping it on the surface |
-| `circle` | `factor` | Rounds each selected loop onto the circle that fits it best |
-| `space` | `factor` | Evens the gaps along each selected loop, leaving its shape alone |
-| `shrinkFatten` | `distance` | Moves along vertex normals |
-| `vertexSlide` | `direction` (1 to 3), `distance` (world metres) | Runs the selected vertices down an edge leaving them; the direction numbers the edges of the first one |
-| `edgeSlide` | `direction` (1 or 2), `distance` (world metres) | Runs the selected edges across the faces on that side; a border offers the one side it has |
+A few behaviours the parameter list does not show:
 
-### Cleanup
-
-| Name | Parameters |
-| --- | --- |
-| `connect` | none (acts on exactly two selected vertices) |
-| `mergeByDistance` | `threshold` |
-| `merge` | `mode`: `center` \| `cursor` \| `first` \| `last` \| `collapse` |
-| `delete` | `mode`: `verts` \| `edges` \| `faces` \| `onlyFaces` \| `edgesAndFaces` |
-| `dissolve` | `mode`: `verts` \| `edges` \| `faces` \| `limited`, `angle` (edges: max fold in degrees, default 40; limited: default 5) |
-| `triangulate`, `trisToQuads` | `angle` (tris-to-quads only) |
-
-### Topology and normals
-
-| Name | Parameters |
-| --- | --- |
-| `fill` | `bridge` |
-| `bridge` | none |
-| `recalculateNormals` | `outside` |
-| `flipNormals` | none |
-| `shade` | `smooth` |
-| `markSharp` | `clear` (marks the selected edges sharp, or with `clear: true` takes the mark off) |
-
-### Transform and selection
-
-| Name | Parameters |
-| --- | --- |
-| `translate` | `offset: {x, y, z}` |
-| `rotate` | `axis`, `angle` (degrees) |
-| `scale` | `scale: {x, y, z}` |
-| `selectAll`, `deselectAll`, `invertSelection`, `growSelection`, `shrinkSelection` | none |
-| `selectFaceLoop` | none (needs two adjacent selected faces to name the loop) |
+- `extrude` falls back to an edge extrude when no face is selected.
+- `loopCut` starts from the first selected edge, and `selectFaceLoop` needs
+  two adjacent selected faces to name the loop.
+- `subdivide` splits edges in edge select mode and faces otherwise. It and
+  `knife` report the new vertices.
+- `knife` needs no selection and leaves the cut selected. The registry drops
+  a point it cannot read on its own; a script's points are checked first
+  ([below](#a-script-is-checked-not-coerced)).
+- `dissolve` reads `angle` as the sharpest fold it still dissolves: 40
+  degrees for edges, 5 for `limited`.
+- `vertexSlide` numbers the edges leaving the first selected vertex from 1.
+  `edgeSlide` takes side 1 or 2, and a border offers the one side it has.
+  Both measure `distance` in world metres.
 
 ## Driving the kernel from a test
 
@@ -212,6 +185,25 @@ of a toast, so a script stops on its first one and reports it once.
 The project name is not part of undo, so the snapshot loaded back after a throw
 keeps whatever name is current. `runScript` puts back a name the failed run
 set through `scene.name`, which the rollback would otherwise leave behind.
+
+### What a run hands back
+
+A run reports values in two ways, and both write them through `valueText` in
+`runScript.ts`: text as it is, anything else as JSON.
+
+- What the script returns becomes the run's message: the toast and status
+  line in the editor, the result text over MCP. When it returns nothing, the
+  message says what the run changed.
+- `console` is a parameter of the compiled function, not the browser's own.
+  Each call is kept as one line in the outcome's `logs`, and still reaches the
+  browser console. The SCRIPT dialog leaves the lines there; the MCP server
+  sends them back under `Console:`.
+
+Handles define `toJSON`: an object reads as its name, transform and colour, a
+modifier as its type and settings, a material as its name, colour and index.
+Without it, `JSON.stringify` showed the ids a handle keeps inside, and Chrome
+previewed `console.log(box)` as `Proxy(QS)`, so an assistant could read
+nothing it logged.
 
 Store actions that work on the active object are pointed at another object for
 the length of one call by `onObject`, which puts the active object back

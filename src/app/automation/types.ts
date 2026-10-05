@@ -8,7 +8,7 @@
  */
 
 /** Bumped when a payload changes shape, so a server can refuse an app it cannot drive. */
-export const AUTOMATION_VERSION = 1;
+export const AUTOMATION_VERSION = 2;
 
 export type Vec3Data = { x: number; y: number; z: number };
 
@@ -43,10 +43,12 @@ export interface SceneSummary {
 
 export interface RunReport {
   ok: boolean;
-  /** What the run did, the string the script returned, or why it failed. */
+  /** What the run did, what the script returned (as JSON unless it was text), or why it failed. */
   message: string;
   /** The script line that failed, counted from 1, when it can be told. */
   line: number | null;
+  /** One line per `console` call the script made, values as JSON. */
+  logs: string[];
   scene: SceneSummary;
 }
 

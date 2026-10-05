@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { OPERATORS } from '@kernel/index';
 import { activeObject, useEditorStore } from '@store/index';
@@ -110,12 +110,61 @@ const b = undefinedThing + a;`);
       ok: false,
       message: 'There is nothing to run yet.',
       line: null,
+      logs: [],
     });
   });
 
   it('uses a string the script returns as the message', async () => {
     const outcome = await run(`scene.add('plane'); return 'Laid the floor';`);
     expect(outcome.message).toBe('Laid the floor');
+  });
+
+  it('hands back any other value the script returns as JSON', async () => {
+    expect((await run(`return 6 * 7;`)).message).toBe('42');
+    expect((await run(`return null;`)).message).toBe('null');
+    expect((await run(`return scene.add('cube', { size: 2 }).bounds.size;`)).message).toBe(
+      '{"x":2,"y":2,"z":2}',
+    );
+  });
+
+  it('writes handles out as their names and settings, not their insides', async () => {
+    const outcome = await run(`
+      const box = scene.add('cube', { name: 'BOX', color: '#ff0000' });
+      box.addModifier('array', { count: 3 });
+      box.addMaterial({ name: 'TRIM', color: '#00ff00' });
+      return [box, box.modifiers[0], box.materials[1]];
+    `);
+
+    const [box, array, trim] = JSON.parse(outcome.message);
+    expect(box).toEqual({
+      name: 'BOX',
+      position: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 },
+      color: '#ff0000',
+    });
+    expect(array).toMatchObject({ type: 'array', enabled: true, count: 3 });
+    expect(array).not.toHaveProperty('objectId');
+    expect(trim).toEqual({ name: 'TRIM', color: '#00ff00', index: 1 });
+  });
+
+  it('keeps what the script logs, one line per call, failed run or not', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const ran = await run(`
+        console.log('cube', scene.add('cube').stats.faces, { a: [1, 2] });
+        console.warn('careful');
+      `);
+      expect(ran.logs).toEqual(['cube 6 {"a":[1,2]}', 'warning: careful']);
+      expect(log).toHaveBeenCalledWith('cube', 6, { a: [1, 2] });
+
+      const failed = await fail(`console.log('before');\nthrow new Error('stop');`);
+      expect(failed.logs).toEqual(['before']);
+    } finally {
+      log.mockRestore();
+      warn.mockRestore();
+    }
   });
 
   it('refuses a shape option the primitive does not use', async () => {

@@ -5,10 +5,7 @@ can build models in 3DOO with the scripting API, look at them, and hand them
 back as a `.3doo`, an OBJ or FBX, PNG pictures, or a link that opens the hosted
 editor on the result. This page is the technical side: how the layer is built,
 how to run it, and every payload that crosses it. The user-facing side is the
-<<<<<<< HEAD
 MCP dialog behind the top bar's MCP button ([below](#the-mcp-dialog)) and the
-=======
->>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd
 AI ASSISTANTS section of the in-app docs (`src/modules/docs/content.ts`).
 
 ## In short
@@ -152,8 +149,12 @@ finished would picture half of it.
 - A run is one transaction. A script that throws, on any line, leaves the scene
   as it was, and the result says so with the line:
   `The script failed on line 2: scene.add("cube") has no option "sise". Did you mean "size"?`
-- `return 'text'` becomes the run's message, and `console.log` output is sent
-  back under `Console:`. Those are the two ways a script reads values out.
+- `return` and `console.log` are the two ways a script reads values out. The
+  returned value becomes the run's message, and each `console` call one line
+  under `Console:`. Text comes back as it is and anything else as JSON, the
+  handles as their names and settings: `return box.bounds` gives
+  `{"min":{...},"max":{...},"size":{...},"center":{...}}`. See
+  [What a run hands back](scripting.md#what-a-run-hands-back).
 - The summary is the totals on one line and each object on its own line, in
   script terms: metres, degrees, `#rrggbb`. Counts are of the shape as drawn
   and exported, with modifiers applied. Indented JSON took several times the
@@ -266,7 +267,6 @@ read by the server and handed to the page as base64.
 ### `scripting_reference` and the resource
 
 The reference is built in the page by `scriptingReference()`
-<<<<<<< HEAD
 (`src/app/automation/automation.ts`), in four parts:
 
 1. The conventions a model needs that a person in the editor does not: the
@@ -290,20 +290,10 @@ ranges the checks enforce, and every choice lists the values it takes. The
 docs section keeps its blocks about the SCRIPT dialog (buttons, keys, toasts)
 in a separate function, so the reference takes none of them and nothing has
 to be filtered out by matching on text.
-=======
-(`src/app/automation/automation.ts`): the SCRIPTING section of the in-app docs,
-turned into Markdown, followed by every example in the EXAMPLE menu. That
-section is generated from the catalogue the API validates against
-(`src/domain/scripting/reference.ts`), so the model reads the same names and
-ranges the checks enforce. The blocks about the editor window (its buttons and
-keys) are left out, and a short preamble states what a model needs that a
-person in the editor does not: the axes, `return` and `console.log`.
->>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd
 
 The same text is offered as the resource `3doo://reference/scripting`
 (`text/markdown`), for clients that let a user attach resources.
 
-<<<<<<< HEAD
 ## The MCP dialog
 
 The MCP button beside `<>` in the top bar opens `McpDialog`
@@ -322,8 +312,6 @@ as `TOOLS`, the same arguments as each input schema, and the same variables as
 `config.ts` reads. A tool or a setting added to the server without its line in
 the catalogue fails the suite rather than going missing from the dialog.
 
-=======
->>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd
 ## The page API: `window.threedoo`
 
 `installAutomation()` puts it on `window` before React mounts. The types are in
@@ -335,7 +323,7 @@ app's path aliases.
 interface AutomationApi {
   readonly version: number;                         // AUTOMATION_VERSION
   reset(): void;                                     // empty scene, no history
-  run(source: string): Promise<RunReport>;           // runScript, then the summary
+  run(source: string): Promise<RunReport>;           // runScript: message, line, logs, summary
   open(file: { name: string; base64: string }): Promise<SceneSummary>;
   scene(): SceneSummary;
   exportFile(request: ExportRequest): Promise<ExportedFile[]>;  // { name, mimeType, base64 }[]
@@ -463,12 +451,8 @@ assistant, and is not a sandbox for scripts from strangers.
 | `src/domain/services/sceneLink.test.ts` | The link codec, its compression and its errors |
 | `src/domain/hooks/useAutosave.test.tsx` | Opening a link, taking it off the address bar, the fallback, a pasted link |
 | `mcp/protocol.test.ts` | The JSON-RPC transport |
-<<<<<<< HEAD
 | `mcp/tools.test.ts` | Each tool against a fake engine, the call queue, protocol negotiation, configuration, and the editor's catalogue of tools, arguments and settings against the server's |
 | `src/domain/components/McpDialog/McpDialog.test.tsx` | The dialog lists every tool and setting, fills in the page's address, and copies a command |
-=======
-| `mcp/tools.test.ts` | Each tool against a fake engine, the call queue, protocol negotiation, configuration |
->>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd
 
 The browser engine itself (`mcp/engine.ts`) has no unit test: what it does is
 launch Chromium. To check it end to end, build, then drive the server by hand:
@@ -511,13 +495,8 @@ The [MCP Inspector](https://github.com/modelcontextprotocol/inspector)
 3. Add the tool to `TOOLS` in `mcp/tools.ts`, with a description that tells the
    model when to use it, and test it against the fake engine in
    `tools.test.ts`.
-<<<<<<< HEAD
 4. Describe it in `MCP_TOOLS` in `src/domain/mcp/guide.ts`, with its
    arguments, what it is for and what it returns. The MCP dialog and the AI
    ASSISTANTS docs list it from there, and a test fails until it is added.
 5. Say what to ask for in the AI ASSISTANTS section of the in-app docs, in
    words a user would use.
-=======
-4. Say what it does in the AI ASSISTANTS section of the in-app docs, in words
-   a user would ask for it in.
->>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd

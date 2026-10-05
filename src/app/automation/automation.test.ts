@@ -1,11 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useEditorStore } from '@store/index';
 
-<<<<<<< HEAD
 import { API_ENTRIES } from '@domain/scripting/reference';
-=======
->>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd
 import { decodeScenePayload, scenePayloadIn } from '@domain/services/sceneLink';
 
 import { createAutomationApi, installAutomation, scriptingReference } from './automation';
@@ -47,9 +44,17 @@ describe('the automation API', () => {
     expect(report.scene.totals).toEqual({ objects: 1, vertices: 8, faces: 6 });
   });
 
-  it('hands back the string a script returns, which is how a script reads values out', async () => {
-    const report = await api.run(`scene.add('cube'); return String(scene.objects.length);`);
-    expect(report.message).toBe('1');
+  it('hands back what a script returns and logs, which is how a script reads values out', async () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const report = await api.run(
+        `const box = scene.add('cube');\nconsole.log('faces', box.stats.faces);\nreturn box.bounds.size;`,
+      );
+      expect(report.message).toBe('{"x":1,"y":1,"z":1}');
+      expect(report.logs).toEqual(['faces 6']);
+    } finally {
+      log.mockRestore();
+    }
   });
 
   it('reports a failing line and leaves the scene as it was', async () => {
@@ -169,18 +174,12 @@ describe('the scripting reference', () => {
 
   it('covers the whole API and the shipped examples', () => {
     expect(reference).toMatch(/^# 3DOO scripting reference/);
-<<<<<<< HEAD
     for (const entry of API_ENTRIES) expect(reference).toContain(`\`${entry.signature}\``);
-=======
-    expect(reference).toContain('scene.add(');
-    expect(reference).toContain('mesh.extrude');
->>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd
     expect(reference).toContain("'subsurf'");
     expect(reference).toContain('## Examples');
     expect(reference).toContain('```js');
   });
 
-<<<<<<< HEAD
   it('says what a script can do and how it works before the tables', () => {
     expect(reference.indexOf('## What a script can do')).toBeLessThan(reference.indexOf('## API'));
     expect(reference).toContain('## How a script works');
@@ -197,10 +196,5 @@ describe('the scripting reference', () => {
     expect(reference).not.toContain('Ctrl+Z');
     expect(reference).not.toContain('The <> button');
     expect(reference).not.toContain('MCP button');
-=======
-  it('leaves out the parts about the editor window', () => {
-    expect(reference).not.toContain('Ctrl+Enter');
-    expect(reference).not.toContain('The <> button');
->>>>>>> debda340d193740e0ee0600c9b2928ca2b0425cd
   });
 });
