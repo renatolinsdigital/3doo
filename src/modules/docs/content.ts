@@ -1187,7 +1187,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'A link',
-            'A link that opens this editor on the model, ready to keep working on. The whole model travels inside the link, so nothing is uploaded and the link works for anyone you send it to.',
+            'The model, opened in this editor in your browser, ready to keep working on. It also comes as a small .html file that opens it again: the whole model travels inside, so nothing is uploaded and the file works for anyone you send it to.',
           ],
         ],
       },
@@ -1233,8 +1233,8 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Changes the model it already built, rather than starting again.',
           ],
           [
-            'Give me a link to open it in 3DOO',
-            'Replies with a link. Open it and the model is in the editor.',
+            'Open it in 3DOO',
+            'Opens the model in this editor in your browser, and says where the .html file that opens it again is.',
           ],
           [
             'Export it as OBJ for Unreal',

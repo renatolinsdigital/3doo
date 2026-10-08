@@ -55,9 +55,9 @@ export const MCP_TOOLS: readonly McpToolGuide[] = [
   },
   {
     name: 'share_link',
-    args: ['app_url'],
-    does: 'Makes a link that opens this editor on the model. The whole scene travels inside the link, so nothing is uploaded.',
-    returns: 'The link.',
+    args: ['app_url', 'name', 'open'],
+    does: 'Opens the model in this editor, in your browser when open is on. The whole scene travels inside a link, so nothing is uploaded, and the link is saved as an .html file that opens it again, since it is far too long to paste into a chat.',
+    returns: 'The path of the .html file, and the link itself.',
   },
   {
     name: 'open_file',

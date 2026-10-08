@@ -117,10 +117,12 @@ visitor's browser gets, and the scene lives only in the headless tab.
    returns their paths. Pictures go to Claude as image content, which the model
    can look at. Calls run one at a time, in order, because there is one scene.
 8. **A link opens in your own browser.** `share_link` packs the scene into the
-   hash of a link to the hosted editor. When you open it, your browser asks
-   Vercel for `/modeling`, `vercel.json` answers with `index.html`, and the app
-   reads the scene out of the hash. A browser never sends the hash to a server,
-   so the scene does not reach Vercel even then.
+   hash of a link to the hosted editor, saves that link as an `.html` file in
+   the output folder, and with `open` opens the file in your default browser.
+   The page sends the browser on to the link: it asks Vercel for `/modeling`,
+   `vercel.json` answers with `index.html`, and the app reads the scene out of
+   the hash. A browser never sends the hash to a server, so the scene does not
+   reach Vercel even then.
 9. **The end.** When the session ends, Claude closes the server's stdin, and
    the server closes the browser. The scene goes with the tab, so anything that
    was not exported or linked is gone.
@@ -276,7 +278,7 @@ paragraph.
 | `run_script` | `script` (required), `reset` | What the run did, console output, the scene summary |
 | `render_views` | `views`, `width`, `height`, `shading`, `projection`, `grid`, `save`, `name` | One PNG image per view |
 | `export_model` | `format` (required), `name`, `preset`, `triangulate`, `directory`, `embed` | The path of each file written, a resource link to each, and the files themselves with `embed` |
-| `share_link` | `app_url` | A link that opens the hosted editor on the scene |
+| `share_link` | `app_url`, `name`, `open` | The path of an `.html` file that opens the hosted editor on the scene, a resource link to it, and the link itself |
 | `open_file` | `path` (required) | The scene summary after opening |
 | `get_scene` | none | The scene summary |
 
@@ -424,16 +426,44 @@ take them.
 ### `share_link`
 
 ```json
-{ "name": "share_link", "arguments": {} }
+{ "name": "share_link", "arguments": { "name": "dining_set", "open": true } }
 ```
 
 ```json
-{ "content": [{ "type": "text", "text": "https://3doo.example.com/modeling#scene=7V1NbxxJcr3rVzR4VjcqPyqzSrc1MDAG..." }] }
+{ "content": [
+  { "type": "text", "text": "Saved /home/me/3doo-output/dining_set.html. It opens the model in 3DOO at https://3doo.example.com, in any browser: double-click it, or send it to someone.\nOpened it in the user's browser.\n\nGive the user the path of the file. The link inside it is 3,329 characters: too long to copy into a reply without a mistake, and a link with one character wrong does not open.\nhttps://3doo.example.com/modeling#scene=7d1Pb9pIGMfxe16FxTkgYwOG3LpVtap2V6nUnnaVA02cli0JWSDZP1Xe..." },
+  { "type": "resource_link", "uri": "file:///home/me/3doo-output/dining_set.html", "name": "dining_set.html", "mimeType": "text/html", "size": 6808 }
+] }
 ```
 
-`app_url` is optional. It names the address the link should open in, and
-overrides `THREEDOO_APP_URL` for that call. See [scene links](#scene-links) for
-what is in the link.
+| Argument | Means | Default |
+| --- | --- | --- |
+| `app_url` | The address the link opens in, overriding `THREEDOO_APP_URL` for this call | `THREEDOO_APP_URL` |
+| `name` | The file name of the `.html`, without extension | the project name |
+| `open` | Open the file in the user's default browser now | `false` |
+
+Why a file, and not only the link: a link carries the whole scene, so even a
+table with four chairs is over 3,000 characters of base64. A tool's result
+reaches the user through the model, which has to retype the link into its
+reply, and it gets some of those characters wrong or cuts the link short,
+which the editor then refuses as a link that was cut short. A file path is short enough
+to pass on intact, so the result asks the model for the path. The link is
+still at the end of the result for a client that shows tool results to the
+user.
+
+- The file is a few lines of HTML: a `<script>` that calls `location.replace`
+  with the link, and an `<a>` to the same link for a browser that runs no
+  scripts. `launcherPage` in `mcp/tools.ts` writes it, escaping both.
+- `open` runs the system's own opener on the file's URL: `rundll32
+  url.dll,FileProtocolHandler` on Windows, `open` on macOS, `xdg-open`
+  elsewhere. The server opens the file rather than the link because a link on a
+  command line is cut far shorter than the two million characters a browser
+  takes. A machine with no opener, or no desktop, gets a result that says the
+  browser could not be opened and still names the file.
+- The file replaces one of the same name, as exports do, and is sent as a
+  resource link to clients on protocol `2025-06-18` or later.
+
+See [scene links](#scene-links) for what is in the link.
 
 ### `open_file`
 
@@ -595,9 +625,13 @@ payload = base64url( deflate-raw( the .3doo text ) )
 - **The hash never reaches the server.** A static host serving `dist/` with
   its SPA fallback serves the link, and the scene goes nowhere but the tab
   that opens it.
-- **Compression keeps links short enough to paste.** Mesh JSON is repetitive:
-  a table of six objects (a top, four legs and a torus) is 156 KB as a
-  `.3doo` and a link of about 10,000 characters.
+- **Compression keeps links short enough for a browser, not for a chat.**
+  Mesh JSON is repetitive: a table of six objects (a top, four legs and a
+  torus) is 156 KB as a `.3doo` and a link of about 10,000 characters, and a
+  table with four chairs, 37 boxes, is 114 KB and a link of about 3,300. Any
+  address bar takes that, but a model cannot retype it without mistakes,
+  which is why `share_link` hands it over as a file
+  ([above](#share_link)).
 - **There is a ceiling.** Chromium refuses to navigate to a URL of more than
   about two million characters, so `shareLink` refuses past
   `MAX_SCENE_LINK_LENGTH` and says to export a `.3doo` instead.

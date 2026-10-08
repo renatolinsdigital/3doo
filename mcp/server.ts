@@ -24,7 +24,7 @@ Workflow:
 1. scripting_reference, once. The default is a short quickstart with every name the API has; it is enough to write scripts. Do not fetch topic "api", "examples" or "all" up front: use them only to look up one name or copy one finished model.
 2. run_script builds the model. The scene persists between calls, so build in several short scripts. reset: true starts over. A failed script changes nothing and names the line.
 3. render_views once to check the result. Send it back to the user as it is: do not keep refining a model that already matches the request.
-4. Hand over only what was asked: export_model (.3doo, .obj or .fbx files), share_link (a link that opens the editor on the model), or the pictures from render_views. For several sides, render the views named: front, back, right, left, top, bottom, or perspective.
+4. Hand over only what was asked: export_model (.3doo, .obj or .fbx files), share_link (opens the model in the editor, in the user's browser with open: true; pass on the path of the .html file it saves, never the link, which is too long to copy into a reply), or the pictures from render_views. For several sides, render the views named: front, back, right, left, top, bottom, or perspective.
 
 Units are metres and degrees, +Y is up, and the front view looks from +Z.`;
 

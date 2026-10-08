@@ -11,7 +11,7 @@ import { SNAPSHOT_VIEWS } from '../src/viewport/snapshot';
 import { type Config, engineSource, linkTarget, readConfig } from './config';
 import type { Engine } from './engine';
 import { SUPPORTED_PROTOCOLS, createHandlers } from './server';
-import { type ToolResult, VIEWS, callTool, sceneText, toolList } from './tools';
+import { type ToolResult, VIEWS, callTool, launcherPage, sceneText, toolList } from './tools';
 
 const EMPTY: SceneSummary = {
   name: 'untitled',
@@ -207,8 +207,8 @@ describe('the tools', () => {
       config: { ...config, appUrl: 'https://3doo.example.com' },
       protocolVersion: '',
     };
-    const linked = await callTool('share_link', {}, context);
-    expect(textOf(linked)).toBe('https://3doo.example.com/modeling#scene=abc');
+    const linked = textOf(await callTool('share_link', {}, context));
+    expect(linked).toContain('https://3doo.example.com/modeling#scene=abc');
 
     await callTool('share_link', { app_url: 'https://other.example.com' }, context);
     expect(calls.at(-1)).toEqual({ method: 'shareLink', argument: 'https://other.example.com' });
@@ -216,6 +216,57 @@ describe('the tools', () => {
     const unset = await callTool('share_link', {}, { engine, config, protocolVersion: '' });
     expect(unset.isError).toBe(true);
     expect(textOf(unset)).toMatch(/THREEDOO_APP_URL/);
+  });
+
+  it('saves the link as a page that opens it, for the model to pass on in place of the link', async () => {
+    const { engine } = fakeEngine();
+    const opened: string[] = [];
+    const context = {
+      engine,
+      config: { ...config, appUrl: 'https://3doo.example.com' },
+      protocolVersion: '2025-06-18',
+      openInBrowser: async (path: string) => void opened.push(path),
+    };
+
+    const result = await callTool('share_link', { name: 'dining set' }, context);
+    const path = join(folder, 'dining_set.html');
+    expect(textOf(result)).toContain(`Saved ${path}`);
+    expect(textOf(result)).toContain('too long to copy into a reply');
+    expect(result.content).toContainEqual(
+      expect.objectContaining({ type: 'resource_link', name: 'dining_set.html' }),
+    );
+    expect(await readFile(path, 'utf8')).toContain(
+      'location.replace("https://3doo.example.com/modeling#scene=abc")',
+    );
+    expect(opened).toEqual([]);
+
+    const shown = await callTool('share_link', { open: true }, context);
+    expect(opened).toEqual([join(folder, 'untitled.html')]);
+    expect(textOf(shown)).toContain("Opened it in the user's browser.");
+  });
+
+  it('still hands over the page when no browser will open', async () => {
+    const { engine } = fakeEngine();
+    const result = await callTool(
+      'share_link',
+      { open: true },
+      {
+        engine,
+        config: { ...config, appUrl: 'https://3doo.example.com' },
+        protocolVersion: '',
+        openInBrowser: () => Promise.reject(new Error('spawn xdg-open ENOENT')),
+      },
+    );
+    expect(result.isError).toBeUndefined();
+    expect(textOf(result)).toContain('Could not open a browser on this computer');
+    expect(textOf(result)).toContain(join(folder, 'untitled.html'));
+  });
+
+  it('writes a page that cannot be broken out of by the address it links to', () => {
+    const page = launcherPage('a&b', 'https://x.example.com/"</script><b>#scene=abc');
+    expect(page).toContain('<title>a&amp;b in 3DOO</title>');
+    expect(page).not.toContain('</script><b>');
+    expect(page).toContain('href="https://x.example.com/&quot;&lt;/script>&lt;b>#scene=abc"');
   });
 
   it('opens a file from the output folder by its relative path', async () => {

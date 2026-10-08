@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -29,6 +30,8 @@ export interface ToolContext {
   config: Config;
   /** The protocol version the client and server settled on. */
   protocolVersion: string;
+  /** Opens a file in the user's own browser. Tests put a stand-in here. */
+  openInBrowser?: (path: string) => Promise<void>;
 }
 
 type Args = Record<string, unknown>;
@@ -332,9 +335,12 @@ const exportModel: Tool = {
 
 const shareLink: Tool = {
   name: 'share_link',
-  title: 'Link to the model in 3DOO',
-  description:
-    'Returns a link that opens the hosted 3DOO editor on the current scene, ready to edit, save and export. The whole scene travels inside the link (after the #), so nothing is uploaded and the link works for anyone. Give the user the full link.',
+  title: 'Open the model in 3DOO',
+  description: [
+    'Makes a link that opens the hosted 3DOO editor on the current scene, ready to edit, save and export. The whole scene travels inside the link (after the #), so nothing is uploaded and the link works for anyone.',
+    'The link runs to thousands of characters, too many to copy into a reply without a mistake, so it is also saved as an .html file in the output folder that opens it in any browser. Give the user the path of that file, never the link.',
+    'Pass open: true when the user wants to see the model in 3DOO: the file opens in their browser straight away.',
+  ].join(' '),
   inputSchema: {
     type: 'object',
     properties: {
@@ -343,22 +349,63 @@ const shareLink: Tool = {
         description:
           "Where 3DOO is hosted, such as https://3doo.example.com. Defaults to the server's THREEDOO_APP_URL.",
       },
+      name: {
+        type: 'string',
+        description: 'File name of the .html, without extension. Defaults to the project name.',
+      },
+      open: {
+        type: 'boolean',
+        default: false,
+        description: "Open the model in the user's browser now.",
+      },
     },
   },
-  annotations: { readOnlyHint: true, openWorldHint: false },
+  annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   async run(args, context) {
     const target = linkTarget(context.config, optional<string>(args, 'app_url', 'string') ?? null);
+    const open = optional<boolean>(args, 'open', 'boolean');
+    const name = optional<string>(args, 'name', 'string') ?? (await context.engine.scene()).name;
     const { url } = await context.engine.shareLink(target);
-    const local = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(target);
-    return {
-      content: [
-        text(
-          local
-            ? `${url}\n\nThis link opens only on the user's own computer, and only while 3DOO is being served at ${target} (npm run dev or npm run preview). Say so when you hand it over.`
-            : url,
+
+    const page = launcherPage(name, url);
+    await mkdir(context.config.outputDir, { recursive: true });
+    const path = join(context.config.outputDir, `${safeStem(name)}.html`);
+    await writeFile(path, page);
+
+    const lines = [
+      `Saved ${path}. It opens the model in 3DOO at ${target}, in any browser: double-click it, or send it to someone.`,
+    ];
+    if (open) {
+      lines.push(
+        await (context.openInBrowser ?? openWithSystem)(path).then(
+          () => "Opened it in the user's browser.",
+          (error: Error) =>
+            `Could not open a browser on this computer (${error.message}), so the user has to open the file.`,
         ),
-      ],
-    };
+      );
+    }
+    if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(target)) {
+      lines.push(
+        `It opens only on the user's own computer, and only while 3DOO is being served at ${target} (npm run dev or npm run preview). Say so when you hand it over.`,
+      );
+    }
+    lines.push(
+      '',
+      `Give the user the path of the file. The link inside it is ${url.length.toLocaleString('en-US')} characters: too long to copy into a reply without a mistake, and a link with one character wrong does not open.`,
+      url,
+    );
+
+    const content: Content[] = [text(lines.join('\n'))];
+    if (knowsResourceLinks(context.protocolVersion)) {
+      content.push({
+        type: 'resource_link',
+        uri: pathToFileURL(path).href,
+        name: basename(path),
+        mimeType: 'text/html',
+        size: Buffer.byteLength(page),
+      });
+    }
+    return { content };
   },
 };
 
@@ -428,6 +475,54 @@ async function writeFiles(
       return path;
     }),
   );
+}
+
+const escapeHtml = (value: string) =>
+  value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+
+/**
+ * A page that sends the browser straight on to `url`.
+ *
+ * A scene link is thousands of characters, and a model that retypes it into a
+ * chat reply gets some of them wrong. A file path is short enough to pass on
+ * intact. Opening the file rather than the link also keeps the two million
+ * characters a browser allows a link, where a command line would cut it far
+ * shorter.
+ */
+export function launcherPage(name: string, url: string): string {
+  return [
+    '<!doctype html>',
+    '<meta charset="utf-8">',
+    `<title>${escapeHtml(name)} in 3DOO</title>`,
+    `<script>location.replace(${JSON.stringify(url).replace(/</g, '\\u003c')})</script>`,
+    `<a href="${escapeHtml(url)}">Open ${escapeHtml(name)} in 3DOO</a>`,
+    '',
+  ].join('\n');
+}
+
+const OPENERS: Partial<Record<NodeJS.Platform, string[]>> = {
+  win32: ['rundll32.exe', 'url.dll,FileProtocolHandler'],
+  darwin: ['open'],
+};
+
+/**
+ * Opens `path` the way double-clicking it would. By its file URL, which has
+ * no spaces for Windows to split the argument on.
+ */
+function openWithSystem(path: string): Promise<void> {
+  const [command, ...args] = OPENERS[process.platform] ?? ['xdg-open'];
+  return new Promise((resolve, reject) => {
+    // stdio ignored: the server's own stdout is the protocol channel.
+    const child = spawn(command, [...args, pathToFileURL(path).href], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    child.once('error', reject);
+    child.once('spawn', () => {
+      child.unref();
+      resolve();
+    });
+  });
 }
 
 // -------------------------------------------------------------- dispatch
