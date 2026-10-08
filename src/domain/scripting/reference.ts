@@ -650,6 +650,18 @@ export const MODIFIER_FIELDS: Record<ModifierType, readonly FieldSpec[]> = {
     },
     origin,
   ],
+  lattice: [
+    {
+      name: 'interpolation',
+      value: oneOf('linear', 'smooth'),
+      description: 'Straight from point to point of the cage, or a smooth curve through them.',
+    },
+    {
+      name: 'strength',
+      value: number(0, 1),
+      description: 'How much of the cage pull reaches the mesh, 0 to 1.',
+    },
+  ],
   weld: [{ name: 'threshold', value: number(0), description: 'Vertices closer than this fuse.' }],
   subdivide: [
     { name: 'levels', value: integer(0, 3), description: 'Times to split every face, 0 to 3.' },

@@ -794,3 +794,61 @@ describe('ObjectView sharp edges', () => {
     expect(segmentCount(sharpOf(view, object.id))).toBe(12);
   });
 });
+
+describe('ObjectView cage', () => {
+  function cageScene(): { cage: SceneObject; settings: ViewportSettings } {
+    const { settings } = scene();
+    useEditorStore.getState().addModifier('lattice');
+    return { cage: useEditorStore.getState().objects[1], settings };
+  }
+
+  function line(view: ObjectView, id: string, part: 'wire' | 'outline'): LineSegments2 {
+    return view.group.getObjectByName(`${id}:${part}`) as LineSegments2;
+  }
+
+  function segmentCount(segments: LineSegments2): number {
+    return segments.geometry.getAttribute('instanceStart')?.count ?? 0;
+  }
+
+  const base = {
+    mode: 'object' as const,
+    selectMode: 'vertex' as const,
+    isActive: false,
+    isSelected: false,
+    eye: vec3(0, 0, 10),
+    selectionLine: SELECTION_LINE,
+    meshVersion: 1,
+  };
+
+  it('draws its wire under solid shading, where a mesh draws none', () => {
+    const { cage, settings } = cageScene();
+    const view = new ObjectView(cage.id);
+
+    view.update(cage, evaluatedMesh(cage), {
+      ...base,
+      settings: { ...settings, shading: 'solid' },
+    });
+
+    const wire = line(view, cage.id, 'wire');
+    expect(wire.visible).toBe(true);
+    // Every edge of the 3 by 3 by 3 grid, the far side included.
+    expect(segmentCount(wire)).toBe(54);
+  });
+
+  it('marks itself selected along the whole of its wire, at the width asked for', () => {
+    const { cage, settings } = cageScene();
+    const view = new ObjectView(cage.id);
+
+    view.update(cage, evaluatedMesh(cage), {
+      ...base,
+      isActive: true,
+      isSelected: true,
+      settings,
+    });
+
+    const outline = line(view, cage.id, 'outline');
+    expect(outline.visible).toBe(true);
+    expect(segmentCount(outline)).toBe(54);
+    expect((outline.material as LineMaterial).linewidth).toBe(SELECTION_LINE.width);
+  });
+});

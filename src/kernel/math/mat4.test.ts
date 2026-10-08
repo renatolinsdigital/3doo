@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   composeMatrix,
   degToRad,
+  inverseMatrix,
   inverseTransformDirection,
   inverseTransformOffset,
   inverseTransformPoint,
@@ -16,6 +17,19 @@ const transform = {
   rotation: vec3(degToRad(20), degToRad(-55), degToRad(140)),
   scale: vec3(2, 0.5, 3),
 };
+
+describe('inverseMatrix', () => {
+  it('undoes composeMatrix', () => {
+    const local = vec3(1.5, -4, 0.25);
+    const world = transformPoint(composeMatrix(transform), local);
+
+    const back = transformPoint(inverseMatrix(transform), world);
+
+    expect(back.x).toBeCloseTo(local.x, 6);
+    expect(back.y).toBeCloseTo(local.y, 6);
+    expect(back.z).toBeCloseTo(local.z, 6);
+  });
+});
 
 describe('inverseTransformPoint', () => {
   it('undoes composeMatrix', () => {

@@ -226,14 +226,14 @@ export async function renderSnapshots(
   const box = new THREE.Box3();
   try {
     for (const object of state.objects) {
-      if (!object.visible) continue;
+      if (!object.visible || object.lattice) continue;
       const asset = object.image ? state.assets[object.image.assetId] : undefined;
       const texture = asset ? imageTexture(asset) : null;
       if (texture) textures.push(texture);
 
       const view = new ObjectView(object.id);
       view.setResolution(width, height, 1);
-      view.update(object, evaluatedMesh(object, state.cursor, state.meshVersion), {
+      view.update(object, evaluatedMesh(object, state.cursor, state.meshVersion, state.objects), {
         texture,
         mode: 'object',
         selectMode: state.selectMode,

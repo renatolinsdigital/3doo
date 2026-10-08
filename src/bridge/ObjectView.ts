@@ -247,6 +247,7 @@ export class ObjectView {
     this.group.name = objectId;
     this.solid.name = `${objectId}:solid`;
     this.solid.userData.objectId = objectId;
+    this.wire.name = `${objectId}:wire`;
     this.previewWire.name = `${objectId}:preview`;
     this.cage.name = `${objectId}:cage`;
     this.cage.userData.objectId = objectId;
@@ -392,7 +393,7 @@ export class ObjectView {
     this.updateCage(cage.solid, state);
     this.updateWireframe(cage.edges, state, cageMesh, object);
     this.updatePreviewWire(buffers.edges, object, state);
-    this.updateOutline(object, displayMesh, state);
+    this.updateOutline(object, displayMesh, buffers.edges, state);
     this.updatePoints(cage.points, state);
     this.updateRecentPoints(cage.points, state);
     this.updateNormals(displayMesh, state);
@@ -491,7 +492,9 @@ export class ObjectView {
     object: SceneObject,
   ): void {
     const shading: ShadingMode = state.settings.shading;
+    // A cage is nothing but its wire, so it is drawn whatever the shading says.
     const drawsWire =
+      object.lattice !== null ||
       shading === 'wireframe' ||
       shading === 'solidWire' ||
       shading === 'xray' ||
@@ -499,8 +502,10 @@ export class ObjectView {
 
     // Only an opaque surface hides a far side, and only then is dropping those
     // edges the same picture with less in it. X-ray and wireframe keep every
-    // edge, since seeing through the model is what they are for.
-    const culls = drawsWire && shading !== 'wireframe' && shading !== 'xray';
+    // edge, since seeing through the model is what they are for, and a cage
+    // has no surface of its own to hide anything behind.
+    const culls =
+      drawsWire && object.lattice === null && shading !== 'wireframe' && shading !== 'xray';
     this.culled = culls
       ? {
           cage: this.cullTableFor('cage', cageMesh, state.meshVersion),
@@ -584,9 +589,17 @@ export class ObjectView {
    * active one is redder than the rest of the selection, so a multi-object
    * selection still says which one the operations will run on.
    */
-  private updateOutline(object: SceneObject, mesh: BMesh, state: ObjectViewState): void {
+  private updateOutline(
+    object: SceneObject,
+    mesh: BMesh,
+    edges: EdgeBuffers,
+    state: ObjectViewState,
+  ): void {
     this.outline.visible = state.mode === 'object' && state.isSelected;
-    this.outlined = this.outline.visible ? { mesh, object } : null;
+    // A cage has no surface to trace round, so the whole of its wire is what
+    // says it is held, and it does not change as the camera moves.
+    const cage = object.lattice !== null;
+    this.outlined = this.outline.visible && !cage ? { mesh, object } : null;
 
     // The fill stamps the stencil that keeps the line off the object's own
     // pixels, and only while there is a line to keep off: a stencil test costs
@@ -601,7 +614,16 @@ export class ObjectView {
     if (!state.isActive) material.color.multiplyScalar(INACTIVE_OUTLINE_TINT);
     // Doubled, because the stencil eats the half of it lying over the object:
     // what is left is the outer half, and the preference is about what shows.
-    material.linewidth = state.selectionLine.width * 2;
+    // A cage's wire has no fill underneath to lose half of itself to.
+    material.linewidth = state.selectionLine.width * (cage ? 1 : 2);
+
+    if (cage) {
+      const geometry = new LineSegmentsGeometry();
+      geometry.setPositions(edges.positions);
+      this.replaceGeometry(this.outline, geometry);
+      this.outline.visible = edges.positions.length > 0;
+      return;
+    }
     this.traceOutline(state.eye);
   }
 

@@ -1,13 +1,25 @@
 import { describe, expect, it } from 'vitest';
 
+import { type Vec3, composeMatrix, createTransform, vec3 } from '../math';
 import { BMesh, cloneMesh } from '../mesh';
 import { subdivideFaces } from '../ops/subdivide';
 import { createBox, createGrid, createPlane, createUVSphere } from '../primitives';
 
-import { applyModifier, evaluateModifiers, createModifier } from './index';
+import {
+  type LatticeCage,
+  type LatticeResolution,
+  applyModifier,
+  createLatticeMesh,
+  createModifier,
+  evaluateModifiers,
+  latticePoints,
+  latticeRestPoints,
+  resampleLattice,
+} from './index';
 import type {
   ArrayModifier,
   BendModifier,
+  LatticeModifier,
   MirrorModifier,
   RemeshModifier,
   SolidifyModifier,
@@ -708,6 +720,173 @@ describe('twist modifier', () => {
     const result = evaluateModifiers(plane, [twist({ y: 90 })]);
 
     expect(coords(result)).toEqual(coords(plane));
+  });
+});
+
+describe('lattice modifier', () => {
+  function lattice(overrides: Partial<LatticeModifier> = {}): LatticeModifier {
+    return { ...(createModifier('lattice') as LatticeModifier), objectId: 'cage', ...overrides };
+  }
+
+  /**
+   * A cage fitted exactly round the 2 m box at the origin: its unit cube is
+   * the box at half the size, so the box's corners sit on the cage's corners.
+   */
+  function cageRoundBox(resolution: LatticeResolution, move: (point: Vec3) => Vec3 = (p) => p) {
+    const cage: LatticeCage = {
+      resolution,
+      points: latticeRestPoints(resolution).map(move),
+      toCage: composeMatrix({ ...createTransform(), scale: vec3(0.5, 0.5, 0.5) }),
+      fromCage: composeMatrix({ ...createTransform(), scale: vec3(2, 2, 2) }),
+    };
+    return { lattices: new Map([['cage', cage]]) };
+  }
+
+  const isCorner = (point: Vec3) => point.x > 0.49 && point.y > 0.49 && point.z > 0.49;
+  const pullCorner = (point: Vec3) => (isCorner(point) ? vec3(1, 1, 1) : point);
+
+  function vertAt(mesh: BMesh, x: number, y: number, z: number) {
+    return [...mesh.verts.values()].find(
+      (vert) =>
+        Math.abs(vert.co.x - x) < 1e-9 &&
+        Math.abs(vert.co.y - y) < 1e-9 &&
+        Math.abs(vert.co.z - z) < 1e-9,
+    );
+  }
+
+  function expectNear(actual: Vec3, [x, y, z]: [number, number, number]) {
+    expect(actual.x).toBeCloseTo(x, 9);
+    expect(actual.y).toBeCloseTo(y, 9);
+    expect(actual.z).toBeCloseTo(z, 9);
+  }
+
+  it('builds a cage as a grid of points joined along each axis', () => {
+    const mesh = createLatticeMesh({ x: 3, y: 3, z: 3 });
+
+    expect(mesh.verts.size).toBe(27);
+    expect(mesh.edges.size).toBe(54);
+    expect(mesh.faces.size).toBe(0);
+    expect(latticePoints(mesh, { x: 3, y: 3, z: 3 })?.[0]).toEqual(vec3(-0.5, -0.5, -0.5));
+    expect(latticePoints(mesh, { x: 2, y: 3, z: 3 })).toBeNull();
+  });
+
+  it('moves nothing while the cage is at rest, whatever its interpolation', () => {
+    for (const interpolation of ['smooth', 'linear'] as const) {
+      const box = createBox(2);
+      const before = [...box.verts.values()].map((vert) => ({ ...vert.co }));
+
+      const result = evaluateModifiers(
+        box,
+        [lattice({ interpolation })],
+        cageRoundBox({ x: 3, y: 3, z: 3 }),
+      );
+
+      expect([...result.verts.values()].map((vert) => vert.co)).toEqual(before);
+    }
+  });
+
+  it('carries the corner of the mesh with the corner of the cage, exactly', () => {
+    for (const interpolation of ['smooth', 'linear'] as const) {
+      const result = evaluateModifiers(
+        createBox(2),
+        [lattice({ interpolation })],
+        cageRoundBox({ x: 3, y: 3, z: 3 }, pullCorner),
+      );
+
+      // The cage corner went from 0.5 to 1 in its own space, which is from 1
+      // to 2 in the box's, and the far corner stays where it was.
+      expect(vertAt(result, 2, 2, 2)).toBeDefined();
+      expect(vertAt(result, -1, -1, -1)).toBeDefined();
+      expect(result.validate()).toEqual([]);
+    }
+  });
+
+  it('pulls the parts nearest a moved point the furthest', () => {
+    const grid = createBox(2);
+    subdivideFaces(grid, [...grid.faces.values()], { cuts: 3, smooth: 0 });
+    const near = [...grid.verts.values()].find(
+      (vert) => vert.co.x === 0.5 && vert.co.y === 1 && vert.co.z === 0.5,
+    );
+    const far = [...grid.verts.values()].find(
+      (vert) => vert.co.x === -0.5 && vert.co.y === 1 && vert.co.z === -0.5,
+    );
+    expect(near && far).toBeTruthy();
+    const [nearId, farId] = [near?.id ?? -1, far?.id ?? -1];
+
+    const result = evaluateModifiers(
+      grid,
+      [lattice()],
+      cageRoundBox({ x: 3, y: 3, z: 3 }, (point) =>
+        isCorner(point) ? { ...point, y: point.y + 0.5 } : point,
+      ),
+    );
+
+    const rise = (id: number) => (result.verts.get(id)?.co.y ?? 0) - 1;
+    expect(rise(nearId)).toBeGreaterThan(rise(farId));
+    expect(rise(farId)).toBeGreaterThanOrEqual(0);
+  });
+
+  it('lets go of the mesh past the cage over one cell', () => {
+    const plane = createPlane(2);
+    for (const vert of plane.verts.values()) vert.co = { ...vert.co, x: vert.co.x + 6 };
+
+    const result = evaluateModifiers(
+      plane,
+      [lattice({ interpolation: 'linear' })],
+      cageRoundBox({ x: 2, y: 2, z: 2 }, pullCorner),
+    );
+
+    expect(vertAt(result, 5, 0, -1)).toBeDefined();
+    expect(vertAt(result, 7, 0, 1)).toBeDefined();
+  });
+
+  it('applies the share of the pull STRENGTH asks for', () => {
+    const result = evaluateModifiers(
+      createBox(2),
+      [lattice({ interpolation: 'linear', strength: 0.5 })],
+      cageRoundBox({ x: 2, y: 2, z: 2 }, pullCorner),
+    );
+
+    expect(vertAt(result, 1.5, 1.5, 1.5)).toBeDefined();
+  });
+
+  it('passes the mesh through when the cage it names is missing', () => {
+    const box = createBox(2);
+
+    const result = evaluateModifiers(
+      box,
+      [lattice({ objectId: 'gone' })],
+      cageRoundBox({ x: 2, y: 2, z: 2 }, pullCorner),
+    );
+
+    expect(vertAt(result, 1, 1, 1)).toBeDefined();
+  });
+
+  it('keeps the shape a cage gives when its grid is rebuilt finer', () => {
+    const coarse = { x: 2, y: 2, z: 2 };
+    const sheared = latticeRestPoints(coarse).map((point) =>
+      point.y > 0 ? { ...point, x: point.x + 1 } : point,
+    );
+
+    const fine = resampleLattice(coarse, sheared, { x: 3, y: 3, z: 3 });
+
+    // The middle of the new grid stands halfway up the shear.
+    expectNear(fine[13], [0.5, 0, 0]);
+    expectNear(fine[0], [-0.5, -0.5, -0.5]);
+    expectNear(fine[26], [1.5, 0.5, 0.5]);
+  });
+
+  it('bakes into the base mesh when applied', () => {
+    const box = createBox(2);
+
+    const result = applyModifier(
+      cloneMesh(box),
+      lattice({ interpolation: 'linear' }),
+      cageRoundBox({ x: 2, y: 2, z: 2 }, pullCorner),
+    );
+
+    expect(vertAt(result, 2, 2, 2)).toBeDefined();
+    expect(vertAt(box, 1, 1, 1)).toBeDefined();
   });
 });
 

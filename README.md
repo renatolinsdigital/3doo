@@ -33,8 +33,9 @@ New to the code? Start with [docs/get-started.md](docs/get-started.md).
 - **Modelling**: ten parametric primitives, vertex, edge and face selection,
   and the full set of mesh operations, from extrude and bevel to bridge and
   tris-to-quads.
-- **Modifiers**: mirror, array, solidify, bend, twist, weld, subdivision
-  surface and remesh, all non-destructive and reorderable.
+- **Modifiers**: mirror, array, solidify, bend, twist, lattice (a cage of
+  points to shape the mesh with, like Blender's), weld, subdivision surface
+  and remesh, all non-destructive and reorderable.
 - **Objects**: transform gizmo, booleans, merge and separate, an outliner with
   groups, a 3D cursor and proportional editing.
 - **Files**: `.3doo` projects, OBJ and FBX import, binary FBX 7.4 and OBJ

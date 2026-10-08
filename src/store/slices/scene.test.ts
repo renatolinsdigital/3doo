@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { createBox, createModifier, vec3 } from '@kernel/index';
-import type { ImportedObject, RemeshModifier } from '@kernel/index';
+import { type BMesh, type Vec3, createBox, createModifier, vec3 } from '@kernel/index';
+import type { ImportedObject, LatticeModifier, RemeshModifier } from '@kernel/index';
 
+import type { SceneObject } from '../types';
 import { useEditorStore } from '../useEditorStore';
 
 import { evaluatedMesh } from './scene';
@@ -921,5 +922,154 @@ describe('ids across page loads', () => {
     expect(objects.map((object) => object.name)).toEqual(['CONE', 'TORUS']);
     expect(objects[0].id).toBe(saved.objects[0].id);
     expect(objects[1].id).not.toBe(objects[0].id);
+  });
+});
+
+describe('lattice cages', () => {
+  /** A box with a LATTICE on it, and the cage that came with it. */
+  function latticeScene() {
+    boxScene();
+    useEditorStore.getState().addModifier('lattice');
+    const [object, cage] = useEditorStore.getState().objects;
+    return { object, cage, modifier: object.modifiers[0] as LatticeModifier };
+  }
+
+  /** What the box draws now, its stack run against the scene as it stands. */
+  function shape() {
+    const state = useEditorStore.getState();
+    return evaluatedMesh(state.objects[0], vec3(), state.meshVersion, state.objects);
+  }
+
+  const positions = (mesh: BMesh) => [...mesh.verts.values()].map((vert) => ({ ...vert.co }));
+
+  /** Drags the cage's top layer of points up, the way edit mode would. */
+  function pullTopUp(cage: SceneObject) {
+    for (const vert of cage.mesh.verts.values()) {
+      if (vert.co.y > 0.4) vert.co = { ...vert.co, y: vert.co.y + 0.5 };
+    }
+    useEditorStore.getState().touchMesh();
+  }
+
+  function expectSamePoints(actual: readonly Vec3[], expected: readonly Vec3[]) {
+    expect(actual).toHaveLength(expected.length);
+    actual.forEach((point, index) => {
+      expect(point.x).toBeCloseTo(expected[index].x, 9);
+      expect(point.y).toBeCloseTo(expected[index].y, 9);
+      expect(point.z).toBeCloseTo(expected[index].z, 9);
+    });
+  }
+
+  it('arrives with a cage fitted round the mesh, next to it in the outliner', () => {
+    const { object, cage, modifier } = latticeScene();
+
+    expect(cage.lattice).toEqual({ resolution: { x: 3, y: 3, z: 3 } });
+    expect(cage.name).toBe(`${object.name}.CAGE`);
+    expect(modifier.objectId).toBe(cage.id);
+
+    // Centred on the box and reaching past it on every side.
+    const box = object.mesh.boundingBox();
+    expect(cage.transform.position).toEqual(object.transform.position);
+    for (const axis of ['x', 'y', 'z'] as const) {
+      expect(cage.transform.scale[axis]).toBeGreaterThan(box.max[axis] - box.min[axis]);
+    }
+
+    // One step, so one undo takes both away.
+    useEditorStore.getState().undo();
+    const after = useEditorStore.getState().objects;
+    expect(after).toHaveLength(1);
+    expect(after[0].modifiers).toHaveLength(0);
+  });
+
+  it('leaves the mesh alone while the cage is at rest, wherever the cage stands', () => {
+    const { object, cage } = latticeScene();
+
+    useEditorStore.getState().setObjectTransform(cage.id, { position: vec3(0.3, 0.2, 0) });
+
+    expectSamePoints(positions(shape()), positions(object.mesh));
+  });
+
+  it('reshapes the mesh as the points of the cage move', () => {
+    const { object, cage, modifier } = latticeScene();
+    useEditorStore.getState().updateModifier(modifier.id, { interpolation: 'linear' });
+    const before = object.mesh.boundingBox();
+
+    pullTopUp(cage);
+
+    const after = shape().boundingBox();
+    expect(after.max.y).toBeGreaterThan(before.max.y + 0.1);
+    expect(after.min.y).toBeCloseTo(before.min.y, 9);
+    // The base mesh is the one edit mode works on, and it has not moved.
+    expect(object.mesh.boundingBox()).toEqual(before);
+  });
+
+  it('lets the points of a cage move and refuses anything that adds or removes one', () => {
+    const { cage } = latticeScene();
+    const store = useEditorStore.getState();
+    store.setActiveObject(cage.id);
+    cage.mesh.selectAll();
+
+    expect(store.exec('extrude', { offset: 1 })).toBeNull();
+    expect(store.exec('delete', { mode: 'verts' })).toBeNull();
+    expect(cage.mesh.verts.size).toBe(27);
+
+    expect(store.exec('translate', { offset: { x: 0, y: 0.1, z: 0 } })).not.toBeNull();
+    expect([...cage.mesh.verts.values()][0].co.y).toBeCloseTo(-0.4, 9);
+  });
+
+  it('keeps the shape it gives when its grid is rebuilt at another resolution', () => {
+    const { cage, modifier } = latticeScene();
+    useEditorStore.getState().updateModifier(modifier.id, { interpolation: 'linear' });
+    // A shear: a linear pull, which any grid holds exactly.
+    for (const vert of cage.mesh.verts.values()) {
+      vert.co = { ...vert.co, x: vert.co.x + vert.co.y };
+    }
+    useEditorStore.getState().touchMesh();
+    const before = positions(shape());
+
+    useEditorStore.getState().setLatticeResolution(cage.id, { x: 5, y: 4, z: 2 });
+
+    const rebuilt = useEditorStore.getState().objects[1];
+    expect(rebuilt.lattice?.resolution).toEqual({ x: 5, y: 4, z: 2 });
+    expect(rebuilt.mesh.verts.size).toBe(40);
+    expectSamePoints(positions(shape()), before);
+  });
+
+  it('lets the mesh go when the cage is reset, and says so when there is nothing to reset', () => {
+    const { object, cage } = latticeScene();
+    pullTopUp(cage);
+
+    useEditorStore.getState().resetLattice(cage.id);
+    expectSamePoints(positions(shape()), positions(object.mesh));
+
+    const steps = useEditorStore.getState().historyUndo.length;
+    useEditorStore.getState().resetLattice(cage.id);
+    expect(useEditorStore.getState().historyUndo).toHaveLength(steps);
+    expect(useEditorStore.getState().status).toBe(`${cage.name} is already at rest`);
+  });
+
+  it('comes back from a saved project still a cage, still shaping its mesh', () => {
+    const { cage } = latticeScene();
+    pullTopUp(cage);
+    const pulled = positions(shape());
+
+    const store = useEditorStore.getState();
+    store.loadProjectDocument(store.snapshotDocument());
+
+    expect(useEditorStore.getState().objects[1].lattice).toEqual({
+      resolution: { x: 3, y: 3, z: 3 },
+    });
+    expectSamePoints(positions(shape()), pulled);
+  });
+
+  it('keeps its own origin and scale, and takes no modifiers', () => {
+    const { cage } = latticeScene();
+    const store = useEditorStore.getState();
+    store.setActiveObject(cage.id);
+
+    store.applyTransformToSelected();
+    expect(useEditorStore.getState().objects[1].transform).toEqual(cage.transform);
+
+    store.addModifier('mirror');
+    expect(useEditorStore.getState().objects[1].modifiers).toHaveLength(0);
   });
 });

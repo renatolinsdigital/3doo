@@ -4,7 +4,11 @@ import {
   type BMesh,
   type BooleanOp,
   type ImportedObject,
+  type LatticeCage,
+  type LatticeModifier,
+  type LatticeResolution,
   type Modifier,
+  type ModifierContext,
   type OperatorResult,
   type PrimitiveKind,
   type PrimitiveParams,
@@ -13,6 +17,7 @@ import {
   type SceneObjectSnapshot,
   type Vec3,
   type Vert,
+  DEFAULT_LATTICE_RESOLUTION,
   DEFAULT_PRIMITIVE_PARAMS,
   History,
   METRE_PARAMS,
@@ -23,9 +28,11 @@ import {
   applyModifier,
   booleanMeshStaged,
   centroid,
+  clampLatticeResolution,
   clampObjectScale,
   cloneMesh,
   composeMatrix,
+  createLatticeMesh,
   createModifier,
   createImagePlane,
   createPrimitive,
@@ -37,10 +44,17 @@ import {
   flipNormals,
   imagePlaneSize,
   splitLooseParts,
+  inverseMatrix,
   inverseTransformOffset,
   inverseTransformPoint,
+  latticePoints,
+  latticeRestPoints,
+  lerp,
   medianPoint,
+  mulVec,
+  multiplyMatrices,
   normalizePrimitiveParams,
+  resampleLattice,
   serializeProject,
   sub,
   transformPoint,
@@ -445,6 +459,128 @@ export function soleMeshUsers(
   );
 }
 
+/** What edit mode says when asked to do anything to a cage but move its points. */
+export const CAGE_REFUSAL = 'A cage keeps its grid: move, turn or scale its points instead';
+
+/** What baking or moving an origin says when every target is a cage. */
+const CAGE_TRANSFORM_REFUSAL = 'A cage keeps its own origin and scale: they place its grid';
+
+/**
+ * The operators a cage's points may go through: the ones that move vertices or
+ * pick them, and nothing that adds, removes or joins one. A cage is read by the
+ * order its vertices were made in, so how many there are has to hold.
+ */
+const CAGE_OPERATORS: ReadonlySet<string> = new Set([
+  'translate',
+  'rotate',
+  'scale',
+  'shrinkFatten',
+  'relax',
+  'circle',
+  'space',
+  'vertexSlide',
+  'edgeSlide',
+  'setEdgeLength',
+  'selectAll',
+  'deselectAll',
+  'invertSelection',
+  'selectEdgeLoop',
+  'growSelection',
+  'shrinkSelection',
+]);
+
+/** How far a new cage stands off the mesh, as a share of the mesh's longest side. */
+const CAGE_MARGIN = 0.1;
+
+/**
+ * A new cage around what `object` draws with the modifiers in `below`.
+ *
+ * Turned and placed with the object and stretched over its bounding box, with
+ * a margin so the cage reads apart from the mesh rather than lying along its
+ * outermost edges. A side with no depth, a plane's, still gets some: a cage
+ * needs room to measure across.
+ */
+function cageAround(
+  object: SceneObject,
+  below: readonly Modifier[],
+  context: ModifierContext,
+): SceneObject {
+  const box = evaluateModifiers(object.mesh, below, context).boundingBox();
+  const size = sub(box.max, box.min);
+  const longest = Math.max(size.x, size.y, size.z) || 1;
+  const side = (length: number) => Math.max(length, longest * CAGE_MARGIN) + longest * CAGE_MARGIN;
+  const resolution = { ...DEFAULT_LATTICE_RESOLUTION };
+
+  return {
+    id: nextObjectId(),
+    name: `${object.name}.CAGE`,
+    mesh: createLatticeMesh(resolution),
+    transform: {
+      position: transformPoint(composeMatrix(object.transform), lerp(box.min, box.max, 0.5)),
+      rotation: { ...object.transform.rotation },
+      scale: mulVec(object.transform.scale, vec3(side(size.x), side(size.y), side(size.z))),
+    },
+    visible: true,
+    locked: false,
+    parentId: null,
+    groupId: object.groupId,
+    materials: [defaultMaterial()],
+    modifiers: [],
+    activeMaterial: 0,
+    primitive: null,
+    image: null,
+    lattice: { resolution },
+  };
+}
+
+/**
+ * The scene with a new cage fitted around `object`, next to it in the
+ * outliner, and `modifier` pointed at it. A modifier not yet on the stack goes
+ * on the end of it.
+ */
+function withNewCage(
+  state: EditorStore,
+  object: SceneObject,
+  modifier: LatticeModifier,
+): Partial<EditorStore> {
+  const index = object.modifiers.findIndex((candidate) => candidate.id === modifier.id);
+  const below = index < 0 ? object.modifiers : object.modifiers.slice(0, index);
+  const cage = cageAround(object, below, modifierContext(object, state.cursor, state.objects));
+  const linked: LatticeModifier = { ...modifier, objectId: cage.id };
+  const modifiers =
+    index < 0
+      ? [...object.modifiers, linked]
+      : object.modifiers.map((candidate) => (candidate.id === modifier.id ? linked : candidate));
+
+  return {
+    objects: state.objects.flatMap((candidate) =>
+      candidate.id === object.id ? [{ ...candidate, modifiers }, cage] : [candidate],
+    ),
+    meshVersion: state.meshVersion + 1,
+    status: `Added ${cage.name}: select it and press Tab to move its points`,
+  };
+}
+
+/**
+ * The scene with a cage's mesh swapped for `mesh`, on every object sharing it,
+ * since a linked copy of a cage is the same grid.
+ */
+function withCageMesh(
+  state: EditorStore,
+  cage: SceneObject,
+  mesh: BMesh,
+  resolution: LatticeResolution,
+  status: string,
+): Partial<EditorStore> {
+  return {
+    objects: state.objects.map((object) =>
+      object.mesh === cage.mesh ? { ...object, mesh, lattice: { resolution } } : object,
+    ),
+    meshVersion: state.meshVersion + 1,
+    status,
+  };
+}
+
 export interface SceneSlice {
   objects: SceneObject[];
   /** The outliner's folders, in the order they are drawn. */
@@ -662,6 +798,15 @@ export interface SceneSlice {
   removeModifier: (id: string) => void;
   moveModifier: (id: string, direction: -1 | 1) => void;
   applyModifierToMesh: (id: string) => void;
+  /** Fits a new cage around the active object and points its lattice modifier `id` at it. */
+  addLatticeCage: (id: string) => void;
+  /**
+   * Rebuilds a cage at another resolution. Its points are placed where the old
+   * grid had carried them, so the shape it gave its mesh holds.
+   */
+  setLatticeResolution: (cageId: string, resolution: LatticeResolution) => void;
+  /** Puts every point of a cage back where it rests, letting its mesh go. */
+  resetLattice: (cageId: string) => void;
 
   /**
    * Runs a named operator, recording a step to undo back to, and hands back
@@ -888,6 +1033,7 @@ export const createSceneSlice: StateCreator<
       activeMaterial: 0,
       primitive: { kind, params: resolved },
       image: null,
+      lattice: null,
     };
 
     set((state) => ({
@@ -926,6 +1072,7 @@ export const createSceneSlice: StateCreator<
       activeMaterial: 0,
       primitive: null,
       image: { assetId: asset.id },
+      lattice: null,
     };
 
     set((state) => ({
@@ -958,6 +1105,7 @@ export const createSceneSlice: StateCreator<
       activeMaterial: 0,
       primitive: null,
       image: null,
+      lattice: null,
     }));
 
     set((state) => ({
@@ -1232,6 +1380,10 @@ export const createSceneSlice: StateCreator<
       set({ status: 'Select the objects to merge, then the one to merge them into' });
       return;
     }
+    if (target.lattice || sources.some((object) => object.lattice)) {
+      set({ status: 'A cage cannot be merged: it is a grid of points, not part of a mesh' });
+      return;
+    }
 
     get().recordHistory('Merge');
 
@@ -1503,6 +1655,10 @@ export const createSceneSlice: StateCreator<
       set({ status: `Select a cutter as well: ${target.name} is the one that keeps the result` });
       return;
     }
+    if ([target, ...tools].some((object) => object.lattice)) {
+      set({ status: 'A cage has no surface for a boolean to cut' });
+      return;
+    }
 
     // A boolean reads the mesh under the stack, not the shape the stack draws:
     // cutting against a sphere with a live REMESH would use the sphere it was
@@ -1709,8 +1865,13 @@ export const createSceneSlice: StateCreator<
   applyTransformToSelected: (ids) => {
     const { objects, selectedObjectIds } = get();
     const targetIds = ids ?? selectedObjectIds;
-    const targets = objects.filter((object) => targetIds.includes(object.id) && !object.locked);
-    if (targets.length === 0) return;
+    const unlocked = objects.filter((object) => targetIds.includes(object.id) && !object.locked);
+    if (unlocked.length === 0) return;
+    const targets = unlocked.filter((object) => !object.lattice);
+    if (targets.length === 0) {
+      set({ status: CAGE_TRANSFORM_REFUSAL });
+      return;
+    }
 
     // Baking one object's rotation and scale into a shared mesh would drag
     // every other user of it out of shape alongside it.
@@ -1770,9 +1931,14 @@ export const createSceneSlice: StateCreator<
   originToGeometry: (ids) => {
     const { objects, selectedObjectIds } = get();
     const targetIds = ids ?? selectedObjectIds;
-    const targets = objects.filter((object) => targetIds.includes(object.id) && !object.locked);
-    if (targets.length === 0) {
+    const unlocked = objects.filter((object) => targetIds.includes(object.id) && !object.locked);
+    if (unlocked.length === 0) {
       set({ status: 'Nothing selected' });
+      return;
+    }
+    const targets = unlocked.filter((object) => !object.lattice);
+    if (targets.length === 0) {
+      set({ status: CAGE_TRANSFORM_REFUSAL });
       return;
     }
 
@@ -1979,9 +2145,14 @@ export const createSceneSlice: StateCreator<
   originToCursor: (ids) => {
     const { objects, selectedObjectIds, cursor } = get();
     const targetIds = ids ?? selectedObjectIds;
-    const targets = objects.filter((object) => targetIds.includes(object.id) && !object.locked);
-    if (targets.length === 0) {
+    const unlocked = objects.filter((object) => targetIds.includes(object.id) && !object.locked);
+    if (unlocked.length === 0) {
       set({ status: 'Nothing selected' });
+      return;
+    }
+    const targets = unlocked.filter((object) => !object.lattice);
+    if (targets.length === 0) {
+      set({ status: CAGE_TRANSFORM_REFUSAL });
       return;
     }
 
@@ -2087,11 +2258,23 @@ export const createSceneSlice: StateCreator<
   },
 
   addModifier: (type) => {
-    if (!activeObject(get())) return;
+    const object = activeObject(get());
+    if (!object) return;
+    if (object.lattice) {
+      set({ status: 'A cage takes no modifiers: it shapes the objects that use it' });
+      return;
+    }
     get().recordHistory('Add modifier');
-    get().patchActiveObject((object) => ({
-      modifiers: [...object.modifiers, createModifier(type)],
-    }));
+
+    // A lattice with nothing to read does nothing at all, so it arrives with
+    // a cage already fitted around the mesh: one step from the menu to a grid
+    // of points to pull on.
+    const modifier = createModifier(type);
+    if (modifier.type === 'lattice') {
+      set((state) => withNewCage(state, object, modifier));
+      return;
+    }
+    get().patchActiveObject((current) => ({ modifiers: [...current.modifiers, modifier] }));
   },
 
   updateModifier: (id, patch) => {
@@ -2131,14 +2314,72 @@ export const createSceneSlice: StateCreator<
     get().recordHistory(`Apply ${modifier.name}`);
     get().patchActiveObject(
       {
-        mesh: applyModifier(cloneMesh(object.mesh), modifier, {
-          cursor: inverseTransformPoint(object.transform, get().cursor),
-          scale: object.transform.scale,
-        }),
+        mesh: applyModifier(
+          cloneMesh(object.mesh),
+          modifier,
+          modifierContext(object, get().cursor, get().objects),
+        ),
         modifiers: object.modifiers.filter((candidate) => candidate.id !== id),
         primitive: null,
       },
       { status: `Applied ${modifier.name}` },
+    );
+  },
+
+  addLatticeCage: (id) => {
+    const object = activeObject(get());
+    const modifier = object?.modifiers.find((candidate) => candidate.id === id);
+    if (!object || modifier?.type !== 'lattice') return;
+    if (object.locked) {
+      get().noteLockedAttempt(object.id);
+      return;
+    }
+
+    get().recordHistory('New cage');
+    set((state) => withNewCage(state, object, modifier));
+  },
+
+  setLatticeResolution: (cageId, resolution) => {
+    const cage = get().objects.find((object) => object.id === cageId);
+    if (!cage?.lattice) return;
+    if (cage.locked) {
+      get().noteLockedAttempt(cage.id);
+      return;
+    }
+
+    const from = cage.lattice.resolution;
+    const next = clampLatticeResolution(resolution);
+    if (next.x === from.x && next.y === from.y && next.z === from.z) return;
+
+    get().recordHistory('Cage resolution');
+    // A cage whose grid no longer reads starts over at rest, which is all a
+    // grid that cannot say which point is which can be resampled from.
+    const points = latticePoints(cage.mesh, from);
+    const mesh = createLatticeMesh(next, points ? resampleLattice(from, points, next) : undefined);
+    set((state) =>
+      withCageMesh(state, cage, mesh, next, `${cage.name} is ${next.x}×${next.y}×${next.z}`),
+    );
+  },
+
+  resetLattice: (cageId) => {
+    const cage = get().objects.find((object) => object.id === cageId);
+    if (!cage?.lattice) return;
+    if (cage.locked) {
+      get().noteLockedAttempt(cage.id);
+      return;
+    }
+
+    const { resolution } = cage.lattice;
+    const points = latticePoints(cage.mesh, resolution);
+    const rest = latticeRestPoints(resolution);
+    if (points?.every((point, index) => equals(point, rest[index]))) {
+      set({ status: `${cage.name} is already at rest` });
+      return;
+    }
+
+    get().recordHistory('Reset cage');
+    set((state) =>
+      withCageMesh(state, cage, createLatticeMesh(resolution), resolution, `Reset ${cage.name}`),
     );
   },
 
@@ -2154,6 +2395,12 @@ export const createSceneSlice: StateCreator<
     if (object.locked) {
       if (throws) throw new Error(`${object.name} is locked`);
       get().noteLockedAttempt(object.id);
+      return null;
+    }
+    if (object.lattice && !CAGE_OPERATORS.has(name)) {
+      if (throws) throw new Error(CAGE_REFUSAL);
+      set({ status: CAGE_REFUSAL });
+      get().pushToast('warning', CAGE_REFUSAL);
       return null;
     }
 
@@ -2280,7 +2527,13 @@ export const createSceneSlice: StateCreator<
     const objects: SceneObject[] = restored.objects.map((object) => {
       const id = seen.has(object.id) ? nextObjectId() : object.id;
       seen.add(id);
-      return { ...object, id, primitive: null, image: object.image ?? null };
+      return {
+        ...object,
+        id,
+        primitive: null,
+        image: object.image ?? null,
+        lattice: object.lattice ?? null,
+      };
     });
     // Which folders are folded shut is how the panel looks rather than what the
     // scene is, so it survives the replay an undo runs: a step taken three
@@ -2385,7 +2638,10 @@ function selectionAnchor(state: EditorStore): Vec3 | null {
   if (selected.length === 0) return null;
   return centroid(
     selected.map((candidate) =>
-      displayCenter(candidate, evaluatedMesh(candidate, state.cursor, state.meshVersion)),
+      displayCenter(
+        candidate,
+        evaluatedMesh(candidate, state.cursor, state.meshVersion, state.objects),
+      ),
     ),
   );
 }
@@ -2423,11 +2679,48 @@ interface EvaluatedStack {
 const evaluatedStacks = new Map<string, EvaluatedStack>();
 
 /**
+ * What the stack of `object` reads from the rest of the scene, brought into
+ * the object's own space: the 3D cursor, the object's scale, and the cages its
+ * lattice modifiers name.
+ *
+ * A cage that is missing, is not a cage, or no longer holds its grid is left
+ * out, and the modifier naming it passes the mesh through untouched.
+ */
+export function modifierContext(
+  object: SceneObject,
+  cursor: Vec3,
+  objects: readonly SceneObject[],
+): ModifierContext {
+  const lattices = new Map<string, LatticeCage>();
+  for (const modifier of object.modifiers) {
+    if (modifier.type !== 'lattice' || !modifier.objectId) continue;
+    const cage = objects.find((candidate) => candidate.id === modifier.objectId);
+    if (!cage?.lattice || cage.id === object.id || lattices.has(cage.id)) continue;
+
+    const points = latticePoints(cage.mesh, cage.lattice.resolution);
+    if (!points) continue;
+    lattices.set(cage.id, {
+      resolution: cage.lattice.resolution,
+      points,
+      toCage: multiplyMatrices(inverseMatrix(cage.transform), composeMatrix(object.transform)),
+      fromCage: multiplyMatrices(inverseMatrix(object.transform), composeMatrix(cage.transform)),
+    });
+  }
+
+  return {
+    cursor: inverseTransformPoint(object.transform, cursor),
+    scale: object.transform.scale,
+    lattices,
+  };
+}
+
+/**
  * Display mesh for an object: its base mesh run through the modifier stack.
  *
  * The 3D cursor arrives in world space and is handed to the kernel in the
  * object's own local frame, which is the only coordinate system a modifier
- * knows about.
+ * knows about. `objects` is the scene the object stands in, which is where a
+ * lattice modifier finds its cage: left out, a lattice shapes nothing.
  *
  * `version` is the store's `meshVersion`, and passing it turns on the memo.
  * The viewport re-syncs on far more than geometry (selecting an object,
@@ -2436,9 +2729,16 @@ const evaluatedStacks = new Map<string, EvaluatedStack>();
  * while the dearest modifier was a subdivision; a REMESH is the better part of
  * a second on its own, and without this a click anywhere would pay for it. The
  * mesh is edited in place, so the version is what says it changed; a caller
- * with no version to offer gets a fresh evaluation.
+ * with no version to offer gets a fresh evaluation. Moving a cage, or any of
+ * its points, bumps the version as well, so the memo never holds a shape the
+ * cage has since pulled elsewhere.
  */
-export function evaluatedMesh(object: SceneObject, cursor: Vec3 = vec3(), version?: number) {
+export function evaluatedMesh(
+  object: SceneObject,
+  cursor: Vec3 = vec3(),
+  version?: number,
+  objects: readonly SceneObject[] = [],
+) {
   if (object.modifiers.length === 0) return object.mesh;
 
   const cached = evaluatedStacks.get(object.id);
@@ -2452,10 +2752,11 @@ export function evaluatedMesh(object: SceneObject, cursor: Vec3 = vec3(), versio
     return cached.result;
   }
 
-  const result = evaluateModifiers(object.mesh, object.modifiers, {
-    cursor: inverseTransformPoint(object.transform, cursor),
-    scale: object.transform.scale,
-  });
+  const result = evaluateModifiers(
+    object.mesh,
+    object.modifiers,
+    modifierContext(object, cursor, objects),
+  );
 
   if (version !== undefined) {
     // Entries for objects that have since been deleted would otherwise sit on

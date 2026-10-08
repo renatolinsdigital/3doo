@@ -198,7 +198,7 @@ export function useProjectFiles() {
   const exportModel = useCallback(async (format: 'obj' | 'fbx', selectionOnly = false) => {
     const state = useEditorStore.getState();
     const chosen = state.objects
-      .filter((object) => object.visible)
+      .filter((object) => object.visible && !object.lattice)
       .filter((object) => !selectionOnly || state.selectedObjectIds.includes(object.id));
 
     if (chosen.length === 0) {
@@ -216,7 +216,7 @@ export function useProjectFiles() {
     const name = state.projectName || 'model';
     try {
       const pictures = await exportPictures(chosen, state.assets);
-      const objects = exportObjects(chosen, pictures);
+      const objects = exportObjects(chosen, pictures, state.objects);
 
       if (format === 'obj') {
         // The .obj names its material file, so the name has to be one an OBJ

@@ -1366,7 +1366,7 @@ export class Viewport {
         this.scene.add(view.group);
       }
 
-      const display = evaluatedMesh(object, state.cursor, state.meshVersion);
+      const display = evaluatedMesh(object, state.cursor, state.meshVersion, state.objects);
       const asset = object.image ? state.assets[object.image.assetId] : undefined;
       view.update(object, display, {
         texture: asset ? imageTexture(asset) : null,
@@ -1729,7 +1729,10 @@ export class Viewport {
     if (state.pivot === 'median') {
       return centroid(
         transformable.map((object) =>
-          displayCenter(object, evaluatedMesh(object, state.cursor, state.meshVersion)),
+          displayCenter(
+            object,
+            evaluatedMesh(object, state.cursor, state.meshVersion, state.objects),
+          ),
         ),
       );
     }
@@ -2404,8 +2407,9 @@ export class Viewport {
     const state = useEditorStore.getState();
     if (state.mode !== 'edit' || !state.autoMerge.enabled) return 0;
 
+    // A cage is read by how many points it holds, so two of them meeting stay two.
     const object = activeObject(state);
-    if (!object) return 0;
+    if (!object || object.lattice) return 0;
 
     const { removed } = autoMergeVerts(
       object.mesh,
@@ -3152,17 +3156,55 @@ export class Viewport {
     return object && pick ? elementSelected(object.mesh, state.selectMode, pick.elementId) : null;
   }
 
-  /** The visible object a click at `pointer` would land on in object mode. */
+  /**
+   * The visible object a click at `pointer` would land on in object mode.
+   *
+   * A cage has no surface for the ray to hit, so it is taken by its wire, from
+   * within the same reach an edge is picked from in edit mode. Its inner lines
+   * run straight through the mesh it shapes, so a line only wins where it
+   * stands in front of the surface the ray hit: a click on the mesh between
+   * the lines, or on a line hidden inside it, still takes the mesh.
+   */
   private objectUnderPointer(pointer: THREE.Vector2): string | null {
     const state = useEditorStore.getState();
-    const targets = state.objects
-      .filter((object) => object.visible)
+    const visible = state.objects.filter((object) => object.visible);
+    const targets = visible
       .map((object) => this.views.get(object.id)?.pickTarget)
       .filter((target): target is THREE.Mesh => target !== undefined);
 
     this.updateRaycaster(pointer);
-    const objectId = this.raycaster.intersectObjects(targets, false)[0]?.object.userData.objectId;
-    return typeof objectId === 'string' ? objectId : null;
+    const hit = this.raycaster.intersectObjects(targets, false)[0];
+    let nearest: { id: unknown; depth: number } | null = hit
+      ? { id: hit.object.userData.objectId, depth: hit.distance }
+      : null;
+
+    const size = this.canvasSize();
+    for (const object of visible) {
+      const view = object.lattice ? this.views.get(object.id) : undefined;
+      if (!view) continue;
+      const pick = pickElement(
+        view,
+        object.mesh,
+        'edge',
+        pointer,
+        this.camera,
+        size,
+        this.raycaster,
+        null,
+      );
+      const edge = pick ? object.mesh.edges.get(pick.elementId) : undefined;
+      if (!edge) continue;
+
+      const [a, b] = [edge.v0.co, edge.v1.co].map((co) =>
+        new THREE.Vector3(co.x, co.y, co.z).applyMatrix4(view.group.matrix),
+      );
+      const onRay = new THREE.Vector3();
+      this.raycaster.ray.distanceSqToSegment(a, b, onRay);
+      const depth = onRay.distanceTo(this.raycaster.ray.origin);
+      if (!nearest || depth < nearest.depth) nearest = { id: object.id, depth };
+    }
+
+    return typeof nearest?.id === 'string' ? nearest.id : null;
   }
 
   /** The element of the mesh being edited that a click at `pointer` would land on. */
@@ -3598,7 +3640,7 @@ export class Viewport {
    */
   private pickMesh(object: SceneObject, state: EditorStore): BMesh {
     if (state.mode === 'edit' && object.id === state.activeObjectId) return object.mesh;
-    return evaluatedMesh(object, state.cursor, state.meshVersion);
+    return evaluatedMesh(object, state.cursor, state.meshVersion, state.objects);
   }
 
   /**

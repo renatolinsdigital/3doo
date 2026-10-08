@@ -529,6 +529,57 @@ as stored the section would shear into a rhombus partway round. The angle is cla
 are, so a side twists as smoothly as the loops across it allow: four corners
 and nothing between them twist into a single warped quad.
 
+### Lattice
+
+Lattice is Blender's Lattice modifier, and like Blender's it reads its shape
+from an object of its own: a cage, which is an ordinary scene object whose
+`lattice` field holds its resolution and whose mesh is the grid of points,
+joined along each axis by wire edges and carrying no faces. That is what lets
+the cage be shaped with everything edit mode already has (the gizmo, G, R and
+S, proportional editing, snapping, undo) instead of with tools of its own.
+
+At rest the points fill the unit cube about the cage's origin, X fastest, then
+Y, then Z (`latticeRestPoints`); the cage's object scale is what stretches that
+cube round a mesh. The grid is read off the order the vertices were made in,
+which serialization, `cloneMesh` and undo all keep. So a cage must never gain
+or lose a vertex: `exec` lets only the operators that move or pick vertices
+through on one (`CAGE_OPERATORS`), auto merge skips it, and `latticePoints`
+hands back null for a mesh whose count no longer matches, which leaves the
+modifier passing its mesh through untouched.
+
+The store builds the `LatticeCage` for each lattice modifier in
+`modifierContext`: the points in the cage's space, and the two matrices
+between that space and the shaped object's. The kernel works on offsets, each
+point less where it rests, and never on positions. A vertex is taken into the
+cage's space, the offsets around it are weighted by how near it lies to each,
+and the sum comes back through the cage's matrix as a displacement. A cage
+nobody has shaped therefore moves nothing, whatever its interpolation and
+wherever the cage object stands, and a vertex no offset reaches comes back
+exactly where it was rather than through two matrices and a rounding error.
+
+The weights along each axis are one of two kinds:
+
+- **Linear** is trilinear: each cell carries straight across from corner to
+  corner, so moving a point drags exactly its own corner of the mesh.
+- **Smooth** is a uniform cubic B-spline, which reaches one point past each
+  end of the grid. Blender leaves those points out, which is why its outermost
+  points only pull a mesh part of the way. Here they are made up by carrying
+  the last step on in a straight line (`2·P₀ − P₁`), which makes the curve land
+  exactly on its end points: the corners of the cage take the corners of the
+  mesh with them, and a 2 by 2 by 2 cage is exactly linear.
+
+Past the cage's sides the pull fades out over one cell's width rather than
+stopping dead or running on for ever, so a cage placed round part of a mesh
+shapes that part and lets the rest go smoothly. Changing the resolution
+resamples the old grid at the new rest points (`resampleLattice`), so the shape
+the cage gives survives as closely as the new grid can hold it, exactly for any
+linear pull.
+
+A cage keeps its own origin and scale: baking them into the points would read
+as the cage having been pulled out of shape, so apply transform and the origin
+operations leave cages out. It takes no modifiers, joins no merge or boolean,
+and stays out of exports and snapshots.
+
 ### Weld
 
 Weld is `mergeByDistance` run over every vertex in the mesh. There is no

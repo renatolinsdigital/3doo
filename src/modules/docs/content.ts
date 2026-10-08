@@ -795,6 +795,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Turns the mesh about X, Y and Z at once, applied in that order. The further along the axis a part lies, the further it turns, so one end turns the whole angle past the other, up to four full turns. Like bend, it only moves the vertices already there: loop cut the length you want twisted. ORIGIN sets the line it turns about and the level that holds still: the object origin or the 3D cursor.',
           ],
           [
+            'Lattice',
+            'Shapes the mesh with a cage: a grid of points around it, kept as an object of its own named after the mesh with .CAGE on the end. Adding the modifier fits the cage round the mesh. Select the cage, press Tab and move its points with the gizmo, G, R and S, proportional editing included, and the mesh follows, the parts nearest each point the furthest. TRANSITION sets how the mesh bends between the points: SMOOTH makes soft curves, LINEAR makes straight lines that bend sharply at each point. POINTS sets how many points the cage holds along each axis, and RESET CAGE lets the mesh go. Like bend, it only moves the vertices already there.',
+          ],
+          [
             'Weld',
             'Merges vertices closer together than a threshold, across the whole evaluated result.',
           ],

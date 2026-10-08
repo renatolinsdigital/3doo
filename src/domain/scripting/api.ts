@@ -378,7 +378,12 @@ export function worldBounds(objects: readonly SceneObject[]): Bounds | null {
   let max: Vec3 | null = null;
   for (const object of objects) {
     const matrix = composeMatrix(object.transform);
-    for (const vert of evaluatedMesh(object).verts.values()) {
+    for (const vert of evaluatedMesh(
+      object,
+      undefined,
+      undefined,
+      store().objects,
+    ).verts.values()) {
       const p = transformPoint(matrix, vert.co);
       if (!min || !max) {
         min = { ...p };

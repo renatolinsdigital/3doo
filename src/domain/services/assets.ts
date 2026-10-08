@@ -148,15 +148,20 @@ export async function exportPictures(
   return pictures;
 }
 
-/** The scene objects as the exporters take them, each with its picture if it has one. */
+/**
+ * The scene objects as the exporters take them, each with its picture if it
+ * has one. `scene` is everything the objects stand among, which is where a
+ * lattice finds its cage when the cage itself is not being exported.
+ */
 export function exportObjects(
   objects: readonly SceneObject[],
   pictures: ReadonlyMap<string, ExportPicture>,
+  scene: readonly SceneObject[] = objects,
 ): ExportObject[] {
   return objects.map((object) => ({
     name: object.name.replace(/\s+/g, '_'),
     // Export the evaluated mesh so modifiers are baked into the output.
-    mesh: evaluatedMesh(object),
+    mesh: evaluatedMesh(object, undefined, undefined, scene),
     transform: object.transform,
     materials: object.materials,
     texture: object.image ? pictures.get(object.image.assetId) : undefined,

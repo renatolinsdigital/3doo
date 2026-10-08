@@ -1,6 +1,7 @@
 import type {
   BMesh,
   FalloffCurve,
+  LatticeResolution,
   Material,
   Modifier,
   PrimitiveKind,
@@ -104,6 +105,15 @@ export interface SceneObject {
    * knowing images exist.
    */
   image: { assetId: string } | null;
+  /**
+   * Set on a cage: an object whose mesh is a grid of points that lattice
+   * modifiers on other objects read their shape from. Null on every other.
+   *
+   * Its vertices are the points, in grid order, so edit mode lets them move
+   * and nothing else: a cage that lost or gained a vertex would no longer say
+   * which point is which.
+   */
+  lattice: { resolution: LatticeResolution } | null;
 }
 
 /**

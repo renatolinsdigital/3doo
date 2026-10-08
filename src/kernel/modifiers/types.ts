@@ -1,7 +1,18 @@
 import { DEFAULT_REMESH_SETTINGS, type RemeshSettings } from '../remesh';
 
+import type { LatticeInterpolation } from './lattice';
+
 export type ModifierType =
-  'mirror' | 'array' | 'solidify' | 'bend' | 'twist' | 'weld' | 'subdivide' | 'subsurf' | 'remesh';
+  | 'mirror'
+  | 'array'
+  | 'solidify'
+  | 'bend'
+  | 'twist'
+  | 'lattice'
+  | 'weld'
+  | 'subdivide'
+  | 'subsurf'
+  | 'remesh';
 
 export interface ModifierBase {
   id: string;
@@ -82,6 +93,23 @@ export interface TwistModifier extends ModifierBase {
   origin: ModifierOrigin;
 }
 
+/**
+ * Shapes the mesh with a cage: a grid of points around it, held by a cage
+ * object of its own. Moving the cage's points in edit mode pulls the mesh
+ * along with them, the parts nearest each point the furthest.
+ */
+export interface LatticeModifier extends ModifierBase {
+  type: 'lattice';
+  /**
+   * The cage object, or null for none. An id that no longer names a cage, one
+   * deleted since, leaves the mesh as it is rather than failing the stack.
+   */
+  objectId: string | null;
+  interpolation: LatticeInterpolation;
+  /** How much of the cage's pull reaches the mesh, from 0 to 1. */
+  strength: number;
+}
+
 export interface WeldModifier extends ModifierBase {
   type: 'weld';
   /** Vertices closer together than this are fused, mesh-wide. */
@@ -128,6 +156,7 @@ export type Modifier =
   | SolidifyModifier
   | BendModifier
   | TwistModifier
+  | LatticeModifier
   | WeldModifier
   | SubdivideModifier
   | SubsurfModifier
@@ -202,6 +231,16 @@ export function createModifier(type: ModifierType): Modifier {
         enabled: true,
         angles: { x: 0, y: 90, z: 0 },
         origin: 'object',
+      };
+    case 'lattice':
+      return {
+        id: nextId(type),
+        type,
+        name: 'LATTICE',
+        enabled: true,
+        objectId: null,
+        interpolation: 'smooth',
+        strength: 1,
       };
     case 'weld':
       return {

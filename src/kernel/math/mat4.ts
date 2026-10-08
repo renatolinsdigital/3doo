@@ -109,6 +109,41 @@ export function inverseTransformPoint(transform: Transform, point: Vec3): Vec3 {
 }
 
 /**
+ * The matrix that undoes `composeMatrix(transform)`, for mapping many points
+ * through the same inverse without rebuilding it for each one.
+ *
+ * Analytic for the same reason as `inverseTransformOffset`: the inverse of
+ * T·R·S is S⁻¹·Rᵀ·T⁻¹. A zero scale has no inverse and is divided out as a
+ * vanishingly small one, as `normalMatrix` does.
+ */
+export function inverseMatrix(transform: Transform): Mat4 {
+  const rotation = composeMatrix({
+    position: vec3(),
+    rotation: transform.rotation,
+    scale: vec3(1, 1, 1),
+  });
+  const safe = (value: number) => (Math.abs(value) < 1e-12 ? 1e-12 : value);
+  const inverseScale = [
+    1 / safe(transform.scale.x),
+    1 / safe(transform.scale.y),
+    1 / safe(transform.scale.z),
+  ];
+
+  const out = new Array<number>(16).fill(0);
+  for (let row = 0; row < 3; row++) {
+    for (let column = 0; column < 3; column++) {
+      out[column * 4 + row] = rotation[row * 4 + column] * inverseScale[row];
+    }
+  }
+  const { x, y, z } = transform.position;
+  for (let row = 0; row < 3; row++) {
+    out[12 + row] = -(out[row] * x + out[4 + row] * y + out[8 + row] * z);
+  }
+  out[15] = 1;
+  return out;
+}
+
+/**
  * Rotates a world-space direction into the local frame of `transform`.
  *
  * Scale is divided out once rather than squared, unlike `inverseTransformPoint`:

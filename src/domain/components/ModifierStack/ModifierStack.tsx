@@ -1,19 +1,22 @@
 import {
+  type LatticeModifier,
   type Modifier,
   type ModifierType,
   MAX_BEND_ANGLE,
+  MAX_LATTICE_RESOLUTION,
   MAX_SHARP_ANGLE,
   MAX_SMOOTHING,
   MAX_SUBSURF_LEVELS,
   MAX_TARGET_FACES,
   MAX_TWIST_ANGLE,
   MAX_VOXEL_SIZE,
+  MIN_LATTICE_RESOLUTION,
   MIN_TARGET_FACES,
   MIN_VOXEL_SIZE,
 } from '@kernel/index';
-import { NumberField, Panel, Select, Toggle, Vector3Field } from '@shared/components';
+import { Button, NumberField, Panel, Select, Toggle, Vector3Field } from '@shared/components';
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
-import { useActiveObject, useEditorStore } from '@store/index';
+import { type SceneObject, useActiveObject, useEditorStore } from '@store/index';
 
 import './ModifierStack.scss';
 
@@ -42,6 +45,11 @@ const MODIFIER_INFO: Record<ModifierType, { label: string; description: string }
     label: 'TWIST',
     description:
       'Turns the mesh about the X, Y and Z axes, in that order. The further along the axis a part lies, the further it turns, so one end turns the whole angle past the other. It only moves the vertices already there, so loop cut the length you want twisted.',
+  },
+  lattice: {
+    label: 'LATTICE',
+    description:
+      'Shapes the mesh with a cage: a grid of points around it, kept as an object of its own. Select the cage, press Tab and move its points, and the mesh follows, the parts nearest each point the furthest. It only moves the vertices already there, so loop cut where you want the mesh to bend.',
   },
   weld: {
     label: 'WELD',
@@ -82,6 +90,20 @@ export function ModifierStack() {
     return (
       <Panel title="MODIFIERS">
         <p className="modifiers__empty">Nothing selected.</p>
+      </Panel>
+    );
+  }
+
+  if (object.lattice) {
+    return (
+      <Panel title="MODIFIERS" className="modifiers">
+        <div className="modifiers__body">
+          <p className="modifiers__description">
+            A cage takes no modifiers: it shapes the objects whose LATTICE points at it. Press Tab
+            and move its points to shape them.
+          </p>
+          <CageFields cage={object} />
+        </div>
       </Panel>
     );
   }
@@ -388,6 +410,10 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
     );
   }
 
+  if (modifier.type === 'lattice') {
+    return <LatticeFields modifier={modifier} onChange={onChange} />;
+  }
+
   if (modifier.type === 'weld') {
     return (
       <NumberField
@@ -564,6 +590,94 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
         max={1}
         hint="0 keeps the shape flat and only adds faces. Higher values round the corners off on every level"
         onChange={(smooth) => onChange({ smooth })}
+      />
+    </>
+  );
+}
+
+interface LatticeFieldsProps {
+  modifier: LatticeModifier;
+  onChange: (patch: Partial<LatticeModifier>) => void;
+}
+
+function LatticeFields({ modifier, onChange }: LatticeFieldsProps) {
+  const objects = useEditorStore((state) => state.objects);
+  const addLatticeCage = useEditorStore((state) => state.addLatticeCage);
+  const cages = objects.filter((object) => object.lattice);
+  const cage = cages.find((object) => object.id === modifier.objectId);
+
+  return (
+    <>
+      <Select
+        label="CAGE"
+        value={cage?.id ?? ''}
+        options={[
+          { value: '', label: 'NONE' },
+          ...cages.map((candidate) => ({ value: candidate.id, label: candidate.name })),
+        ]}
+        hint="The cage whose points shape this mesh. Any cage in the scene will do, and one cage can shape several objects"
+        onChange={(objectId) => onChange({ objectId: objectId || null })}
+      />
+      {cage ? (
+        <CageFields cage={cage} />
+      ) : (
+        <Button
+          label="NEW CAGE"
+          fullWidth
+          hint="Fit a new cage around this mesh and shape it with that one"
+          onClick={() => addLatticeCage(modifier.id)}
+        />
+      )}
+      <Select
+        label="TRANSITION"
+        value={modifier.interpolation}
+        options={[
+          { value: 'smooth', label: 'SMOOTH' },
+          { value: 'linear', label: 'LINEAR' },
+        ]}
+        hint="How the mesh bends between the cage's points. SMOOTH makes soft curves. LINEAR makes straight lines that bend sharply at each point"
+        onChange={(interpolation) => onChange({ interpolation })}
+      />
+      <NumberField
+        label="STRENGTH"
+        value={modifier.strength}
+        step={0.05}
+        min={0}
+        max={1}
+        precision={2}
+        hint="How much of the cage's pull reaches the mesh. 0 leaves it as it is, 1 follows the cage all the way"
+        onChange={(strength) => onChange({ strength })}
+      />
+    </>
+  );
+}
+
+/** A cage's own settings, the same from its modifier and from the cage itself. */
+function CageFields({ cage }: { cage: SceneObject }) {
+  const setLatticeResolution = useEditorStore((state) => state.setLatticeResolution);
+  const resetLattice = useEditorStore((state) => state.resetLattice);
+  const resolution = cage.lattice?.resolution;
+  if (!resolution) return null;
+
+  return (
+    <>
+      {(['x', 'y', 'z'] as const).map((axis) => (
+        <NumberField
+          key={axis}
+          label={`POINTS ${axis.toUpperCase()}`}
+          value={resolution[axis]}
+          integer
+          min={MIN_LATTICE_RESOLUTION}
+          max={MAX_LATTICE_RESOLUTION}
+          hint={`How many points the cage holds along its own ${axis.toUpperCase()} axis, ${MIN_LATTICE_RESOLUTION} to ${MAX_LATTICE_RESOLUTION}. Changing it keeps the shape the cage gives as closely as the new grid can`}
+          onChange={(count) => setLatticeResolution(cage.id, { ...resolution, [axis]: count })}
+        />
+      ))}
+      <Button
+        label="RESET CAGE"
+        fullWidth
+        hint="Put every point of the cage back where it rests, letting the mesh go back to its own shape"
+        onClick={() => resetLattice(cage.id)}
       />
     </>
   );

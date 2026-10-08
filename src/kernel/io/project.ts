@@ -1,6 +1,6 @@
 import { type Transform, type Vec3, createTransform, vec3 } from '../math';
 import { type MeshData, BMesh, deserializeMesh, serializeMesh } from '../mesh';
-import type { Modifier } from '../modifiers';
+import { type LatticeResolution, type Modifier, clampLatticeResolution } from '../modifiers';
 
 import type { Material } from './types';
 
@@ -25,6 +25,14 @@ export interface SceneGroupData {
  */
 export interface ObjectImageData {
   assetId: string;
+}
+
+/**
+ * Marks an object as a cage for lattice modifiers, and how many points its grid
+ * holds along each axis. The points themselves are the object's mesh.
+ */
+export interface ObjectLatticeData {
+  resolution: LatticeResolution;
 }
 
 /**
@@ -75,6 +83,8 @@ export interface SceneObjectData {
   meshLink?: string;
   /** Set on an object that draws an imported image. Absent on every other. */
   image?: ObjectImageData | null;
+  /** Set on a cage. Absent on every other object, and in files from before cages. */
+  lattice?: ObjectLatticeData | null;
 }
 
 export interface ProjectDocument {
@@ -117,6 +127,7 @@ export interface SceneObjectSnapshot {
   activeMaterial: number;
   mesh: BMesh;
   image?: ObjectImageData | null;
+  lattice?: ObjectLatticeData | null;
 }
 
 export function serializeProject(
@@ -159,6 +170,7 @@ export function serializeProject(
         mesh: serializeMesh(object.mesh),
         ...(owner === undefined ? {} : { meshLink: owner }),
         ...(object.image ? { image: { assetId: object.image.assetId } } : {}),
+        ...(object.lattice ? { lattice: { resolution: { ...object.lattice.resolution } } } : {}),
       };
     }),
   };
@@ -204,6 +216,9 @@ export function deserializeProject(document: ProjectDocument): {
         activeMaterial: data.activeMaterial ?? 0,
         mesh,
         image: data.image?.assetId ? { assetId: data.image.assetId } : null,
+        lattice: data.lattice?.resolution
+          ? { resolution: clampLatticeResolution(data.lattice.resolution) }
+          : null,
       };
     }),
   };

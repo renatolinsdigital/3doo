@@ -3,7 +3,7 @@ import type { StateCreator } from 'zustand';
 import type { BMesh, SelectMode } from '@kernel/index';
 
 import type { EditorStore } from '../useEditorStore';
-import { activeObject } from './scene';
+import { CAGE_REFUSAL, activeObject } from './scene';
 import type {
   AutoMergeSettings,
   EditorMode,
@@ -256,6 +256,10 @@ export const createToolSlice: StateCreator<
     }
     if (object.locked) {
       get().noteLockedAttempt(object.id);
+      return;
+    }
+    if (object.lattice) {
+      set({ status: CAGE_REFUSAL });
       return;
     }
     if (!ready(object.mesh)) {

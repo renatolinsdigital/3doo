@@ -90,7 +90,7 @@ export function sceneSummary(): SceneSummary {
   let faces = 0;
 
   const objects = state.objects.map((object): ObjectSummary => {
-    const mesh = evaluatedMesh(object);
+    const mesh = evaluatedMesh(object, undefined, undefined, state.objects);
     if (object.visible) {
       vertices += mesh.verts.size;
       faces += mesh.faces.size;
@@ -170,7 +170,7 @@ async function exportFile(request: ExportRequest): Promise<ExportedFile[]> {
     return [{ name: `${name}.3doo`, mimeType: 'application/json', base64: textBase64(text) }];
   }
 
-  const chosen = state.objects.filter((object) => object.visible);
+  const chosen = state.objects.filter((object) => object.visible && !object.lattice);
   if (chosen.length === 0) {
     throw new Error('Nothing to export: the scene is empty or every object is hidden.');
   }
@@ -188,7 +188,7 @@ async function exportFile(request: ExportRequest): Promise<ExportedFile[]> {
 
   const name = fileStem(request.name, format).replace(/\s+/g, '_');
   const pictures = await exportPictures(chosen, state.assets);
-  const objects = exportObjects(chosen, pictures);
+  const objects = exportObjects(chosen, pictures, state.objects);
 
   if (format === 'fbx') {
     return [
@@ -327,7 +327,7 @@ const WHAT_A_SCRIPT_CAN_DO = `- Add the ten primitives, or build any mesh from a
   move vertices to computed points with \`mesh.deform\`, and read every vertex,
   edge and face back.
 - Stack, set, reorder and apply modifiers: mirror, array, solidify, bend,
-  twist, weld, subdivide, subsurf and remesh.
+  twist, lattice, weld, subdivide, subsurf and remesh.
 - Colour objects, and give parts of one mesh colours of their own through
   material slots (\`object.addMaterial\`, \`mesh.assignMaterial\`).
 - Read the scene back: transforms, world bounds, counts, modifier settings,
@@ -342,6 +342,9 @@ const HOW_A_SCRIPT_WORKS = `- An operation acts on the selection, as its button 
 - A modifier changes what is drawn and exported, not the mesh \`object.edit\`
   works on, until it is applied. \`scene.boolean\` refuses an object with a
   live modifier, and uses its cutters up: duplicate one first to keep it.
+- \`addModifier('lattice')\` also adds a cage around the mesh, an object named
+  after it with \`.CAGE\` on the end. Move that object's vertices with
+  \`mesh.deform\` to shape the mesh; a cage takes no other mesh operation.
 - \`object.bounds\` places one part against another: a lamp stands on a table
   at \`table.bounds.max.y\`.
 - Build a model over several short scripts rather than one long one. Each run
@@ -435,7 +438,8 @@ export function scriptingReference(request: ReferenceRequest = {}): string {
     throw new Error(`There is no topic "${topic}". The topics are ${REFERENCE_TOPICS.join(', ')}.`);
   }
   if (topic === 'quickstart') return quickstart();
-  if (topic === 'api') return ['# 3DOO scripting API', ...apiMarkdown().slice(1)].join('\n\n') + '\n';
+  if (topic === 'api')
+    return ['# 3DOO scripting API', ...apiMarkdown().slice(1)].join('\n\n') + '\n';
   if (topic === 'examples')
     return ['# 3DOO scripting examples', ...examplesMarkdown().slice(1)].join('\n\n') + '\n';
   return (

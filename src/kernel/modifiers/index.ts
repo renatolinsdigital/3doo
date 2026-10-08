@@ -7,9 +7,11 @@ import { carrySharp } from '../ops/normals';
 import { catmullClark, subdivideFaces } from '../ops/subdivide';
 import { remeshMesh } from '../remesh';
 
+import { type LatticeCage, deformByLattice } from './lattice';
 import type {
   ArrayModifier,
   BendModifier,
+  LatticeModifier,
   MirrorModifier,
   Modifier,
   RemeshModifier,
@@ -21,6 +23,7 @@ import type {
 } from './types';
 
 export * from './types';
+export * from './lattice';
 
 /**
  * Scene state a modifier may measure from, expressed in the object's own local
@@ -31,6 +34,8 @@ export interface ModifierContext {
   cursor?: Vec3;
   /** The object's scale, for a modifier whose result must keep its shape as drawn. */
   scale?: Vec3;
+  /** The cages the stack's lattice modifiers name, by object id. */
+  lattices?: ReadonlyMap<string, LatticeCage>;
 }
 
 /**
@@ -70,6 +75,8 @@ export function applyModifier(
       return applyBend(mesh, modifier, context);
     case 'twist':
       return applyTwist(mesh, modifier, context);
+    case 'lattice':
+      return applyLattice(mesh, modifier, context);
     case 'weld':
       return applyWeld(mesh, modifier);
     case 'subdivide':
@@ -491,6 +498,14 @@ function twistAbout(mesh: BMesh, axis: Axis, angle: number, centre: Vec3, shape:
     };
   }
   return true;
+}
+
+function applyLattice(mesh: BMesh, modifier: LatticeModifier, context: ModifierContext): BMesh {
+  const cage = modifier.objectId ? context.lattices?.get(modifier.objectId) : undefined;
+  const strength = clamp(modifier.strength, 0, 1);
+  if (!cage || strength === 0) return mesh;
+  if (deformByLattice(mesh, cage, modifier.interpolation, strength)) mesh.computeNormals();
+  return mesh;
 }
 
 /**
