@@ -1034,6 +1034,62 @@ describe('lattice cages', () => {
     expectSamePoints(positions(shape()), before);
   });
 
+  it('gives its shape back after a pass through a grid too coarse to hold it', () => {
+    const { cage } = latticeScene();
+    // The middle layer alone: a 2 point axis keeps only the ends, so it drops this.
+    for (const vert of cage.mesh.verts.values()) {
+      if (Math.abs(vert.co.y) < 0.1) vert.co = { ...vert.co, x: vert.co.x * 1.5 };
+    }
+    useEditorStore.getState().touchMesh();
+    const shaped = positions(cage.mesh);
+    const before = positions(shape());
+
+    const store = useEditorStore.getState();
+    store.setLatticeResolution(cage.id, { x: 3, y: 2, z: 3 });
+    store.setLatticeResolution(cage.id, { x: 3, y: 10, z: 3 });
+    // Through a save and undo's snapshot too, which is where the memory lives.
+    store.loadProjectDocument(store.snapshotDocument());
+    store.setLatticeResolution(cage.id, { x: 3, y: 3, z: 3 });
+
+    expect(positions(useEditorStore.getState().objects[1].mesh)).toEqual(shaped);
+    expectSamePoints(positions(shape()), before);
+  });
+
+  it('remembers the grid as it stands once a point is moved by hand', () => {
+    const { cage } = latticeScene();
+    pullTopUp(cage);
+    const store = useEditorStore.getState();
+    store.setLatticeResolution(cage.id, { x: 3, y: 5, z: 3 });
+
+    const fine = useEditorStore.getState().objects[1];
+    const [first] = fine.mesh.verts.values();
+    first.co = { ...first.co, x: first.co.x - 0.2 };
+    store.touchMesh();
+    const shaped = positions(fine.mesh);
+
+    store.setLatticeResolution(cage.id, { x: 3, y: 2, z: 3 });
+    store.setLatticeResolution(cage.id, { x: 3, y: 5, z: 3 });
+
+    expect(positions(useEditorStore.getState().objects[1].mesh)).toEqual(shaped);
+  });
+
+  it('forgets its shape when reset, even on a grid too coarse to show it', () => {
+    const { object, cage } = latticeScene();
+    for (const vert of cage.mesh.verts.values()) {
+      if (Math.abs(vert.co.y) < 0.1) vert.co = { ...vert.co, x: vert.co.x * 1.5 };
+    }
+    useEditorStore.getState().touchMesh();
+    const store = useEditorStore.getState();
+    store.setLatticeResolution(cage.id, { x: 3, y: 2, z: 3 });
+
+    store.resetLattice(cage.id);
+    expect(useEditorStore.getState().status).toBe(`Reset ${cage.name}`);
+    store.setLatticeResolution(cage.id, { x: 3, y: 3, z: 3 });
+
+    expect(useEditorStore.getState().objects[1].lattice?.shape).toBeUndefined();
+    expectSamePoints(positions(shape()), positions(object.mesh));
+  });
+
   it('lets the mesh go when the cage is reset, and says so when there is nothing to reset', () => {
     const { object, cage } = latticeScene();
     pullTopUp(cage);

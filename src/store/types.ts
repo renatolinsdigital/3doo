@@ -2,6 +2,7 @@ import type {
   BMesh,
   FalloffCurve,
   LatticeResolution,
+  LatticeShape,
   Material,
   Modifier,
   PrimitiveKind,
@@ -112,8 +113,11 @@ export interface SceneObject {
    * Its vertices are the points, in grid order, so edit mode lets them move
    * and nothing else: a cage that lost or gained a vertex would no longer say
    * which point is which.
+   *
+   * `shape` is the grid the points were last shaped on by hand, kept once the
+   * resolution has changed so every later change rebuilds from it.
    */
-  lattice: { resolution: LatticeResolution } | null;
+  lattice: { resolution: LatticeResolution; shape?: LatticeShape } | null;
 }
 
 /**

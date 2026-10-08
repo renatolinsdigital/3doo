@@ -10,8 +10,6 @@ All notable changes to 3DOO are recorded here. Versions follow
 New entries go under `Unreleased` until a version is cut. Group them under
 `Added`, `Changed`, `Fixed` or `Removed`.
 
-## [Unreleased]
-
 ## [1.0.0] - 2026-10-05
 
 First tracked release. It marks the state of the project at this point,

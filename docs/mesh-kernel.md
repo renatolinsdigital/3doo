@@ -571,9 +571,19 @@ The weights along each axis are one of two kinds:
 Past the cage's sides the pull fades out over one cell's width rather than
 stopping dead or running on for ever, so a cage placed round part of a mesh
 shapes that part and lets the rest go smoothly. Changing the resolution
-resamples the old grid at the new rest points (`resampleLattice`), so the shape
-the cage gives survives as closely as the new grid can hold it, exactly for any
+resamples a grid at the new rest points (`resampleLattice`), so the shape the
+cage gives survives as closely as the new grid can hold it, exactly for any
 linear pull.
+
+The grid it resamples is not the one the last change left but the one the
+cage was last shaped on by hand, which the cage's `lattice.shape` remembers
+from its first change of resolution on (`latticeShape`). Resampling each grid
+from the one before would wear the shape away a little every step, and a pass
+through 2 points on an axis would drop everything between its ends for good.
+The memory holds while the points still stand where resampling it put them,
+which is checked rather than tracked, so whatever tool moves a point, the grid
+as it stands becomes the shape from then on. Reset drops it.
+It travels in the document, so save and undo keep it too.
 
 A cage keeps its own origin and scale: baking them into the points would read
 as the cage having been pulled out of shape, so apply transform and the origin

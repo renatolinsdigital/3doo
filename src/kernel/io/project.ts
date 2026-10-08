@@ -1,6 +1,12 @@
 import { type Transform, type Vec3, createTransform, vec3 } from '../math';
 import { type MeshData, BMesh, deserializeMesh, serializeMesh } from '../mesh';
-import { type LatticeResolution, type Modifier, clampLatticeResolution } from '../modifiers';
+import {
+  type LatticeResolution,
+  type LatticeShape,
+  type Modifier,
+  clampLatticeResolution,
+  latticePointCount,
+} from '../modifiers';
 
 import type { Material } from './types';
 
@@ -33,6 +39,12 @@ export interface ObjectImageData {
  */
 export interface ObjectLatticeData {
   resolution: LatticeResolution;
+  /**
+   * The grid the points were last shaped on by hand, which a change of
+   * resolution rebuilds from. Absent on a cage whose resolution has not
+   * changed since, and in files from before cages remembered it.
+   */
+  shape?: LatticeShape;
 }
 
 /**
@@ -170,7 +182,14 @@ export function serializeProject(
         mesh: serializeMesh(object.mesh),
         ...(owner === undefined ? {} : { meshLink: owner }),
         ...(object.image ? { image: { assetId: object.image.assetId } } : {}),
-        ...(object.lattice ? { lattice: { resolution: { ...object.lattice.resolution } } } : {}),
+        ...(object.lattice
+          ? {
+              lattice: {
+                resolution: { ...object.lattice.resolution },
+                ...(object.lattice.shape ? { shape: structuredClone(object.lattice.shape) } : {}),
+              },
+            }
+          : {}),
       };
     }),
   };
@@ -217,11 +236,30 @@ export function deserializeProject(document: ProjectDocument): {
         mesh,
         image: data.image?.assetId ? { assetId: data.image.assetId } : null,
         lattice: data.lattice?.resolution
-          ? { resolution: clampLatticeResolution(data.lattice.resolution) }
+          ? {
+              resolution: clampLatticeResolution(data.lattice.resolution),
+              shape: readLatticeShape(data.lattice.shape),
+            }
           : null,
       };
     }),
   };
+}
+
+/**
+ * A cage's remembered shape as a file holds it, or undefined when it does not
+ * fill its own grid. Dropping it costs only the memory, since the next change
+ * of resolution rebuilds from the points as they stand, where a grid that
+ * cannot say which point is which would put every pull in the wrong place.
+ */
+function readLatticeShape(shape: LatticeShape | undefined): LatticeShape | undefined {
+  if (!shape?.resolution || !Array.isArray(shape.points)) return undefined;
+  const resolution = clampLatticeResolution(shape.resolution);
+  if (shape.points.length !== latticePointCount(resolution)) return undefined;
+  if (!shape.points.every((point) => [point?.x, point?.y, point?.z].every(Number.isFinite))) {
+    return undefined;
+  }
+  return { resolution, points: shape.points.map((point) => vec3(point.x, point.y, point.z)) };
 }
 
 /**

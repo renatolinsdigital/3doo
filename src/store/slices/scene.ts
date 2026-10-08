@@ -49,6 +49,7 @@ import {
   inverseTransformPoint,
   latticePoints,
   latticeRestPoints,
+  latticeShape,
   lerp,
   medianPoint,
   mulVec,
@@ -569,12 +570,12 @@ function withCageMesh(
   state: EditorStore,
   cage: SceneObject,
   mesh: BMesh,
-  resolution: LatticeResolution,
+  lattice: NonNullable<SceneObject['lattice']>,
   status: string,
 ): Partial<EditorStore> {
   return {
     objects: state.objects.map((object) =>
-      object.mesh === cage.mesh ? { ...object, mesh, lattice: { resolution } } : object,
+      object.mesh === cage.mesh ? { ...object, mesh, lattice } : object,
     ),
     meshVersion: state.meshVersion + 1,
     status,
@@ -2355,9 +2356,19 @@ export const createSceneSlice: StateCreator<
     // A cage whose grid no longer reads starts over at rest, which is all a
     // grid that cannot say which point is which can be resampled from.
     const points = latticePoints(cage.mesh, from);
-    const mesh = createLatticeMesh(next, points ? resampleLattice(from, points, next) : undefined);
+    const shape = points ? latticeShape(from, points, cage.lattice.shape) : undefined;
+    const mesh = createLatticeMesh(
+      next,
+      shape ? resampleLattice(shape.resolution, shape.points, next) : undefined,
+    );
     set((state) =>
-      withCageMesh(state, cage, mesh, next, `${cage.name} is ${next.x}×${next.y}×${next.z}`),
+      withCageMesh(
+        state,
+        cage,
+        mesh,
+        shape ? { resolution: next, shape } : { resolution: next },
+        `${cage.name} is ${next.x}×${next.y}×${next.z}`,
+      ),
     );
   },
 
@@ -2369,17 +2380,25 @@ export const createSceneSlice: StateCreator<
       return;
     }
 
-    const { resolution } = cage.lattice;
+    const { resolution, shape } = cage.lattice;
     const points = latticePoints(cage.mesh, resolution);
     const rest = latticeRestPoints(resolution);
-    if (points?.every((point, index) => equals(point, rest[index]))) {
+    // A remembered shape is still something to reset: a grid too coarse to show
+    // it would otherwise bring it back the moment the resolution went up again.
+    if (!shape && points?.every((point, index) => equals(point, rest[index]))) {
       set({ status: `${cage.name} is already at rest` });
       return;
     }
 
     get().recordHistory('Reset cage');
     set((state) =>
-      withCageMesh(state, cage, createLatticeMesh(resolution), resolution, `Reset ${cage.name}`),
+      withCageMesh(
+        state,
+        cage,
+        createLatticeMesh(resolution),
+        { resolution },
+        `Reset ${cage.name}`,
+      ),
     );
   },
 

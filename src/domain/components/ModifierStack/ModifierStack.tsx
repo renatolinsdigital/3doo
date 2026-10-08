@@ -669,7 +669,7 @@ function CageFields({ cage }: { cage: SceneObject }) {
           integer
           min={MIN_LATTICE_RESOLUTION}
           max={MAX_LATTICE_RESOLUTION}
-          hint={`How many points the cage holds along its own ${axis.toUpperCase()} axis, ${MIN_LATTICE_RESOLUTION} to ${MAX_LATTICE_RESOLUTION}. Changing it keeps the shape the cage gives as closely as the new grid can`}
+          hint={`How many points the cage holds along its own ${axis.toUpperCase()} axis, ${MIN_LATTICE_RESOLUTION} to ${MAX_LATTICE_RESOLUTION}. Changing it keeps the shape the cage gives as closely as the new grid can, and changing it back brings your shape back exactly`}
           onChange={(count) => setLatticeResolution(cage.id, { ...resolution, [axis]: count })}
         />
       ))}

@@ -796,7 +796,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Lattice',
-            'Shapes the mesh with a cage: a grid of points around it, kept as an object of its own named after the mesh with .CAGE on the end. Adding the modifier fits the cage round the mesh. Select the cage, press Tab and move its points with the gizmo, G, R and S, proportional editing included, and the mesh follows, the parts nearest each point the furthest. TRANSITION sets how the mesh bends between the points: SMOOTH makes soft curves, LINEAR makes straight lines that bend sharply at each point. POINTS sets how many points the cage holds along each axis, and RESET CAGE lets the mesh go. Like bend, it only moves the vertices already there.',
+            'Shapes the mesh with a cage: a grid of points around it, kept as an object of its own named after the mesh with .CAGE on the end. Adding the modifier fits the cage round the mesh. Select the cage, press Tab and move its points with the gizmo, G, R and S, proportional editing included, and the mesh follows, the parts nearest each point the furthest. TRANSITION sets how the mesh bends between the points: SMOOTH makes soft curves, LINEAR makes straight lines that bend sharply at each point. POINTS sets how many points the cage holds along each axis. The cage remembers the shape you gave it, so trying other counts and coming back loses nothing, even through a grid too coarse to show it; once you move a point by hand, the grid as it stands becomes the shape to remember. RESET CAGE lets the mesh go and forgets the shape. Like bend, it only moves the vertices already there.',
           ],
           [
             'Weld',

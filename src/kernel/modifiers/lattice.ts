@@ -3,6 +3,7 @@ import {
   type Vec3,
   add,
   clamp,
+  distanceSq,
   lengthSq,
   mul,
   sub,
@@ -254,16 +255,54 @@ export function deformByLattice(
 /**
  * The points of a cage rebuilt at another resolution, each placed where the
  * old grid had carried that spot, so the shape it was given survives the
- * change as closely as the new grid can hold it.
+ * change as closely as the new grid can hold it. At its own resolution a grid
+ * comes back exactly as it was.
  */
 export function resampleLattice(
   resolution: LatticeResolution,
   points: readonly Vec3[],
   next: LatticeResolution,
 ): Vec3[] {
+  if (resolution.x === next.x && resolution.y === next.y && resolution.z === next.z) {
+    return points.map((point) => ({ ...point }));
+  }
   const rest = latticeRestPoints(resolution);
   const offsets = points.map((point, index) => sub(point, rest[index]));
   return latticeRestPoints(next).map((point) =>
     add(point, latticeOffset(point, resolution, offsets, 'linear')),
   );
+}
+
+/** A grid a cage was shaped on by hand: its resolution and where its points stood. */
+export interface LatticeShape {
+  resolution: LatticeResolution;
+  points: Vec3[];
+}
+
+/**
+ * The shape a change of resolution rebuilds a cage from, or undefined when
+ * there is none to keep and the new grid starts at rest.
+ *
+ * That is the shape the cage remembers, while its points still stand where
+ * resampling that shape put them. A point moved by hand since makes the grid
+ * as it stands the shape instead. Rebuilding from the shape rather than from
+ * whatever the last change left is what lets a pass through a coarser grid and
+ * back give the shape back, where resampling each grid from the one before
+ * wears it away a little every step, and a 2 point axis drops it entirely.
+ */
+export function latticeShape(
+  resolution: LatticeResolution,
+  points: readonly Vec3[],
+  remembered: LatticeShape | undefined,
+): LatticeShape | undefined {
+  if (remembered) {
+    const expected = resampleLattice(remembered.resolution, remembered.points, resolution);
+    if (expected.every((point, index) => distanceSq(point, points[index]) < 1e-18)) {
+      return remembered;
+    }
+  }
+
+  const rest = latticeRestPoints(resolution);
+  if (points.every((point, index) => distanceSq(point, rest[index]) < 1e-18)) return undefined;
+  return { resolution: { ...resolution }, points: points.map((point) => ({ ...point })) };
 }
