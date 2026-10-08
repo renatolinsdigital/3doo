@@ -388,15 +388,32 @@ describe('the scene script', () => {
         '// PHOTO.PNG: an image, which a script cannot add',
         '',
         "scene.add('cube');",
-        '// CUBE: its LATTICE modifier needs a lattice cage, which a script cannot add',
+        '// CUBE: its LATTICE modifier must be applied for a script to hold the shape it gives',
         '',
-        `// ${store().objects[2].name}: a lattice cage, which a script cannot add`,
+        `// ${store().objects[2].name}: a lattice cage, gone once the LATTICE modifier on CUBE is applied`,
       ].join('\n'),
     );
 
     store().resetScene();
     expect(await runScript(source)).toMatchObject({ ok: true });
     expect(store().objects.map((object) => object.name)).toEqual(['CUBE']);
+  });
+
+  it('names every object a shared cage shapes, and only a cage nothing reads as one to add', () => {
+    store().addPrimitive('cube');
+    store().addModifier('lattice');
+    const cage = store().objects[1];
+    store().duplicateSelected();
+
+    expect(script()).toContain(
+      `// ${cage.name}: a lattice cage, gone once the lattice modifiers on CUBE and CUBE.COPY are applied`,
+    );
+
+    for (const object of [store().objects[0], store().objects[2]]) {
+      store().setActiveObject(object.id);
+      store().removeModifier(object.modifiers[0].id);
+    }
+    expect(script()).toContain(`// ${cage.name}: a lattice cage, which a script cannot add`);
   });
 
   it.each(SCRIPT_EXAMPLES.map((example) => [example.label, example] as const))(

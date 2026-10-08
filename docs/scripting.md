@@ -326,7 +326,14 @@ folded, and UVs, which nothing on screen shows outside an image.
 Images and lattices have no script form yet. An image's picture is a binary
 asset, and no API call makes a cage, while adding a lattice modifier fits a new
 cage of its own. Each is written as a comment and counted in `gaps`, and COPY
-warns that a run leaves them out.
+warns that a run leaves them out. A lattice's comments say to apply it rather
+than that it cannot be written: applying bakes the cage's pull into the mesh and
+deletes the cage, and the mesh is something a script can write.
+
+A script writes and reads base meshes, not what a modifier stack makes of them,
+so the shape a stack gives is only in the script once the stack is applied.
+While any object still has modifiers, the dialog says so above both tabs:
+scripts map the scene fully only once every modifier is applied.
 
 The script holds for a run on a new project. Like any script it adds to the
 scene rather than replacing it.

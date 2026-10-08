@@ -67,6 +67,31 @@
     }
   }
 
+  // Amber like a warning toast, and led by a label so it does not rest on
+  // colour alone.
+  &__warning {
+    @include mono-value;
+
+    display: flex;
+    gap: var(--space-3);
+    align-items: baseline;
+    padding: var(--space-2) var(--space-3);
+    color: var(--void);
+    background: var(--bone);
+    border: var(--border-thin) solid var(--void);
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  &__warning-label {
+    @include label-text;
+
+    flex: none;
+    padding: 0 var(--space-2);
+    color: var(--void);
+    background: var(--amber);
+  }
+
   // Filled as well as coloured, and led by the line it failed on, so the
   // reason reads at a glance and does not rest on red alone.
   &__problem {

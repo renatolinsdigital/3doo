@@ -1117,6 +1117,43 @@ describe('lattice cages', () => {
     expectSamePoints(positions(shape()), pulled);
   });
 
+  it('bakes the pull into the mesh when applied, and takes the cage away with it', () => {
+    const { object, cage, modifier } = latticeScene();
+    pullTopUp(cage);
+    const pulled = positions(shape());
+    useEditorStore.getState().selectObjects([cage.id, object.id]);
+
+    useEditorStore.getState().applyModifierToMesh(modifier.id);
+
+    const state = useEditorStore.getState();
+    expect(state.objects.map((candidate) => candidate.id)).toEqual([object.id]);
+    expect(state.objects[0].modifiers).toHaveLength(0);
+    expect(state.selectedObjectIds).not.toContain(cage.id);
+    expect(state.status).toBe(`Applied LATTICE and deleted ${cage.name}`);
+    expectSamePoints(positions(state.objects[0].mesh), pulled);
+
+    // One step, so one undo brings the cage back still shaping the mesh.
+    state.undo();
+    expect(useEditorStore.getState().objects.map((candidate) => candidate.id)).toEqual([
+      object.id,
+      cage.id,
+    ]);
+    expectSamePoints(positions(shape()), pulled);
+  });
+
+  it('keeps the cage when applied while another lattice still reads it', () => {
+    const { object, cage, modifier } = latticeScene();
+    const store = useEditorStore.getState();
+    store.duplicateSelected();
+    store.setActiveObject(object.id);
+
+    store.applyModifierToMesh(modifier.id);
+
+    const state = useEditorStore.getState();
+    expect(state.objects.some((candidate) => candidate.id === cage.id)).toBe(true);
+    expect(state.status).toBe('Applied LATTICE');
+  });
+
   it('keeps its own origin and scale, and takes no modifiers', () => {
     const { cage } = latticeScene();
     const store = useEditorStore.getState();

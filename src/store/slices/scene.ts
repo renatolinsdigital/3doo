@@ -2313,18 +2313,41 @@ export const createSceneSlice: StateCreator<
     if (!object || !modifier) return;
 
     get().recordHistory(`Apply ${modifier.name}`);
-    get().patchActiveObject(
-      {
-        mesh: applyModifier(
-          cloneMesh(object.mesh),
-          modifier,
-          modifierContext(object, get().cursor, get().objects),
-        ),
-        modifiers: object.modifiers.filter((candidate) => candidate.id !== id),
-        primitive: null,
-      },
-      { status: `Applied ${modifier.name}` },
+    const mesh = applyModifier(
+      cloneMesh(object.mesh),
+      modifier,
+      modifierContext(object, get().cursor, get().objects),
     );
+    const modifiers = object.modifiers.filter((candidate) => candidate.id !== id);
+
+    set((state) => {
+      const applied = state.objects.map((candidate) =>
+        candidate.id === object.id ? { ...candidate, mesh, modifiers, primitive: null } : candidate,
+      );
+      // The pull now lives in the mesh, so a cage no other lattice reads has
+      // nothing left to shape. One that still shapes something stays.
+      const cageId = modifier.type === 'lattice' ? modifier.objectId : null;
+      const cage = applied.find((candidate) => candidate.id === cageId && candidate.lattice);
+      const read = applied.some((candidate) =>
+        candidate.modifiers.some((other) => other.type === 'lattice' && other.objectId === cageId),
+      );
+      if (!cage || read) {
+        return {
+          objects: applied,
+          meshVersion: state.meshVersion + 1,
+          status: `Applied ${modifier.name}`,
+        };
+      }
+
+      const remaining = applied.filter((candidate) => candidate.id !== cage.id);
+      return {
+        objects: remaining,
+        groups: pruneGroups(state.groups, remaining),
+        selectedObjectIds: state.selectedObjectIds.filter((selected) => selected !== cage.id),
+        meshVersion: state.meshVersion + 1,
+        status: `Applied ${modifier.name} and deleted ${cage.name}`,
+      };
+    });
   },
 
   addLatticeCage: (id) => {

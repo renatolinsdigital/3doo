@@ -30,7 +30,8 @@ import { MODIFIER_FIELDS } from './reference';
  * It writes what the scene is, not how it is being looked at: what is selected,
  * the shading and the camera are left out, and so are UVs, which nothing on
  * screen shows. Images and lattices have no script form yet, so each is noted
- * in a comment instead and counted, for COPY to say a run leaves them out.
+ * in a comment instead and counted, for COPY to say a run leaves them out. A
+ * lattice's comment says to apply it, which bakes its shape into the mesh.
  */
 
 // ------------------------------------------------------------------ writing code
@@ -260,6 +261,32 @@ const sameModifiers = (a: readonly Modifier[], b: readonly Modifier[]) =>
       literal({ ...modifier, id: undefined }) === literal({ ...b[index], id: undefined }),
   );
 
+/** `A`, `A and B`, `A, B and C`. */
+function names(items: readonly string[]): string {
+  if (items.length < 2) return items.join('');
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+/**
+ * What a cage's comment says: that applying the lattices reading it takes it
+ * away, since applying is what a script needs. A cage nothing reads is only
+ * one a script cannot add.
+ */
+function cageNote(cage: SceneObject, objects: readonly SceneObject[]): string {
+  const readers = objects.flatMap((object) =>
+    object.modifiers
+      .filter((modifier) => modifier.type === 'lattice' && modifier.objectId === cage.id)
+      .map((modifier) => ({ object, modifier })),
+  );
+  if (readers.length === 0) return 'a lattice cage, which a script cannot add';
+  if (readers.length === 1) {
+    const [{ object, modifier }] = readers;
+    return `a lattice cage, gone once the ${modifier.name} modifier on ${object.name} is applied`;
+  }
+  const owners = [...new Set(readers.map(({ object }) => object.name))];
+  return `a lattice cage, gone once the lattice modifiers on ${names(owners)} are applied`;
+}
+
 // ------------------------------------------------------------------- the script
 
 /** The statement that makes an object, written once it is known whether anything names it. */
@@ -344,7 +371,7 @@ export function sceneScript({ objects, groups, cursor }: SceneState): SceneScrip
       if (modifier.type === 'lattice') {
         lines.push(
           gap(
-            `${object.name}: its ${modifier.name} modifier needs a lattice cage, which a script cannot add`,
+            `${object.name}: its ${modifier.name} modifier must be applied for a script to hold the shape it gives`,
           ),
         );
       } else if (rebuild) {
@@ -418,7 +445,7 @@ export function sceneScript({ objects, groups, cursor }: SceneState): SceneScrip
       continue;
     }
     if (object.lattice) {
-      blocks.push([gap(`${object.name}: a lattice cage, which a script cannot add`)]);
+      blocks.push([gap(`${object.name}: ${cageNote(object, objects)}`)]);
       continue;
     }
     const owner = owners.get(object.mesh);

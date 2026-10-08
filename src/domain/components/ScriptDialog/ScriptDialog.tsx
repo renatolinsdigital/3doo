@@ -64,6 +64,20 @@ function shortfall(gaps: number): string | null {
 }
 
 /**
+ * What the dialog warns while any object still has modifiers, or null when none
+ * does. A script writes and reads base meshes, so the shape a stack gives is
+ * only in it once the stack is applied.
+ */
+function unapplied(modified: readonly string[]): string | null {
+  if (modified.length === 0) return null;
+  const who =
+    modified.length === 1
+      ? `${modified[0]} still has modifiers on its stack`
+      : `${modified.length} objects still have modifiers on their stacks`;
+  return `Scripts map the scene fully only once every modifier is applied. ${who}`;
+}
+
+/**
  * The scene as script, read again whenever it changes while the dialog is open.
  * Shut, it follows nothing: a drag changes the scene on every pointer move.
  */
@@ -116,6 +130,14 @@ export function ScriptDialog() {
   const [copied, setCopied] = useState(false);
   const scene = useSceneScript(open);
   const empty = !scene || scene.source === '';
+  const modified = useEditorStore(
+    useShallow((state) =>
+      open
+        ? state.objects.filter((object) => object.modifiers.length > 0).map(({ name }) => name)
+        : [],
+    ),
+  );
+  const warning = unapplied(modified);
   const failures = useRef(0);
   const editor = useRef<ScriptEditorHandle>(null);
 
@@ -228,6 +250,13 @@ export function ScriptDialog() {
           API REFERENCE ↗
         </a>
       </div>
+
+      {warning && (
+        <p className="script-dialog__warning" role="status">
+          <span className="script-dialog__warning-label">WARNING</span>
+          <span>{warning}</span>
+        </p>
+      )}
 
       <div className="script-dialog__panel" hidden={tab !== 'scene'}>
         <ScriptEditor

@@ -148,6 +148,32 @@ describe('ScriptDialog', () => {
     ]);
   });
 
+  it('warns while any modifier is unapplied, on either tab, and stops once all are', async () => {
+    store().addPrimitive('cube');
+    render(<ScriptDialog />);
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+
+    act(() => store().addModifier('mirror'));
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Scripts map the scene fully only once every modifier is applied. CUBE still has modifiers on its stack',
+    );
+
+    act(() => store().addPrimitive('cone'));
+    act(() => store().addModifier('twist'));
+    await openEditor();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      '2 objects still have modifiers on their stacks',
+    );
+
+    act(() => {
+      for (const object of store().objects) {
+        store().setActiveObject(object.id);
+        store().applyModifierToMesh(object.modifiers[0].id);
+      }
+    });
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
   it('says so when the browser refuses the clipboard', async () => {
     const user = userEvent.setup();
     vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));

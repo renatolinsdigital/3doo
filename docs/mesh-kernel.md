@@ -590,6 +590,11 @@ as the cage having been pulled out of shape, so apply transform and the origin
 operations leave cages out. It takes no modifiers, joins no merge or boolean,
 and stays out of exports and snapshots.
 
+Applying a lattice modifier bakes the cage's pull into the mesh and, in the
+same history step, deletes the cage, since its shape now lives in the mesh.
+A cage another lattice modifier still names stays: a duplicate of the object
+carries the modifier across, so two objects can read one cage.
+
 ### Weld
 
 Weld is `mergeByDistance` run over every vertex in the mesh. There is no
