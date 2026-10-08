@@ -33,6 +33,100 @@ AI ASSISTANTS section of the in-app docs (`src/modules/docs/content.ts`).
 - A link carries the whole project in its hash, so a static host serving the
   built files is all the hosted editor needs.
 
+## How the parts work together
+
+The hosted setup, the one the MCP dialog's hosted commands give, from end to
+end:
+
+```text
+┌─ your computer ──────────────────────────────┐  ┌─ online ────────────┐
+│                                              │  │                     │
+│  Claude Code or Claude Desktop               │  │                     │
+│     │ starts the server as a child process   │  │                     │
+│     │ and speaks JSON-RPC on its stdio       │  │                     │
+│     ▼                                        │  │                     │
+│  MCP server, a Node process ◀────────────────┼──┤ npm registry        │
+│     │ writes files to ~/3doo-output          │  │ 3doo-mcp and        │
+│     │ drives the browser with                │  │ playwright-core     │
+│     │ playwright-core                        │  │                     │
+│     ▼                                        │  │                     │
+│  headless Chromium, a private tab ◀──────────┼──┤ Vercel              │
+│     │ page.evaluate                          │  │ the built app,      │
+│     ▼                                        │  │ static files only   │
+│  3DOO app, the same code as the site:        │  │                     │
+│  window.threedoo, the store, the             │  │                     │
+│  scripting API, renderer, exporters          │  │                     │
+│                                              │  │                     │
+└──────────────────────────────────────────────┘  └─────────────────────┘
+```
+
+| Part | What it is | Where it runs |
+| --- | --- | --- |
+| Claude Code, Claude Desktop | The MCP client. It starts the server and calls its tools | Your computer |
+| `3doo-mcp` | The server, bundled into one file (`dist/server.mjs`) and published to npm | Your computer, as a Node process the client starts |
+| `mcp/server.ts` | The same server, unbundled, in a copy of the repository | Your computer, the same way |
+| `playwright-core` | A Node library that launches a browser and runs code in its pages | Inside the server's process |
+| Chromium | A headless browser: Playwright's own, else Chrome, else Edge | Your computer, started by the server |
+| The 3DOO app | The static files `npm run build` makes: `index.html`, JavaScript, CSS | Downloaded from Vercel, run in the Chromium tab |
+| npm registry | Where `npx` fetches the server from | Online. Hands out code, runs none |
+| Vercel | The static host of https://3doo.vercel.app | Online. Hands out code, runs none |
+
+Both arrows from online carry code down to your computer, and nothing goes back
+up. There is no 3DOO backend: Vercel serves the same files a visitor's browser
+gets, and the scene lives only in the headless tab.
+
+### A session, step by step
+
+1. **Registering.** `claude mcp add 3doo -e THREEDOO_APP_URL=... -- npx -y
+   3doo-mcp` saves a command and its variables in Claude's configuration.
+   Nothing is downloaded or started yet.
+2. **Starting the server.** When a session starts, Claude runs that command as
+   a child process. `npx` fetches `3doo-mcp` and its one dependency,
+   `playwright-core`, from the npm registry (the first time; after that from
+   its cache), then runs the package's `bin`, `dist/server.mjs`, with Node.
+   From a copy of the repository the command is `node mcp/server.ts`. Either
+   way the server reads JSON-RPC requests on stdin, answers on stdout and logs
+   to stderr. MCP needs no network port: stdio is the whole transport.
+3. **The handshake.** Claude sends `initialize` and `tools/list`, and the
+   server answers both from its own code: the instructions and the seven tools.
+   No browser starts yet, so a session that never calls a tool never launches
+   one.
+4. **The first tool call starts the browser.** `BrowserEngine` in
+   `mcp/engine.ts` picks the page to drive with `engineSource`
+   (`mcp/config.ts`): `THREEDOO_ENGINE_URL`, else `dist/` if there is one,
+   else `THREEDOO_APP_URL`. The npm package has no `dist/` beside it, so here
+   that is Vercel. `playwright-core` launches Chromium headless, with software
+   WebGL, and opens the home page `/` in a browser context of its own.
+5. **The app loads in that tab.** Vercel answers with the built files, as it
+   would for anyone. In the tab, `main.tsx` calls `installAutomation()`, which
+   puts `window.threedoo` on the page. The server waits for it and compares its
+   `version` with its own `AUTOMATION_VERSION`. A mismatch stops the server
+   with a message naming the side to update.
+6. **Each call is one `page.evaluate`.** For `run_script`, Claude writes
+   JavaScript against the scripting API and sends it as the `script` argument.
+   The server passes it into the page, where `window.threedoo.run(script)`
+   runs it with the SCRIPT dialog's own `runScript`, against the same store.
+   Every other tool works the same way, calling `render`, `exportFile`,
+   `shareLink` and the rest. What comes back is JSON: reports and summaries as
+   they are, pictures and files as base64.
+7. **The server turns results into MCP content.** A page cannot write to disk,
+   so files come back to the server, which writes them to the output folder and
+   returns their paths. Pictures go to Claude as image content, which the model
+   looks at. Calls run one at a time, in order, since there is one scene.
+8. **A link opens in your own browser.** `share_link` packs the scene into the
+   hash of a link to the hosted editor. Your browser asks Vercel for
+   `/modeling`, `vercel.json` answers with `index.html`, and the app reads the
+   scene out of the hash. A browser never sends the hash to the server, so the
+   scene does not reach Vercel even then.
+9. **The end.** When the session ends, Claude closes the server's stdin, and
+   the server closes the browser. The scene goes with the tab, so what was not
+   exported or linked is gone.
+
+From a copy of the repository with a build, both online boxes move onto your
+computer: `node mcp/server.ts` runs from the clone, and in step 4 it serves
+`dist/` itself on a free port of `127.0.0.1` for the browser to load. Only
+links still need a hosted address, see [Local or hosted](#local-or-hosted).
+
 ## What you run, and when
 
 | Command | When |
