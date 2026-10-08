@@ -1,18 +1,12 @@
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 
 import { Button, Modal, SegmentedControl, type SegmentedOption, Select } from '@shared/components';
 import { useEditorStore } from '@store/index';
 
 import { SCRIPT_EXAMPLES, STARTER_SCRIPT } from '../../scripting/examples';
-import {
-  type ActionScript,
-  actionLogIsEmpty,
-  actionLogText,
-  actionScript,
-  clearActionLog,
-  subscribeActionLog,
-} from '../../scripting/recorder';
 import { runScript } from '../../scripting/runScript';
+import { type SceneScript, sceneScript } from '../../scripting/sceneScript';
 import { ScriptEditor, type ScriptEditorHandle } from '../ScriptEditor/ScriptEditor';
 
 import './ScriptDialog.scss';
@@ -51,23 +45,43 @@ const EXAMPLE_OPTIONS = [
   ...SCRIPT_EXAMPLES.map((example) => ({ value: example.id, label: example.label })),
 ];
 
-type Tab = 'actions' | 'editor';
+type Tab = 'scene' | 'editor';
 
 const TABS: readonly SegmentedOption<Tab>[] = [
-  { value: 'actions', label: 'ACTIONS', hint: 'What you do in the viewport, written as script' },
+  { value: 'scene', label: 'SCENE', hint: 'The scene as the script that builds it' },
   { value: 'editor', label: 'EDITOR', hint: 'Write a script and run it against the scene' },
 ];
 
-/** Stands in for an empty log, so the tab says what is going to appear in it. */
-export const EMPTY_LOG = '// What you do in the viewport is written here as script.';
+/** Stands in for the script of an empty scene, which has nothing in it. */
+export const EMPTY_SCENE = '// The scene is empty.';
+
+/** What a run of the copied script leaves out, or null when it builds the whole scene. */
+function shortfall(gaps: number): string | null {
+  if (gaps === 0) return null;
+  return gaps === 1
+    ? 'One thing in the scene has no script form yet, so a run leaves it out'
+    : `${gaps} things in the scene have no script form yet, so a run leaves them out`;
+}
 
 /**
- * The log, read only. Its own component so that only an open dialog follows
- * every change to it: a drag changes it on every pointer move.
+ * The scene as script, read again whenever it changes while the dialog is open.
+ * Shut, it follows nothing: a drag changes the scene on every pointer move.
  */
-function ActionLog({ autoFocus }: { autoFocus: boolean }) {
-  const log = useSyncExternalStore(subscribeActionLog, actionLogText);
-  return <ScriptEditor label="Actions" value={log || EMPTY_LOG} readOnly autoFocus={autoFocus} />;
+function useSceneScript(open: boolean): SceneScript | null {
+  const scene = useEditorStore(
+    useShallow((state) =>
+      open
+        ? {
+            objects: state.objects,
+            groups: state.groups,
+            cursor: state.cursor,
+            // An edit changes a mesh in place and says so here, leaving `objects` as it was.
+            meshVersion: state.meshVersion,
+          }
+        : null,
+    ),
+  );
+  return useMemo(() => scene && sceneScript(scene), [scene]);
 }
 
 interface Problem {
@@ -77,24 +91,13 @@ interface Problem {
   key: number;
 }
 
-/** What a run of the log will not rebuild, or null when it rebuilds the whole scene. */
-function scriptShortfall({ gaps, fromEmpty }: ActionScript): string | null {
-  if (!fromEmpty) {
-    return 'The log began on objects it did not make, so a run repeats only what came after';
-  }
-  if (gaps === 0) return null;
-  return gaps === 1
-    ? 'One step in the log has no script equivalent, so a run leaves it out'
-    : `${gaps} steps in the log have no script equivalent, so a run leaves them out`;
-}
-
 /**
  * The scripting window, in two tabs.
  *
- * ACTIONS shows what has been done in the viewport, written as the script
- * that would do it, and can copy that script or hand it to the editor. EDITOR is where a
- * script is written and run. Both stay mounted while the dialog is open, so
- * switching between them keeps the editor's own undo.
+ * SCENE shows the scene on screen written as the script that builds it, read
+ * only, and can copy it. EDITOR is where a script is written and run. Both stay
+ * mounted while the dialog is open, so switching between them keeps the
+ * editor's own undo.
  *
  * A run that fails says why twice over, in a toast and under the code, and
  * leaves the dialog open on the line that failed with the scene untouched. A
@@ -106,16 +109,15 @@ export function ScriptDialog() {
   const closeDialog = useEditorStore((state) => state.closeDialog);
   const pushToast = useEditorStore((state) => state.pushToast);
 
-  const [tab, setTab] = useState<Tab>('actions');
+  const [tab, setTab] = useState<Tab>('scene');
   const [source, setSource] = useState(readDraft);
   const [running, setRunning] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
   const [copied, setCopied] = useState(false);
-  const logEmpty = useSyncExternalStore(subscribeActionLog, actionLogIsEmpty);
+  const scene = useSceneScript(open);
+  const empty = !scene || scene.source === '';
   const failures = useRef(0);
   const editor = useRef<ScriptEditorHandle>(null);
-  /** The log on its way into the editor, which can only take it once it is showing. */
-  const handover = useRef<string | null>(null);
 
   useEffect(() => writeDraft(source), [source]);
 
@@ -124,13 +126,6 @@ export function ScriptDialog() {
     const timer = window.setTimeout(() => setCopied(false), 2000);
     return () => window.clearTimeout(timer);
   }, [copied]);
-
-  useLayoutEffect(() => {
-    if (tab !== 'editor' || handover.current === null) return;
-    editor.current?.replaceAll(handover.current);
-    handover.current = null;
-    setProblem(null);
-  }, [tab]);
 
   const run = async () => {
     if (running) return;
@@ -163,31 +158,20 @@ export function ScriptDialog() {
     setProblem(null);
   };
 
-  const openInEditor = () => {
-    const script = actionScript();
-    handover.current = script.source;
-    setTab('editor');
-    const shortfall = scriptShortfall(script);
-    if (shortfall) pushToast('warning', shortfall);
-  };
-
   const copyScript = async () => {
-    const script = actionScript();
+    if (!scene) return;
     try {
-      await navigator.clipboard.writeText(script.source);
+      await navigator.clipboard.writeText(scene.source);
     } catch {
       // The clipboard API is missing outside a secure context and a browser
-      // may refuse it. The log on screen lacks the lines that clear the scene
-      // first, so selecting it for the copy shortcut would hand over less.
-      pushToast(
-        'error',
-        'The browser blocked copying. OPEN IN EDITOR takes the script to the editor instead',
-      );
+      // may refuse it. The script on screen is all of it, so the keyboard can
+      // copy it instead.
+      pushToast('error', 'The browser blocked copying. Select the script and press Ctrl+C instead');
       return;
     }
     setCopied(true);
-    const shortfall = scriptShortfall(script);
-    if (shortfall) pushToast('warning', `Copied. ${shortfall}`);
+    const missing = shortfall(scene.gaps);
+    if (missing) pushToast('warning', `Copied. ${missing}`);
   };
 
   return (
@@ -197,27 +181,15 @@ export function ScriptDialog() {
       onClose={closeDialog}
       className="script-dialog"
       footer={
-        tab === 'actions' ? (
+        tab === 'scene' ? (
           <>
-            <Button
-              label="CLEAR"
-              disabled={logEmpty}
-              hint="Empty the log. The scene stays as it is"
-              onClick={clearActionLog}
-            />
             <Button label="CLOSE" onClick={closeDialog} />
             <Button
               label={copied ? 'COPIED' : 'COPY'}
-              disabled={logEmpty}
-              hint="Copy the log as a script that builds this scene again when run in EDITOR"
-              onClick={() => void copyScript()}
-            />
-            <Button
-              label="OPEN IN EDITOR"
               variant="primary"
-              disabled={logEmpty}
-              hint="Replace the script in the editor with this log. Ctrl+Z in the editor brings yours back"
-              onClick={openInEditor}
+              disabled={empty}
+              hint="Copy the script. Run in EDITOR on a new project, it builds this scene again"
+              onClick={() => void copyScript()}
             />
           </>
         ) : (
@@ -257,8 +229,13 @@ export function ScriptDialog() {
         </a>
       </div>
 
-      <div className="script-dialog__panel" hidden={tab !== 'actions'}>
-        <ActionLog autoFocus={tab === 'actions'} />
+      <div className="script-dialog__panel" hidden={tab !== 'scene'}>
+        <ScriptEditor
+          label="Scene"
+          value={empty ? EMPTY_SCENE : (scene?.source ?? '')}
+          readOnly
+          autoFocus={tab === 'scene'}
+        />
       </div>
 
       <div className="script-dialog__panel" hidden={tab !== 'editor'}>

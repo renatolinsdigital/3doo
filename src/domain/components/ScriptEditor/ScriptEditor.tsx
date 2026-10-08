@@ -36,15 +36,21 @@ const WORD = /[\w$]/;
 const HOVER_DELAY_MS = 350;
 const HOVER_GRACE_MS = 220;
 
+/**
+ * Past this many characters the text is drawn without colour, one span a line
+ * rather than one a token. A dense mesh written out point by point runs to
+ * hundreds of thousands of tokens, and a span for each would stall the page.
+ */
+export const HIGHLIGHT_LIMIT = 100_000;
+
 export interface ScriptEditorProps {
   value: string;
   onChange?: (value: string) => void;
   /** Ctrl+Enter, or Cmd+Enter on a Mac. */
   onRun?: () => void;
   /**
-   * Shows the code without letting it be edited, scrolled to its last line, as
-   * a log is read. It can still be selected and copied, and its names still
-   * open their reference on hover.
+   * Shows the code without letting it be edited. It can still be selected and
+   * copied, and its names still open their reference on hover.
    */
   readOnly?: boolean;
   /** Takes the focus as its dialog opens. Off for one that opens hidden behind another. */
@@ -117,7 +123,13 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(fu
   const [completion, setCompletion] = useState<CompletionState | null>(null);
   const [hover, setHover] = useState<HoverState | null>(null);
 
-  const tokens = useMemo(() => tokenize(value), [value]);
+  const tokens = useMemo(
+    () =>
+      value.length > HIGHLIGHT_LIMIT
+        ? [{ kind: 'identifier' as const, text: value, start: 0 }]
+        : tokenize(value),
+    [value],
+  );
   const lines = useMemo(() => toLines(tokens), [tokens]);
   const caretLine = useMemo(() => lineAt(value, caret), [value, caret]);
   const caretColumn = caret - (value.lastIndexOf('\n', caret - 1) + 1) + 1;
@@ -190,15 +202,6 @@ export const ScriptEditor = forwardRef<ScriptEditorHandle, ScriptEditorProps>(fu
       field.scrollTop = Math.max(0, top - field.clientHeight / 3);
     }
   }, [errorLine, errorKey]);
-
-  // A log is read from its newest line.
-  useLayoutEffect(() => {
-    const field = textarea.current;
-    if (!field || !readOnly) return;
-    field.setSelectionRange(value.length, value.length);
-    setCaret(value.length);
-    field.scrollTop = field.scrollHeight;
-  }, [readOnly, value]);
 
   /**
    * Replaces part of the text the way typing would, so Ctrl+Z takes it back.

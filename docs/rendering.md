@@ -326,8 +326,7 @@ proxy object.
   `EditMoveDrag` (`src/viewport/editMove.ts`): every pointer move puts back
   what the last one moved and applies the total again. The drag never
   compounds, the wheel can change the proportional radius under it, and on
-  confirm it is exactly one `translate`, `rotate` or `scale` call, which the
-  ACTIONS log writes (see [scripting.md](scripting.md#the-action-log)).
+  confirm it is exactly one `translate`, `rotate` or `scale` call.
 
 `TransformControls` stopped being an `Object3D` in newer Three.js releases and
 now exposes its visual through `getHelper()`. `resolveGizmoHelper` supports both

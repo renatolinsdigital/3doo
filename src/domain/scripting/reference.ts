@@ -786,9 +786,9 @@ export const API_ENTRIES: readonly ApiEntry[] = [
     {
       name: 'addMesh',
       kind: 'function',
-      args: '{ verts, faces, name?, position?, rotation?, scale?, color? }',
+      args: '{ verts, faces, edges?, smooth?, faceMaterials?, sharp?, name?, position?, rotation?, scale?, color? }',
       summary:
-        'Builds an object from your own geometry and returns it. verts lists [x, y, z] points, faces lists the vertex indices around each face, three or more per face.',
+        'Builds an object from your own geometry and returns it. verts lists [x, y, z] points, faces lists the vertex indices around each face, three or more per face. edges lists [a, b] pairs joined by an edge with no face. smooth is true for every face or one true or false per face, faceMaterials the material slot each face wears, and sharp the [a, b] edges marked sharp.',
     },
     {
       name: 'objects',

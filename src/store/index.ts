@@ -1,7 +1,13 @@
 export * from './types';
 export * from './selectors';
 export { useEditorStore, type EditorStore } from './useEditorStore';
-export { CURSOR_SNAPS, activeObject, displayCenter, evaluatedMesh } from './slices/scene';
+export {
+  CURSOR_SNAPS,
+  DEFAULT_MATERIAL_COLOR,
+  activeObject,
+  displayCenter,
+  evaluatedMesh,
+} from './slices/scene';
 export { SELECT_SHAPES } from './slices/tool';
 export { axisViewName } from './slices/viewport';
 export {

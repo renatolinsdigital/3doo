@@ -46,7 +46,7 @@ New to the code? Start with [docs/get-started.md](docs/get-started.md).
 - **Scripting**: a code editor in the top bar that builds and edits the scene
   with JavaScript, in the spirit of Blender's Python console, with hover help
   linked to the docs. A run is one step to undo, and a failed run changes
-  nothing.
+  nothing. Its SCENE tab shows the scene as the script that builds it.
 - **AI assistants**: an MCP server lets Claude and other assistants build
   models with the scripting API and hand them back as files, pictures from any
   of the editor's views, or a link that opens the editor on the result. The

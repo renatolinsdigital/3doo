@@ -1,23 +1,18 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { vec3 } from '@kernel/index';
 import { useEditorStore } from '@store/index';
 
 import { SCRIPT_EXAMPLES, STARTER_SCRIPT } from '../../scripting/examples';
-import { clearActionLog, installRecorder } from '../../scripting/recorder';
 
-import { DRAFT_KEY, EMPTY_LOG, ScriptDialog } from './ScriptDialog';
+import { DRAFT_KEY, EMPTY_SCENE, ScriptDialog } from './ScriptDialog';
 
 const store = () => useEditorStore.getState();
 const field = () => screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Script' });
-const log = () => screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Actions' });
+const sceneView = () => screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Scene' });
 const button = (name: string) => screen.getByRole('button', { name });
-
-/** What a script the log hands over starts with when the log began on an empty scene. */
-const FROM_EMPTY =
-  '// Start from an empty scene, as the log did\nscene.clear();\nscene.cursor = [0, 0, 0];';
 
 /** Puts a whole script in the editor at once, as a paste would. */
 function write(source: string) {
@@ -29,13 +24,10 @@ async function openEditor() {
 }
 
 describe('ScriptDialog', () => {
-  beforeAll(installRecorder);
-
   beforeEach(() => {
     window.localStorage.removeItem(DRAFT_KEY);
     store().resetScene();
     useEditorStore.setState({ toasts: [] });
-    clearActionLog();
     store().openDialog('script');
   });
 
@@ -43,62 +35,85 @@ describe('ScriptDialog', () => {
     vi.restoreAllMocks();
   });
 
-  it('opens on the ACTIONS tab, with what was done in the viewport written as script', () => {
+  it('opens on the SCENE tab, with the scene written as the script that builds it', () => {
     store().addPrimitive('cube');
+    store().setObjectTransform(store().objects[0].id, { position: vec3(1, 2, 0) });
     store().setShading('wireframe');
 
     render(<ScriptDialog />);
 
-    expect(log()).toHaveValue("scene.add('cube');\nview.shading = 'wireframe';");
-    expect(log()).toHaveAttribute('readonly');
-    expect(log()).toHaveFocus();
+    expect(sceneView()).toHaveValue("scene.add('cube', { position: [1, 2, 0] });");
+    expect(sceneView()).toHaveAttribute('readonly');
+    expect(sceneView()).toHaveFocus();
     expect(screen.queryByRole('button', { name: 'RUN' })).not.toBeInTheDocument();
   });
 
-  it('says what the log is for while it is empty, with nothing to clear or open', () => {
-    render(<ScriptDialog />);
-
-    expect(log()).toHaveValue(EMPTY_LOG);
-    expect(button('CLEAR')).toHaveAttribute('aria-disabled', 'true');
-    expect(button('COPY')).toHaveAttribute('aria-disabled', 'true');
-    expect(button('OPEN IN EDITOR')).toHaveAttribute('aria-disabled', 'true');
-  });
-
-  it('empties the log on CLEAR and leaves the scene alone', async () => {
+  it('offers only CLOSE and COPY, with nothing to clear or hand to the editor', () => {
     store().addPrimitive('cube');
     render(<ScriptDialog />);
 
-    await userEvent.click(button('CLEAR'));
-
-    expect(log()).toHaveValue(EMPTY_LOG);
-    expect(store().objects).toHaveLength(1);
+    const footer = button('CLOSE').parentElement as HTMLElement;
+    expect(
+      within(footer)
+        .getAllByRole('button')
+        .map((item) => item.textContent),
+    ).toEqual(['CLOSE', 'COPY']);
   });
 
-  it('hands the log to the editor, where Ctrl+Z would bring the old script back', async () => {
-    store().addPrimitive('torus');
+  it('shows an empty scene as empty, with nothing to copy', () => {
     render(<ScriptDialog />);
 
-    await userEvent.click(button('OPEN IN EDITOR'));
-
-    expect(field()).toHaveValue(`${FROM_EMPTY}\nscene.add('torus');`);
-    expect(screen.getByRole('button', { name: 'RUN' })).toBeInTheDocument();
+    expect(sceneView()).toHaveValue(EMPTY_SCENE);
+    expect(button('COPY')).toHaveAttribute('aria-disabled', 'true');
   });
 
-  it('copies the log as a script that, pasted into the editor and run, builds the same scene', async () => {
+  it('shows nothing for a cube added and deleted again', () => {
+    store().addPrimitive('cube');
+    store().deleteSelected([store().objects[0].id]);
+
+    render(<ScriptDialog />);
+
+    expect(sceneView()).toHaveValue(EMPTY_SCENE);
+  });
+
+  it('follows the scene while it is open', () => {
+    render(<ScriptDialog />);
+
+    act(() => store().addPrimitive('torus'));
+    expect(sceneView()).toHaveValue("scene.add('torus');");
+
+    act(() => store().undo());
+    expect(sceneView()).toHaveValue(EMPTY_SCENE);
+  });
+
+  it('cannot be typed into', async () => {
+    store().addPrimitive('cone');
+    render(<ScriptDialog />);
+
+    await userEvent.type(sceneView(), 'scene.clear();');
+
+    expect(sceneView()).toHaveValue("scene.add('cone');");
+  });
+
+  it('copies the script that, run in the editor on a new project, builds the same scene', async () => {
     const user = userEvent.setup();
     store().addPrimitive('cube');
     store().setObjectTransform(store().objects[0].id, { position: vec3(1, 2, 0) });
+    store().addPrimitive('cone');
+    store().renameObject(store().objects[1].id, 'TIP');
     const built = store().objects.map(({ name, transform }) => ({ name, transform }));
     render(<ScriptDialog />);
 
     await user.click(button('COPY'));
     const copied = await navigator.clipboard.readText();
-    expect(copied).toBe(
-      `${FROM_EMPTY}\nscene.add('cube');\nscene.find('CUBE').position = [1, 2, 0];`,
-    );
+    expect(copied).toBe(sceneView().value);
     expect(button('COPIED')).toBeInTheDocument();
     expect(store().toasts).toEqual([]);
 
+    act(() => {
+      store().resetScene();
+      store().openDialog('script');
+    });
     await user.click(button('EDITOR'));
     write(copied);
     await user.click(button('RUN'));
@@ -107,21 +122,28 @@ describe('ScriptDialog', () => {
     expect(store().objects.map(({ name, transform }) => ({ name, transform }))).toEqual(built);
   });
 
-  it('warns on a copy that a run would not rebuild the scene from', async () => {
+  it('warns on a copy that leaves out what no script can make', async () => {
     const user = userEvent.setup();
-    store().addPrimitive('cube');
-    clearActionLog();
+    store().addImage({
+      id: 'asset-photo',
+      name: 'photo.png',
+      type: 'image/png',
+      width: 64,
+      height: 32,
+      blob: null,
+    });
     store().addPrimitive('cone');
     render(<ScriptDialog />);
 
     await user.click(button('COPY'));
 
-    expect(await navigator.clipboard.readText()).toBe("scene.add('cone');");
+    expect(await navigator.clipboard.readText()).toBe(
+      "// PHOTO.PNG: an image, which a script cannot add\nscene.add('cone');",
+    );
     expect(store().toasts).toEqual([
       expect.objectContaining({
         variant: 'warning',
-        message:
-          'Copied. The log began on objects it did not make, so a run repeats only what came after',
+        message: 'Copied. One thing in the scene has no script form yet, so a run leaves it out',
       }),
     ]);
   });
@@ -177,7 +199,7 @@ describe('ScriptDialog', () => {
     expect(screen.getByText(/kind has to be one of/, { selector: 'span' })).toBeInTheDocument();
   });
 
-  it('runs on Ctrl+Enter from the editor, and not from the log', async () => {
+  it('runs on Ctrl+Enter from the editor, and not from the scene', async () => {
     render(<ScriptDialog />);
     await userEvent.keyboard('{Control>}{Enter}{/Control}');
     expect(store().objects).toHaveLength(0);
@@ -211,13 +233,13 @@ describe('ScriptDialog', () => {
     expect(field()).toHaveValue(example.source);
   });
 
-  it('takes Escape out of the log before it closes the dialog', async () => {
+  it('takes Escape out of the scene before it closes the dialog', async () => {
     render(<ScriptDialog />);
-    expect(log()).toHaveFocus();
+    expect(sceneView()).toHaveFocus();
 
     await userEvent.keyboard('{Escape}');
     expect(store().dialog).toBe('script');
-    expect(log()).not.toHaveFocus();
+    expect(sceneView()).not.toHaveFocus();
 
     await userEvent.keyboard('{Escape}');
     expect(store().dialog).toBeNull();

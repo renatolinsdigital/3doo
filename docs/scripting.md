@@ -108,8 +108,8 @@ The status string is user-visible: `Extruded 1 face(s) by 1` is useful,
 ## The scripting API
 
 The `<>` button in the top bar opens the SCRIPT dialog. Its EDITOR tab is where
-a user writes JavaScript against the scene and runs it; its ACTIONS tab shows
-what the user did in the viewport, written as that JavaScript. The user-facing
+a user writes JavaScript against the scene and runs it; its SCENE tab shows the
+scene on screen, written as the JavaScript that builds it. The user-facing
 reference is the SCRIPTING section of the in-app docs, generated from the same
 catalogue the editor reads; this section is about how the layer is built.
 
@@ -118,12 +118,12 @@ src/domain/scripting/
   reference.ts   the catalogue: every API name, operator spec and modifier field
   api.ts         the scene and view globals, object, mesh and modifier handles
   runScript.ts   compile, run as one transaction, map an error to a script line
-  recorder.ts    the ACTIONS log: store actions written as the calls that repeat them
+  sceneScript.ts the SCENE tab: the scene written as the script that builds it
   syntax.ts      tokenizer, bracket check and completion, for the editor
   examples.ts    the starter script and the EXAMPLE menu, all run by a test
 src/domain/components/
   ScriptEditor/  textarea over a highlighted layer, hovers, suggestions
-  ScriptDialog/  the modal: ACTIONS and EDITOR tabs, RUN, toasts, the saved draft
+  ScriptDialog/  the modal: SCENE and EDITOR tabs, RUN, COPY, toasts, the saved draft
 ```
 
 ### One catalogue, five readers
@@ -270,94 +270,73 @@ reached through `window.threedoo`, the automation API in `src/app/automation`:
 afterwards. That is what the MCP server drives, and it works from the browser
 console too. See [mcp.md](mcp.md).
 
-### The action log
+### The scene script
 
-The ACTIONS tab works like Blender's Info editor: what the user does is written
-out as the call that would do it. `installRecorder()` in `recorder.ts` runs once
-from `main.tsx`, before the first render, and wraps the store actions a script
-can repeat. Each wrapper lets the action run, then compares the store before and
-after and writes the call: `addPrimitive` becomes `scene.add(...)`,
-`setObjectTransform` an assignment to `position`, `exec` a line inside
-`object.edit((mesh) => { ... })`. Store actions are the only mutation path (see
-[state-management.md](state-management.md#store-actions-are-the-only-mutation-path)),
-so this one place sees everything.
+The SCENE tab shows the scene on screen as the script that builds it.
+`sceneScript()` in `sceneScript.ts` is a pure function of the store's
+`objects`, `groups` and `cursor`, and the dialog calls it again whenever they or
+`meshVersion` change while it is open. It describes the result rather than
+recording the steps, so the two cannot disagree: a cube added and deleted again
+writes nothing, and an undo takes lines away because it takes the objects away.
 
-Only the outermost call is written. An action that calls another is one thing
-the user did, and a script run calls every action from inside `transact`, so a
-run is written as one `// Ran a script` comment, not as a copy of its source.
+It replaced the ACTIONS log, which wrapped the store actions and wrote each one
+as the call that repeats it, after Blender's Info editor. A log only ends on the
+scene if every step replays exactly, and every gesture that changed geometry
+without a store action needed a rule of its own to be written at all. Reading
+the scene has none of that to get wrong, and a log has no answer for steps
+that cancel out.
 
-A few rules keep the log readable and true:
+How each part of the scene is written:
 
-- **Repeated settings merge.** Each line can carry a key, and a line with the
-  same key as the one before it replaces it. A drag sends a position on every
-  pointer move and leaves one line; so does a slider on a modifier.
-- **Edit mode moves say what they did.** A move, turn or scale in the viewport
-  applies its whole amount on every pointer move, from where the vertices
-  stood when it began, rather than adding the step since the last move on top
-  (`EditMoveDrag` in `src/viewport/editMove.ts`). The result is then exactly
-  one `mesh.translate`, `mesh.rotate` or `mesh.scale` with the settings the
-  drag ended on: the axis as a letter or a direction, the pivot when it is not
-  the middle of the selection, and the radius and falloff when proportional
-  editing was on. Steps stacked on top could not be written as one call: a
-  proportional scale multiplies the falloff into every step, and a radius
-  changed with the wheel mid-drag only reached what came after it. Now the
-  wheel spreads the whole move again. On confirm the viewport calls
-  `noteOperator` with that call, which sets `lastOperator` the way `exec`
-  does, and the step is written as that operation.
-- **Proportional editing is a parameter.** The three transform operations take
-  `proportional` (the radius) and `falloff` and never read the editor's toggle,
-  so a line replays the same whether it was left on or not.
-- **The bevel, inset and extrude drags say what they ran** in the same way.
-  They preview on a copy of the mesh, so the vertices alone cannot tell the
-  recorder the distance.
-- **A step that names its operation is written there and then.** A click in
-  edit mode changes the selection without any store action, so a step left for
-  the next action to close would take a selection clicked after the gesture
-  for the one the gesture left. `noteOperator` closes the step at once.
-- **Anything else is read off its undo step.** The recorder snapshots the
-  vertices when `recordHistory` opens a step, and describes it when the next
-  action runs or the dialog opens: one offset for every selected vertex is
-  `mesh.translate`, a factor or a turn about one axis through their middle is
-  `mesh.scale` or `mesh.rotate`. The selection it leaves is read off the
-  elements it started with, by id, for the reason above. A slide, or a move
-  that auto merge welded on the way out, is written as a comment saying it has
-  no script equivalent.
-- **A gesture called off takes its lines with it.** The log is marked when a
-  step opens and goes back to the mark on `discardHistory`, which is what every
-  cancel calls.
-- **Selections are points, not ids.** `cloneMesh` and every undo rebuild the
-  mesh from its saved form and number its elements afresh, and the drags above
-  keep a copy. A replay does neither, so an id would name a different face by
-  then. The log writes `mesh.selectFaces([[0, 0.5, 0]])` instead: the select
-  calls take a list of points and pick the elements standing on them (vertex
-  positions, edge and face middles) within `POINT_TOLERANCE`. A selection is
-  only written again when it differs from what the last line left.
+- **A primitive that is still live is `scene.add`**, with only the options that
+  differ from a new one. `primitive` is set while the shape can still be
+  re-parameterised, and the mesh is checked against a freshly built primitive
+  before it is trusted: every path that edits a mesh has to clear `primitive`,
+  and one that forgot would otherwise be written as the shape from before the
+  edit. The project document does not carry `primitive`, so an undo or a file
+  load clears it, and after either a primitive is written as its points.
+- **Any other mesh is `scene.addMesh`**, with its points and faces in mesh
+  order, and `edges` (edges no face uses), `smooth`, `faceMaterials` and
+  `sharp` when it has any. `addMesh` keeps every point it is given, loose ones
+  included, which is also what makes `mesh.verts[i]` its `verts[i]`.
+- **Numbers keep six decimal places**, so a coordinate comes back within a
+  micrometre and a rotation within a millionth of a degree.
+- **Objects are held in variables, never found by name.** Every primitive is
+  named after its kind, so two cubes are both `CUBE`. A variable is named after
+  its object (`UV SPHERE` is `uvSphere`, the next one `uvSphere2`) and declared
+  only when a later line needs it.
+- **Materials say how they differ from a new slot.** The first slot's colour
+  goes in the add's `color`. A slot's name is written unless it is the
+  `Material N` the session numbered it with, since a run numbers its own.
+- **Modifiers are `addModifier(type, settings)`** with only the settings that
+  differ from `createModifier(type)`.
+- **A linked duplicate is `duplicate(true)`** of the first object that shares
+  its mesh, followed by whatever sets it apart: name, transform, materials and
+  modifiers. A duplicate is added at the end of the list, so writing objects in
+  scene order keeps the outliner order.
+- **Folders, then what is hidden or locked, then the 3D cursor, come last.** A
+  locked object refuses edits, and an object added without a position lands on
+  the cursor, so the cursor moves only once everything is placed.
 
-The knife is the exception: its cuts name vertices, edges and faces by id,
-because that is the form `mesh.knife` takes, so a knife line replays correctly
-only on a mesh that has not been rebuilt since. Changes with no script call at
-all, an import or an outliner folder removed, are comments with the undo
-step's label.
+Left out by design, because they are how the scene is looked at rather than
+what it is: what is selected (objects, and elements in edit mode), the active
+material slot, the shading, the camera, the project name, which folders are
+folded, and UVs, which nothing on screen shows outside an image.
 
-**An undo takes its lines off the log.** `recordHistoryDocument`, which every
-step goes through, keeps the log as the step found it, and an undo puts that
-back; a redo puts back the log the undo replaced. So the log is always the
-script for the scene on screen, not a record of everything tried. The kept logs
-line up with the history from its newest end and are cut to its length before
-they are read, which follows the history through its size limit, a new project
-and a file opened. CLEAR forgets them, so an undo of a step from before it is
-noted as a comment instead.
+Images and lattices have no script form yet. An image's picture is a binary
+asset, and no API call makes a cage, while adding a lattice modifier fits a new
+cage of its own. Each is written as a comment and counted in `gaps`, and COPY
+warns that a run leaves them out.
 
-**COPY and OPEN IN EDITOR hand over `actionScript()`**, the log with a header
-when it began on an empty scene: `scene.clear()` and the cursor where it stood.
-Every primitive is named after its kind, so the bare log run over the scene it
-was written from would add a second `CUBE` and send its edits to the first one.
-With the header the run ends on the scene the log describes, whatever it runs
-on. `actionScript()` also counts the comments that note something no call
-repeats, and says when the log began on objects none of its lines made (CLEAR
-on a full scene, or the first lines lost to the size limit). The dialog warns on
-either, since a run will not rebuild the scene then.
+The script holds for a run on a new project. Like any script it adds to the
+scene rather than replacing it.
 
-`recorder.test.ts` holds the log to its promise: each test does something
-through the store, runs the copied script on the scene as it stands, edit mode
-included, and expects the same objects, transforms and vertex positions back.
+The editor draws a script longer than `HIGHLIGHT_LIMIT` characters without
+colour, one span a line: a dense mesh written out point by point would
+otherwise be hundreds of thousands of spans.
+
+`sceneScript.test.ts` holds the tab to its promise. Each test builds a scene
+through the store, runs its script on a new project, expects the same scene
+back to five places (ids, selection and UVs aside), and expects the rebuilt
+scene to read back as the same script. Every example in the EXAMPLE menu goes
+through the same round trip.

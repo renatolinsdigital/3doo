@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { ScriptEditor } from './ScriptEditor';
+import { HIGHLIGHT_LIMIT, ScriptEditor } from './ScriptEditor';
 
 /** The editor holding its own text, the way the dialog drives it. */
 function Harness({ initial = '', onRun = () => {} }: { initial?: string; onRun?: () => void }) {
@@ -39,6 +39,16 @@ describe('ScriptEditor', () => {
     expect(kinds('string')).toEqual(["'cube'"]);
     expect(kinds('number')).toEqual(['2']);
     expect(kinds('comment')).toEqual(['// note']);
+  });
+
+  it('draws a script too long to colour as plain lines, one span each', () => {
+    const line = `[${'1, '.repeat(40)}1],`;
+    const lines = Math.ceil(HIGHLIGHT_LIMIT / line.length) + 1;
+    const { container } = render(<Harness initial={Array(lines).fill(line).join('\n')} />);
+
+    expect(container.querySelectorAll('.script-editor__token--number')).toHaveLength(0);
+    expect(container.querySelectorAll('.script-editor__token')).toHaveLength(lines);
+    expect(field().value.split('\n')).toHaveLength(lines);
   });
 
   it('numbers every line, the last empty one included', () => {

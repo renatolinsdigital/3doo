@@ -229,7 +229,7 @@ function mergedAssets(
   return merged;
 }
 
-const DEFAULT_MATERIAL_COLOR = { r: 0.85, g: 0.84, b: 0.8 };
+export const DEFAULT_MATERIAL_COLOR = { r: 0.85, g: 0.84, b: 0.8 };
 
 function defaultMaterial(): Material {
   materialCounter += 1;

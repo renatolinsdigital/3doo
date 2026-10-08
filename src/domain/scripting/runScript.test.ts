@@ -321,6 +321,58 @@ box.edit((mesh) => {
     );
   });
 
+  it('builds a mesh with smooth faces, the slot each face wears, sharp edges and loose parts', async () => {
+    await run(`
+      const ramp = scene.addMesh({
+        verts: [[0, 0, 0], [1, 0, 0], [1, 1, 1], [0, 1, 1], [2, 0, 0], [3, 3, 3]],
+        faces: [[0, 1, 2], [0, 2, 3]],
+        edges: [[1, 4]],
+        smooth: [true, false],
+        faceMaterials: [0, 1],
+        sharp: [[2, 0], [1, 4]],
+      });
+      ramp.addMaterial();
+    `);
+
+    const { mesh } = store().objects[0];
+    const edges = [...mesh.edges.values()];
+    const ends = (edge: (typeof edges)[number]) => [edge.v0.co.x, edge.v1.co.x].sort().join(' ');
+    // Every point listed stays, the one nothing joins as well, so verts[i] is mesh.verts[i].
+    expect(mesh.verts.size).toBe(6);
+    expect([...mesh.faces.values()].map((face) => [face.smooth, face.materialIndex])).toEqual([
+      [true, 0],
+      [false, 1],
+    ]);
+    expect(edges.filter((edge) => edge.loops.length === 0).map(ends)).toEqual(['1 2']);
+    expect(edges.filter((edge) => edge.sharp).map(ends)).toEqual(['0 1', '1 2']);
+  });
+
+  it('builds a mesh with no faces at all', async () => {
+    await run(`scene.addMesh({ verts: [[0, 0, 0], [1, 0, 0]], faces: [], edges: [[0, 1]] });`);
+
+    const { mesh } = store().objects[0];
+    expect([mesh.verts.size, mesh.edges.size, mesh.faces.size]).toEqual([2, 1, 0]);
+  });
+
+  it.each([
+    [
+      'smooth: [true, false]',
+      'scene.addMesh: smooth has to be a list with one true or false per face, 1 in all.',
+    ],
+    [
+      'faceMaterials: [-1]',
+      'scene.addMesh: faceMaterials has to be a list with one material slot index per face, 1 in all.',
+    ],
+    ['edges: [[1, 1]]', 'scene.addMesh: edges[0] uses the same vertex twice.'],
+    ['sharp: [[0, 4]]', 'scene.addMesh: sharp[0] names vertex 4, and verts runs from 0 to 3.'],
+    ['sharp: [[0, 3]]', 'scene.addMesh: sharp[0] names two vertices no face or edge joins.'],
+  ])('refuses a mesh given %s', async (option, message) => {
+    const outcome = await fail(
+      `scene.addMesh({ verts: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [5, 5, 5]], faces: [[0, 1, 2]], ${option} });`,
+    );
+    expect(outcome.message).toBe(message);
+  });
+
   it('adds and sets modifiers, merging a nested setting into the rest of it', async () => {
     await run(`
       const bar = scene.add('cube');

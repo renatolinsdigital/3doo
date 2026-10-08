@@ -578,9 +578,8 @@ export const POINT_TOLERANCE = 1e-4;
  * Whether a point is within `POINT_TOLERANCE` of any of `points`.
  *
  * The points are filed by the cell of that size they fall in, so each test
- * looks at the 27 cells around it rather than at every point: a selection
- * written out by the ACTIONS tab can name thousands of faces of a mesh with
- * many thousands more.
+ * looks at the 27 cells around it rather than at every point: a selection a
+ * script lists can name thousands of faces of a mesh with many thousands more.
  */
 function pointMatcher(points: readonly Vec3[]): (point: Vec3) => boolean {
   const cell = (value: number) => Math.floor(value / POINT_TOLERANCE);
@@ -1339,12 +1338,15 @@ export function createScriptApi(): ScriptApi {
       if (data === null || typeof data !== 'object' || Array.isArray(data)) {
         throw new Error('scene.addMesh takes { verts, faces }, each a list.');
       }
-      const { verts, faces, ...rest } = data as Record<string, unknown>;
+      const { verts, faces, edges, smooth, faceMaterials, sharp, ...rest } = data as Record<
+        string,
+        unknown
+      >;
       const placement = readFields('scene.addMesh', PLACEMENT_OPTIONS, rest);
-      if (!Array.isArray(verts) || verts.length < 3) {
-        throw new Error('scene.addMesh: verts has to be a list of three or more [x, y, z] points.');
+      if (!Array.isArray(verts)) {
+        throw new Error('scene.addMesh: verts has to be a list of [x, y, z] points.');
       }
-      if (!Array.isArray(faces) || faces.length === 0) {
+      if (!Array.isArray(faces)) {
         throw new Error(
           'scene.addMesh: faces has to be a list of faces, each a list of vertex indices.',
         );
@@ -1354,25 +1356,84 @@ export function createScriptApi(): ScriptApi {
       const made = verts.map((point, index) =>
         mesh.addVert(readVector(point, `scene.addMesh: verts[${index}]`)),
       );
-      faces.forEach((ring, index) => {
+      const corner = (value: unknown, what: string) => {
+        if (!Number.isInteger(value) || (value as number) < 0 || (value as number) >= made.length) {
+          const range =
+            made.length === 0 ? 'verts is empty' : `verts runs from 0 to ${made.length - 1}`;
+          throw new Error(`${what} names vertex ${describe(value)}, and ${range}.`);
+        }
+        return made[value as number];
+      };
+      const pair = (value: unknown, what: string) => {
+        if (!Array.isArray(value) || value.length !== 2) {
+          throw new Error(`${what} has to be a pair of vertex indices, [a, b].`);
+        }
+        const [a, b] = value.map((index) => corner(index, what));
+        if (a === b) throw new Error(`${what} uses the same vertex twice.`);
+        return [a, b] as const;
+      };
+      const perFace = (
+        value: unknown,
+        name: string,
+        read: (item: unknown) => boolean,
+      ): unknown[] => {
+        if (!Array.isArray(value) || value.length !== faces.length || !value.every(read)) {
+          const one = name === 'smooth' ? 'true or false' : 'material slot index';
+          throw new Error(
+            `scene.addMesh: ${name} has to be a list with one ${one} per face, ${faces.length} in all.`,
+          );
+        }
+        return value;
+      };
+
+      const madeFaces = faces.map((ring, index) => {
         const what = `scene.addMesh: faces[${index}]`;
         if (!Array.isArray(ring) || ring.length < 3) {
           throw new Error(`${what} has to list three or more vertex indices.`);
         }
-        const corners = ring.map((corner) => {
-          if (!Number.isInteger(corner) || corner < 0 || corner >= made.length) {
-            throw new Error(
-              `${what} names vertex ${describe(corner)}, and verts runs from 0 to ${made.length - 1}.`,
-            );
-          }
-          return made[corner as number];
-        });
+        const corners = ring.map((index) => corner(index, what));
         if (new Set(corners).size !== corners.length) {
           throw new Error(`${what} uses the same vertex twice.`);
         }
-        mesh.addFace(corners);
+        return mesh.addFace(corners);
       });
-      mesh.removeLooseVerts();
+
+      if (edges !== undefined) {
+        if (!Array.isArray(edges)) {
+          throw new Error('scene.addMesh: edges has to be a list of [a, b] vertex index pairs.');
+        }
+        edges.forEach((value, index) =>
+          mesh.addEdge(...pair(value, `scene.addMesh: edges[${index}]`)),
+        );
+      }
+
+      if (smooth === true) {
+        for (const face of madeFaces) face.smooth = true;
+      } else if (smooth !== undefined && smooth !== false) {
+        const flags = perFace(smooth, 'smooth', (item) => typeof item === 'boolean');
+        madeFaces.forEach((face, index) => (face.smooth = flags[index] as boolean));
+      }
+
+      if (faceMaterials !== undefined) {
+        const slots = perFace(
+          faceMaterials,
+          'faceMaterials',
+          (item) => Number.isInteger(item) && (item as number) >= 0,
+        );
+        madeFaces.forEach((face, index) => (face.materialIndex = slots[index] as number));
+      }
+
+      if (sharp !== undefined) {
+        if (!Array.isArray(sharp)) {
+          throw new Error('scene.addMesh: sharp has to be a list of [a, b] vertex index pairs.');
+        }
+        sharp.forEach((value, index) => {
+          const what = `scene.addMesh: sharp[${index}]`;
+          const edge = mesh.findEdge(...pair(value, what));
+          if (!edge) throw new Error(`${what} names two vertices no face or edge joins.`);
+          edge.sharp = true;
+        });
+      }
       mesh.computeNormals();
 
       const name = typeof placement.name === 'string' ? placement.name : 'MESH';

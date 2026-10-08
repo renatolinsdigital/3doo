@@ -138,7 +138,7 @@ function scriptEditorBlocks(): DocsBlock[] {
   return [
     {
       kind: 'prose',
-      text: 'The <> button at the right of the top bar opens SCRIPT, in two tabs. ACTIONS writes down what you do in the viewport as the script that would do it. EDITOR is where you build and change the scene with JavaScript. Everything the panels do can be done from a script: add primitives or your own geometry, place and colour objects, select vertices, edges and faces and run any modelling operation on them, give parts of a mesh colours of their own, stack modifiers, cut booleans, fill outliner folders, move the 3D cursor and frame the view.',
+      text: 'The <> button at the right of the top bar opens SCRIPT, in two tabs. SCENE shows the scene in the viewport as the script that builds it. EDITOR is where you build and change the scene with JavaScript. Everything the panels do can be done from a script: add primitives or your own geometry, place and colour objects, select vertices, edges and faces and run any modelling operation on them, give parts of a mesh colours of their own, stack modifiers, cut booleans, fill outliner folders, move the 3D cursor and frame the view.',
     },
     {
       kind: 'steps',
@@ -184,7 +184,7 @@ function scriptEditorBlocks(): DocsBlock[] {
     },
     {
       kind: 'prose',
-      text: 'ACTIONS keeps a log of what you do, as script: adding, moving, selecting, renaming and deleting objects, their materials and modifiers, the 3D cursor and the shading, and every operation in edit mode with the vertices, edges or faces it ran on, the selection moved, turned or scaled by hand included, proportional falloff and all. Dragging a handle or a value writes one line with where it ended, and a move called off with Esc leaves nothing behind. Rest the pointer on a name for its reference, as in the editor. COPY puts the log on the clipboard as a script: paste it into EDITOR and run it, and it clears the scene and builds the one you made again. OPEN IN EDITOR puts that same script in EDITOR to change and run, and CLEAR empties the log.',
+      text: 'SCENE is the scene as it stands, written as script, and never a record of how you got there: add a cube and delete it again, and there is nothing to show. A primitive you have not edited is the scene.add that makes it, with only the options you changed. A mesh you have edited is a scene.addMesh with its points and faces, its smooth faces, the material slot each face wears and its sharp edges. Materials, modifiers, linked duplicates, outliner folders, what is hidden or locked and where the 3D cursor stands follow. What is selected, the shading and the camera are how you look at the scene, not part of it, so they are left out. The script is read only: rest the pointer on a name for its reference, as in the editor, and COPY puts it on the clipboard. Paste it into EDITOR on a new project and run it, and it builds this scene again. Images and lattices have no script form yet, so each is noted in a comment and COPY says the run will leave it out.',
     },
     {
       kind: 'note',
