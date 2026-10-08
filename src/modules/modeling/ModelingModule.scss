@@ -56,9 +56,46 @@
     }
   }
 
+  // A mouse lands on smaller targets than a finger, so with one the columns run
+  // at about four fifths of the size: narrower, with shorter rows, smaller type
+  // and tighter spacing. Set on the columns alone, so the bars and dialogs keep
+  // theirs, and left out for a touch screen, which needs every rung it has.
+  // Borders and shadows keep their weight, as `theme.scss` explains.
+  @media (pointer: fine) {
+    --right-column: 212px;
+
+    &__left,
+    &__right {
+      --control-height: 28px;
+      --control-sm: 22px;
+      --field-height: 20px;
+      --field-label-min: 45px;
+      --box-size: 13px;
+      --space-2: 3px;
+      --space-3: 6px;
+      --space-4: 10px;
+      --space-5: 13px;
+      --space-6: 19px;
+      --text-xs: 8px;
+      --text-sm: 9px;
+      --text-md: 10px;
+      --text-lg: 11px;
+    }
+
+    // THICKNESS no longer fits the 40% the grid caps the label cell at in a
+    // column this narrow.
+    &__left {
+      --field-label-min: 70px;
+    }
+  }
+
   &__left {
     inset-inline-start: calc(var(--rail-size) + var(--panel-gap) * 2);
     width: 224px;
+
+    @media (pointer: fine) {
+      width: 180px;
+    }
   }
 
   // Hiding the rail hands the column the edge it was holding.
@@ -108,6 +145,11 @@
       --right-column: 264px;
     }
 
+    // Any narrower and a modifier's header and its longer labels no longer fit.
+    @media (pointer: fine) {
+      --right-column: 204px;
+    }
+
     &__left,
     &__right {
       display: none;
@@ -133,14 +175,26 @@
     // wide that it runs off the edge or under the rail.
     &__left {
       width: min(224px, calc(100% - var(--rail-size) - var(--panel-gap) * 4));
+
+      @media (pointer: fine) {
+        width: min(180px, calc(100% - var(--rail-size) - var(--panel-gap) * 4));
+      }
     }
 
     &__left--flush {
       width: min(224px, calc(100% - var(--panel-gap) * 2));
+
+      @media (pointer: fine) {
+        width: min(180px, calc(100% - var(--panel-gap) * 2));
+      }
     }
 
     &__right {
       width: min(264px, calc(100% - var(--rail-size) - var(--panel-gap) * 4));
+
+      @media (pointer: fine) {
+        width: min(212px, calc(100% - var(--rail-size) - var(--panel-gap) * 4));
+      }
     }
 
     // A drawer on a phone is laid over the corner the axis widget stands in,

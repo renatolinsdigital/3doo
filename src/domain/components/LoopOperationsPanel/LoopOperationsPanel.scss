@@ -5,4 +5,8 @@
   // panel's fields share. A fixed column wide enough for the word puts every
   // divider back on one line and leaves it room to breathe.
   --field-label-min: 90px;
+
+  @media (pointer: fine) {
+    --field-label-min: 76px;
+  }
 }

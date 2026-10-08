@@ -77,7 +77,9 @@ Brutalism has to stay usable. These are requirements, not preferences:
 - **Hit targets ≥ 40px** (`--hit-target`). On a coarse pointer the control
   ladder grows (`--control-height` to 44px, `--field-height` to 32px) and the
   two smallest type sizes come up a point, under `@media (pointer: coarse)` in
-  `theme.scss`. The desktop keeps its sizes.
+  `theme.scss`. With a mouse the bars and dialogs keep those sizes, and the two
+  side columns run denser, at about four fifths of them, through tokens set on
+  the columns in `ModelingModule.scss`. Borders and shadows keep their weight.
 - **WCAG AA contrast** maintained across every combination in use.
 - **Active state through at least two channels.** Never colour alone: the active
   tool gets a fill *and* a filled indicator bar; the active segment gets a fill

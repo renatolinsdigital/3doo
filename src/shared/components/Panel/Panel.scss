@@ -23,9 +23,10 @@
     @include label-text;
 
     // Takes the strip's free space so the whole width of it is the handle;
-    // `actions`, still a sibling, keeps its own.
-    flex: 1 1 auto;
-    min-width: 0;
+    // `actions`, still a sibling, keeps its own. It never shrinks: on a short
+    // strip `actions` gives way, since shrinking both in proportion ran the
+    // title into the select beside it.
+    flex: 1 0 auto;
   }
 
   &__toggle {

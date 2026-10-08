@@ -1,6 +1,13 @@
 @use '@global-styles/helpers' as *;
 
 .modifiers {
+  // The ten-letter labels (VOXEL SIZE, PROJECTION, SHARP EDGE) are wider than
+  // the 40% the label cell is capped at once the column is this narrow, and
+  // would lose their last letter to the ellipsis.
+  @media (pointer: fine) {
+    --field-label-min: 76px;
+  }
+
   &__empty {
     @include mono-value;
 
