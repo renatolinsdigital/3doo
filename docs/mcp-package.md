@@ -5,9 +5,6 @@ adds it with `npx -y 3doo-mcp` and never clones the repository. This page is
 for the person who publishes it: what is in the package, how to release a new
 version, and how to keep it in step with the app.
 
-Vercel does not publish it. Vercel deploys the website from `dist/`. The
-package is a separate artifact that you build and publish by hand.
-
 ## What is in it
 
 ```text
