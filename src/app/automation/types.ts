@@ -107,7 +107,13 @@ export interface AutomationApi {
   scene(): SceneSummary;
   exportFile(request: ExportRequest): Promise<ExportedFile[]>;
   render(request: RenderRequest): Promise<RenderedView[]>;
-  /** A link that opens the scene in the editor served from `appUrl`. */
+  /**
+   * A link that opens the scene in the editor served from `appUrl`.
+   *
+   * The server no longer calls it: `share_link` builds its page from
+   * `exportFile`. It stays for servers already published, which drive the
+   * hosted app and still ask for it.
+   */
   shareLink(appUrl: string): Promise<ShareLink>;
   /** The scripting reference as Markdown: the quickstart unless the request asks for more. */
   reference(request?: ReferenceRequest): string;

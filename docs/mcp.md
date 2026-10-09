@@ -2,7 +2,7 @@
 
 An AI assistant that speaks the [Model Context Protocol](https://modelcontextprotocol.io)
 can build models in 3DOO with the scripting API, look at them, and hand them
-back as a `.3doo` file, an OBJ or FBX, PNG pictures, or a link that opens the
+back as a `.3doo` file, an OBJ or FBX, PNG pictures, or a page that opens the
 hosted editor on the result. This page is the technical side: how the server is
 built, how to run it, and every payload that crosses it. The user-facing side
 is the MCP dialog behind the top bar's MCP button ([below](#the-mcp-dialog))
@@ -14,7 +14,7 @@ and the AI ASSISTANTS section of the in-app docs (`src/modules/docs/content.ts`)
  assistant (Claude Code, Claude Desktop, any MCP client)
      │  JSON-RPC over stdio
      ▼
- mcp/server.ts ── Node ── writes files, returns images and links
+ mcp/server.ts ── Node ── writes files and pages, returns images
      │  Playwright
      ▼
  headless Chromium ── the built app, on its home page
@@ -32,8 +32,9 @@ and the AI ASSISTANTS section of the in-app docs (`src/modules/docs/content.ts`)
   exporters. Nothing is reimplemented for Node, so the two cannot drift apart.
 - Pictures are drawn offscreen with the editor's own object views, lights and
   grid, from the cameras that the Shift+number keys select.
-- A link holds the whole project in its hash (the part after `#`), so the
-  hosted editor needs nothing but a static host serving the built files.
+- The page `share_link` saves holds the whole project and hands it to the
+  editor's tab in the browser, so the hosted editor needs nothing but a static
+  host serving the built files.
 
 ## How the parts work together
 
@@ -109,28 +110,30 @@ visitor's browser gets, and the scene lives only in the headless tab.
    JavaScript against the scripting API and sends it as the `script` argument.
    The server passes it into the page, where `window.threedoo.run(script)` runs
    it with the same `runScript` the SCRIPT dialog uses, against the same store.
-   Every other tool works the same way, calling `render`, `exportFile`,
-   `shareLink` or another page method. What comes back is JSON: reports and
+   Every other tool works the same way, calling `render`, `exportFile` or
+   another page method. What comes back is JSON: reports and
    summaries as they are, pictures and files as base64.
 7. **The server turns results into MCP content.** A page cannot write to disk,
    so files come back to the server, which writes them to the output folder and
    returns their paths. Pictures go to Claude as image content, which the model
    can look at. Calls run one at a time, in order, because there is one scene.
-8. **A link opens in your own browser.** `share_link` packs the scene into the
-   hash of a link to the hosted editor, saves that link as an `.html` file in
-   the output folder, and with `open` opens the file in your default browser.
-   The page sends the browser on to the link: it asks Vercel for `/modeling`,
-   `vercel.json` answers with `index.html`, and the app reads the scene out of
-   the hash. A browser never sends the hash to a server, so the scene does not
-   reach Vercel even then.
+8. **A page opens the model in your own browser.** `share_link` exports the
+   scene as a `.3doo`, packs it into an `.html` page in the output folder, and
+   with `open` opens that page in your default browser. Its OPEN IN 3DOO button
+   opens `/modeling#receive` on the hosted editor in a new tab: Vercel answers
+   with `index.html` through `vercel.json`, the app asks the page that opened
+   it for the scene, and the page sends it across with `postMessage`. The scene
+   goes from one tab to the other inside the browser, so it never reaches
+   Vercel.
 9. **The end.** When the session ends, Claude closes the server's stdin, and
    the server closes the browser. The scene goes with the tab, so anything that
-   was not exported or linked is gone.
+   was not exported or shared is gone.
 
 From a copy of the repository with a build, both online boxes drop out. The
 server runs from the clone (`node mcp/server.ts`), and in step 4 it serves
 `dist/` itself on a free port of `127.0.0.1`, which the browser then loads.
-Only links still need a hosted address, see [Local or hosted](#local-or-hosted).
+Only shared models still need a hosted address, see
+[Local or hosted](#local-or-hosted).
 
 ## What you run, and when
 
@@ -140,7 +143,7 @@ For a local setup, from a copy of the repository:
 | --- | --- |
 | `npm run build` | Once, and again after changing the code. The server draws models from `dist/`. Optional when `THREEDOO_APP_URL` names a hosted 3DOO ([below](#local-or-hosted)). |
 | `claude mcp add 3doo ...` | Once, to register the server with the assistant. |
-| `npm run dev` | Not needed to build models. Only a link that points at `localhost` needs it, and that link opens only while it runs. |
+| `npm run dev` | Not needed to build models. Only a shared model that opens on `localhost` needs it, and it opens only while it runs. |
 | `npm run mcp` | Never in normal use. It starts the server by hand, for debugging. |
 
 The assistant starts `node mcp/server.ts` itself, over stdio, when it connects,
@@ -148,12 +151,12 @@ and the server opens its own headless browser on `dist/`. That is why an
 assistant can build models with no dev server running. It is also why the scene
 it works on is private to the server: it never touches a tab you have open.
 
-Links are the one place a running app matters. `share_link` builds each link
-for `THREEDOO_APP_URL`. When that is `http://localhost:5173`, which the MCP
-dialog fills in when it is opened from `npm run dev`, the link opens only on
-that computer, and only while the dev server is up. The tool's result says so,
-for the assistant to pass on. Point `THREEDOO_APP_URL` at a hosted 3DOO for
-links that work anywhere.
+Shared models are the one place a running app matters. `share_link` points
+each page at `THREEDOO_APP_URL`. When that is `http://localhost:5173`, which the
+MCP dialog fills in when it is opened from `npm run dev`, the page opens the
+model only on that computer, and only while the dev server is up. The tool's
+result and the page both say so. Point `THREEDOO_APP_URL` at a hosted 3DOO for
+pages that work anywhere.
 
 ## Local or hosted
 
@@ -161,9 +164,9 @@ The editor is also hosted (for example https://3doo.vercel.app), and the server
 works with either copy. What cannot be hosted is the server itself: it speaks
 stdio to a client on the user's machine, writes files there, and needs a
 Chromium, so it always runs locally. Only the 3DOO it draws in, and the 3DOO
-links open in, can be online.
+shared models open in, can be online.
 
-| Setup | Variables | Models drawn in | Links open in |
+| Setup | Variables | Models drawn in | Shared models open in |
 | --- | --- | --- | --- |
 | Local build | `THREEDOO_APP_URL` optional | `dist/`, served by the server | `THREEDOO_APP_URL`, if set |
 | Hosted, from npm | `THREEDOO_APP_URL=https://3doo.vercel.app` | the hosted editor | the hosted editor |
@@ -182,8 +185,12 @@ links open in, can be online.
 - The page is loaded fresh for each session, so a hosted scene is as private as
   a local one: it lives in the server's own headless tab.
 - `vercel.json` rewrites every path that is not a file to `index.html`.
-  Without it a scene link to `/modeling` would be a 404 on Vercel, because the
-  app routes by path in the browser.
+  Without it the `/modeling` tab a shared model opens would be a 404 on
+  Vercel, because the app routes by path in the browser.
+- A page `share_link` saved needs a hosted app that knows the hand-over
+  (`#receive`). Deploy the app before publishing a server that writes such
+  pages. An older app opens on the cube, and the page says so after 20 seconds
+  and offers its DOWNLOAD .3DOO button instead.
 
 ## Running it
 
@@ -221,7 +228,7 @@ A client that is configured with JSON takes this entry:
 ```
 
 From a copy of the repository, which draws in its own build. Here
-`THREEDOO_APP_URL` is only the address that links open in, so it is optional.
+`THREEDOO_APP_URL` is only the address shared models open in, so it is optional.
 In Claude Code:
 
 ```bash
@@ -253,17 +260,18 @@ Everything is an environment variable, read once at start (`mcp/config.ts`).
 
 | Variable | Default | Means |
 | --- | --- | --- |
-| `THREEDOO_APP_URL` | none | Where 3DOO is hosted. `share_link` builds links to it, and the server drives it when there is no `dist/` |
+| `THREEDOO_APP_URL` | none | Where 3DOO is hosted. Pages from `share_link` open the model there, and the server drives it when there is no `dist/` |
 | `THREEDOO_ENGINE_URL` | none | A 3DOO to drive instead of `dist/`, such as `http://localhost:5173` while developing |
 | `THREEDOO_OUTPUT_DIR` | `~/3doo-output` | Where exports and saved pictures go, and what relative paths are read against |
 | `THREEDOO_CHROMIUM` | none | Path to a Chrome or Chromium to launch |
 | `THREEDOO_TIMEOUT_MS` | `60000` | How long one call may take before its page is thrown away (at least 1000) |
 
 The page to drive is chosen in this order: `THREEDOO_ENGINE_URL`, then
-`dist/index.html` if it exists, then `THREEDOO_APP_URL`. A link follows a
-different rule. The server's own copy of `dist/` exists only while the server
-runs, so a link never points at it. A link goes to the `app_url` the call
-names, else `THREEDOO_APP_URL`, else `THREEDOO_ENGINE_URL`.
+`dist/index.html` if it exists, then `THREEDOO_APP_URL`. A shared model
+follows a different rule. The server's own copy of `dist/` exists only while
+the server runs, so a page never points at it. It opens the model in the
+`app_url` the call names, else `THREEDOO_APP_URL`, else `THREEDOO_ENGINE_URL`,
+and that address has to start with `http://` or `https://`.
 
 ## The tools
 
@@ -278,7 +286,7 @@ paragraph.
 | `run_script` | `script` (required), `reset` | What the run did, console output, the scene summary |
 | `render_views` | `views`, `width`, `height`, `shading`, `projection`, `grid`, `save`, `name` | One PNG image per view |
 | `export_model` | `format` (required), `name`, `preset`, `triangulate`, `directory`, `embed` | The path of each file written, a resource link to each, and the files themselves with `embed` |
-| `share_link` | `app_url`, `name`, `open` | The path of an `.html` file that opens the hosted editor on the scene, a resource link to it, and the link itself |
+| `share_link` | `app_url`, `name`, `open` | The path of an `.html` page that carries the scene and opens it in the hosted editor, and a resource link to it |
 | `open_file` | `path` (required) | The scene summary after opening |
 | `get_scene` | none | The scene summary |
 
@@ -431,39 +439,53 @@ take them.
 
 ```json
 { "content": [
-  { "type": "text", "text": "Saved /home/me/3doo-output/dining_set.html. It opens the model in 3DOO at https://3doo.example.com, in any browser: double-click it, or send it to someone.\nOpened it in the user's browser.\n\nGive the user the path of the file. The link inside it is 3,329 characters: too long to copy into a reply without a mistake, and a link with one character wrong does not open.\nhttps://3doo.example.com/modeling#scene=7d1Pb9pIGMfxe16FxTkgYwOG3LpVtap2V6nUnnaVA02cli0JWSDZP1Xe..." },
-  { "type": "resource_link", "uri": "file:///home/me/3doo-output/dining_set.html", "name": "dining_set.html", "mimeType": "text/html", "size": 6808 }
+  { "type": "text", "text": "Saved /home/me/3doo-output/dining_set.html (20.9 KB). It opens the model in 3DOO at https://3doo.example.com, in any browser: double-click it, or send it to someone, and press OPEN IN 3DOO.\nOpened it in the user's browser, where they press OPEN IN 3DOO.\n\nGive the user the path of the file." },
+  { "type": "resource_link", "uri": "file:///home/me/3doo-output/dining_set.html", "name": "dining_set.html", "mimeType": "text/html", "size": 21402 }
 ] }
 ```
 
 | Argument | Means | Default |
 | --- | --- | --- |
-| `app_url` | The address the link opens in, overriding `THREEDOO_APP_URL` for this call | `THREEDOO_APP_URL` |
-| `name` | The file name of the `.html`, without extension | the project name |
-| `open` | Open the file in the user's default browser now | `false` |
+| `app_url` | The address the model opens in, overriding `THREEDOO_APP_URL` for this call | `THREEDOO_APP_URL` |
+| `name` | The file name of the `.html`, and of the `.3doo` its download saves, without extension | the project name |
+| `open` | Open the page in the user's default browser now | `false` |
 
-Why a file, and not only the link: a link carries the whole scene, so even a
-table with four chairs is over 3,000 characters of base64. A tool's result
-reaches the user through the model, which has to retype the link into its
-reply, and it gets some of those characters wrong or cuts the link short,
-which the editor then refuses as a link that was cut short. A file path is short enough
-to pass on intact, so the result asks the model for the path. The link is
-still at the end of the result for a client that shows tool results to the
-user.
+The page is styled like the app: the 3DOO plate, YOUR MODEL IS READY, the
+model's name, its object, vertex and face counts and its size, and two buttons.
 
-- The file is a few lines of HTML: a `<script>` that calls `location.replace`
-  with the link, and an `<a>` to the same link for a browser that runs no
-  scripts. `launcherPage` in `mcp/tools.ts` writes it, escaping both.
+- **OPEN IN 3DOO** opens the hosted editor in a new tab and hands it the scene
+  ([the hand-over](#the-hand-over)). It works at any size: a 400-object scene,
+  39 MB as a `.3doo`, opens in under two seconds.
+- **DOWNLOAD .3DOO** unpacks the scene and saves it as a file, for FILE > OPEN
+  in any 3DOO, or for an editor too old to take the hand-over.
+- A line under the buttons says what happened: the tab opened, the model
+  arrived, the browser blocked the tab, or the editor sent no answer within 20
+  seconds.
+
+Why a page, and not a link: a link has to carry the whole scene in its address.
+That makes it thousands of characters for a small model and millions for a big
+one, past the two million a browser will open. It also has to reach the user
+through the model, which retypes it into its reply and gets characters wrong.
+The page holds the scene itself, and a file path is short enough to pass on
+intact, so the result names the path and carries none of the scene.
+
+- `launcherPage` in `mcp/tools.ts` writes the page. Everything is inline but
+  the two Google Fonts, which fall back to Arial Black and Consolas offline.
+  The model's name is escaped, and the data the script reads is JSON with `<`
+  escaped, so no name can close the `<script>`.
+- The scene is `exportFile({ format: '3doo' })`, deflated with Node's
+  `deflateRawSync` and written in base64url: the payload a scene link carries.
+  `mcp/` cannot import the app's `sceneLink.ts`, so a test decodes the page's
+  payload with it instead.
+- The tab is opened with `window.open` from the button's click. A browser
+  blocks a tab opened on load, and a link with `target="_blank"` cuts the new
+  tab off from the page that has to answer it.
 - `open` runs the system's own opener on the file's URL: `rundll32
   url.dll,FileProtocolHandler` on Windows, `open` on macOS, `xdg-open`
-  elsewhere. The server opens the file rather than the link because a link on a
-  command line is cut far shorter than the two million characters a browser
-  takes. A machine with no opener, or no desktop, gets a result that says the
-  browser could not be opened and still names the file.
+  elsewhere. A machine with no opener, or no desktop, gets a result that says
+  the browser could not be opened and still names the file.
 - The file replaces one of the same name, as exports do, and is sent as a
   resource link to clients on protocol `2025-06-18` or later.
-
-See [scene links](#scene-links) for what is in the link.
 
 ### `open_file`
 
@@ -549,10 +571,15 @@ interface AutomationApi {
   scene(): SceneSummary;
   exportFile(request: ExportRequest): Promise<ExportedFile[]>;  // { name, mimeType, base64 }[]
   render(request: RenderRequest): Promise<RenderedView[]>;      // { view, base64 }[]
-  shareLink(appUrl: string): Promise<{ url: string; length: number }>;
+  shareLink(appUrl: string): Promise<{ url: string; length: number }>;  // see below
   reference(): string;
 }
 ```
+
+The server no longer calls `shareLink`: `share_link` builds its page from
+`exportFile`. The method stays because `3doo-mcp` 1.0.2 and earlier drive the
+hosted app and still ask for it. It can go once no published server does,
+with a bump of `AUTOMATION_VERSION`.
 
 It is usable from a browser's console too: open the editor, then
 `await threedoo.run("scene.add('torus')")`.
@@ -620,7 +647,10 @@ payload = base64url( deflate-raw( the .3doo text ) )
 ```
 
 `src/domain/services/sceneLink.ts` encodes and decodes it with the browser's
-`CompressionStream`. Nothing else is needed on the host:
+`CompressionStream`. The app still opens these links, and the pages older
+servers saved are made of one, but `share_link` no longer hands them out: its
+page passes the same payload over [the hand-over](#the-hand-over) instead.
+Nothing else is needed on the host:
 
 - **The hash never reaches the server.** A static host serving `dist/` with
   its SPA fallback serves the link, and the scene goes nowhere but the tab
@@ -629,12 +659,12 @@ payload = base64url( deflate-raw( the .3doo text ) )
   Mesh JSON is repetitive: a table of six objects (a top, four legs and a
   torus) is 156 KB as a `.3doo` and a link of about 10,000 characters, and a
   table with four chairs, 37 boxes, is 114 KB and a link of about 3,300. Any
-  address bar takes that, but a model cannot retype it without mistakes,
-  which is why `share_link` hands it over as a file
-  ([above](#share_link)).
+  address bar takes that, but a model cannot retype it without mistakes.
 - **There is a ceiling.** Chromium refuses to navigate to a URL of more than
-  about two million characters, so `shareLink` refuses past
-  `MAX_SCENE_LINK_LENGTH` and says to export a `.3doo` instead.
+  about two million characters, so `window.threedoo.shareLink` refuses past
+  `MAX_SCENE_LINK_LENGTH` and says to export a `.3doo` instead. An imported
+  picture fills that fast: deflate cannot shrink a PNG or JPEG, and base64
+  grows it by a third twice over.
 
 On the app side, `useAutosave` (which owns what the editor opens on) checks the
 hash on its first mount:
@@ -652,6 +682,45 @@ hash on its first mount:
   `/modeling`, only the hash changes, so the browser reloads nothing. A
   `hashchange` listener reloads the page itself, after the RELOAD THE PAGE
   dialog that F5 also gets when there is unsaved work.
+
+## The hand-over
+
+The page `share_link` saves carries the scene, and gives it to the editor's
+tab inside the browser, with no address to fit it in:
+
+```text
+ page (file on disk)                       editor tab (/modeling#receive)
+     │ window.open, on OPEN IN 3DOO              │
+     ├──────────────────────────────────────────▶│ loads, useAutosave mounts
+     │◀──────────────────── { type: '3doo:ready' }│ to window.opener
+     │ { type: '3doo:scene', payload } ─────────▶│ decodes, opens the scene
+     │◀──── { type: '3doo:opened' } or '3doo:failed', reason
+```
+
+- The payload is the one a scene link carries. The tab decodes it with
+  `decodeScenePayload` and opens it the way a link opens, through
+  `openArrivedDocument`: unsaved work, nothing to undo into.
+- `SCENE_HANDOVER` in `sceneLink.ts` names the hash and the four message
+  types. `mcp/tools.ts` keeps a copy, `HANDOVER`, for the page it writes, and
+  a test in `mcp/tools.test.ts` holds the two together.
+- The page takes messages only from the editor's origin, and sends the scene
+  only to it, so a tab that went anywhere else gets nothing.
+- The tab takes the scene only from `window.opener`, and posts to it with any
+  origin, since a file on disk has none that can be named. The tab's own
+  messages carry nothing but how it went.
+- The hash is cleared first, as a link's is, so a reload opens on the cube
+  rather than asking a page that may be gone.
+- The tab falls back to the cube, with a toast saying why, when the page is
+  already closed, when it sends nothing within `HANDOVER_TIMEOUT_MS` (10
+  seconds), or when its payload is damaged. The page hears `3doo:failed` with
+  the reason, wherever it can still be reached.
+- The page says so when the browser blocks the tab, and when no answer comes
+  within 20 seconds, which is what an editor older than the hand-over does: it
+  opens on its cube and stays quiet.
+
+Any page that opens the editor on `#receive` can hand it a scene, the same way
+any page can link to one. Either way the scene only replaces the starting
+cube of a fresh tab, never work in progress.
 
 ## Time limits and isolation
 
@@ -679,9 +748,9 @@ assistant, and is not a sandbox for scripts from strangers.
 | `src/app/automation/automation.test.ts` | Every page API method against the real store: summaries, failing lines, exports, opening, links, render argument checks, the reference |
 | `src/viewport/snapshot.test.ts` | The cameras match the editor's, look from the right side, and fit every corner of a box in frame from every view, projection and aspect |
 | `src/domain/services/sceneLink.test.ts` | The link codec, its compression and its errors |
-| `src/domain/hooks/useAutosave.test.tsx` | Opening a link, taking it off the address bar, the fallback, a pasted link |
+| `src/domain/hooks/useAutosave.test.tsx` | Opening a link, taking it off the address bar, the fallback, a pasted link; taking a scene handed over by the page that opened the tab, only from that page, and the cube when the page is gone, silent or damaged |
 | `mcp/protocol.test.ts` | The JSON-RPC transport |
-| `mcp/tools.test.ts` | Each tool against a fake engine, the call queue, protocol negotiation, configuration, and the editor's catalogue of tools, arguments and settings against the server's |
+| `mcp/tools.test.ts` | Each tool against a fake engine, the call queue, protocol negotiation, configuration, and the editor's catalogue of tools, arguments and settings against the server's. The page `share_link` saves is run in jsdom: it opens the tab, answers only the editor's origin, reports blocked tabs and downloads its `.3doo` |
 | `src/domain/components/McpDialog/McpDialog.test.tsx` | The dialog explains local and hosted, fills in the page's address and the hosted one, and copies a command |
 
 The browser engine itself (`mcp/engine.ts`) has no unit test: what it does is

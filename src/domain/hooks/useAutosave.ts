@@ -18,7 +18,13 @@ import {
   writeNumberedCopy,
 } from '../services/autosave';
 import { canPickFolder, mayWrite, mayWriteNow } from '../services/download';
-import { decodeScenePayload, scenePayloadIn } from '../services/sceneLink';
+import {
+  answerHandover,
+  asksForHandover,
+  decodeScenePayload,
+  receiveScenePayload,
+  scenePayloadIn,
+} from '../services/sceneLink';
 
 /**
  * Whether this page load has already put its opening scene on screen.
@@ -180,26 +186,73 @@ async function copyTo(
   }
 }
 
+/** The starting cube, for a fresh tab or a scene that would not open. */
+function openOnCube(): void {
+  const state = useEditorStore.getState();
+  // Undoable like any other add, so anyone who wants the empty viewport is
+  // one Ctrl+Z from it.
+  state.addPrimitive('cube');
+  // The cube is the editor's doing, not the user's. A tab opened and left
+  // alone has nothing worth keeping, so it is not counted as a change.
+  state.markSaved();
+}
+
 /**
- * Opens the scene a `#scene=` link carries, in place of the cube.
- *
- * The link is taken off the address bar first, whatever happens next: a reload
- * is a fresh tab, and opening the link a second time over work done since
- * would throw that work away without a word. The scene is in no file, so it
- * counts as unsaved work, and leaving the tab asks first.
+ * Puts a project that arrived with the tab in place of the cube. It is in no
+ * file, so it counts as unsaved work, and leaving the tab asks first.
  */
-async function openLinkedScene(payload: string): Promise<void> {
+function openArrivedDocument(document: ProjectDocument): void {
+  const state = useEditorStore.getState();
+  state.loadProjectDocument(document, true, hydrateAssets(document.assets ?? []));
+  state.clearHistory();
+}
+
+/**
+ * Takes a link or a hand-over off the address bar, first, whatever happens
+ * next: a reload is a fresh tab, and opening the scene a second time over work
+ * done since would throw that work away without a word.
+ */
+function clearArrivalHash(): void {
   window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+}
+
+/** Opens the scene a `#scene=` link carries, in place of the cube. */
+async function openLinkedScene(payload: string): Promise<void> {
+  clearArrivalHash();
   const state = useEditorStore.getState();
   try {
     const document = parseProject(await decodeScenePayload(payload));
-    state.loadProjectDocument(document, true, hydrateAssets(document.assets ?? []));
-    state.clearHistory();
+    openArrivedDocument(document);
     state.pushToast('success', `Opened ${document.name} from the link`);
   } catch (error) {
-    state.addPrimitive('cube');
-    state.markSaved();
+    openOnCube();
     state.pushToast('error', `Could not open the scene in the link: ${(error as Error).message}`);
+  }
+}
+
+/**
+ * Opens the scene the page that opened this tab hands over (`#receive`, see
+ * `SCENE_HANDOVER`), in place of the cube, and tells the page how it went.
+ */
+async function openHandedOverScene(): Promise<void> {
+  clearArrivalHash();
+  const page = window.opener as Window | null;
+  const state = useEditorStore.getState();
+  try {
+    const payload = await receiveScenePayload(page);
+    // The decoder's own messages are about links. A payload that will not
+    // decode here was damaged in the page itself.
+    const text = await decodeScenePayload(payload).catch(() => {
+      throw new Error('The copy of the model in its page is damaged. Ask for the page again.');
+    });
+    const document = parseProject(text);
+    openArrivedDocument(document);
+    answerHandover(page as Window, null);
+    state.pushToast('success', `Opened ${document.name}`);
+  } catch (error) {
+    if (page) answerHandover(page, error as Error);
+    openOnCube();
+    state.pushToast('error', `Could not open the model: ${(error as Error).message}`);
   }
 }
 
@@ -212,7 +265,8 @@ async function openLinkedScene(payload: string): Promise<void> {
  * keeps no copy of a project, so there is no earlier session to come back to:
  * the numbered copies are files, and FILE > OPEN is the way back to one. A
  * page opened from a scene link (`#scene=`, see `services/sceneLink.ts`) opens
- * on the scene the link carries instead.
+ * on the scene the link carries instead, and one opened for a hand-over
+ * (`#receive`) on the scene the page that opened it sends.
  *
  * After that it writes on an interval, to one place only: a new numbered
  * `.3doo` in the `3doo-auto-saves` folder of the location the user chose,
@@ -246,12 +300,13 @@ export function useAutosave(): void {
       return;
     }
 
-    // Undoable like any other add, so anyone who wants the empty viewport is
-    // one Ctrl+Z from it.
-    state.addPrimitive('cube');
-    // The cube is the editor's doing, not the user's. A tab opened and left
-    // alone has nothing worth keeping, so it is not counted as a change.
-    state.markSaved();
+    // So did the page that opened this tab, which holds the scene itself.
+    if (asksForHandover(window.location.hash)) {
+      void openHandedOverScene();
+      return;
+    }
+
+    openOnCube();
   }, []);
 
   useEffect(() => {

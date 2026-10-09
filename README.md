@@ -43,7 +43,7 @@ New to the code? Start with [docs/get-started.md](docs/get-started.md).
   nothing. Its SCENE tab shows the scene as the script that builds it.
 - **AI assistants**: an MCP server lets Claude and other assistants build
   models with the scripting API and hand them back as files, pictures from any
-  of the editor's views, or a link that opens the editor on the result. The
+  of the editor's views, or a page that opens the editor on the result. The
   MCP button in the top bar has the setup commands ready to copy; the details
   are in [docs/mcp.md](docs/mcp.md).
 
@@ -59,9 +59,9 @@ so the smoothest way to work is to use both:
 1. **Start with a request.** Describe the model to the assistant, such as "a
    low poly wooden chair", and let it build a first version through the MCP
    server.
-2. **Refine it in the browser.** Ask for a link and the model opens in the
-   editor with every object and modifier still editable. Shape the rest by
-   hand from there.
+2. **Refine it in the browser.** Ask the assistant to open it in 3DOO. It saves
+   a page whose OPEN IN 3DOO button opens the model in the editor, with every
+   object and modifier still editable. Shape the rest by hand from there.
 3. **Bring the assistant back for a specific part.** The assistant works in a
    copy of 3DOO of its own and might not control your browser's tab, so give it
    the project itself. Save a copy as a `.3doo` file (FILE > SAVE AS, or
@@ -73,7 +73,7 @@ so the smoothest way to work is to use both:
 
   **Remember**: Attaching a screenshot of the area you want to change always helps!
 
-## How it is built
+## How the 3D modeling capabilities were built
 
 ```text
               ┌──────────────────────┐

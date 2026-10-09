@@ -8,7 +8,7 @@ export interface Config {
   engineUrl: string | null;
   /** The built app, served locally when no engine address is given. */
   distDir: string;
-  /** Where the hosted editor lives, for the links `share_link` hands out. */
+  /** Where the hosted editor lives, for the pages `share_link` saves. */
   appUrl: string | null;
   /** Where exported files and saved pictures go unless a call says otherwise. */
   outputDir: string;
@@ -57,16 +57,29 @@ export function engineSource(config: Config): string | 'dist' {
 }
 
 /**
- * The editor a link opens in: the one a call names, else the hosted editor
- * this server was told about. A link to the server's own local copy would die
+ * The editor a shared model opens in: the one a call names, else the hosted
+ * editor this server was told about. The server's own local copy would die
  * with the server, so that is never used.
  */
 export function linkTarget(config: Config, asked: string | null): string {
   const target = asked ?? config.appUrl ?? config.engineUrl;
-  if (target) return target;
-  throw new Error(
-    'No address to link to. Set THREEDOO_APP_URL to where 3DOO is hosted (for example https://3doo.example.com), or pass app_url.',
-  );
+  if (!target) {
+    throw new Error(
+      'No address to link to. Set THREEDOO_APP_URL to where 3DOO is hosted (for example https://3doo.example.com), or pass app_url.',
+    );
+  }
+  let protocol: string;
+  try {
+    protocol = new URL(target).protocol;
+  } catch {
+    throw new Error(
+      `The app address has to be a full http(s) address, not ${JSON.stringify(target)}.`,
+    );
+  }
+  if (protocol !== 'http:' && protocol !== 'https:') {
+    throw new Error('The app address has to start with http:// or https://.');
+  }
+  return target;
 }
 
 /** A path from a call, read against the output folder when it is relative. */

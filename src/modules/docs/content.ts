@@ -192,7 +192,7 @@ function scriptEditorBlocks(): DocsBlock[] {
     },
     {
       kind: 'note',
-      text: 'An AI assistant can write and run these scripts for you, and hand the model back as a file, pictures or a link. The MCP button beside <> in the top bar says how to connect one, and AI ASSISTANTS below says what to ask it.',
+      text: 'An AI assistant can write and run these scripts for you, and hand the model back as a file, pictures or a page that opens it here. The MCP button beside <> in the top bar says how to connect one, and AI ASSISTANTS below says what to ask it.',
     },
   ];
 }
@@ -1071,8 +1071,8 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Reads a PNG, JPG or BMP in as a plane at the world origin, standing upright and facing the front view, with the picture drawn on it.',
           ],
           [
-            'A scene link',
-            'Opens the editor on the scene the link carries, in place of the starting cube. AI assistants hand these out: see AI ASSISTANTS. The scene is in no file until you save it.',
+            'A shared model',
+            'A scene link, or the OPEN IN 3DOO button on a page an AI assistant saved, opens the editor on that model in place of the starting cube: see AI ASSISTANTS. The model is in no file until you save it.',
           ],
           [
             'Export (Ctrl+E)',
@@ -1171,7 +1171,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'prose',
-        text: 'A good way to start is to ask the assistant for a first version, then refine it yourself in the editor. Ask for a link and the model opens here in your browser with every object and modifier still editable, ready for the details that are quicker to shape by hand than to describe.',
+        text: 'A good way to start is to ask the assistant for a first version, then refine it yourself in the editor. Ask it to open the model in 3DOO: a page opens in your browser, and its OPEN IN 3DOO button brings the model here with every object and modifier still editable, ready for the details that are quicker to shape by hand than to describe.',
       },
       {
         kind: 'table',
@@ -1190,22 +1190,22 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Renders of the model, drawn the way the viewport draws it. One in perspective by default, or any of the straight-on views the camera keys give: front (Shift+1), right (Shift+3), top (Shift+7), back, left and bottom (Ctrl+Shift with the same numbers). Ask to "see it from every side" for all of them.',
           ],
           [
-            'A link',
-            'The model, opened in this editor in your browser, ready to keep working on. It also comes as a small .html file that opens it again: the whole model travels inside, so nothing is uploaded and the file works for anyone you send it to.',
+            'A page to open it here',
+            'An .html page with an OPEN IN 3DOO button, which opens the model in this editor ready to keep working on, and a DOWNLOAD .3DOO button. The whole model travels inside the page, so nothing is uploaded, any size works, and the page works for anyone you send it to.',
           ],
         ],
       },
       {
         kind: 'prose',
-        text: 'Setting it up takes a few minutes, once. The assistant talks to 3DOO through an MCP server that runs on your computer. It can draw models in this hosted site, with nothing to download, or in a copy of the code you build yourself. The MCP button beside <> in the top bar has every command ready to copy, with this site already filled in as the place links open:',
+        text: 'Setting it up takes a few minutes, once. The assistant talks to 3DOO through an MCP server that runs on your computer. It can draw models in this hosted site, with nothing to download, or in a copy of the code you build yourself. The MCP button beside <> in the top bar has every command ready to copy, with this site already filled in as the place shared models open:',
       },
       {
         kind: 'steps',
         items: [
           'You need Node 22.18 or newer. If you have no Chrome or Edge installed, run npx playwright-core install chromium. The server runs 3DOO in a hidden browser of its own to build and draw the models.',
-          `Hosted, with nothing to download: in Claude Code run ${hostedClaudeCodeCommand()}. In Claude Desktop: add a 3doo entry under mcpServers in its configuration file, with npx as the command and -y 3doo-mcp as its arguments. This needs the internet, and links it makes open here for anyone.`,
-          `Local, from your own copy: git clone ${REPOSITORY_URL}.git, then in its folder run npm install and npm run build, and add the server with ${claudeCodeCommand('https://your-3doo-address')}, putting the path to mcp/server.ts in its place. It works offline, and a link to localhost opens only while 3DOO is served there.`,
-          'That is all you run. The assistant starts the server itself when it needs it, so there is nothing to keep open, and npm run dev is not needed to build models. THREEDOO_APP_URL sets where links open, and is also the 3DOO the server draws in when there is no build.',
+          `Hosted, with nothing to download: in Claude Code run ${hostedClaudeCodeCommand()}. In Claude Desktop: add a 3doo entry under mcpServers in its configuration file, with npx as the command and -y 3doo-mcp as its arguments. This needs the internet, and the models it shares open here for anyone.`,
+          `Local, from your own copy: git clone ${REPOSITORY_URL}.git, then in its folder run npm install and npm run build, and add the server with ${claudeCodeCommand('https://your-3doo-address')}, putting the path to mcp/server.ts in its place. It works offline, and a model shared on localhost opens only while 3DOO is served there.`,
+          'That is all you run. The assistant starts the server itself when it needs it, so there is nothing to keep open, and npm run dev is not needed to build models. THREEDOO_APP_URL sets where shared models open, and is also the 3DOO the server draws in when there is no build.',
           'Ask for a model. "Build a low poly chair in 3DOO, show me the front and side views, then export it as FBX for Unity" is enough.',
         ],
       },
@@ -1238,7 +1238,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Open it in 3DOO',
-            'Opens the model in this editor in your browser, and says where the .html file that opens it again is.',
+            'Opens a page in your browser whose OPEN IN 3DOO button brings the model here, and says where that .html page is saved.',
           ],
           [
             'Export it as OBJ for Unreal',
@@ -1246,13 +1246,13 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Open lamp.3doo and add a shade',
-            'Loads your project, adds to it and gives it back as a new file or link.',
+            'Loads your project, adds to it and gives it back as a new file or page.',
           ],
         ],
       },
       {
         kind: 'note',
-        text: 'A model opened from a link is in no file yet, like a new project: save it with Ctrl+S to keep it. Pasting a link over a tab that has unsaved work in it offers to save that work first.',
+        text: 'A model opened from a page or a link is in no file yet, like a new project: save it with Ctrl+S to keep it. Pasting a link over a tab that has unsaved work in it offers to save that work first.',
       },
       {
         kind: 'note',

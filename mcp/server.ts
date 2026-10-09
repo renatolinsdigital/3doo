@@ -9,7 +9,7 @@ import { callTool, toolList } from './tools.ts';
 
 /**
  * The 3DOO MCP server: lets an AI assistant build models with the scripting
- * API and hand them back as files, pictures or a link to the editor.
+ * API and hand them back as files, pictures or a page that opens the editor.
  *
  * Run by an MCP client over stdio (`node mcp/server.ts`). See docs/mcp.md.
  */
@@ -18,13 +18,13 @@ export const SUPPORTED_PROTOCOLS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
 const REFERENCE_URI = '3doo://reference/scripting';
 
-const INSTRUCTIONS = `3DOO is a browser 3D mesh editor. These tools drive a private copy of it, on the user's computer, to build models from JavaScript. Nothing needs starting first and nothing the user has open is touched: the scene lives inside this server, and the user gets it back as pictures, files or a link.
+const INSTRUCTIONS = `3DOO is a browser 3D mesh editor. These tools drive a private copy of it, on the user's computer, to build models from JavaScript. Nothing needs starting first and nothing the user has open is touched: the scene lives inside this server, and the user gets it back as pictures, files or a page that opens it in the editor.
 
 Workflow:
 1. scripting_reference, once. The default is a short quickstart with every name the API has; it is enough to write scripts. Do not fetch topic "api", "examples" or "all" up front: use them only to look up one name or copy one finished model.
 2. run_script builds the model. The scene persists between calls, so build in several short scripts. reset: true starts over. A failed script changes nothing and names the line.
 3. render_views once to check the result. Send it back to the user as it is: do not keep refining a model that already matches the request.
-4. Hand over only what was asked: export_model (.3doo, .obj or .fbx files), share_link (opens the model in the editor, in the user's browser with open: true; pass on the path of the .html file it saves, never the link, which is too long to copy into a reply), or the pictures from render_views. For several sides, render the views named: front, back, right, left, top, bottom, or perspective.
+4. Hand over only what was asked: export_model (.3doo, .obj or .fbx files), share_link (saves an .html page whose button opens the model in the editor, opened in the user's browser with open: true; pass on the path of that file), or the pictures from render_views. For several sides, render the views named: front, back, right, left, top, bottom, or perspective.
 
 Units are metres and degrees, +Y is up, and the front view looks from +Z.`;
 

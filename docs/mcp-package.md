@@ -122,13 +122,6 @@ printf '%s\n' \
   | THREEDOO_APP_URL=https://3doo.vercel.app node mcp-package/dist/server.mjs
 ```
 
-The bundle looks for a build at `mcp-package/dist/index.html`, which does not
-exist, so it never uses the repository's own `dist/`. A reply with `Script ran:
-1 object added` means the bundle, the browser and the hosted editor all work.
-
-To try the real tarball before it is public, `npm pack` in `mcp-package/` and
-run `npx -y ./3doo-mcp-<version>.tgz`.
-
 ## Troubleshooting
 
 | Symptom | Cause and fix |

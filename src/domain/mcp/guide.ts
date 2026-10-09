@@ -10,7 +10,7 @@
 
 export const REPOSITORY_URL = 'https://github.com/renatolinsdigital/3doo';
 
-/** The hosted editor, which a server with no local build draws in and links open on. */
+/** The hosted editor, which a server with no local build draws in and shared models open on. */
 export const HOSTED_URL = 'https://3doo.vercel.app';
 
 /** Where the server is, as the setup commands write it until the reader puts in their own. */
@@ -56,8 +56,8 @@ export const MCP_TOOLS: readonly McpToolGuide[] = [
   {
     name: 'share_link',
     args: ['app_url', 'name', 'open'],
-    does: 'Opens the model in this editor, in your browser when open is on. The whole scene travels inside a link, so nothing is uploaded, and the link is saved as an .html file that opens it again, since it is far too long to paste into a chat.',
-    returns: 'The path of the .html file, and the link itself.',
+    does: 'Saves a page that opens the model in this editor, and opens that page in your browser when open is on. The whole model travels inside the page, so nothing is uploaded and any size works. It has a button to open the model here and one to download it as a .3doo.',
+    returns: 'The path of the .html page.',
   },
   {
     name: 'open_file',
@@ -84,7 +84,7 @@ export const MCP_SETTINGS: readonly McpSetting[] = [
   {
     name: 'THREEDOO_APP_URL',
     fallback: 'none',
-    means: 'Where 3DOO is hosted. Links open there, so set it for share_link.',
+    means: 'Where 3DOO is hosted. Models shared with share_link open there, so set it for that.',
   },
   {
     name: 'THREEDOO_OUTPUT_DIR',
@@ -123,7 +123,7 @@ export function hostedClientConfig(appUrl = HOSTED_URL): string {
   return JSON.stringify({ mcpServers: { '3doo': entry } }, null, 2);
 }
 
-/** The command that adds the server to Claude Code, pointing links at `appUrl`. */
+/** The command that adds the server to Claude Code, opening shared models on `appUrl`. */
 export function claudeCodeCommand(appUrl: string, server = SERVER_PLACEHOLDER): string {
   return `claude mcp add 3doo -e THREEDOO_APP_URL=${appUrl} -- node ${server}`;
 }

@@ -6,7 +6,12 @@ import { parseProject } from '@kernel/index';
 import { useEditorStore } from '@store/index';
 
 import { projectText } from '../services/assets';
-import { sceneLink } from '../services/sceneLink';
+import {
+  HANDOVER_TIMEOUT_MS,
+  SCENE_HANDOVER,
+  encodeScenePayload,
+  sceneLink,
+} from '../services/sceneLink';
 
 import {
   allowAutosaveLocation,
@@ -357,6 +362,106 @@ describe('opening a scene link', () => {
     expect(objects()[0].name).toBe('CUBE');
     expect(lastToast()?.variant).toBe('error');
     expect(lastToast()?.message).toMatch(/^Could not open the scene in the link/);
+  });
+});
+
+describe('opening a scene handed over by the page that opened the tab', () => {
+  /** The page `share_link` saves, as far as the tab can tell. */
+  let page: { closed: boolean; postMessage: ReturnType<typeof vi.fn> };
+
+  beforeEach(() => {
+    page = { closed: false, postMessage: vi.fn() };
+    Object.defineProperty(window, 'opener', { value: page, configurable: true, writable: true });
+    window.history.replaceState(null, '', `/modeling${SCENE_HANDOVER.hash}`);
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'opener');
+    window.history.replaceState(null, '', '/');
+  });
+
+  async function payloadOf(build: () => void) {
+    build();
+    const state = useEditorStore.getState();
+    const text = await projectText(state.snapshotDocument(), state.assets);
+    useEditorStore.getState().resetScene();
+    return encodeScenePayload(text);
+  }
+
+  function send(data: unknown, source: unknown = page) {
+    act(() => {
+      window.dispatchEvent(new window.MessageEvent('message', { data, source: source as Window }));
+    });
+  }
+
+  const told = () => page.postMessage.mock.calls.map((call) => call[0] as { type: string });
+
+  it('asks the page for the scene, opens it in place of the cube and says it did', async () => {
+    const payload = await payloadOf(() => {
+      useEditorStore.getState().addPrimitive('cylinder');
+      useEditorStore.getState().setProjectName('lamp');
+    });
+
+    renderHook(() => useAutosave());
+    await waitFor(() => expect(told()).toEqual([{ type: SCENE_HANDOVER.ready }]));
+    expect(objects()).toHaveLength(0);
+    send({ type: SCENE_HANDOVER.scene, payload });
+
+    await waitFor(() => expect(objects().map((object) => object.name)).toEqual(['CYLINDER']));
+    expect(lastToast()?.message).toBe('Opened lamp');
+    expect(told().at(-1)).toEqual({ type: SCENE_HANDOVER.opened });
+    expect(window.location.hash).toBe('');
+    expect(useEditorStore.getState().dirty).toBe(true);
+    expect(useEditorStore.getState().savedToFile).toBe(false);
+    expect(useEditorStore.getState().canUndo).toBe(false);
+  });
+
+  it('takes the scene only from the page that opened the tab', async () => {
+    const payload = await payloadOf(() => useEditorStore.getState().addPrimitive('cylinder'));
+
+    renderHook(() => useAutosave());
+    await waitFor(() => expect(told()).toHaveLength(1));
+    send({ type: SCENE_HANDOVER.scene, payload }, { postMessage: vi.fn() });
+    send({ type: 'something else', payload });
+    await act(async () => {});
+    expect(objects()).toHaveLength(0);
+
+    send({ type: SCENE_HANDOVER.scene, payload });
+    await waitFor(() => expect(objects()).toHaveLength(1));
+  });
+
+  it('falls back to the cube, and tells the page why, when its scene will not open', async () => {
+    renderHook(() => useAutosave());
+    await waitFor(() => expect(told()).toHaveLength(1));
+    send({ type: SCENE_HANDOVER.scene, payload: 'abc' });
+
+    await waitFor(() => expect(objects().map((object) => object.name)).toEqual(['CUBE']));
+    expect(lastToast()?.variant).toBe('error');
+    expect(lastToast()?.message).toMatch(/^Could not open the model: .*damaged/);
+    expect(told().at(-1)).toMatchObject({ type: SCENE_HANDOVER.failed });
+  });
+
+  it('falls back to the cube when the page was closed before the tab could ask', async () => {
+    page.closed = true;
+
+    renderHook(() => useAutosave());
+
+    await waitFor(() => expect(objects().map((object) => object.name)).toEqual(['CUBE']));
+    expect(lastToast()?.message).toMatch(/is gone/);
+    expect(window.location.hash).toBe('');
+  });
+
+  it('stops waiting, and opens on the cube, when the page sends nothing', async () => {
+    vi.useFakeTimers();
+    renderHook(() => useAutosave());
+    await tick(0);
+    expect(objects()).toHaveLength(0);
+
+    await tick(HANDOVER_TIMEOUT_MS);
+
+    expect(objects().map((object) => object.name)).toEqual(['CUBE']);
+    expect(lastToast()?.message).toMatch(/sent nothing/);
+    expect(told().at(-1)).toMatchObject({ type: SCENE_HANDOVER.failed });
   });
 });
 

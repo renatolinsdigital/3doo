@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { deflateRawSync } from 'node:zlib';
 
 import type { ExportRequest, RenderRequest, SceneSummary } from '../src/app/automation/types.ts';
 
@@ -337,9 +338,9 @@ const shareLink: Tool = {
   name: 'share_link',
   title: 'Open the model in 3DOO',
   description: [
-    'Makes a link that opens the hosted 3DOO editor on the current scene, ready to edit, save and export. The whole scene travels inside the link (after the #), so nothing is uploaded and the link works for anyone.',
-    'The link runs to thousands of characters, too many to copy into a reply without a mistake, so it is also saved as an .html file in the output folder that opens it in any browser. Give the user the path of that file, never the link.',
-    'Pass open: true when the user wants to see the model in 3DOO: the file opens in their browser straight away.',
+    'Saves a page that opens the current scene in the hosted 3DOO editor, ready to edit, save and export. The page is an .html file in the output folder with an OPEN IN 3DOO button and a DOWNLOAD .3DOO button.',
+    'The whole model travels inside the page, so nothing is uploaded, any size works, and the page works for anyone the user sends it to. Give the user the path of that file.',
+    'Pass open: true when the user wants to see the model in 3DOO: the page opens in their browser straight away, and its button opens the editor.',
   ].join(' '),
   inputSchema: {
     type: 'object',
@@ -364,36 +365,41 @@ const shareLink: Tool = {
   async run(args, context) {
     const target = linkTarget(context.config, optional<string>(args, 'app_url', 'string') ?? null);
     const open = optional<boolean>(args, 'open', 'boolean');
-    const name = optional<string>(args, 'name', 'string') ?? (await context.engine.scene()).name;
-    const { url } = await context.engine.shareLink(target);
+    const scene = await context.engine.scene();
+    const name = optional<string>(args, 'name', 'string') ?? scene.name;
+    const [project] = await context.engine.exportFile({ format: '3doo' });
+    const bytes = Buffer.from(project.base64, 'base64');
 
-    const page = launcherPage(name, url);
+    const page = launcherPage({
+      name,
+      appUrl: target,
+      payload: deflateRawSync(bytes).toString('base64url'),
+      fileName: `${safeStem(name)}.3doo`,
+      bytes: bytes.length,
+      totals: scene.totals,
+    });
     await mkdir(context.config.outputDir, { recursive: true });
     const path = join(context.config.outputDir, `${safeStem(name)}.html`);
     await writeFile(path, page);
 
     const lines = [
-      `Saved ${path}. It opens the model in 3DOO at ${target}, in any browser: double-click it, or send it to someone.`,
+      `Saved ${path} (${kilobytes(Buffer.byteLength(page))}). It opens the model in 3DOO at ${target}, in any browser: double-click it, or send it to someone, and press OPEN IN 3DOO.`,
     ];
     if (open) {
       lines.push(
         await (context.openInBrowser ?? openWithSystem)(path).then(
-          () => "Opened it in the user's browser.",
+          () => "Opened it in the user's browser, where they press OPEN IN 3DOO.",
           (error: Error) =>
             `Could not open a browser on this computer (${error.message}), so the user has to open the file.`,
         ),
       );
     }
-    if (/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(target)) {
+    if (isLocal(target)) {
       lines.push(
         `It opens only on the user's own computer, and only while 3DOO is being served at ${target} (npm run dev or npm run preview). Say so when you hand it over.`,
       );
     }
-    lines.push(
-      '',
-      `Give the user the path of the file. The link inside it is ${url.length.toLocaleString('en-US')} characters: too long to copy into a reply without a mistake, and a link with one character wrong does not open.`,
-      url,
-    );
+    lines.push('', 'Give the user the path of the file.');
 
     const content: Content[] = [text(lines.join('\n'))];
     if (knowsResourceLinks(context.protocolVersion)) {
@@ -480,24 +486,347 @@ async function writeFiles(
 const escapeHtml = (value: string) =>
   value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 
+const isLocal = (url: string) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(url);
+
 /**
- * A page that sends the browser straight on to `url`.
- *
- * A scene link is thousands of characters, and a model that retypes it into a
- * chat reply gets some of them wrong. A file path is short enough to pass on
- * intact. Opening the file rather than the link also keeps the two million
- * characters a browser allows a link, where a command line would cut it far
- * shorter.
+ * How the page hands the scene to the editor. A copy of `SCENE_HANDOVER` in
+ * `src/domain/services/sceneLink.ts`, which the server cannot import: a test
+ * holds the two together.
  */
-export function launcherPage(name: string, url: string): string {
-  return [
-    '<!doctype html>',
-    '<meta charset="utf-8">',
-    `<title>${escapeHtml(name)} in 3DOO</title>`,
-    `<script>location.replace(${JSON.stringify(url).replace(/</g, '\\u003c')})</script>`,
-    `<a href="${escapeHtml(url)}">Open ${escapeHtml(name)} in 3DOO</a>`,
-    '',
-  ].join('\n');
+export const HANDOVER = {
+  hash: '#receive',
+  ready: '3doo:ready',
+  scene: '3doo:scene',
+  opened: '3doo:opened',
+  failed: '3doo:failed',
+} as const;
+
+/** How long the page waits for the editor's tab to answer before saying so. */
+const ANSWER_WAIT_MS = 20_000;
+
+/** The 3DOO mark, as `public/favicon.svg` draws it. */
+const LOGO =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="88" fill="#e5342a"/><path stroke="#f4f1ea" stroke-width="44" d="M256 311L256 169"/><path fill="#f4f1ea" d="M256 91L302 169L210 169Z"/><path stroke="#f4f1ea" stroke-width="44" d="M256 311L378.98 382"/><path fill="#f4f1ea" d="M446.53 421L355.98 421.84L401.98 342.16Z"/><path stroke="#f4f1ea" stroke-width="44" d="M256 311L133.02 382"/><path fill="#f4f1ea" d="M65.47 421L110.02 342.16L156.02 421.84Z"/><circle cx="256" cy="311" r="34" fill="#f4f1ea"/></svg>';
+
+export interface Launch {
+  /** The model's name, which titles the page. */
+  name: string;
+  /** Where 3DOO is hosted. */
+  appUrl: string;
+  /** The `.3doo` text, deflated and in base64url: what a scene link carries. */
+  payload: string;
+  /** The name DOWNLOAD .3DOO gives the file. */
+  fileName: string;
+  /** The size of the `.3doo`, in bytes. */
+  bytes: number;
+  totals: SceneSummary['totals'];
+}
+
+/**
+ * The page `share_link` saves: the model, and a button that opens it in 3DOO.
+ *
+ * The page holds the scene itself and hands it to the editor's tab with
+ * `postMessage` (see `HANDOVER`), so nothing limits its size. A link carrying
+ * the scene in its hash has a ceiling, and a model that retypes one into a
+ * chat reply gets characters wrong. A file path is short enough to pass on
+ * intact.
+ *
+ * The tab is opened from a click, since a browser blocks one opened on load,
+ * and with `window.open`, since a link with `target="_blank"` cuts the tab off
+ * from the page that has to answer it.
+ */
+export function launcherPage(launch: Launch): string {
+  const app = launch.appUrl.replace(/[#?].*$/, '').replace(/\/+$/, '');
+  const title = escapeHtml(launch.name);
+  const data = {
+    tab: `${app}/modeling${HANDOVER.hash}`,
+    origin: new URL(app).origin,
+    payload: launch.payload,
+    file: launch.fileName,
+    wait: ANSWER_WAIT_MS,
+    messages: HANDOVER,
+  };
+  const facts = [
+    ['OBJECTS', launch.totals.objects.toLocaleString('en-US')],
+    ['VERTICES', launch.totals.vertices.toLocaleString('en-US')],
+    ['FACES', launch.totals.faces.toLocaleString('en-US')],
+    ['SIZE', kilobytes(launch.bytes)],
+  ]
+    .map(([label, value]) => `<div class="fact"><dt>${label}</dt><dd>${value}</dd></div>`)
+    .join('\n      ');
+  const where = isLocal(app)
+    ? ` It opens only on this computer, and only while 3DOO is being served there.`
+    : '';
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${title} in 3DOO</title>
+<link rel="icon" href="data:image/svg+xml,${encodeURIComponent(LOGO)}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=JetBrains+Mono:wght@400;700&display=swap">
+<style>
+  :root {
+    --void: #0b0b0b;
+    --bone: #f4f1ea;
+    --bone-dim: #ddd8cd;
+    --ink-muted: #57534c;
+    --red: #e5342a;
+    --rust: #b8452f;
+    --ash: #1a1918;
+    --amber: #f2a03d;
+    --cyan: #3de0d0;
+    --border: 3px;
+    --border-thin: 2px;
+    --shadow: 4px;
+    --gutter: 32px;
+    --display: 'Archivo Black', 'Arial Black', sans-serif;
+    --mono: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    display: grid;
+    place-items: center;
+    min-height: 100vh;
+    padding: 16px;
+    font-family: var(--mono);
+    color: var(--void);
+    background: var(--ash);
+  }
+  .card {
+    width: min(100%, 640px);
+    background: var(--bone);
+    border: var(--border) solid var(--void);
+    box-shadow: 8px 8px 0 var(--void);
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 8px;
+    border-bottom: var(--border) solid var(--void);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 34px;
+    padding: 0 8px;
+    font-family: var(--display);
+    font-size: 14px;
+    letter-spacing: 0.08em;
+    color: var(--bone);
+    background: var(--void);
+  }
+  .brand svg { width: 20px; height: 20px; }
+  .kind { font-size: 11px; letter-spacing: 0.1em; color: var(--ink-muted); }
+  .hero {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 24px;
+    padding: var(--gutter) var(--gutter) 40px;
+    background-color: var(--bone);
+    background-image:
+      linear-gradient(var(--bone-dim) 1px, transparent 1px),
+      linear-gradient(90deg, var(--bone-dim) 1px, transparent 1px);
+    background-size: 24px 24px;
+    border-bottom: var(--border) solid var(--void);
+  }
+  .badges { display: flex; flex-wrap: wrap; }
+  .badge {
+    padding: 8px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    overflow-wrap: anywhere;
+    background: var(--bone);
+    border: var(--border-thin) solid var(--void);
+  }
+  .badge--solid { color: var(--bone); background: var(--void); }
+  h1 {
+    font-family: var(--display);
+    font-size: clamp(36px, 9vw, 64px);
+    font-weight: 400;
+    line-height: 0.95;
+    letter-spacing: 0.01em;
+  }
+  h1 span { color: var(--red); }
+  .facts { padding: 0 var(--gutter); }
+  .fact {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 0;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    border-top: var(--border-thin) solid var(--void);
+  }
+  .fact:first-child { border-top: none; }
+  .fact dt { color: var(--ink-muted); }
+  .fact dd { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 24px var(--gutter);
+    border-top: var(--border) solid var(--void);
+  }
+  .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 44px;
+    padding: 4px 16px;
+    font: 700 12px/1 var(--mono);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--void);
+    background: var(--bone);
+    border: var(--border) solid var(--void);
+    box-shadow: var(--shadow) var(--shadow) 0 var(--void);
+    cursor: pointer;
+    transition: background-color 80ms linear;
+  }
+  .button:hover { background: var(--bone-dim); }
+  .button:active { transform: translate(var(--shadow), var(--shadow)); box-shadow: none; }
+  .button:focus-visible { outline: var(--border) solid var(--cyan); outline-offset: 2px; }
+  .button--primary { color: var(--bone); background: var(--red); }
+  .button--primary:hover { background: var(--rust); }
+  .status {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0 var(--gutter) 24px;
+    padding: 8px;
+    font-size: 12px;
+    line-height: 1.5;
+    border: var(--border-thin) solid var(--void);
+  }
+  .status:empty { display: none; }
+  .status::before {
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    font-family: var(--display);
+    font-size: 10px;
+    border: var(--border-thin) solid var(--void);
+  }
+  .status[data-tone='busy']::before { content: '…'; background: var(--amber); }
+  .status[data-tone='done']::before { content: '✓'; background: var(--cyan); }
+  .status[data-tone='error']::before { content: '!'; color: var(--bone); background: var(--red); }
+  .note {
+    padding: 12px var(--gutter);
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--ink-muted);
+    border-top: var(--border) solid var(--void);
+  }
+  .note b { color: var(--void); }
+  @media (max-width: 480px) {
+    :root { --gutter: 16px; }
+    .actions .button { flex: 1 1 100%; }
+  }
+</style>
+</head>
+<body>
+  <main class="card">
+    <header class="bar">
+      <span class="brand">${LOGO}3DOO</span>
+      <span class="kind">SHARED MODEL</span>
+    </header>
+    <section class="hero">
+      <p class="badges">
+        <span class="badge badge--solid">${title}</span><span class="badge">EDITABLE IN 3DOO</span>
+      </p>
+      <h1>YOUR MODEL<br>IS READY<span>.</span></h1>
+    </section>
+    <dl class="facts">
+      ${facts}
+    </dl>
+    <div class="actions">
+      <button class="button button--primary" id="open" type="button">OPEN IN 3DOO <span aria-hidden="true">→</span></button>
+      <button class="button" id="download" type="button">DOWNLOAD .3DOO</button>
+    </div>
+    <p class="status" id="status" role="status"></p>
+    <noscript>
+      <p class="status" data-tone="error">This page needs JavaScript to open the model. Open the file in a web browser.</p>
+    </noscript>
+    <p class="note">
+      Opens in the 3DOO editor at <b>${escapeHtml(app.replace(/^https?:\/\//, ''))}</b>.
+      The model goes straight from this page to that tab and is never uploaded.${where}
+    </p>
+  </main>
+  <script>
+    (() => {
+      const launch = ${JSON.stringify(data).replace(/</g, '\\u003c')};
+      const messages = launch.messages;
+      const status = document.getElementById('status');
+      const say = (tone, text) => {
+        status.dataset.tone = tone;
+        status.textContent = text;
+      };
+      let waiting = 0;
+
+      addEventListener('message', (event) => {
+        if (event.origin !== launch.origin || !event.data) return;
+        const { type, reason } = event.data;
+        if (type === messages.ready) {
+          event.source.postMessage({ type: messages.scene, payload: launch.payload }, launch.origin);
+          say('busy', 'Sending the model to 3DOO…');
+        } else if (type === messages.opened) {
+          clearTimeout(waiting);
+          say('done', 'Opened in 3DOO. You can close this page.');
+        } else if (type === messages.failed) {
+          clearTimeout(waiting);
+          say('error', '3DOO could not open the model. ' + reason);
+        }
+      });
+
+      document.getElementById('open').addEventListener('click', () => {
+        clearTimeout(waiting);
+        if (!window.open(launch.tab, '_blank')) {
+          say('error', 'The browser blocked the new tab. Allow pop-ups for this page and press OPEN IN 3DOO again, or download the .3doo.');
+          return;
+        }
+        say('busy', 'Opening 3DOO in a new tab…');
+        waiting = setTimeout(() => {
+          say('error', '3DOO has not answered. If its tab is still loading, give it a moment. If it opened on a cube, that 3DOO is older than this page: download the .3doo and open it there with FILE > OPEN.');
+        }, launch.wait);
+      });
+
+      document.getElementById('download').addEventListener('click', async () => {
+        try {
+          const base64 = launch.payload.replace(/-/g, '+').replace(/_/g, '/');
+          const packed = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+          const unpack = new DecompressionStream('deflate-raw');
+          const writer = unpack.writable.getWriter();
+          writer.write(packed).catch(() => {});
+          writer.close().catch(() => {});
+          const file = new Blob([await new Response(unpack.readable).arrayBuffer()], { type: 'application/json' });
+          const anchor = document.createElement('a');
+          anchor.href = URL.createObjectURL(file);
+          anchor.download = launch.file;
+          anchor.click();
+          setTimeout(() => URL.revokeObjectURL(anchor.href), 60000);
+          say('done', 'Downloading ' + launch.file + '. Open it in 3DOO with FILE > OPEN.');
+        } catch (error) {
+          say('error', 'This browser could not unpack the model (' + error.message + '). Try a current Chrome, Edge, Firefox or Safari.');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
+`;
 }
 
 const OPENERS: Partial<Record<NodeJS.Platform, string[]>> = {

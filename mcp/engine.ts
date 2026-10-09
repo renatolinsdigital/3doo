@@ -17,7 +17,6 @@ import {
   type RenderedView,
   type RunReport,
   type SceneSummary,
-  type ShareLink,
 } from '../src/app/automation/types.ts';
 
 import { type Config, engineSource } from './config.ts';
@@ -30,7 +29,6 @@ export interface Engine {
   scene(): Promise<SceneSummary>;
   exportFile(request: ExportRequest): Promise<ExportedFile[]>;
   render(request: RenderRequest): Promise<RenderedView[]>;
-  shareLink(appUrl: string): Promise<ShareLink>;
   reference(request?: ReferenceRequest): Promise<string>;
   close(): Promise<void>;
 }
@@ -259,10 +257,6 @@ export class BrowserEngine implements Engine {
 
   render(request: RenderRequest): Promise<RenderedView[]> {
     return this.call('Rendering', 'render', request);
-  }
-
-  shareLink(appUrl: string): Promise<ShareLink> {
-    return this.call('The link', 'shareLink', appUrl);
   }
 
   reference(request?: ReferenceRequest): Promise<string> {

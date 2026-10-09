@@ -82,7 +82,7 @@ export function McpDialog() {
         <p className="mcp-dialog__pitch">
           3DOO comes with an MCP server. An assistant that speaks the Model Context Protocol, such
           as Claude, uses it to write and run scripts, look at what they built, and hand you the
-          model as a file, as pictures, or as a link that opens it in this editor.
+          model as a file, as pictures, or as a page that opens it in this editor.
         </p>
       </div>
 
@@ -101,8 +101,9 @@ export function McpDialog() {
         </ol>
         <p className="mcp-dialog__note">
           The server always runs on your computer, never on this website, and its 3DOO is not this
-          tab: it cannot see or change the scene in front of you. To bring a model here, ask for a
-          link or a .3doo file. Where that hidden 3DOO comes from is your choice, below.
+          tab: it cannot see or change the scene in front of you. To bring a model here, ask it to
+          open the model in 3DOO, or for a .3doo file. Where that hidden 3DOO comes from is your
+          choice, below.
         </p>
       </section>
 
@@ -161,8 +162,8 @@ export function McpDialog() {
             <ul className="mcp-dialog__points">
               <li>Needs the internet, since the hidden browser loads the editor from the web.</li>
               <li>
-                Links open on the hosted editor, so they work on any computer and for anyone you
-                send them to.
+                Pages it saves open the model on the hosted editor, so they work on any computer and
+                for anyone you send them to.
               </li>
               <li>
                 The hosted editor has to be on the same version as the server, or the first call
@@ -196,8 +197,8 @@ export function McpDialog() {
               <li>The 3DOO it uses is always the same version as the server.</li>
               <li>Needs the code built once, and again after you change it.</li>
               <li>
-                Links open on the address you set. One to localhost opens only on your computer,
-                while 3DOO is served there.
+                Pages it saves open the model on the address you set. One for localhost works only
+                on your computer, while 3DOO is served there.
               </li>
             </ul>
             <p className="mcp-dialog__text">Get the code and build it:</p>
@@ -212,9 +213,9 @@ export function McpDialog() {
             <CopyBlock label="Claude Code command, local" text={claudeCodeCommand(appUrl)} />
             {isLocal ? (
               <p className="mcp-dialog__text">
-                This page is on your own computer, so the links the assistant makes point at{' '}
+                This page is on your own computer, so the pages the assistant saves point at{' '}
                 <code>{appUrl}</code> and open only while 3DOO is served there. Use the hosted
-                address in place of it for links that work anywhere.
+                address in place of it for pages that work anywhere.
               </p>
             ) : null}
             <CopyBlock label="Client configuration, local" text={clientConfig(appUrl)} />
@@ -224,7 +225,7 @@ export function McpDialog() {
         <p className="mcp-dialog__text">
           Then ask for a model: &ldquo;Build a low poly chair in 3DOO, show me the front and side
           views, then export it as FBX for Unity.&rdquo; A good way to start is a first version from
-          the assistant, opened here from its link and refined by hand.
+          the assistant, opened here from the page it saves and refined by hand.
         </p>
         <p className="mcp-dialog__note">
           Either way the server runs on your computer, so files and pictures are saved there, and

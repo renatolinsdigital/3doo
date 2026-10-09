@@ -2,10 +2,11 @@
 
 An MCP server that lets an AI assistant build 3D models in [3DOO](https://3doo.vercel.app)
 with its scripting API, look at them, and hand them back as `.3doo`, OBJ or FBX
-files, PNG pictures, or a link that opens the editor on the model.
+files, PNG pictures, or a page that opens the editor on the model.
 
-A good way to start is to ask the assistant for a first version, then open its
-link and refine the model by hand in the browser editor.
+A good way to start is to ask the assistant for a first version, then open the
+page it saves, press OPEN IN 3DOO and refine the model by hand in the browser
+editor.
 
 It needs Node 22 or newer, and a Chrome, Edge or Chromium on the machine
 (otherwise run `npx playwright-core install chromium`). It draws models in the
