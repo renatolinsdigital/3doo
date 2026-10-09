@@ -1,9 +1,6 @@
 # 3DOO
 
-3DOO is a 3D mesh editor that runs in the browser. You model with the
-operations of a desktop package (extrude, inset, bevel, loop cut, knife,
-dissolve and the rest) and export the result as OBJ or FBX, ready for a game
-engine.
+3DOO is a 3D mesh editor that runs in the browser. You model with the operations of a desktop package (extrude, inset, bevel, loop cut, knife, dissolve and the rest) and export the result as OBJ or FBX, ready for a game engine.
 
 ## Some things you can do with this software
 
@@ -40,9 +37,6 @@ New to the code? Start with [docs/get-started.md](docs/get-started.md).
   groups, a 3D cursor and proportional editing.
 - **Files**: `.3doo` projects, OBJ and FBX import, binary FBX 7.4 and OBJ
   export with engine axis presets, opt-in autosave to a folder you choose.
-- **Touch**: runs on phones and tablets. Pinch to zoom, slide two fingers to
-  pan, twist them to turn the view, and long-press for the right-click menus;
-  the panels fold into drawers on narrow screens.
 - **Scripting**: a code editor in the top bar that builds and edits the scene
   with JavaScript, in the spirit of Blender's Python console, with hover help
   linked to the docs. A run is one step to undo, and a failed run changes
@@ -57,7 +51,7 @@ The full list, and how each tool behaves, is in
 [docs/features.md](docs/features.md). Every shortcut is in
 [docs/keymap.md](docs/keymap.md).
 
-## Working with an AI assistant
+## Working on 3DOO with an AI assistant
 
 An assistant is quick at a first draft, and the editor is quick at the details,
 so the smoothest way to work is to use both:
@@ -69,9 +63,15 @@ so the smoothest way to work is to use both:
    editor with every object and modifier still editable. Shape the rest by
    hand from there.
 3. **Bring the assistant back for a specific part.** The assistant works in a
-   copy of 3DOO of its own and might not see your Browser's tab, so give it the project
-   itself. Save a copy as a `.3doo` file (FILE > SAVE AS, or Ctrl+Shift+S) and
-   ask it to edit that file. Uploading a print of the region to be edited by AI is always a good idea.
+   copy of 3DOO of its own and might not control your browser's tab, so give it
+   the project itself. Save a copy as a `.3doo` file (FILE > SAVE AS, or
+   Ctrl+Shift+S) and ask it to edit that file. 
+4. **Or let the assistant edit .3doo files directly.** If you would rather do most of the
+   work through the assistant, keep the `.3doo` file in a working folder, tell
+   the assistant its path, and ask it to save each change back to that file.
+   Reopen it in the editor (FILE > OPEN) to see the result. 
+
+  **Remember**: Attaching a screenshot of the area you want to change always helps!
 
 ## How it is built
 
