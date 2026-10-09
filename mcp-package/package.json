@@ -3,7 +3,7 @@
   "version": "1.0.1",
   "description": "MCP server that lets an AI assistant build 3D models in 3DOO",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": "github:renatolinsdigital/3doo",
   "homepage": "https://3doo.vercel.app",
   "bin": { "3doo-mcp": "dist/server.mjs" },

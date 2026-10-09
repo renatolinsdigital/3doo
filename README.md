@@ -132,6 +132,6 @@ Sass. No Tailwind, no CSS-in-JS, no component library.
 The user manual is not in this folder. It is the in-app Docs module, written in
 [content.ts](src/modules/docs/content.ts).
 
-## Licence
+## License
 
-Unlicensed prototype.
+MIT. See [LICENSE](LICENSE). The `3doo-mcp` npm package is MIT too.

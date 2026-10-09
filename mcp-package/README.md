@@ -33,3 +33,7 @@ Claude Desktop, in `claude_desktop_config.json`:
 
 Settings, tools and what each returns are in
 [docs/mcp.md](https://github.com/renatolinsdigital/3doo/blob/master/docs/mcp.md).
+
+## License
+
+MIT

@@ -11,6 +11,7 @@ version, and how to keep it in step with the app.
 mcp-package/
   package.json     the published manifest: name, version, bin, dependencies
   README.md        what npm shows on the package page
+  LICENSE          MIT, a copy of the root LICENSE (npm only ships one from the package folder)
   dist/server.mjs  the bundle (built, gitignored, the only code that ships)
 ```
 
@@ -19,7 +20,8 @@ mcp-package/
   esbuild. `playwright-core` is left out of the bundle and listed as a
   dependency, so npm installs it beside the package.
 - `files` in `package.json` limits the tarball to `dist/server.mjs` and the
-  README. Check what would ship with `npm pack --dry-run` inside `mcp-package/`.
+  README. npm adds `LICENSE` on its own. Check what would ship with
+  `npm pack --dry-run` inside `mcp-package/`.
 - The bundle has no `dist/index.html` beside it, so it never serves a local
   build. It draws in `THREEDOO_ENGINE_URL` or `THREEDOO_APP_URL`, which is the
   hosted editor in every command the MCP dialog gives.

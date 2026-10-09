@@ -1,6 +1,7 @@
 {
   "name": "3DOO",
   "private": true,
+  "license": "MIT",
   "version": "1.0.0",
   "type": "module",
   "description": "Browser-based 3D modeling tool built with React and Three.js",
