@@ -9,6 +9,7 @@ import {
   MIN_ORBIT_DISTANCE,
   ORBIT_STEP,
   VIEW_TWEEN_MS,
+  WHEEL_POINTER_LEAN,
   orbitPhi,
   orbitStepPhi,
   upSign,
@@ -272,7 +273,7 @@ describe('the six axis views', () => {
 describe('zooming in on something small', () => {
   /** One wheel notch, the way the viewport hands them over. */
   function wheel(controls: CameraController, deltaY: number) {
-    controls.onWheel({ deltaY } as WheelEvent);
+    controls.onWheel(new WheelEvent('wheel', { deltaY }));
   }
 
   it('closes in far enough for an object at the size floor to fill the view', () => {
@@ -302,11 +303,188 @@ describe('zooming in on something small', () => {
   });
 });
 
+describe('leaning the zoom toward the pointer', () => {
+  const WIDTH = 800;
+  const HEIGHT = 600;
+
+  /** A controller on a canvas of a real size, so a pointer can be off its middle. */
+  function sized(orthographic: boolean) {
+    const element = document.createElement('div');
+    Object.defineProperty(element, 'clientWidth', { value: WIDTH });
+    Object.defineProperty(element, 'clientHeight', { value: HEIGHT });
+    const camera = orthographic
+      ? new THREE.OrthographicCamera(-WIDTH / HEIGHT, WIDTH / HEIGHT, 1, -1, 0.05, 2000)
+      : new THREE.PerspectiveCamera(50, WIDTH / HEIGHT, 0.05, 2000);
+    const controls = new CameraController(camera, element);
+    controls.setPose({ target: { x: 0, y: 0, z: 0 }, radius: 5, phi: Math.PI / 3, theta: 0 });
+    return { camera, controls };
+  }
+
+  /** Where a world point lands on the canvas, in pixels with y down. */
+  function pixelOf(camera: THREE.Camera, point: THREE.Vector3) {
+    camera.updateMatrixWorld();
+    const ndc = point.clone().project(camera);
+    return { x: ((ndc.x + 1) / 2) * WIDTH, y: ((1 - ndc.y) / 2) * HEIGHT };
+  }
+
+  /** A point on the pivot's plane, up and to the right of the middle of the view. */
+  function offCentre(camera: THREE.Camera) {
+    const right = new THREE.Vector3();
+    const up = new THREE.Vector3();
+    camera.matrix.extractBasis(right, up, new THREE.Vector3());
+    return new THREE.Vector3().addScaledVector(right, 0.6).addScaledVector(up, 0.3);
+  }
+
+  it.each([false, true])(
+    'holds still the point partway from the middle to the pointer, in and out (ortho %s)',
+    (orthographic) => {
+      const { camera, controls } = sized(orthographic);
+      const anchor = offCentre(camera);
+      const held = pixelOf(camera, anchor);
+      // The pointer is further out than the point it steers the zoom onto.
+      const at = {
+        clientX: WIDTH / 2 + (held.x - WIDTH / 2) / WHEEL_POINTER_LEAN,
+        clientY: HEIGHT / 2 + (held.y - HEIGHT / 2) / WHEEL_POINTER_LEAN,
+      };
+
+      for (let notch = 0; notch < 5; notch += 1) {
+        controls.onWheel(new WheelEvent('wheel', { deltaY: -100, ...at }));
+      }
+      expect(controls.distance).toBeLessThan(5);
+      let after = pixelOf(camera, anchor);
+      expect(after.x).toBeCloseTo(held.x, 0);
+      expect(after.y).toBeCloseTo(held.y, 0);
+
+      for (let notch = 0; notch < 8; notch += 1) {
+        controls.onWheel(new WheelEvent('wheel', { deltaY: 100, ...at }));
+      }
+      expect(controls.distance).toBeGreaterThan(5);
+      after = pixelOf(camera, anchor);
+      expect(after.x).toBeCloseTo(held.x, 0);
+      expect(after.y).toBeCloseTo(held.y, 0);
+    },
+  );
+
+  it('leaves the pivot where it was with the pointer in the middle', () => {
+    const { controls } = sized(false);
+    controls.onWheel(
+      new WheelEvent('wheel', { deltaY: -300, clientX: WIDTH / 2, clientY: HEIGHT / 2 }),
+    );
+
+    expect(controls.focusPoint.length()).toBeCloseTo(0, 10);
+    expect(controls.distance).toBeLessThan(5);
+  });
+
+  it('holds the pivot still once the orbit is on its clamp', () => {
+    // A notch the clamp swallows whole moves nothing, so it must not slide the
+    // pivot sideways either: that would read as a pan out of nowhere.
+    const { controls } = sized(false);
+    controls.setPose({
+      target: { x: 0, y: 0, z: 0 },
+      radius: MIN_ORBIT_DISTANCE,
+      phi: Math.PI / 3,
+      theta: 0,
+    });
+    controls.onWheel(new WheelEvent('wheel', { deltaY: -100, clientX: 700, clientY: 100 }));
+
+    expect(controls.focusPoint.length()).toBe(0);
+  });
+
+  /** The point `depth` in front of the camera on the line of sight through pixel `x`, `y`. */
+  function surfaceAt(camera: THREE.Camera, x: number, y: number, depth: number) {
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2((x / WIDTH) * 2 - 1, 1 - (y / HEIGHT) * 2), camera);
+    const forward = camera.getWorldDirection(new THREE.Vector3());
+    const { ray } = raycaster;
+    return ray.at(depth / ray.direction.dot(forward), new THREE.Vector3());
+  }
+
+  /** How far in front of the camera a point stands, along its line of sight. */
+  function depthOf(camera: THREE.Camera, point: THREE.Vector3) {
+    return camera.getWorldDirection(new THREE.Vector3()).dot(point.clone().sub(camera.position));
+  }
+
+  it('moves the pivot onto the surface under the pointer without moving the camera', () => {
+    const { camera, controls } = sized(false);
+    const surface = surfaceAt(camera, WIDTH / 2, HEIGHT / 2, 2);
+    const standing = camera.position.clone();
+
+    controls.onWheel(
+      new WheelEvent('wheel', { deltaY: 0, clientX: WIDTH / 2, clientY: HEIGHT / 2 }),
+      surface,
+    );
+
+    expect(camera.position.distanceTo(standing)).toBeCloseTo(0, 10);
+    expect(controls.focusPoint.distanceTo(surface)).toBeCloseTo(0, 10);
+    expect(controls.distance).toBeCloseTo(2, 10);
+  });
+
+  it('closes on a surface nearer than the pivot without passing through it', () => {
+    // Zooming about the pivot's plane drove the camera at a point behind the
+    // model and straight through it.
+    const { camera, controls } = sized(false);
+    const surface = surfaceAt(camera, 560, 220, 2);
+
+    for (let notch = 0; notch < 40; notch += 1) {
+      controls.onWheel(
+        new WheelEvent('wheel', { deltaY: -100, clientX: 560, clientY: 220 }),
+        surface,
+      );
+    }
+
+    const depth = depthOf(camera, surface);
+    expect(depth).toBeGreaterThan(0);
+    expect(depth).toBeLessThan(0.1);
+    // The orbit now turns about a point at the depth that was zoomed into.
+    expect(controls.distance).toBeCloseTo(depth, 8);
+  });
+
+  it('keeps coming on a surface behind the pivot instead of stalling short of it', () => {
+    const { camera, controls } = sized(false);
+    const surface = surfaceAt(camera, 300, 380, 30);
+
+    for (let notch = 0; notch < 30; notch += 1) {
+      controls.onWheel(
+        new WheelEvent('wheel', { deltaY: -100, clientX: 300, clientY: 380 }),
+        surface,
+      );
+    }
+
+    expect(depthOf(camera, surface)).toBeLessThan(1);
+  });
+
+  it('zooms into the middle when set to centred, whatever the pointer is over', () => {
+    const { camera, controls } = sized(false);
+    controls.wheelZoom = 'centred';
+
+    controls.onWheel(
+      new WheelEvent('wheel', { deltaY: -100, clientX: 700, clientY: 100 }),
+      surfaceAt(camera, 700, 100, 2),
+    );
+
+    expect(controls.focusPoint.length()).toBeCloseTo(0, 10);
+    expect(controls.distance).toBeCloseTo(5 * Math.exp(-100 * controls.zoomSpeed), 10);
+  });
+
+  it('leaves the depth out of an orthographic zoom', () => {
+    // The radius is the size of the view there, so moving the pivot onto the
+    // surface would jump the picture rather than aim the zoom.
+    const { controls } = sized(true);
+    controls.onWheel(
+      new WheelEvent('wheel', { deltaY: -100, clientX: WIDTH / 2, clientY: HEIGHT / 2 }),
+      new THREE.Vector3(0.3, 0.2, 2),
+    );
+
+    expect(controls.distance).toBeCloseTo(5 * Math.exp(-100 * controls.zoomSpeed), 10);
+    expect(controls.focusPoint.length()).toBeCloseTo(0, 10);
+  });
+});
+
 describe('a zoom that has stopped biting', () => {
   /** One wheel notch in, the way the viewport hands them over. */
   function zoomIn(controls: CameraController, notches: number) {
     for (let notch = 0; notch < notches; notch += 1) {
-      controls.onWheel({ deltaY: -100 } as WheelEvent);
+      controls.onWheel(new WheelEvent('wheel', { deltaY: -100 }));
     }
   }
 

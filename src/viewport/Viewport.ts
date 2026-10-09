@@ -1227,6 +1227,13 @@ export class Viewport {
         { fireImmediately: true },
       ),
       store.subscribe(
+        (state) => state.wheelZoom,
+        (mode) => {
+          this.controls.wheelZoom = mode;
+        },
+        { fireImmediately: true },
+      ),
+      store.subscribe(
         (state) => [state.orthographic, state.focalLength, state.clipStart, state.clipEnd] as const,
         () => this.applyCameraSettings(),
         { equalityFn: shallowArrayEqual, fireImmediately: true },
@@ -3232,8 +3239,29 @@ export class Viewport {
   private handleWheel = (event: WheelEvent): void => {
     event.preventDefault();
     if (this.resizeProportionalFalloff(event)) return;
-    this.controls.onWheel(event);
+    // A centred zoom has no use for the depth under the pointer, so it is not
+    // worth a raycast through the scene on every notch.
+    const surface =
+      this.controls.wheelZoom === 'pointer' ? this.surfaceUnder(this.pointerPosition(event)) : null;
+    this.controls.onWheel(event, surface);
   };
+
+  /**
+   * The nearest point of anything drawn under `pointer`, or null over empty space.
+   *
+   * Read off the shape on screen rather than the cage, so a zoom aims at what
+   * the user can see, modifiers and all.
+   */
+  private surfaceUnder(pointer: THREE.Vector2): THREE.Vector3 | null {
+    const targets = useEditorStore
+      .getState()
+      .objects.filter((object) => object.visible)
+      .map((object) => this.views.get(object.id)?.surfaceTarget)
+      .filter((target): target is THREE.Mesh => target !== undefined);
+
+    this.updateRaycaster(pointer);
+    return this.raycaster.intersectObjects(targets, false)[0]?.point ?? null;
+  }
 
   /**
    * Blender's gesture: while a proportional transform runs, the wheel grows and

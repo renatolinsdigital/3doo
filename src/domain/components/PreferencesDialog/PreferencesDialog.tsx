@@ -24,7 +24,7 @@ import {
   autosaveIntervalLabel,
   useEditorStore,
 } from '@store/index';
-import type { PanelId, SnapMode } from '@store/types';
+import type { PanelId, SnapMode, WheelZoom } from '@store/types';
 
 import {
   allowAutosaveLocation,
@@ -53,6 +53,11 @@ const AUTOSAVE_INTERVAL_OPTIONS = AUTOSAVE_INTERVALS.map((seconds) => ({
 const SNAP_OPTIONS: readonly { value: SnapMode; label: string }[] = [
   { value: 'grid', label: 'GRID' },
   { value: 'custom', label: 'CUSTOM' },
+];
+
+const WHEEL_ZOOM_OPTIONS: readonly { value: WheelZoom; label: string }[] = [
+  { value: 'pointer', label: 'FOLLOW POINTER' },
+  { value: 'centred', label: 'CENTRED' },
 ];
 
 /**
@@ -127,6 +132,7 @@ export function PreferencesDialog() {
   const selectionLineColor = useEditorStore((state) => state.selectionLineColor);
   const viewportBackground = useEditorStore((state) => state.viewportBackground);
   const lockVerticalOrbit = useEditorStore((state) => state.lockVerticalOrbit);
+  const wheelZoom = useEditorStore((state) => state.wheelZoom);
   const gridScale = useEditorStore((state) => state.gridScale);
   const gridSubdivisions = useEditorStore((state) => state.gridSubdivisions);
   const snapEnabled = useEditorStore((state) => state.snapEnabled);
@@ -255,6 +261,13 @@ export function PreferencesDialog() {
           checked={lockVerticalOrbit}
           hint="Stop the orbit at straight up and straight down instead of rolling over"
           onChange={(locked) => setPreferences({ lockVerticalOrbit: locked })}
+        />
+        <Select<WheelZoom>
+          label="WHEEL ZOOM"
+          value={wheelZoom}
+          options={WHEEL_ZOOM_OPTIONS}
+          hint="Where the mouse wheel zooms. FOLLOW POINTER stays mostly centred and drifts toward whatever the pointer is over. CENTRED zooms straight into the middle of the view"
+          onChange={(mode) => setPreferences({ wheelZoom: mode })}
         />
       </Accordion>
 

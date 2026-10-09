@@ -35,6 +35,9 @@ export type ToolId =
 /** What snapping measures against: the grid square itself, or a step you set. */
 export type SnapMode = 'grid' | 'custom';
 
+/** Where the wheel zooms: dead into the middle of the view, or leaning toward the pointer. */
+export type WheelZoom = 'centred' | 'pointer';
+
 /**
  * What a rotation or a scale turns about.
  *
@@ -285,6 +288,15 @@ export interface Preferences {
    * when a model is being worked on level and the view is not meant to flip.
    */
   lockVerticalOrbit: boolean;
+  /**
+   * Where a turn of the wheel zooms.
+   *
+   * 'pointer' by default: the zoom stays mostly centred and drifts toward what
+   * the pointer is over, at that thing's depth. 'centred' closes straight in on
+   * the middle of the view whatever the pointer is doing, which is steadier for
+   * someone who aims the view first and zooms after.
+   */
+  wheelZoom: WheelZoom;
   /**
    * Multiplier on the grid's own step, not a length: the plane rescales itself
    * by powers of ten as the camera pulls back, so a square is this many units

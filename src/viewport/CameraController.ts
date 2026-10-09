@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 import { MIN_OBJECT_SIZE } from '@kernel/index';
-import type { CameraPose, NavigationPreset, ViewLostReason } from '@store/types';
+import type { CameraPose, NavigationPreset, ViewLostReason, WheelZoom } from '@store/types';
 
 import {
   type TouchPoint,
@@ -93,6 +93,16 @@ export function zoomSpent(radius: number, gap: number): boolean {
  * a blink, which is long enough to read as motion and too short to sit through.
  */
 export const VIEW_TWEEN_MS = 200;
+
+/**
+ * How far the wheel's zoom leans from the middle of the view toward the
+ * pointer: 0 zooms dead centre, 1 holds the point under the pointer still.
+ *
+ * Under a third. Following the pointer the whole way swings the model off to
+ * the side within a few notches, which reads as the view running away. This
+ * keeps the zoom centred and lets the pointer steer it.
+ */
+export const WHEEL_POINTER_LEAN = 0.3;
 
 /** Slow off the mark and slow into the stop, quick through the middle. */
 function ease(t: number): number {
@@ -262,6 +272,8 @@ export class CameraController {
   preset: NavigationPreset = 'blender';
   /** Whether a vertical orbit stops at the poles instead of rolling over them. */
   lockVerticalOrbit = false;
+  /** Whether the wheel zooms into the middle of the view or leans toward the pointer. */
+  wheelZoom: WheelZoom = 'pointer';
   /**
    * How long a keyboard move takes. Zero puts the camera there on the spot,
    * which is what a test wants and what a motion setting would turn off.
@@ -440,17 +452,7 @@ export class CameraController {
     this.target.addScaledVector(right, -step.panX * perPixel);
     this.target.addScaledVector(up, step.panY * perPixel);
 
-    const radius = THREE.MathUtils.clamp(
-      this.spherical.radius * step.zoom,
-      MIN_ORBIT_DISTANCE,
-      MAX_ORBIT_DISTANCE,
-    );
-    const pull = 1 - radius / this.spherical.radius;
-    const offsetX = frame.centre.x - this.element.clientWidth / 2;
-    const offsetY = frame.centre.y - this.element.clientHeight / 2;
-    this.target.addScaledVector(right, offsetX * perPixel * pull);
-    this.target.addScaledVector(up, -offsetY * perPixel * pull);
-    this.spherical.radius = radius;
+    this.zoomAbout(step.zoom, frame.centre.x, frame.centre.y);
 
     this.spherical.theta += twistSign(this.spherical.phi) * touch.gate.pass(step.twist);
 
@@ -482,12 +484,87 @@ export class CameraController {
     return (2 * this.spherical.radius * Math.tan(halfFov)) / height;
   }
 
-  onWheel(event: WheelEvent): void {
-    const factor = Math.exp(event.deltaY * this.zoomSpeed);
-    this.spherical.radius = THREE.MathUtils.clamp(
+  /**
+   * Scales the orbit by `factor` while the point at canvas pixel `x`, `y`
+   * holds still on screen.
+   *
+   * The point is read on the plane through the pivot, facing the camera. The
+   * pivot slides toward it by the same share the radius shrinks by, which is
+   * exactly what keeps it under the same pixel: the view closes on what the
+   * pointer or the fingers are over rather than on its own middle.
+   */
+  private zoomAbout(factor: number, x: number, y: number): void {
+    const radius = THREE.MathUtils.clamp(
       this.spherical.radius * factor,
       MIN_ORBIT_DISTANCE,
       MAX_ORBIT_DISTANCE,
+    );
+    const pull = 1 - radius / this.spherical.radius;
+    const right = new THREE.Vector3();
+    const up = new THREE.Vector3();
+    this.camera.matrix.extractBasis(right, up, new THREE.Vector3());
+    const perPixel = this.unitsPerPixel();
+    const offsetX = x - this.element.clientWidth / 2;
+    const offsetY = y - this.element.clientHeight / 2;
+    this.target.addScaledVector(right, offsetX * perPixel * pull);
+    this.target.addScaledVector(up, -offsetY * perPixel * pull);
+    this.spherical.radius = radius;
+  }
+
+  /**
+   * Slides the pivot along the line of sight to the depth of `point`, with the
+   * camera left exactly where it stands, so nothing on screen moves.
+   *
+   * Not for an orthographic camera: there the radius is how much of the scene
+   * the view spans, so changing it would change the picture, and depth has no
+   * say in which pixel a point lands on anyway.
+   */
+  private pivotAtDepthOf(point: THREE.Vector3): void {
+    if (this.camera instanceof THREE.OrthographicCamera) return;
+    const forward = this.camera.getWorldDirection(new THREE.Vector3());
+    const depth = THREE.MathUtils.clamp(
+      forward.dot(point.clone().sub(this.camera.position)),
+      MIN_ORBIT_DISTANCE,
+      MAX_ORBIT_DISTANCE,
+    );
+    this.target.copy(this.camera.position).addScaledVector(forward, depth);
+    this.spherical.radius = depth;
+  }
+
+  /**
+   * Zooms in or out: into the middle of the view, or leaning toward the
+   * pointer, as `wheelZoom` says.
+   *
+   * Leaning, the pixel held still sits `WHEEL_POINTER_LEAN` of the way from
+   * the middle of the view to the pointer, so the view stays mostly centred
+   * and drifts toward what the pointer is over rather than chasing it.
+   *
+   * `surface` is the point of the scene under the pointer, when it is over
+   * anything. The pivot is moved to its depth first, so the zoom closes in at
+   * that depth rather than on a plane through wherever the pivot was left.
+   * Each notch then covers a share of the real distance: the camera slows as
+   * it arrives instead of passing through a model nearer than the pivot, and
+   * keeps coming on one behind it instead of stalling short.
+   *
+   * Over empty space there is no depth to read, and the pivot's plane serves.
+   * Centred, neither the pointer nor the surface has any say.
+   */
+  onWheel(event: WheelEvent, surface: THREE.Vector3 | null = null): void {
+    const middleX = this.element.clientWidth / 2;
+    const middleY = this.element.clientHeight / 2;
+    const factor = Math.exp(event.deltaY * this.zoomSpeed);
+    if (this.wheelZoom === 'centred') {
+      this.zoomAbout(factor, middleX, middleY);
+      this.apply();
+      return;
+    }
+
+    if (surface) this.pivotAtDepthOf(surface);
+    const rect = this.element.getBoundingClientRect();
+    this.zoomAbout(
+      factor,
+      middleX + (event.clientX - rect.left - middleX) * WHEEL_POINTER_LEAN,
+      middleY + (event.clientY - rect.top - middleY) * WHEEL_POINTER_LEAN,
     );
     this.apply();
   }

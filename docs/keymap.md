@@ -123,7 +123,7 @@ keyboard the way a modal transform does, and the ordinary bindings wait.
 | --- | --- |
 | Middle-drag | Orbit |
 | <kbd>Shift</kbd> + middle-drag | Pan |
-| Wheel | Zoom |
+| Wheel | Zoom, leaning toward the surface under the pointer. Blender's Zoom to Mouse Position with Auto Depth, toned down: the zoom closes on a point 0.3 of the way from the middle of the view to the pointer, so it stays mostly centred. Over empty space it uses the pivot's depth. Set WHEEL ZOOM in PREFS to CENTRED for a plain zoom into the middle of the view |
 | <kbd>Alt</kbd> + click | Select the edge loop (edge select) or face loop (face select) under the pointer |
 | Right-click | The 3D cursor menu. During a knife cut it calls the cut off instead |
 | <kbd>Ctrl</kbd> + wheel | Resize the proportional-editing falloff. Plain wheel does the same mid-transform |

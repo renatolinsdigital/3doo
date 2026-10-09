@@ -920,7 +920,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'Orbit, pan, zoom',
-            'Middle-drag orbits, Shift+middle-drag pans, the wheel zooms. A vertical drag can carry the view over the top and down the far side, upside down. Turn on LOCK VERTICAL ORBIT under PREFS to stop at the poles instead.',
+            'Middle-drag orbits, Shift+middle-drag pans, the wheel zooms, leaning toward whatever is under the pointer (set WHEEL ZOOM under PREFS to CENTRED to zoom into the middle of the view instead). A vertical drag can carry the view over the top and down the far side, upside down. Turn on LOCK VERTICAL ORBIT under PREFS to stop at the poles instead.',
           ],
           [
             'Frame the selection',
@@ -1105,7 +1105,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: "PREFS in the top bar holds the settings that belong to you rather than to a scene: hint tooltips, the viewport background, whether a vertical orbit stops at the poles, the grid's scale, colour and opacity, autosave, and the thickness and colour of the outline around selected objects. They are stored on this device and kept out of project files, so opening a scene someone sent you never changes your viewport.",
+        text: "PREFS in the top bar holds the settings that belong to you rather than to a scene: hint tooltips, the viewport background, whether a vertical orbit stops at the poles, whether the wheel zooms toward the pointer or into the middle of the view, the grid's scale, colour and opacity, autosave, and the thickness and colour of the outline around selected objects. They are stored on this device and kept out of project files, so opening a scene someone sent you never changes your viewport.",
       },
       {
         kind: 'prose',

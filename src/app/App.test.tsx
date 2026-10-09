@@ -1050,6 +1050,19 @@ describe('App shell', () => {
     expect(useEditorStore.getState().lockVerticalOrbit).toBe(true);
   });
 
+  it('zooms toward the pointer by default and centred from preferences', async () => {
+    render(<App />);
+    expect(useEditorStore.getState().wheelZoom).toBe('pointer');
+
+    await userEvent.click(screen.getByRole('button', { name: 'PREFS' }));
+    const dialog = screen.getByRole('dialog', { name: 'PREFERENCES' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'VIEWPORT' }));
+    await userEvent.selectOptions(within(dialog).getByLabelText('WHEEL ZOOM'), 'centred');
+
+    expect(useEditorStore.getState().wheelZoom).toBe('centred');
+    act(() => useEditorStore.getState().setPreferences({ wheelZoom: 'pointer' }));
+  });
+
   describe('autosave in preferences', () => {
     afterEach(() => {
       Reflect.deleteProperty(window, 'showDirectoryPicker');

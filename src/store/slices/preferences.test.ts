@@ -149,6 +149,12 @@ describe('coercePreferences', () => {
     );
   });
 
+  it('follows the pointer with the wheel unless told to zoom centred', () => {
+    expect(DEFAULT_PREFERENCES.wheelZoom).toBe('pointer');
+    expect(coercePreferences({ wheelZoom: 'centred' }).wheelZoom).toBe('centred');
+    expect(coercePreferences({ wheelZoom: 'sideways' }).wheelZoom).toBe('pointer');
+  });
+
   it('names every interval, thirty seconds to fifteen minutes', () => {
     expect(autosaveIntervalLabel(30)).toBe('30 SECONDS');
     expect(autosaveIntervalLabel(60)).toBe('1 MINUTE');

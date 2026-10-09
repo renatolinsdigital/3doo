@@ -51,10 +51,10 @@ export function ViewportCanvas() {
     >
       <p id={guideId} className="viewport-canvas__guide">
         The 3D view of the scene. Click or tap to select, drag to select a region. Middle-drag
-        orbits, Shift and middle-drag pans, the wheel zooms. On a touch screen, pinch to zoom, slide
-        two fingers to pan, twist them to turn the view, and drag the axis widget in the corner to
-        orbit. A long press opens the 3D cursor menu. Every tool also has a key: Shift and question
-        mark lists them.
+        orbits, Shift and middle-drag pans, the wheel zooms, leaning toward the pointer. On a touch
+        screen, pinch to zoom, slide two fingers to pan, twist them to turn the view, and drag the
+        axis widget in the corner to orbit. A long press opens the 3D cursor menu. Every tool also
+        has a key: Shift and question mark lists them.
       </p>
       <canvas className="viewport-canvas__surface" ref={canvasRef} aria-hidden="true" />
       <div className="viewport-canvas__marquee" ref={overlayRef} />
