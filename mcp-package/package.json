@@ -1,6 +1,6 @@
 {
   "name": "3doo-mcp",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "MCP server that lets an AI assistant build 3D models in 3DOO",
   "type": "module",
   "license": "MIT",
