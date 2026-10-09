@@ -56,9 +56,7 @@ The full list, and how each tool behaves, is in
 An assistant is quick at a first draft, and the editor is quick at the details,
 so the smoothest way to work is to use both:
 
-1. **Start with a request.** Describe the model to the assistant, such as "a
-   low poly wooden chair", and let it build a first version through the MCP
-   server.
+1. **Start with a request.** Describe the model to the assistant, such as: "Using 3DOO bring me a stylized interior scene with low poly game-ready assets: table, chairs, bottles and some viking decoration. I want to be able to see the scene online". Then let it build a first version through the MCP server.
 2. **Refine it in the browser.** Ask the assistant to open it in 3DOO. It saves
    a page whose OPEN IN 3DOO button opens the model in the editor, with every
    object and modifier still editable. Shape the rest by hand from there.
@@ -71,7 +69,12 @@ so the smoothest way to work is to use both:
    the assistant its path, and ask it to save each change back to that file.
    Reopen it in the editor (FILE > OPEN) to see the result. 
 
-  **Remember**: Attaching a screenshot of the area you want to change always helps!
+   **Remember**: Attaching a screenshot of the area you want to change always helps!
+
+   If you know how to prompt AI effectively to generate 3D assets and are comfortable making a few small adjustments (like rotating or moving objects), this is the kind of result you can achieve in just minutes:
+
+   ![Result after an MCP call and a few adjustments](docs/images/mcp_result.png)
+
 
 ## How the 3D modeling capabilities were built
 

@@ -21,6 +21,7 @@ import {
   createCylinder,
   createGrid,
   createIcoSphere,
+  createPlane,
   createTorus,
   createUVSphere,
 } from '../primitives';
@@ -903,7 +904,7 @@ describe('operands that are surfaces rather than solids', () => {
     return copy;
   }
 
-  it('unions a filled circle with a box without cutting the box', () => {
+  it('unions a filled circle with a box without slicing half the box away', () => {
     // Read as a solid, the circle's one plane stood for everything on one side
     // of it, and the union sliced the box in half along it.
     for (const [target, tool] of [
@@ -917,6 +918,100 @@ describe('operands that are surfaces rather than solids', () => {
       expect(areaAt(result, -1)).toBeCloseTo(4, 6);
       // The part of the circle inside the box is inside the solid, and goes.
       expect(areaAt(result, 0)).toBeCloseTo(surfaceArea(disc()) - 4, 6);
+    }
+  });
+
+  /** How many pieces the mesh falls into, following edges from vertex to vertex. */
+  function pieces(mesh: BMesh): number {
+    const seen = new Set<number>();
+    let count = 0;
+    for (const start of mesh.verts.values()) {
+      if (seen.has(start.id)) continue;
+      count += 1;
+      seen.add(start.id);
+      const stack = [start];
+      while (stack.length > 0) {
+        const vert = stack.pop() as Vert;
+        for (const edge of vert.edges) {
+          const other = mesh.edgeOther(edge, vert);
+          if (seen.has(other.id)) continue;
+          seen.add(other.id);
+          stack.push(other);
+        }
+      }
+    }
+    return count;
+  }
+
+  /** A 6 by 1 strip lying flat, turned about Y by `degrees`. */
+  const strip = (degrees: number) => {
+    const turn = (degrees * Math.PI) / 180;
+    return (point: Vec3): Vec3 => {
+      const x = point.x * 6;
+      return {
+        x: x * Math.cos(turn) + point.z * Math.sin(turn),
+        y: point.y,
+        z: -x * Math.sin(turn) + point.z * Math.cos(turn),
+      };
+    };
+  };
+
+  it('joins two surfaces lying in one plane where their outlines cross', () => {
+    // Two strips crossed like an X. Neither has an inside, and they used to come
+    // back as two sheets stacked over the middle with no vertex in common.
+    const flat = (degrees: number) => {
+      const mesh = createPlane(1);
+      for (const vert of mesh.verts.values()) vert.co = strip(degrees)(vert.co);
+      mesh.computeNormals();
+      return mesh;
+    };
+    const result = booleanMesh('union', flat(0), createPlane(1), strip(60));
+
+    expect(pieces(result)).toBe(1);
+
+    // One sheet, so the faces cover the union once: both strips, less the
+    // rhombus where they cross, counted a single time.
+    const crossing = 1 / Math.sin(Math.PI / 3);
+    expect(surfaceArea(result)).toBeCloseTo(12 - crossing, 6);
+
+    // Each of the four points where an outline crosses the other is a vertex.
+    const corners = [...result.verts.values()].filter(
+      (vert) => Math.abs(Math.abs(vert.co.z) - 0.5) < 1e-9 && Math.abs(vert.co.x) < 1,
+    );
+    expect(corners).toHaveLength(4);
+    for (const vert of corners) expect(vert.edges.length).toBe(3);
+  });
+
+  it('joins a surface to a solid along the line where it passes through', () => {
+    // The box takes the part of the plane inside it, and the plane marks the
+    // box in return: each wall is split where the plane leaves it, so the two
+    // share the four edges the plane hangs off rather than merely meeting.
+    for (const [target, tool] of [
+      [createBox(2), createPlane(4)],
+      [createPlane(4), createBox(2)],
+    ] as const) {
+      const result = booleanMesh('union', target, tool, offsetBy(vec3()));
+
+      expect(pieces(result)).toBe(1);
+      const seams = [...result.edges.values()].filter((edge) => edge.loops.length === 3);
+      expect(seams).toHaveLength(4);
+      expect(areaAt(result, 1)).toBeCloseTo(4, 6);
+      expect(areaAt(result, 0)).toBeCloseTo(16 - 4, 6);
+    }
+  });
+
+  it('keeps one sheet where a surface lies flat on a face of a solid', () => {
+    for (const [target, tool, shift, top] of [
+      [createBox(2), createPlane(3), vec3(0, 1, 0), 1],
+      [createPlane(3), createBox(2), vec3(0, -1, 0), 0],
+    ] as const) {
+      const result = booleanMesh('union', target, tool, offsetBy(shift));
+
+      expect(pieces(result)).toBe(1);
+      // The box's top and the plane round it, with nothing laid twice: the
+      // other five faces of the box and nine square metres of sheet.
+      expect(areaAt(result, top)).toBeCloseTo(9, 6);
+      expect(surfaceArea(result)).toBeCloseTo(5 * 4 + 9, 6);
     }
   });
 

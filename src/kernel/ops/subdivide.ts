@@ -1210,6 +1210,8 @@ export function trisToQuads(mesh: BMesh, faces: readonly Face[], angleLimit = 40
     if (consumed.has(face.id)) continue;
 
     for (const loop of mesh.faceLoops(face)) {
+      // A third face on the edge would be left hanging off the inside of the quad.
+      if (loop.edge.loops.length !== 2) continue;
       const partner = mesh.edgeFaces(loop.edge).find((other) => other !== face);
       if (!partner || consumed.has(partner.id)) continue;
       if (mesh.faceLoops(partner).length !== 3) continue;

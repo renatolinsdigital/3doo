@@ -336,8 +336,18 @@ function invert(root: Node): void {
   }
 }
 
-/** Drops the parts of `polys` that fall inside the solid this tree describes. */
-function clipPolys(root: Node, polys: readonly Poly[], epsilon: number): Poly[] {
+/**
+ * Drops the parts of `polys` that fall inside the solid this tree describes.
+ *
+ * With `keepInside` nothing is dropped: the polygons are only cut wherever the
+ * tree's planes cross them.
+ */
+function clipPolys(
+  root: Node,
+  polys: readonly Poly[],
+  epsilon: number,
+  keepInside = false,
+): Poly[] {
   const kept: Poly[] = [];
   const stack: { node: Node; polys: Poly[] }[] = [{ node: root, polys: [...polys] }];
 
@@ -358,13 +368,81 @@ function clipPolys(root: Node, polys: readonly Poly[], epsilon: number): Poly[] 
     // No back child means the space behind this plane is solid, so anything
     // there is inside and goes no further.
     if (node.back) stack.push({ node: node.back, polys: back });
+    else if (keepInside) kept.push(...back);
   }
 
   return kept;
 }
 
-function clipTo(root: Node, other: Node, epsilon: number): void {
-  for (const node of nodes(root)) node.polys = clipPolys(other, node.polys, epsilon);
+function clipTo(root: Node, other: Node, epsilon: number, keepInside = false): void {
+  for (const node of nodes(root)) node.polys = clipPolys(other, node.polys, epsilon, keepInside);
+}
+
+/** The parts of `poly` outside `over`, a convex polygon lying in the same plane. */
+function outside(poly: Poly, over: Poly, epsilon: number): Poly[] {
+  const kept: Poly[] = [];
+  let rest = [poly];
+
+  for (let i = 0; i < over.points.length && rest.length > 0; i++) {
+    const a = over.points[i];
+    const along = sub(over.points[(i + 1) % over.points.length], a);
+    if (lengthSq(along) <= epsilon * epsilon) continue;
+
+    // Stood up off the plane on the edge, facing away from the polygon.
+    const normal = normalize(cross(along, over.plane.normal));
+    const inside: Poly[] = [];
+    for (const piece of rest) {
+      splitPoly({ normal, w: dot(normal, a) }, piece, kept, inside, kept, inside, epsilon);
+    }
+    rest = inside;
+  }
+
+  // Nothing left inside means the two never overlapped, and the cuts made on
+  // the way would only be fragments for the merge pass to undo.
+  return rest.length === 0 ? [poly] : kept;
+}
+
+function boxOf(poly: Poly): { min: Vec3; max: Vec3 } {
+  const xs = poly.points.map((point) => point.x);
+  const ys = poly.points.map((point) => point.y);
+  const zs = poly.points.map((point) => point.z);
+  return {
+    min: { x: Math.min(...xs), y: Math.min(...ys), z: Math.min(...zs) },
+    max: { x: Math.max(...xs), y: Math.max(...ys), z: Math.max(...zs) },
+  };
+}
+
+/**
+ * What is left of `polys` once every stretch lying flat on `cover` is cut away.
+ *
+ * Needed only where two surfaces share a plane. A solid's tree settles this on
+ * its own, its side walls fencing each face in, but a surface's tree holds
+ * nothing but the plane it lies in and cannot say where in that plane it ends.
+ * Each covering polygon is convex, so its own edges, stood up off the plane,
+ * are that fence. Without it a union of two such surfaces came back as two
+ * sheets stacked on each other with not one vertex in common.
+ */
+function uncovered(polys: readonly Poly[], cover: readonly Poly[], epsilon: number): Poly[] {
+  const boxes = cover.map(boxOf);
+  const apart = (a: { min: Vec3; max: Vec3 }, b: { min: Vec3; max: Vec3 }) =>
+    a.max.x < b.min.x - epsilon ||
+    a.max.y < b.min.y - epsilon ||
+    a.max.z < b.min.z - epsilon ||
+    b.max.x < a.min.x - epsilon ||
+    b.max.y < a.min.y - epsilon ||
+    b.max.z < a.min.z - epsilon;
+
+  return polys.flatMap((poly) => {
+    const box = boxOf(poly);
+    let pieces = [poly];
+    cover.forEach((over, i) => {
+      if (apart(box, boxes[i])) return;
+      const { normal, w } = over.plane;
+      if (poly.points.some((point) => Math.abs(dot(normal, point) - w) > epsilon)) return;
+      pieces = pieces.flatMap((piece) => outside(piece, over, epsilon));
+    });
+    return pieces;
+  });
 }
 
 function allPolys(root: Node): Poly[] {
@@ -402,7 +480,9 @@ function drain<T>(steps: Generator<number, T>): T {
  * reads as inside, so a filled circle stands for the whole half-space under
  * it, and a union with one sliced the other object off along its plane. With
  * nothing inside it, a surface removes nothing from the other operand and
- * keeps whatever part of itself the other one's inside does not claim.
+ * keeps whatever part of itself the other one's inside does not claim. A union
+ * still cuts each operand where the other meets it, so the two come back
+ * joined along the contact rather than merely overlapping.
  *
  * The fractions are measured, not guessed: building the two BSP trees is about
  * sixty per cent of the work and the final rebuild most of the rest, while the
@@ -423,7 +503,21 @@ function* csgStaged(
   yield 0.68;
 
   if (op === 'union') {
-    if (solid.b) clipTo(left, right, epsilon);
+    if (solid.b) {
+      clipTo(left, right, epsilon);
+      // Turned inside out, what lies flat on one of the solid's faces reads as
+      // inside it and goes, as the solid's own coplanar faces do below.
+      if (!solid.a) {
+        invert(left);
+        clipTo(left, right, epsilon);
+        invert(left);
+      }
+    } else {
+      // A surface takes nothing away, but the solid still has to be cut where
+      // the surface meets it, or the two touch without sharing a vertex and the
+      // union is two meshes in one object.
+      clipTo(left, right, epsilon, true);
+    }
     if (solid.a) {
       clipTo(right, left, epsilon);
       invert(right);
@@ -431,7 +525,11 @@ function* csgStaged(
       invert(right);
     }
     yield 0.69;
-    build(left, allPolys(right), epsilon);
+    // Building the rest into the tree cuts it by every plane there, which is
+    // what marks the target's surface on it in turn.
+    const rest =
+      solid.a || solid.b ? allPolys(right) : uncovered(allPolys(right), allPolys(left), epsilon);
+    build(left, rest, epsilon);
     return allPolys(left);
   }
 
@@ -806,6 +904,18 @@ interface Disc {
 }
 
 /**
+ * Whether an edge carries more than the two faces a surface has on it.
+ *
+ * The extra face is the other operand meeting this one there, and that line of
+ * edges is the whole of what joins them: a surface standing on a face, or
+ * passing through one, hangs off it and nothing else. Merging the faces either
+ * side of a seam would leave what hangs there joined to nothing.
+ */
+function isSeam(edge: Edge): boolean {
+  return edge.loops.length > 2;
+}
+
+/**
  * The largest disc that can be grown out of `pool`, starting from `seed`.
  *
  * Two discs glued along a single unbroken run of shared edges give a disc.
@@ -899,6 +1009,7 @@ function growDisc(mesh: BMesh, seed: Face, pool: Map<number, Face>): Disc {
     const loops = mesh.faceLoops(face);
     // An edge already between two of the region's faces cannot take a third.
     if (loops.some((loop) => interior.has(loop.edge.id))) return false;
+    if (loops.some((loop) => isSeam(loop.edge) && border.has(loop.edge.id))) return false;
 
     const shared = loops.map((loop) => border.has(loop.edge.id));
     let runs = 0;
@@ -1327,7 +1438,17 @@ function alreadyIs(mesh: BMesh, region: readonly Face[], rings: readonly Vert[][
  * torn region ends up, the seams having nowhere sound to land.
  */
 function mergeRegion(mesh: BMesh, region: readonly Face[]): Face[] {
-  const halves = splitAcrossHole(mesh, region);
+  // Both halves are traced from the region's outline alone, so a seam running
+  // between two of its faces would be dropped from them.
+  const ids = new Set(region.map((face) => face.id));
+  const seamed = region.some((face) =>
+    mesh
+      .faceEdges(face)
+      .some(
+        (edge) => isSeam(edge) && edge.loops.filter((loop) => ids.has(loop.face.id)).length > 1,
+      ),
+  );
+  const halves = seamed ? null : splitAcrossHole(mesh, region);
   if (halves === null) return mergeRegionGreedy(mesh, region);
   return alreadyIs(mesh, region, halves) ? [] : rebuildAs(mesh, region, halves);
 }
