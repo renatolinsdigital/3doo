@@ -145,7 +145,7 @@ export function ToolRail() {
       <IconButton
         icon="⊙"
         label="Origin to geometry"
-        hint="Move each selected object's origin onto the middle of its mesh, bringing the gizmo and the origin marker back onto the shape after an edit-mode move left them behind"
+        hint="Origin to Geometry: Move each selected object's origin onto the middle of its mesh"
         onClick={() => originToGeometry()}
       />
       {shapeMenu
