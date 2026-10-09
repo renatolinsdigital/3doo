@@ -73,7 +73,8 @@ so the smoothest way to work is to use both:
 
    If you know how to prompt AI effectively to generate 3D assets and are comfortable making a few small adjustments (like rotating or moving objects), this is the kind of result you can achieve in just minutes:
 
-   ![Result after an MCP call and a few adjustments](docs/images/mcp_result.png)
+   ![Result after an MCP call and a few adjustments](docs/images/mcp_result_01.png)
+   ![Result after an MCP call and a few adjustments](docs/images/mcp_result_02.png)
 
 
 ## How the 3D modeling capabilities were built
