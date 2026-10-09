@@ -34,8 +34,8 @@ New to the code? Start with [docs/get-started.md](docs/get-started.md).
   and the full set of mesh operations, from extrude and bevel to bridge and
   tris-to-quads.
 - **Modifiers**: mirror, array, solidify, bend, twist, lattice (a cage of
-  points to shape the mesh with, like Blender's), weld, subdivision surface
-  and remesh, all non-destructive and reorderable.
+  points to shape the mesh with, like Blender's), weld, loop subdivide,
+  subdivision surface and remesh, all non-destructive and reorderable.
 - **Objects**: transform gizmo, booleans, merge and separate, an outliner with
   groups, a 3D cursor and proportional editing.
 - **Files**: `.3doo` projects, OBJ and FBX import, binary FBX 7.4 and OBJ
@@ -56,6 +56,22 @@ New to the code? Start with [docs/get-started.md](docs/get-started.md).
 The full list, and how each tool behaves, is in
 [docs/features.md](docs/features.md). Every shortcut is in
 [docs/keymap.md](docs/keymap.md).
+
+## Working with an AI assistant
+
+An assistant is quick at a first draft, and the editor is quick at the details,
+so the smoothest way to work is to use both:
+
+1. **Start with a request.** Describe the model to the assistant, such as "a
+   low poly wooden chair", and let it build a first version through the MCP
+   server.
+2. **Refine it in the browser.** Ask for a link and the model opens in the
+   editor with every object and modifier still editable. Shape the rest by
+   hand from there.
+3. **Bring the assistant back for a specific part.** The assistant works in a
+   copy of 3DOO of its own and might not see your Browser's tab, so give it the project
+   itself. Save a copy as a `.3doo` file (FILE > SAVE AS, or Ctrl+Shift+S) and
+   ask it to edit that file. Uploading a print of the region to be edited by AI is always a good idea.
 
 ## How it is built
 

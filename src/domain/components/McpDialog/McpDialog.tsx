@@ -223,7 +223,8 @@ export function McpDialog() {
 
         <p className="mcp-dialog__text">
           Then ask for a model: &ldquo;Build a low poly chair in 3DOO, show me the front and side
-          views, then export it as FBX for Unity.&rdquo;
+          views, then export it as FBX for Unity.&rdquo; A good way to start is a first version from
+          the assistant, opened here from its link and refined by hand.
         </p>
         <p className="mcp-dialog__note">
           Either way the server runs on your computer, so files and pictures are saved there, and

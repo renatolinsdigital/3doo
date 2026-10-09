@@ -1170,6 +1170,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         text: 'An AI assistant such as Claude can build models in 3DOO for you. Describe what you want in your own words, the way you would to a person: "a low poly wooden chair", "a hex nut 2 cm across", "the table from before, with a drawer". The assistant writes a script with the same API as SCRIPT, runs it, looks at pictures of the result, fixes what is off, and hands the model back to you.',
       },
       {
+        kind: 'prose',
+        text: 'A good way to start is to ask the assistant for a first version, then refine it yourself in the editor. Ask for a link and the model opens here in your browser with every object and modifier still editable, ready for the details that are quicker to shape by hand than to describe.',
+      },
+      {
         kind: 'table',
         head: ['ASK FOR', 'WHAT YOU GET'],
         rows: [
