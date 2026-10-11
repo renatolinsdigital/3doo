@@ -102,6 +102,12 @@ How it behaves, and why:
   nothing, and its edges are left loose on top of the face, as Blender leaves
   them: a face is one ring of corners, with no room for a slit. Where two lines
   of one cut cross inside a face, the face divides along both.
+- **A loop closed inside a face cuts out what it encloses.** There is no room
+  for a hole in a ring of corners either, so the loop is joined to the face's
+  border by the shortest edges that cross nothing: two, or one for a loop that
+  already touches the border. What the loop encloses is then a face of its own,
+  and it is selected after the cut. Those joining edges are not part of the cut
+  and are left unselected.
 - **It is a tool, not a one-off.** The knife stays in hand after a cut, the way
   the move tool does, until another tool is picked or edit mode is left.
 

@@ -28,6 +28,17 @@ function front(): THREE.Camera {
   return camera;
 }
 
+/** Looking straight down, for a plane, which lies flat. */
+function above(): THREE.Camera {
+  const camera = new THREE.OrthographicCamera(-2.5, 2.5, 2.5, -2.5, 0.1, 100);
+  camera.position.set(0, 10, 0);
+  camera.up.set(0, 0, -1);
+  camera.lookAt(0, 0, 0);
+  camera.updateMatrixWorld(true);
+  camera.updateProjectionMatrix();
+  return camera;
+}
+
 function perspective(): THREE.Camera {
   const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
   camera.position.set(0, 0, 10);
@@ -336,17 +347,10 @@ describe('a knife cut, click to mesh', () => {
 
   it('bends at a click inside a face', () => {
     const plane = createPlane(2);
-    // The plane lies flat, so it is looked down on rather than at.
-    const above = new THREE.OrthographicCamera(-2.5, 2.5, 2.5, -2.5, 0.1, 100);
-    above.position.set(0, 10, 0);
-    above.up.set(0, 0, -1);
-    above.lookAt(0, 0, 0);
-    above.updateMatrixWorld(true);
-    above.updateProjectionMatrix();
     const face = [...plane.faces.values()][0];
     const co = vec3(0, 0, 0.4);
 
-    const steps = draw(plane, viewFrom(above), [
+    const steps = draw(plane, viewFrom(above()), [
       { at: vec3(-3, 0, 0), mark: null },
       { at: co, mark: { point: { kind: 'face', face: face.id, co }, co } },
       { at: vec3(3, 0, 0), mark: null },
@@ -355,6 +359,32 @@ describe('a knife cut, click to mesh', () => {
 
     expect(plane.faces.size).toBe(2);
     expect(plane.validate()).toEqual([]);
+  });
+
+  it('cuts out the inside of a loop clicked within a face, ready to select', () => {
+    const plane = createPlane(2);
+    const face = [...plane.faces.values()][0];
+    const click = (x: number, z: number): Landed => {
+      const co = vec3(x, 0, z);
+      return { at: co, mark: { point: { kind: 'face', face: face.id, co }, co } };
+    };
+    const first = click(-0.5, -0.5);
+
+    // The last click closes on the first, the way the knife snaps to a point of the cut.
+    const steps = draw(plane, viewFrom(above()), [
+      first,
+      click(0.5, -0.5),
+      click(0.5, 0.5),
+      click(-0.5, 0.5),
+      first,
+    ]);
+    cut(plane, steps);
+
+    expect(plane.faces.size).toBe(3);
+    expect(plane.validate()).toEqual([]);
+    const selected = plane.selectedFaces();
+    expect(selected).toHaveLength(1);
+    expect(plane.faceArea(selected[0])).toBeCloseTo(1);
   });
 
   it('crosses an earlier line of the same cut and divides the face four ways', () => {

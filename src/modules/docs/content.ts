@@ -695,7 +695,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'A face is divided wherever the cut crosses it from one of its edges to another, through any points you placed inside it. A cut that stops inside a face divides nothing, and its edges are left loose on top of the face: carry it on to an edge to divide the face. Where two lines of one cut cross, the face divides along both. Click the first point again to close a cut on itself.',
+        text: 'A face is divided wherever the cut crosses it from one of its edges to another, through any points you placed inside it. A cut that stops inside a face divides nothing, and its edges are left loose on top of the face: carry it on to an edge to divide the face. Where two lines of one cut cross, the face divides along both. Click the first point again to close a cut on itself. A cut closed inside one face makes what it encloses a face of its own, ready to select, and one or two new edges join it to the corners, since a face cannot have a hole in it.',
       },
       {
         kind: 'note',

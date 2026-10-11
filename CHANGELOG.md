@@ -10,16 +10,6 @@ All notable changes to 3DOO are recorded here. Versions follow
 New entries go under `Unreleased` until a version is cut. Group them under
 `Added`, `Changed`, `Fixed` or `Removed`.
 
-## [Unreleased]
-
-### Added
-
-- QUAD RELOOP modifier: turns every face that is not a quad into quads without
-  moving a vertex. Triangles are paired, flat regions a boolean shattered are
-  merged and cut again, and a loop is run through the mesh wherever a face is
-  left with an odd number of corners. JOIN ANGLE sets the sharpest fold two
-  triangles may meet at and still be joined. Scripts reach it as `'reloop'`.
-
 ## [1.0.0] - 2026-10-05
 
 First tracked release. It marks the state of the project at this point,

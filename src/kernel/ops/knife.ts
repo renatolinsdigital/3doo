@@ -29,7 +29,10 @@ export type KnifePoint =
 export interface KnifeCutResult {
   /** Vertices the cut added: on the edges it crossed, and inside the faces it bent in. */
   verts: Vert[];
-  /** Every edge the cut now runs along, new or already there. */
+  /**
+   * Every edge the cut now runs along, new or already there. The bridges that
+   * join a closed loop to its face's border are not part of it.
+   */
   edges: Edge[];
   /** How many times a face was divided in two. */
   splits: number;
@@ -103,9 +106,12 @@ export function knifeSegmentFace(mesh: BMesh, a: KnifePoint, b: KnifePoint): Fac
  * 2. Every edge with a point on it is split there, and a vertex is made for
  *    every point inside a face.
  * 3. The face is divided along every path its pieces make from a point on its
- *    border to another one, through points inside it. A piece left over, from
- *    a line that stops inside the face, divides nothing and stays as a loose
- *    edge: a face is one ring of corners, with no room in it for a slit.
+ *    border to another one, through points inside it. A face is one ring of
+ *    corners, with no room in it for a hole, so a closed loop inside it is
+ *    first bridged out to the border, and what the loop encloses becomes a
+ *    face of its own. A piece left over, from a line that stops inside the
+ *    face, divides nothing and stays as a loose edge: there is no room for a
+ *    slit either.
  *
  * Neither the order of the runs nor of the pieces in them makes a difference.
  * Points closer than the tolerances above are one point, so a run ending where
@@ -128,9 +134,16 @@ export function knifeCut(mesh: BMesh, runs: readonly (readonly KnifePoint[])[]):
     }
   }
 
-  for (const [face, pieces] of byFace) byFace.set(face, meetPieces(mesh, face, pieces, nodes));
+  const bridges: Pair<Node>[] = [];
+  for (const [face, pieces] of byFace) {
+    const met = meetPieces(mesh, face, pieces, nodes);
+    const bridged = bridgeLoops(mesh, face, met, nodes);
+    bridges.push(...bridged);
+    byFace.set(face, [...met, ...bridged]);
+  }
 
   const created = nodes.build(new Set([...[...byFace.values()].flat(2), ...along.flat()]));
+  const bridgeKeys = new Set(bridges.map(([a, b]) => pairKey(nodes.vert(a), nodes.vert(b))));
   const cut = new Set<Edge>();
   let splits = 0;
   let loose = 0;
@@ -190,6 +203,8 @@ export function knifeCut(mesh: BMesh, runs: readonly (readonly KnifePoint[])[]):
     }
 
     for (const [a, b] of net) {
+      // A bridge that divided nothing would be an edge nobody drew.
+      if (bridgeKeys.has(pairKey(a, b))) continue;
       const existing = mesh.findEdge(a, b);
       if (!existing) loose++;
       cut.add(existing ?? mesh.addEdge(a, b));
@@ -206,7 +221,9 @@ export function knifeCut(mesh: BMesh, runs: readonly (readonly KnifePoint[])[]):
   mesh.computeNormals();
   return {
     verts: kept,
-    edges: [...cut].filter((edge) => mesh.edges.has(edge.id)),
+    edges: [...cut].filter(
+      (edge) => mesh.edges.has(edge.id) && !bridgeKeys.has(pairKey(edge.v0, edge.v1)),
+    ),
     splits,
     loose,
   };
@@ -350,6 +367,196 @@ function meetPieces(
     ]);
     return chain.slice(1).map((node, k): Pair<Node> => [chain[k], node]);
   });
+}
+
+/** How near a bridge may pass a line, as a fraction of the face's size, and still be taken to touch it. */
+const BRIDGE_CLEARANCE = 1e-6;
+
+/**
+ * Bridges from each closed loop of the cut inside a face out to the face's
+ * border, so the loop divides the face rather than lying loose on it.
+ *
+ * A loop that never reaches the border leaves no path from border to border to
+ * divide along, and two bridges make one: in along the first, round one side
+ * of the loop and out along the second. The other side of the loop then
+ * divides the half it lies in, which leaves what the loop encloses a face of
+ * its own. A loop needs a bridge fewer for each of its points that already
+ * reaches the border, by lying on it or along a line of the cut running out.
+ *
+ * Each bridge is the shortest from a point of the loop to a corner, or to a
+ * point the cut has on the border, that touches neither the border nor any
+ * piece. A loop with no room for its bridges is left as it was. Worked flat,
+ * on the plane the face's corners average to.
+ */
+function bridgeLoops(
+  mesh: BMesh,
+  face: Face,
+  pieces: readonly Pair<Node>[],
+  nodes: NodeTable,
+): Pair<Node>[] {
+  const lines = pieces.filter(([a, b]) => a !== b);
+  const next = new Map<Node, Set<Node>>();
+  for (const [a, b] of lines) {
+    next.set(a, (next.get(a) ?? new Set<Node>()).add(b));
+    next.set(b, (next.get(b) ?? new Set<Node>()).add(a));
+  }
+  const loops = closedLoops(next);
+  if (loops.length === 0) return [];
+
+  const sides = mesh.faceLoops(face);
+  const corners = sides.map((side) => nodes.node({ kind: 'vert', vert: side.vert.id }));
+  if (!corners.every(isNode)) return [];
+  const border = corners.map((corner, i) => ({
+    ends: [corner, corners[(i + 1) % corners.length]] as Pair<Node>,
+    edge: sides[i].edge.id,
+  }));
+  const targets = [...corners, ...[...next.keys()].filter((node) => node.point.kind === 'edge')];
+
+  const { u, v } = basisFromNormal(polygonNormal(mesh.facePoints(face)));
+  const flat = (node: Node) => ({ x: dot(node.co, u), y: dot(node.co, v) });
+  const clearance = BRIDGE_CLEARANCE * Math.sqrt(mesh.faceArea(face));
+
+  /** Whether a point lies on a line, or within the clearance of it. */
+  const near = (node: Node, [from, to]: Pair<Node>): boolean => {
+    const n = flat(node);
+    const a = flat(from);
+    const b = flat(to);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const span = dx * dx + dy * dy;
+    const at = span === 0 ? 0 : ((n.x - a.x) * dx + (n.y - a.y) * dy) / span;
+    const clamped = Math.min(1, Math.max(0, at));
+    return Math.hypot(n.x - a.x - dx * clamped, n.y - a.y - dy * clamped) <= clearance;
+  };
+
+  /** Whether two lines touch anywhere but at a point they share. */
+  const meet = (first: Pair<Node>, second: Pair<Node>): boolean => {
+    const own = first.filter((node) => !second.includes(node));
+    const theirs = second.filter((node) => !first.includes(node));
+    if (own.length === 0) return true;
+    if (own.length === 1) return near(own[0], second) || near(theirs[0], first);
+
+    const p = flat(first[0]);
+    const q = flat(first[1]);
+    const r = flat(second[0]);
+    const s = flat(second[1]);
+    const turn = (a: typeof p, b: typeof p, c: typeof p) =>
+      (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+    if (turn(r, s, p) * turn(r, s, q) < 0 && turn(p, q, r) * turn(p, q, s) < 0) return true;
+    return first.some((node) => near(node, second)) || second.some((node) => near(node, first));
+  };
+
+  /** Whether a bridge keeps off the face's border, bar the edge it ends on, and off every line. */
+  const clear = (bridge: Pair<Node>, others: readonly Pair<Node>[]): boolean => {
+    const end = bridge[1].point;
+    const landing = end.kind === 'edge' ? end.edge : null;
+    return (
+      border.every(({ ends, edge }) => edge === landing || !meet(bridge, ends)) &&
+      others.every((other) => !meet(bridge, other))
+    );
+  };
+
+  const added: Pair<Node>[] = [];
+  for (const loop of loops) {
+    const attached = new Set<Node>();
+    const reached = new Set<Node>();
+    for (const node of loop) {
+      const ends = exits(node, loop, next);
+      if (ends.length === 0) continue;
+      attached.add(node);
+      for (const end of ends) reached.add(end);
+    }
+    const needed = 2 - attached.size;
+    if (needed <= 0) continue;
+
+    // A bridge back to where the loop already reaches the border would bring
+    // the path round to its own start, which divides nothing.
+    const candidates = [...loop]
+      .filter((node) => !attached.has(node))
+      .flatMap((from) =>
+        targets.filter((to) => !reached.has(to)).map((to): Pair<Node> => [from, to]),
+      )
+      .sort((a, b) => distanceSq(a[0].co, a[1].co) - distanceSq(b[0].co, b[1].co));
+
+    const chosen: Pair<Node>[] = [];
+    while (chosen.length < needed) {
+      const bridge = candidates.find(
+        ([from, to]) =>
+          chosen.every((other) => other[0] !== from && other[1] !== to) &&
+          clear([from, to], [...lines, ...added, ...chosen]),
+      );
+      if (!bridge) break;
+      chosen.push(bridge);
+    }
+    if (chosen.length === needed) added.push(...chosen);
+  }
+  return added;
+}
+
+/**
+ * The closed loops in a net of pieces, each as the points it runs through.
+ *
+ * Every line with a free end is trimmed back first, so a loop with a tail, or
+ * one closed by crossing its own first piece, still counts. What remains is
+ * kept where it is one plain ring; a knottier net is left to divide as it can.
+ */
+function closedLoops(next: ReadonlyMap<Node, ReadonlySet<Node>>): Set<Node>[] {
+  const left = new Set(next.keys());
+  const degree = new Map([...next].map(([node, around]) => [node, around.size]));
+  const trim = [...left].filter((node) => (degree.get(node) ?? 0) < 2);
+  while (trim.length > 0) {
+    const node = trim.pop() as Node;
+    if (!left.delete(node)) continue;
+    for (const other of next.get(node) ?? []) {
+      if (!left.has(other)) continue;
+      const count = (degree.get(other) ?? 0) - 1;
+      degree.set(other, count);
+      if (count < 2) trim.push(other);
+    }
+  }
+
+  const loops: Set<Node>[] = [];
+  const seen = new Set<Node>();
+  for (const start of left) {
+    if (seen.has(start)) continue;
+    const loop = new Set<Node>();
+    const stack = [start];
+    while (stack.length > 0) {
+      const node = stack.pop() as Node;
+      if (seen.has(node)) continue;
+      seen.add(node);
+      loop.add(node);
+      for (const other of next.get(node) ?? []) if (left.has(other)) stack.push(other);
+    }
+    if ([...loop].every((node) => degree.get(node) === 2)) loops.push(loop);
+  }
+  return loops;
+}
+
+/**
+ * Where on the border a point of a loop reaches without going round the loop:
+ * the point itself when it lies on the border, otherwise the far ends of any
+ * lines of the cut running out from it.
+ */
+function exits(
+  start: Node,
+  loop: ReadonlySet<Node>,
+  next: ReadonlyMap<Node, ReadonlySet<Node>>,
+): Node[] {
+  if (start.point.kind !== 'face') return [start];
+  const found: Node[] = [];
+  const seen = new Set(loop);
+  const stack = [start];
+  while (stack.length > 0) {
+    const node = stack.pop() as Node;
+    for (const other of next.get(node) ?? []) {
+      if (seen.has(other)) continue;
+      seen.add(other);
+      if (other.point.kind === 'face') stack.push(other);
+      else found.push(other);
+    }
+  }
+  return found;
 }
 
 /** A vertex is on a face's border once any face has it as a corner. */

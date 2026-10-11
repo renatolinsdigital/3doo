@@ -57,6 +57,24 @@ function eulerCharacteristic(mesh: BMesh): number {
   return mesh.verts.size - mesh.edges.size + mesh.faces.size;
 }
 
+/** The face whose corners are exactly these vertices, in any order. */
+function faceOf(mesh: BMesh, verts: readonly Vert[]): Face | undefined {
+  return [...mesh.faces.values()].find((face) => {
+    const ring = mesh.faceVerts(face);
+    return ring.length === verts.length && ring.every((vert) => verts.includes(vert));
+  });
+}
+
+function totalArea(mesh: BMesh): number {
+  return [...mesh.faces.values()].reduce((sum, face) => sum + mesh.faceArea(face), 0);
+}
+
+/** A closed run through points inside a face, ending back on the first. */
+function loopIn(face: Face, points: readonly [number, number][]): KnifePoint[] {
+  const run = points.map(([x, z]) => inFace(face, vec3(x, 0, z)));
+  return [...run, { ...run[0] }];
+}
+
 describe('knifeCut', () => {
   it('divides a face along a line from one edge to the opposite one', () => {
     const plane = createPlane(2);
@@ -176,6 +194,146 @@ describe('knifeCut', () => {
     expect(end.edges).toHaveLength(1);
     expect(end.edges[0].loops).toHaveLength(0);
     expect(plane.validate()).toEqual([]);
+  });
+
+  it('makes the inside of a loop drawn within a face a face of its own', () => {
+    const plane = createPlane(2);
+    const square: [number, number][] = [
+      [-0.5, -0.5],
+      [0.5, -0.5],
+      [0.5, 0.5],
+      [-0.5, 0.5],
+    ];
+
+    const result = knifeCut(plane, [loopIn(onlyFace(plane), square)]);
+
+    expect(result.loose).toBe(0);
+    expect(result.verts).toHaveLength(4);
+    // In along one bridge, round half the loop and out along the other divides
+    // the face, and the other half of the loop divides again.
+    expect(result.splits).toBe(2);
+    expect(plane.faces.size).toBe(3);
+    expect(eulerCharacteristic(plane)).toBe(1);
+    expect(plane.validate()).toEqual([]);
+
+    const inside = faceOf(plane, result.verts);
+    expect(inside).toBeDefined();
+    if (!inside) return;
+    expect(plane.faceArea(inside)).toBeCloseTo(1);
+    expect(inside.normal.y).toBeCloseTo(1);
+    expect(totalArea(plane)).toBeCloseTo(4);
+
+    // The bridges are not part of the cut.
+    expect(result.edges).toHaveLength(4);
+    for (const edge of result.edges) {
+      expect(result.verts).toContain(edge.v0);
+      expect(result.verts).toContain(edge.v1);
+    }
+  });
+
+  it('cuts out a loop that bends back on itself, one piece per run', () => {
+    const plane = createPlane(2);
+    const face = onlyFace(plane);
+    const outline: [number, number][] = [
+      [-0.6, -0.6],
+      [0.6, -0.6],
+      [0.6, -0.2],
+      [-0.2, -0.2],
+      [-0.2, 0.6],
+      [-0.6, 0.6],
+    ];
+    const run = loopIn(face, outline);
+    const pieces = run.slice(1).map((point, i) => [run[i], point]);
+
+    const result = knifeCut(plane, pieces);
+
+    expect(result.loose).toBe(0);
+    expect(plane.faces.size).toBe(3);
+    expect(plane.validate()).toEqual([]);
+    const inside = faceOf(plane, result.verts);
+    expect(inside && plane.faceArea(inside)).toBeCloseTo(0.8);
+    // No bridge runs through the loop, which would fold one face over another.
+    expect(totalArea(plane)).toBeCloseTo(4);
+  });
+
+  it('needs only one bridge for a loop that starts and ends on an edge', () => {
+    const plane = createPlane(2);
+    const { nearLeft, farLeft } = planeCorners(plane);
+    const face = onlyFace(plane);
+    const start = onEdge(plane, farLeft, nearLeft);
+
+    const result = knifeCut(plane, [
+      [
+        start,
+        inFace(face, vec3(0, 0, -0.5)),
+        inFace(face, vec3(0.5, 0, 0)),
+        inFace(face, vec3(0, 0, 0.5)),
+        { ...start },
+      ],
+    ]);
+
+    expect(result.loose).toBe(0);
+    expect(result.splits).toBe(2);
+    expect(plane.faces.size).toBe(3);
+    expect(eulerCharacteristic(plane)).toBe(1);
+    expect(plane.validate()).toEqual([]);
+    const inside = faceOf(plane, result.verts);
+    expect(inside && plane.faceArea(inside)).toBeCloseTo(0.75);
+    expect(totalArea(plane)).toBeCloseTo(4);
+  });
+
+  it('needs only one bridge for a loop a line runs out from', () => {
+    const plane = createPlane(2);
+    const { nearLeft, farLeft } = planeCorners(plane);
+    const face = onlyFace(plane);
+    const join = inFace(face, vec3(-0.5, 0, 0));
+
+    const result = knifeCut(plane, [
+      [
+        onEdge(plane, farLeft, nearLeft),
+        join,
+        inFace(face, vec3(0, 0, -0.5)),
+        inFace(face, vec3(0.5, 0, 0)),
+        inFace(face, vec3(0, 0, 0.5)),
+        { ...join },
+      ],
+    ]);
+
+    expect(result.loose).toBe(0);
+    expect(result.splits).toBe(2);
+    expect(plane.faces.size).toBe(3);
+    expect(plane.validate()).toEqual([]);
+    const loop = result.verts.filter((vert) => vert.co.x > -0.75);
+    const inside = faceOf(plane, loop);
+    expect(inside && plane.faceArea(inside)).toBeCloseTo(0.5);
+    expect(totalArea(plane)).toBeCloseTo(4);
+  });
+
+  it('bridges two loops in one face without their bridges crossing', () => {
+    const plane = createPlane(2);
+    const face = onlyFace(plane);
+    const left: [number, number][] = [
+      [-0.7, -0.3],
+      [-0.3, -0.3],
+      [-0.3, 0.3],
+      [-0.7, 0.3],
+    ];
+    const right: [number, number][] = left.map(([x, z]) => [x + 1, z]);
+
+    const result = knifeCut(plane, [loopIn(face, left), loopIn(face, right)]);
+
+    expect(result.loose).toBe(0);
+    expect(plane.faces.size).toBe(5);
+    expect(eulerCharacteristic(plane)).toBe(1);
+    expect(plane.validate()).toEqual([]);
+    expect(totalArea(plane)).toBeCloseTo(4);
+    for (const side of [-1, 1]) {
+      const inside = faceOf(
+        plane,
+        result.verts.filter((vert) => Math.sign(vert.co.x) === side),
+      );
+      expect(inside && plane.faceArea(inside)).toBeCloseTo(0.24);
+    }
   });
 
   it('closes a run that comes back to where it began without doubling the cut', () => {
@@ -429,6 +587,23 @@ describe('the knife operator', () => {
     expect(result.status).toBe(
       'Knife cut 0 face(s), adding 2 vertex(es); 1 edge(s) stop inside a face and are left loose',
     );
+  });
+
+  it('leaves the inside of a closed cut selected, as a face of its own', () => {
+    const plane = createPlane(2);
+    const loop = loopIn(onlyFace(plane), [
+      [-0.5, -0.5],
+      [0.5, -0.5],
+      [0.5, 0.5],
+      [-0.5, 0.5],
+    ]);
+
+    execOperator(context(plane), 'knife', { cuts: [loop] });
+
+    const selected = plane.selectedFaces();
+    expect(selected).toHaveLength(1);
+    expect(plane.faceArea(selected[0])).toBeCloseTo(1);
+    expect(plane.selectedEdges()).toHaveLength(4);
   });
 
   it('refuses a cut of one point', () => {

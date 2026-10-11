@@ -153,8 +153,19 @@ difference:
    smoothing, and the inner vertices take UVs from mean value coordinates, which
    reproduce a flat layout such as an image plane's exactly.
 
+A face is one ring of corners and cannot hold a hole, so before dividing,
+`bridgeLoops` joins every closed loop of the net that reaches the face's border
+in fewer than two places to that border. It trims the net's free ends to find
+the loops, then adds the shortest bridges from a loop vertex to a corner, or to
+a point the cut has on the border, that touch neither the border nor any piece.
+The path in along one bridge, round the loop and out along the other divides the
+face, the rest of the loop divides again, and what the loop encloses is left a
+face of its own. The bridges are left out of the edges the cut reports, so the
+operator selects only what was drawn. A loop with no room for its bridges stays
+loose.
+
 What is left of the net, a line that stops inside a face, becomes loose edges:
-a face is one ring of corners and cannot hold a slit. A point inside a face that
+a face cannot hold a slit either. A point inside a face that
 no piece reached is removed. Points within `1e-6` of each other along an edge,
 or inside a face, are one point, so a run ending where it began closes, and an
 edge point within `1e-4` of an end is that end's vertex.
