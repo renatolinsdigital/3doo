@@ -459,7 +459,7 @@ function weldRings(left: number[], right: number[], from: number, to: number): n
  * convex piece is seen whole from its own middle, so the quads fanned off its
  * corners tile it and nothing sweeps across the hole the face went round.
  */
-function convexPieces(points: readonly Vec3[], normal: Vec3): number[][] {
+export function convexPieces(points: readonly Vec3[], normal: Vec3): number[][] {
   const { u, v } = basisFromNormal(normalize(normal));
   const flat = points.map((point) => ({ x: dot(point, u), y: dot(point, v) }));
 

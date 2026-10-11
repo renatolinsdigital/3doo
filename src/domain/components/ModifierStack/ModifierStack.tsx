@@ -66,6 +66,11 @@ const MODIFIER_INFO: Record<ModifierType, { label: string; description: string }
     description:
       'Splits every face into quads, level after level, and with CATMULL-CLARK on rounds the mesh toward a smooth surface. In edit mode the original mesh stays drawn as a cage around the result, and that cage is what you edit.',
   },
+  reloop: {
+    label: 'QUAD RELOOP',
+    description:
+      'Turns every face that is not a quad into quads, without moving a vertex. Triangles are paired up, flat regions a boolean shattered are merged and cut again, and where a face is left with an odd number of corners, a loop is run through the mesh to even it out. Quads it does not need are left alone.',
+  },
   remesh: {
     label: 'REMESH',
     description:
@@ -447,6 +452,21 @@ function ModifierFields({ modifier, onChange }: ModifierFieldsProps) {
           onChange={(levels) => onChange({ levels })}
         />
       </>
+    );
+  }
+
+  if (modifier.type === 'reloop') {
+    return (
+      <NumberField
+        label="JOIN ANGLE"
+        value={modifier.angle}
+        step={1}
+        min={0}
+        max={180}
+        suffix="°"
+        hint="The sharpest fold two triangles may meet at and still be joined into one quad. Triangles folded further are split into quads one by one"
+        onChange={(angle) => onChange({ angle })}
+      />
     );
   }
 

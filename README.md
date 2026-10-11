@@ -28,7 +28,9 @@ New to the code? Start with [docs/get-started.md](docs/get-started.md).
   tris-to-quads.
 - **Modifiers**: mirror, array, solidify, bend, twist, lattice (a cage of
   points to shape the mesh with, like Blender's), weld, loop subdivide,
-  subdivision surface and remesh, all non-destructive and reorderable.
+  subdivision surface, quad reloop (every face turned to quads, loops run
+  through the mesh where it needs them) and remesh, all non-destructive and
+  reorderable.
 - **Objects**: transform gizmo, booleans, merge and separate, an outliner with
   groups, a 3D cursor and proportional editing.
 - **Files**: `.3doo` projects, OBJ and FBX import, binary FBX 7.4 and OBJ
@@ -68,7 +70,7 @@ so the smoothest way to work is to use both:
    Extra tips:
 
    - Ask the assistant to show the result online. If the page it gives you has buttons that do nothing, download the page and open it in your browser, outside the assistant's artifact viewer.
-   - For complex objects, ask the assistant to build each part on its own, for example after giving it a drawing of that part.
+   - For complex objects, ask the assistant to build each part on its own, for example after giving it a drawing of that part. **Ask AI to trace it pixel by pixel**.
    - Attach a screenshot of the area you want to change. It always helps.
 
    If you know how to prompt AI effectively to generate 3D assets and are comfortable making a few small adjustments (like rotating or moving objects), this is the kind of result you can achieve in just minutes:

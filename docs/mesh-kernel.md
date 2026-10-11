@@ -619,3 +619,63 @@ Two things about the distance are worth knowing, because both look like bugs:
 A distance approaching the size of the mesh removes it altogether: every face
 falls below three distinct corners, and `weldVerts` drops those, leaving nothing
 for the surviving vertices to belong to.
+
+### Quad reloop (`reloop.ts`)
+
+`quadReloop` turns every face that is not a quad into quads and moves no
+vertex: the new ones sit on the edges and faces they split. It is what Blender
+users reach for Tris to Quads, a few loop cuts and some knife work to do by
+hand after a boolean, run as one modifier. It works in four passes.
+
+1. **Join.** Triangle pairs that make a well shaped quad (every corner between
+   30° and 150°, measured on the quad itself) are joined, squarest first, so a
+   triangulated grid comes back as its grid. A pair is never joined across a
+   sharp edge, between two materials, or folded further than JOIN ANGLE.
+2. **Merge.** Faces that are not quads are merged wherever they lie within
+   0.1° of flat, so the slivers a boolean leaves on a flat face become the one
+   face they really are. Quads stay out of it. A second join then takes the
+   pairs that are merely convex (corners between 10° and 170°): the fan at a
+   pole or a cone's tip, as kites. Equally square pairs tie, and rounding then
+   decides the order, so the leftovers are re-paired along augmenting paths
+   (`rematch`) rather than stranded.
+3. **Parity.** A face with an odd number of corners cannot be cut into quads,
+   so edges are split until none is odd. Each odd face is paired with the
+   nearest other one, or with an open border, by a Dijkstra search over the
+   edge a path enters each face by: crossing a quad straight costs least,
+   turning inside one more, since the turn leaves a pole. A straight run is a
+   loop cut. No edge is split twice, and that never strands a face: the
+   corners round any region the split edges wall off add up to twice its
+   edges, so every region holds an even number of odd faces.
+4. **Cut.** Every ring with more than four corners, split points included, is
+   cut into quads by a search over its stretches (`cutExactly`): the best cut
+   from corner `s` to corner `t` is the best quad on the line between them plus
+   the best cuts of what it leaves, or a star of quads round one new point in
+   the middle. Quads are scored by the log of their squareness, so one bad quad
+   costs more than several good ones gain. No new corner may come within 5° of
+   straight; a corner the ring already has, kept between its own two sides, may
+   come within 0.5°, which is what a finely divided circle needs. Rings past 40
+   corners are halved along their squarest balanced diagonal first.
+
+Some faces have no cut. A face whose ring cannot be cut is first offered rungs
+(`findRungs`): from each inward corner, a line straight across to a side, ending
+where the corner's perpendicular lands, so the split goes where the corner
+needs it rather than in the middle. Each inward corner tries its three
+shortest, with one midpoint added wherever the count has to come out even, and
+the set that cuts squarest is kept; the faces across the split sides are left
+for the paths to pair off. A face with no inward corner tries pairs of
+midpoints, which run a loop through it. That is what turns the bent band a
+boolean leaves round a box sitting turned on another into a ladder of quads,
+where midpoints alone never cut it. A face nothing helps is made hard and cut
+the way a
+subdivision cuts it: into convex pieces (`convexPieces`), every side split, one
+quad per corner round each piece's middle. Triangles are hard from the start,
+since a triangle with one side split is only a quad with a straight corner; so
+is a face a boolean bit a curve out of, whose inward corners no point inside it
+can see past. After each round the paths are planned again around the faces
+that changed. Rungs are offered for four rounds; after that a face still
+without a cut is made hard, which always cuts, so the plan settles.
+
+Quads no path reaches are never touched, so a mesh that is already all quads
+comes back as it was. UVs are interpolated onto the new corners, sharp marks
+carry onto both halves of a split edge, and a result that would pass
+`MESH_BUDGET` is not cut at all.

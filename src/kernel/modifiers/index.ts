@@ -4,6 +4,7 @@ import type { Edge, Face, Vert } from '../mesh/types';
 import { mergeByDistance, weldVerts } from '../ops/merge';
 import { MESH_BUDGET } from '../ops/budget';
 import { carrySharp } from '../ops/normals';
+import { quadReloop } from '../ops/reloop';
 import { catmullClark, subdivideFaces } from '../ops/subdivide';
 import { remeshMesh } from '../remesh';
 
@@ -14,6 +15,7 @@ import type {
   LatticeModifier,
   MirrorModifier,
   Modifier,
+  ReloopModifier,
   RemeshModifier,
   SolidifyModifier,
   SubdivideModifier,
@@ -83,6 +85,8 @@ export function applyModifier(
       return applySubdivide(mesh, modifier);
     case 'subsurf':
       return applySubsurf(mesh, modifier);
+    case 'reloop':
+      return applyReloop(mesh, modifier);
     case 'remesh':
       return applyRemesh(mesh, modifier);
   }
@@ -550,6 +554,11 @@ function applySubsurf(mesh: BMesh, modifier: SubsurfModifier): BMesh {
     result = catmullClark(result, modifier.catmullClark);
   }
   return result;
+}
+
+function applyReloop(mesh: BMesh, modifier: ReloopModifier): BMesh {
+  quadReloop(mesh, modifier.angle);
+  return mesh;
 }
 
 /**

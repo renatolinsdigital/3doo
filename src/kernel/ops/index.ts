@@ -11,6 +11,7 @@ export * from './circle';
 export * from './space';
 export * from './slide';
 export * from './subdivide';
+export * from './reloop';
 export * from './merge';
 export * from './delete';
 export * from './dissolve';

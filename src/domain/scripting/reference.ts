@@ -675,6 +675,13 @@ export const MODIFIER_FIELDS: Record<ModifierType, readonly FieldSpec[]> = {
     },
     { name: 'catmullClark', value: boolean, description: 'Round toward a smooth surface.' },
   ],
+  reloop: [
+    {
+      name: 'angle',
+      value: number(0, 180),
+      description: 'Sharpest fold two triangles may meet at and still join, 0 to 180.',
+    },
+  ],
   remesh: [
     {
       name: 'method',

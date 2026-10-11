@@ -327,7 +327,7 @@ const WHAT_A_SCRIPT_CAN_DO = `- Add the ten primitives, or build any mesh from a
   move vertices to computed points with \`mesh.deform\`, and read every vertex,
   edge and face back.
 - Stack, set, reorder and apply modifiers: mirror, array, solidify, bend,
-  twist, lattice, weld, subdivide, subsurf and remesh.
+  twist, lattice, weld, subdivide, subsurf, reloop and remesh.
 - Colour objects, and give parts of one mesh colours of their own through
   material slots (\`object.addMaterial\`, \`mesh.assignMaterial\`).
 - Read the scene back: transforms, world bounds, counts, modifier settings,

@@ -811,6 +811,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Splits every face into quads for each of up to six SUBDIVISION LEVELS. With CATMULL-CLARK on, each level rounds the mesh toward a smooth surface; off, it only adds faces. In edit mode the original mesh stays drawn as a cage around the smooth result, and the cage is what you select and move. Object mode and Apply show the result alone.',
           ],
           [
+            'Quad Reloop',
+            'Turns every face that is not a quad into quads, keeping the shape exactly: no vertex moves, and the new ones sit on the edges and faces they split. Triangles that make a good quad together are joined, flat regions a boolean shattered into slivers are merged back into one face and cut into quads again, and a face left with an odd number of corners has a loop run through the mesh to pair it with the nearest other one. The loop runs straight through quads, the way a loop cut does. A triangle no neighbour suits, and a face a boolean bit a curve out of, are split into quads the way a subdivision splits them. JOIN ANGLE is the sharpest fold two triangles may meet at and still be joined. Quads it does not need are left alone, so a mesh that is already all quads comes out as it went in.',
+          ],
+          [
             'Remesh',
             'Rebuilds the topology outright, by one of three methods. VOXEL samples the shape into a signed distance grid and builds an even quad shell back out of it. BLOCKS reads the same grid straight off the lattice, every face axis-aligned: a voxel study of the shape rather than a surface to keep working on. REDUCE rebuilds nothing: it collapses the edges that cost least to lose and leaves every other vertex exactly where it was. REDUCE is the only method that keeps material slots.',
           ],

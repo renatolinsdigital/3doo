@@ -12,6 +12,7 @@ export type ModifierType =
   | 'weld'
   | 'subdivide'
   | 'subsurf'
+  | 'reloop'
   | 'remesh';
 
 export interface ModifierBase {
@@ -130,6 +131,17 @@ export interface SubsurfModifier extends ModifierBase {
 }
 
 /**
+ * Rebuilds every face that is not a quad as quads, without moving a vertex:
+ * triangles paired, flat regions merged and cut again, and loops run through
+ * the mesh wherever an odd face needs one. See `quadReloop`.
+ */
+export interface ReloopModifier extends ModifierBase {
+  type: 'reloop';
+  /** The sharpest fold, in degrees, two triangles may meet at and still be joined, 0 to 180. */
+  angle: number;
+}
+
+/**
  * Rebuilds the topology wholesale: the one modifier that throws away the
  * geometry it was given rather than adding to it.
  *
@@ -160,6 +172,7 @@ export type Modifier =
   | WeldModifier
   | SubdivideModifier
   | SubsurfModifier
+  | ReloopModifier
   | RemeshModifier;
 
 let counter = 0;
@@ -267,6 +280,14 @@ export function createModifier(type: ModifierType): Modifier {
         enabled: true,
         levels: 1,
         catmullClark: true,
+      };
+    case 'reloop':
+      return {
+        id: nextId(type),
+        type,
+        name: 'QUAD RELOOP',
+        enabled: true,
+        angle: 40,
       };
     case 'remesh':
       return {

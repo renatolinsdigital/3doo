@@ -1,8 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { type Vec3, composeMatrix, createTransform, vec3 } from '../math';
+import {
+  type Vec3,
+  add,
+  composeMatrix,
+  createTransform,
+  cross,
+  degToRad,
+  equals,
+  length,
+  sub,
+  vec3,
+} from '../math';
 import { BMesh, cloneMesh } from '../mesh';
-import { subdivideFaces } from '../ops/subdivide';
+import { booleanMesh } from '../ops/boolean';
+import { subdivideEdges, subdivideFaces, triangulateFaces } from '../ops/subdivide';
 import { createBox, createGrid, createPlane, createUVSphere } from '../primitives';
 
 import {
@@ -21,6 +33,7 @@ import type {
   BendModifier,
   LatticeModifier,
   MirrorModifier,
+  ReloopModifier,
   RemeshModifier,
   SolidifyModifier,
   SubdivideModifier,
@@ -1134,6 +1147,248 @@ describe('subdivision surface modifier', () => {
   it('bakes into the mesh on apply', () => {
     const result = applyModifier(createBox(2), subsurf({ levels: 2 }));
     expect(result.faces.size).toBe(96);
+  });
+});
+
+describe('quad reloop modifier', () => {
+  function reloop(overrides: Partial<ReloopModifier> = {}): ReloopModifier {
+    return { ...(createModifier('reloop') as ReloopModifier), ...overrides };
+  }
+
+  const offsetBy = (offset: Vec3) => (point: Vec3) => add(point, offset);
+
+  /** Turned about Y, then moved: a box sitting askew on another. */
+  const turnedBy = (offset: Vec3, angle: number) => (point: Vec3) =>
+    add(
+      vec3(
+        point.x * Math.cos(angle) - point.z * Math.sin(angle),
+        point.y,
+        point.x * Math.sin(angle) + point.z * Math.cos(angle),
+      ),
+      offset,
+    );
+
+  function allQuads(mesh: BMesh): boolean {
+    return [...mesh.faces.values()].every((face) => mesh.faceLoopCount(face) === 4);
+  }
+
+  function closed(mesh: BMesh): boolean {
+    return [...mesh.edges.values()].every((edge) => edge.loops.length === 2);
+  }
+
+  /** The sine of the flattest corner of any face: 1 when every corner is square. */
+  function flattestCorner(mesh: BMesh): number {
+    let flattest = 1;
+    for (const face of mesh.faces.values()) {
+      const points = mesh.facePoints(face);
+      points.forEach((at, i) => {
+        const before = sub(points[(i - 1 + points.length) % points.length], at);
+        const after = sub(points[(i + 1) % points.length], at);
+        flattest = Math.min(
+          flattest,
+          length(cross(before, after)) / (length(before) * length(after)),
+        );
+      });
+    }
+    return flattest;
+  }
+
+  /** Whether every vertex of `before` is still somewhere in `after`, exactly. */
+  function nothingMoved(before: BMesh, after: BMesh): boolean {
+    const positions = [...after.verts.values()].map((vert) => vert.co);
+    return [...before.verts.values()].every((vert) =>
+      positions.some((co) => equals(co, vert.co, 1e-12)),
+    );
+  }
+
+  it('starts out joining triangles folded up to 40°', () => {
+    const modifier = reloop();
+    expect(modifier.name).toBe('QUAD RELOOP');
+    expect(modifier.angle).toBe(40);
+  });
+
+  it('leaves a mesh that is already all quads as it was', () => {
+    const cube = createBox(2);
+    const result = evaluateModifiers(cube, [reloop()]);
+
+    expect(result.faces.size).toBe(6);
+    expect(result.verts.size).toBe(8);
+    expect(nothingMoved(cube, result)).toBe(true);
+  });
+
+  it('cuts the L-shaped faces of a stepped union into two quads each', () => {
+    const union = booleanMesh('union', createBox(2), createBox(2), offsetBy(vec3(1, 0.5, 0.5)));
+    const result = evaluateModifiers(union, [reloop()]);
+
+    // Six faces stand clear of the other box and stay as they were. Each of
+    // the six L shapes splits across its inward corner, and nothing is added.
+    expect(result.faces.size).toBe(18);
+    expect(result.verts.size).toBe(union.verts.size);
+    expect(allQuads(result)).toBe(true);
+    expect(closed(result)).toBe(true);
+    expect(result.validate()).toEqual([]);
+    expect(nothingMoved(union, result)).toBe(true);
+  });
+
+  it('runs a loop through the bent L a turned box leaves, not a quad bent flat', () => {
+    const union = booleanMesh(
+      'union',
+      createBox(2),
+      createBox(2),
+      turnedBy(vec3(0.7, 1.5, -0.4), 0.4),
+    );
+    const result = evaluateModifiers(union, [reloop()]);
+
+    // The only cut of that L keeps a corner two degrees off straight.
+    expect(allQuads(result)).toBe(true);
+    expect(closed(result)).toBe(true);
+    expect(result.validate()).toEqual([]);
+    expect(nothingMoved(union, result)).toBe(true);
+    expect(flattestCorner(result)).toBeGreaterThan(Math.sin(degToRad(5)));
+  });
+
+  it('runs rungs across the bent band a box turned the other way leaves', () => {
+    const union = booleanMesh(
+      'union',
+      createBox(2),
+      createBox(2),
+      turnedBy(vec3(0.7, 1.5, -0.4), -0.4),
+    );
+    const result = evaluateModifiers(union, [reloop()]);
+
+    // The lower box's top is a band bent round two inward corners. Split
+    // in the middle, its sides never cut; split where those corners look
+    // straight across at them, it comes back as a ladder of quads.
+    expect(result.faces.size).toBe(28);
+    expect(allQuads(result)).toBe(true);
+    expect(closed(result)).toBe(true);
+    expect(nothingMoved(union, result)).toBe(true);
+    expect(flattestCorner(result)).toBeGreaterThan(Math.sin(degToRad(5)));
+  });
+
+  it('puts a triangulated cube back as its six faces', () => {
+    const cube = createBox(2);
+    triangulateFaces(cube, [...cube.faces.values()]);
+
+    const result = evaluateModifiers(cube, [reloop()]);
+
+    expect(result.faces.size).toBe(6);
+    expect(result.edges.size).toBe(12);
+  });
+
+  it('joins the fans round the poles of a sphere as kites', () => {
+    const sphere = createUVSphere(1, 24, 12);
+    const result = evaluateModifiers(sphere, [reloop()]);
+
+    // 240 quads between the poles, and the 24 triangles round each pole
+    // paired off as 12 kites: every one of them, not most.
+    expect(result.faces.size).toBe(264);
+    expect(result.verts.size).toBe(sphere.verts.size);
+  });
+
+  it('cuts a triangle with no partner into three quads', () => {
+    const mesh = new BMesh();
+    mesh.addFace([vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0)].map((co) => mesh.addVert(co)));
+
+    const result = evaluateModifiers(mesh, [reloop()]);
+
+    expect(result.faces.size).toBe(3);
+    expect(allQuads(result)).toBe(true);
+    expect(result.validate()).toEqual([]);
+  });
+
+  it('evens out two odd faces with a loop run the long way round', () => {
+    const cube = createBox(2);
+    const [edge] = cube.edges.values();
+    subdivideEdges(cube, [edge]);
+
+    const result = evaluateModifiers(cube, [reloop()]);
+
+    // The faces either side of the split edge are squares with a point on
+    // one side. Splitting the edge between them would leave two straight
+    // corners in a row, so the loop goes round through the two faces
+    // opposite, and every face it crosses comes back as two rectangles.
+    expect(result.faces.size).toBe(10);
+    expect(allQuads(result)).toBe(true);
+    expect(closed(result)).toBe(true);
+    expect(flattestCorner(result)).toBeCloseTo(1);
+  });
+
+  it('cuts a face a boolean bit a curve out of into quads', () => {
+    const bitten = booleanMesh(
+      'difference',
+      createBox(2),
+      createUVSphere(1, 24, 12),
+      offsetBy(vec3(1, 1, 1)),
+    );
+    const result = evaluateModifiers(bitten, [reloop()]);
+
+    expect(allQuads(result)).toBe(true);
+    expect(closed(result)).toBe(true);
+    expect(result.validate()).toEqual([]);
+    expect(nothingMoved(bitten, result)).toBe(true);
+  });
+
+  it('joins two triangles only while their fold stays within JOIN ANGLE', () => {
+    // A square folded 60° along its diagonal.
+    const mesh = new BMesh();
+    const [a, b, c, d] = [
+      vec3(0, 0, 0),
+      vec3(1, 0, 0),
+      vec3(1, 0, 1),
+      vec3(0.25, -Math.sqrt(0.375), 0.75),
+    ].map((co) => mesh.addVert(co));
+    mesh.addFace([a, b, c]);
+    mesh.addFace([a, c, d]);
+
+    expect(evaluateModifiers(mesh, [reloop({ angle: 90 })]).faces.size).toBe(1);
+    expect(evaluateModifiers(mesh, [reloop({ angle: 40 })]).faces.size).toBe(6);
+  });
+
+  it('never joins two triangles across materials', () => {
+    const mesh = new BMesh();
+    const [a, b, c, d] = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(1, 0, 1), vec3(0, 0, 1)].map((co) =>
+      mesh.addVert(co),
+    );
+    mesh.addFace([a, b, c], { materialIndex: 0 });
+    mesh.addFace([a, c, d], { materialIndex: 1 });
+
+    const result = evaluateModifiers(mesh, [reloop()]);
+    const slots = [...result.faces.values()].map((face) => face.materialIndex);
+
+    expect(allQuads(result)).toBe(true);
+    expect(slots.filter((slot) => slot === 0)).toHaveLength(3);
+    expect(slots.filter((slot) => slot === 1)).toHaveLength(3);
+  });
+
+  it('marks both halves of a sharp edge a loop splits', () => {
+    const cube = createBox(2);
+    for (const edge of cube.edges.values()) edge.sharp = true;
+    const [edge] = cube.edges.values();
+    subdivideEdges(cube, [edge]);
+
+    const result = evaluateModifiers(cube, [reloop()]);
+
+    // Thirteen sharp edges go in, and the loop splits three of them. The lines
+    // it draws across the faces are new, and smooth.
+    expect([...result.edges.values()].filter((candidate) => candidate.sharp)).toHaveLength(16);
+  });
+
+  it('gives the points it adds the UVs of where they sit', () => {
+    const mesh = new BMesh();
+    const face = mesh.addFace(
+      [vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0)].map((co) => mesh.addVert(co)),
+    );
+    for (const loop of mesh.faceLoops(face)) loop.uv = { u: loop.vert.co.x, v: loop.vert.co.y };
+
+    const result = evaluateModifiers(mesh, [reloop()]);
+
+    for (const quad of result.faces.values()) {
+      for (const loop of result.faceLoops(quad)) {
+        expect(loop.uv.u).toBeCloseTo(loop.vert.co.x);
+        expect(loop.uv.v).toBeCloseTo(loop.vert.co.y);
+      }
+    }
   });
 });
 
