@@ -6,13 +6,18 @@ import {
   type Material,
   type Modifier,
   type ModifierType,
+  type Point2,
   type PrimitiveKind,
   type PrimitiveParams,
   type SelectMode,
+  type StraightView,
   type Vec3,
   type Vert,
   PRIMITIVE_FIELDS,
+  VIEW_PLANES,
   composeMatrix,
+  createLathe,
+  createOutlinePrism,
   degToRad,
   radToDeg,
   transformPoint,
@@ -21,15 +26,21 @@ import {
 import { type SceneObject, evaluatedMesh, useEditorStore } from '@store/index';
 import type { ShadingMode } from '@store/types';
 
+import { selfCrossing } from '@domain/references/analysis';
+import { type ReferenceTrace, getReference, traceReference } from '@domain/references/references';
+
 import {
   type FieldSpec,
+  LATHE_OPTIONS,
   MATERIAL_OPTIONS,
   MODIFIER_FIELDS,
   MODIFIER_TYPES,
   OPERATOR_SPECS,
+  OUTLINE_OPTIONS,
   PLACEMENT_OPTIONS,
   PRIMITIVE_KINDS,
   PRIMITIVE_OPTIONS,
+  REFERENCE_OPTIONS,
   type SelectionNeed,
   type ValueSpec,
   describeNeed,
@@ -221,6 +232,19 @@ function readValue(spec: ValueSpec, value: unknown, what: string, current?: unkn
       return direction;
     }
   }
+}
+
+/** A list of two-number points, as an outline or a profile is written. */
+function readPoints(value: unknown, what: string, least: number, form: string): Point2[] {
+  if (!Array.isArray(value) || value.length < least) {
+    throw new Error(`${what} has to be a list of ${least} or more ${form} points.`);
+  }
+  return value.map((point, index) => {
+    if (!Array.isArray(point) || point.length !== 2 || !point.every(finite)) {
+      throw new Error(`${what}[${index}] has to be ${form}, not ${describe(point)}.`);
+    }
+    return [point[0], point[1]] as const;
+  });
 }
 
 function readId(value: unknown, what: string): number {
@@ -1311,6 +1335,21 @@ export function createScriptApi(): ScriptApi {
     return { placement, shape };
   };
 
+  /** Adds a mesh built from a script's own points, at the 3D cursor like any import. */
+  const addBuilt = (
+    mesh: BMesh,
+    placement: Record<string, unknown>,
+    fallback: string,
+  ): ObjectHandle => {
+    const name = typeof placement.name === 'string' ? placement.name : fallback;
+    store().addImportedObjects([{ name, mesh, position: vec3() }], name);
+    const id = store().activeObjectId;
+    if (!id) throw new Error('The mesh could not be added.');
+    const handle = handles.object(id);
+    place(handle, { ...placement, name });
+    return handle;
+  };
+
   const scene = {
     add(kind: unknown, options?: unknown): ObjectHandle {
       const primitive = readEnum(kind, PRIMITIVE_KINDS, 'scene.add: kind') as PrimitiveKind;
@@ -1435,14 +1474,72 @@ export function createScriptApi(): ScriptApi {
         });
       }
       mesh.computeNormals();
+      return addBuilt(mesh, placement, 'MESH');
+    },
 
-      const name = typeof placement.name === 'string' ? placement.name : 'MESH';
-      store().addImportedObjects([{ name, mesh, position: vec3() }], name);
-      const id = store().activeObjectId;
-      if (!id) throw new Error('The mesh could not be added.');
-      const handle = handles.object(id);
-      place(handle, { ...placement, name });
-      return handle;
+    lathe(profile: unknown, options?: unknown): ObjectHandle {
+      const what = 'scene.lathe';
+      const read = readFields(what, [...LATHE_OPTIONS, ...PLACEMENT_OPTIONS], options);
+      const { placement, shape } = split(read);
+      const closed = shape.closed === true;
+      const points = readPoints(profile, `${what}: profile`, closed ? 3 : 2, '[radius, y]');
+      points.forEach(([radius], index) => {
+        const at = `${what}: profile[${index}]`;
+        if (radius < 0) throw new Error(`${at} has a radius below 0, ${radius}.`);
+        const end = index === 0 || index === points.length - 1;
+        if (radius === 0 && (closed || !end)) {
+          throw new Error(
+            `${at} is on the axis, where only ${closed ? 'an open profile' : 'the first and last point'} may be.`,
+          );
+        }
+      });
+      if (points.every(([radius]) => radius === 0)) {
+        throw new Error(`${what}: every point of the profile is on the axis, so it turns nothing.`);
+      }
+
+      const mesh = createLathe(points, {
+        segments: shape.segments as number | undefined,
+        closed,
+        caps: shape.caps as boolean | undefined,
+      });
+      if (shape.smooth === true) for (const face of mesh.faces.values()) face.smooth = true;
+      return addBuilt(mesh, placement, 'LATHE');
+    },
+
+    extrudeOutline(points: unknown, options?: unknown): ObjectHandle {
+      const what = 'scene.extrudeOutline';
+      const read = readFields(what, [...OUTLINE_OPTIONS, ...PLACEMENT_OPTIONS], options);
+      const { placement, shape } = split(read);
+      const view = (shape.view as StraightView | undefined) ?? 'front';
+      const [across, up] = VIEW_PLANES[view];
+      const outline = readPoints(points, `${what}: points`, 3, `[${across}, ${up}]`);
+      const crossing = selfCrossing(outline);
+      if (crossing) {
+        throw new Error(
+          `${what}: the outline crosses itself near [${crossing.join(', ')}]. An outline traced from a reference can, when it is cut down to too few points: ask scene.reference for more.`,
+        );
+      }
+
+      let mesh: BMesh;
+      try {
+        mesh = createOutlinePrism(outline, {
+          plane: [across, up],
+          depth: (shape.depth as number | undefined) ?? 0.1,
+          bevel: shape.bevel as number | undefined,
+          bevelSegments: shape.bevelSegments as number | undefined,
+        });
+      } catch (error) {
+        throw new Error(`${what}: ${(error as Error).message}`);
+      }
+      return addBuilt(mesh, placement, 'OUTLINE');
+    },
+
+    reference(id: unknown, options?: unknown): ReferenceTrace {
+      if (typeof id !== 'string' || id.trim() === '') {
+        throw new Error(`scene.reference takes the id of a reference, not ${describe(id)}.`);
+      }
+      const read = readFields('scene.reference', REFERENCE_OPTIONS, options);
+      return traceReference(getReference(id), read);
     },
 
     get objects(): ObjectHandle[] {

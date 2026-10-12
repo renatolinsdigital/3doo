@@ -43,9 +43,40 @@ export const MCP_TOOLS: readonly McpToolGuide[] = [
   },
   {
     name: 'render_views',
-    args: ['views', 'width', 'height', 'shading', 'projection', 'grid', 'save', 'name'],
-    does: 'Takes pictures of the model, drawn the way the viewport draws it: in perspective, or straight on from the front, back, sides, top or bottom.',
-    returns: 'One PNG per view, and a file of each when save is on.',
+    args: [
+      'views',
+      'cameras',
+      'width',
+      'height',
+      'shading',
+      'sheet',
+      'projection',
+      'grid',
+      'save',
+      'name',
+    ],
+    does: 'Takes pictures of the model, drawn the way the viewport draws it: in perspective, straight on from the front, back, sides, top or bottom, or from any angle. In silhouette, the model is black on white, which shows whether its shape reads, and a sheet puts every view in one picture.',
+    returns: 'One PNG per view, or one for the whole sheet, and a file of each when save is on.',
+  },
+  {
+    name: 'load_reference',
+    args: ['image', 'view', 'height', 'width', 'id', 'crop', 'background', 'tolerance', 'holes'],
+    does: 'Loads a picture of what you want modelled, seen straight on from one side, and measures it in metres from the size you give the subject. It finds the subject against its background, so its outline can be built from and checked against.',
+    returns:
+      'The picture with the outline it found drawn round the subject over a grid in metres, and the subject size and place.',
+  },
+  {
+    name: 'trace_reference',
+    args: ['id', 'points', 'rows'],
+    does: 'Reads a loaded picture as numbers: the outline round the subject, how wide it is at each height, and its main colours. A script reads the same through scene.reference.',
+    returns: 'The outline, the profile and the colours, in world metres.',
+  },
+  {
+    name: 'compare_to_reference',
+    args: ['id', 'objects'],
+    does: "Lays the model's silhouette over a loaded picture, seen from the same side and at the same scale, and measures where they differ.",
+    returns:
+      'How much they overlap, the worst places they part, in metres, and a picture of where only one of them is.',
   },
   {
     name: 'export_model',

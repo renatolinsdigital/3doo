@@ -17,12 +17,15 @@ import {
   type ApiOwner,
   type FieldSpec,
   type ValueSpec,
+  LATHE_OPTIONS,
   MODIFIER_FIELDS,
   MODIFIER_TYPES,
   OPERATOR_SPECS,
+  OUTLINE_OPTIONS,
   PLACEMENT_OPTIONS,
   PRIMITIVE_KINDS,
   PRIMITIVE_OPTIONS,
+  REFERENCE_OPTIONS,
   describeNeed,
 } from '@domain/scripting/reference';
 
@@ -229,6 +232,23 @@ export function scriptingApiBlocks(): DocsBlock[] {
       rows: [...PRIMITIVE_OPTIONS, ...PLACEMENT_OPTIONS].map(
         (field) => [field.name, field.description] as const,
       ),
+    },
+    {
+      kind: 'prose',
+      text: 'scene.lathe and scene.extrudeOutline build from points instead. A lathe turns a profile of [radius, y] points round the Y axis: scene.lathe([[0, 0], [0.3, 0], [0.3, 0.6], [0.1, 0.8], [0.1, 1]]) is a bottle 1 m tall, closed at the bottom because its first point is on the axis. An outline is drawn as seen from one view and made solid: from the front its points are [x, y], from the right or left [z, y], from the top or bottom [x, z], and it is pushed out to depth, centred on its plane. Both land at the 3D cursor, like any added object.',
+    },
+    {
+      kind: 'table',
+      head: ['FUNCTION', 'OPTIONS'],
+      rows: [
+        ['scene.lathe(profile, options?)', fieldText(LATHE_OPTIONS)],
+        ['scene.extrudeOutline(points, options?)', fieldText(OUTLINE_OPTIONS)],
+        ['scene.reference(id, options?)', fieldText(REFERENCE_OPTIONS)],
+      ],
+    },
+    {
+      kind: 'prose',
+      text: 'scene.reference reads a picture an AI assistant loaded as a reference, measured in metres and placed with the subject standing at the origin. Its outline is in the same terms as an outline you draw, so scene.extrudeOutline(ref.outline, { view: ref.view }) builds it, and each row of its profile, { at, from, to }, says how far the subject reaches at one height, which gives a lathe its radii. With the 3D cursor at the origin, the result lines up with the picture.',
     },
     {
       kind: 'prose',
@@ -1191,7 +1211,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Pictures',
-            'Renders of the model, drawn the way the viewport draws it. One in perspective by default, or any of the straight-on views the camera keys give: front (Shift+1), right (Shift+3), top (Shift+7), back, left and bottom (Ctrl+Shift with the same numbers). Ask to "see it from every side" for all of them.',
+            'Renders of the model, drawn the way the viewport draws it. One in perspective by default, any of the straight-on views the camera keys give: front (Shift+1), right (Shift+3), top (Shift+7), back, left and bottom (Ctrl+Shift with the same numbers), or any angle you name. Ask to "see it from every side" for all of them, "as a silhouette" for the shape in black on white, or "on one sheet" for every view in one picture.',
+          ],
+          [
+            'A model of your drawing',
+            'Give it a drawing or a photo of the subject seen straight on, say which side it shows and how big the subject really is. The assistant measures the picture in metres, builds from the outline it traces, and shows you the model laid over the drawing, red where the model has too much and blue where it has too little.',
           ],
           [
             'A page to open it here',
@@ -1235,6 +1259,14 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           [
             'Show me the front, side and top views',
             'Replies with three straight-on pictures, drawn flat so proportions can be compared.',
+          ],
+          [
+            'Show its silhouette from the front, side and top on one sheet',
+            'Replies with one picture of the three views in black on white, which shows whether the shape reads before anything else does.',
+          ],
+          [
+            'Build the mug in mug_front.png. It is 10 cm tall',
+            'Loads the drawing as a reference, builds from its outline, and compares the two until they match.',
           ],
           [
             'Make the handle thicker',

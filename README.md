@@ -41,9 +41,11 @@ New to the code? Start with [docs/get-started.md](docs/get-started.md).
   nothing. Its SCENE tab shows the scene as the script that builds it.
 - **AI assistants**: an MCP server lets Claude and other assistants build
   models with the scripting API and hand them back as files, pictures from any
-  of the editor's views, or a page that opens the editor on the result. The
-  MCP button in the top bar has the setup commands ready to copy; the details
-  are in [docs/mcp.md](docs/mcp.md).
+  angle, or a page that opens the editor on the result. Given a drawing or a
+  photo of the subject seen straight on, an assistant measures it in metres,
+  builds from its traced outline and checks the model's silhouette against it.
+  The MCP button in the top bar has the setup commands ready to copy; the
+  details are in [docs/mcp.md](docs/mcp.md).
 
 The full list, and how each tool behaves, is in
 [docs/features.md](docs/features.md). Every shortcut is in
@@ -70,7 +72,7 @@ so the smoothest way to work is to use both:
    Extra tips:
 
    - Ask the assistant to show the result online. If the page it gives you has buttons that do nothing, download the page and open it in your browser, outside the assistant's artifact viewer.
-   - For complex objects, ask the assistant to build each part on its own, for example after giving it a drawing of that part. **Ask AI to trace it pixel by pixel**.
+   - For complex objects, ask the assistant to build each part on its own, from a drawing of that part. Give it the drawing's file path, which side it shows (front, side or top) and how big the part really is. It loads the drawing as a reference, builds from the outline it traces, and compares its model with the drawing until the two match.
    - Attach a screenshot of the area you want to change. It always helps.
 
    If you know how to prompt AI effectively to generate 3D assets and are comfortable making a few small adjustments (like rotating or moving objects), this is the kind of result you can achieve in just minutes:

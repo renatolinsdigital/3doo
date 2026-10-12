@@ -12,7 +12,10 @@ import {
   MIN_VOXEL_SIZE,
   type ModifierType,
   type PrimitiveKind,
+  STRAIGHT_VIEWS,
 } from '@kernel/index';
+
+import { DEFAULT_TRACE_POINTS, DEFAULT_TRACE_ROWS } from '@domain/references/references';
 
 /**
  * What a script may hand a parameter, and how it is checked on the way in.
@@ -577,6 +580,66 @@ export const PLACEMENT_OPTIONS: readonly FieldSpec[] = [
   { ...color, description: `Colour of its first material, ${color.description}` },
 ];
 
+/** What `scene.lathe` takes besides its profile. */
+export const LATHE_OPTIONS: readonly FieldSpec[] = [
+  {
+    name: 'segments',
+    value: integer(3, 256),
+    description: 'Points round the axis, 3 to 256. Default 24.',
+  },
+  {
+    name: 'closed',
+    value: boolean,
+    description:
+      'The profile is a loop, as the cross-section of a ring is, rather than a line from one end to the other. Default false.',
+  },
+  {
+    name: 'caps',
+    value: boolean,
+    description: 'Fill an end of the profile that stops short of the axis. Default true.',
+  },
+  { name: 'smooth', value: boolean, description: 'Shade it smooth. Default false.' },
+];
+
+/** What `scene.extrudeOutline` takes besides its points. */
+export const OUTLINE_OPTIONS: readonly FieldSpec[] = [
+  {
+    name: 'view',
+    value: oneOf(...STRAIGHT_VIEWS),
+    description:
+      'The view the outline is drawn as seen from, which says what its points are: [x, y] from the front or back, [z, y] from the right or left, [x, z] from the top or bottom. Default "front".',
+  },
+  {
+    name: 'depth',
+    value: length,
+    description: 'How thick it is, centred on the plane through its origin. Default 0.1.',
+  },
+  {
+    name: 'bevel',
+    value: number(0),
+    description: 'Rounds off the rims of both faces by this many metres. Default 0.',
+  },
+  {
+    name: 'bevelSegments',
+    value: integer(1, 12),
+    description: 'Faces across that bevel, 1 to 12. Default 1.',
+  },
+];
+
+/** What `scene.reference` takes besides the id. */
+export const REFERENCE_OPTIONS: readonly FieldSpec[] = [
+  {
+    name: 'points',
+    value: integer(8, 1000),
+    description: `The most points the outline may have, 8 to 1000. Default ${DEFAULT_TRACE_POINTS}.`,
+  },
+  {
+    name: 'rows',
+    value: integer(2, 200),
+    description: `How many heights the profile is measured at, 2 to 200. Default ${DEFAULT_TRACE_ROWS}.`,
+  },
+];
+
 /** What a material slot can be made with. */
 export const MATERIAL_OPTIONS: readonly FieldSpec[] = [
   { name: 'name', value: { kind: 'string' }, description: 'What the MATERIALS list calls it.' },
@@ -796,6 +859,27 @@ export const API_ENTRIES: readonly ApiEntry[] = [
       args: '{ verts, faces, edges?, smooth?, faceMaterials?, sharp?, name?, position?, rotation?, scale?, color? }',
       summary:
         'Builds an object from your own geometry and returns it. verts lists [x, y, z] points, faces lists the vertex indices around each face, three or more per face. edges lists [a, b] pairs joined by an edge with no face. smooth is true for every face or one true or false per face, faceMaterials the material slot each face wears, and sharp the [a, b] edges marked sharp.',
+    },
+    {
+      name: 'lathe',
+      kind: 'function',
+      args: 'profile, options?',
+      summary:
+        'Turns a profile round the Y axis, as on a lathe, and returns the object: bottles, columns, barrels, pots, wheels. profile lists [radius, y] points from one end to the other, and an end at radius 0 closes on the axis. options takes segments, closed, caps and smooth, and name, position, rotation, scale and color.',
+    },
+    {
+      name: 'extrudeOutline',
+      kind: 'function',
+      args: 'points, options?',
+      summary:
+        'Makes a flat outline solid and returns the object: blades, signs, shields, cut-outs, and the outline of a reference. points lists its corners as seen from options.view, [x, y] from the front, and closes by itself. Each side is one face, however concave. options takes view, depth, bevel and bevelSegments, and name, position, rotation, scale and color.',
+    },
+    {
+      name: 'reference',
+      kind: 'function',
+      args: 'id, options?',
+      summary:
+        'A picture loaded with the MCP server, measured in world metres: { view, axes, size, bounds, outline, profile, colours }. outline goes straight into scene.extrudeOutline with the same view. Each profile row { at, from, to } is how far the subject reaches at one height, which gives scene.lathe its radii. options takes points and rows.',
     },
     {
       name: 'objects',

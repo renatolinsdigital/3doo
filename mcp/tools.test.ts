@@ -5,7 +5,11 @@ import { deflateRawSync } from 'node:zlib';
 
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
-import { AUTOMATION_VERSION, type SceneSummary } from '../src/app/automation/types';
+import {
+  AUTOMATION_VERSION,
+  type ReferenceSummaryData,
+  type SceneSummary,
+} from '../src/app/automation/types';
 import { MCP_SETTINGS, MCP_TOOLS } from '../src/domain/mcp/guide';
 import { SCENE_HANDOVER, decodeScenePayload } from '../src/domain/services/sceneLink';
 import { SNAPSHOT_VIEWS } from '../src/viewport/snapshot';
@@ -93,10 +97,60 @@ function fakeEngine() {
       return (request.views ?? ['perspective']).map((view) => ({ view, base64: 'iVBORw0KGgo=' }));
     },
     reference: async (request) => (note('reference', request), '# 3DOO scripting reference'),
+    loadReference: async (request) => {
+      note('loadReference', request);
+      return {
+        summary: { ...SUMMARY, id: request.id, view: request.view },
+        base64: 'iVBORw0KGgo=',
+      };
+    },
+    traceReference: async (request) => {
+      note('traceReference', request);
+      return {
+        ...SUMMARY,
+        id: request.id,
+        outline: [
+          [-0.25, 0],
+          [0.25, 0],
+          [0, 1.8],
+        ],
+        simple: !request.points || request.points > 8,
+        profile: [{ at: 0.9, from: -0.1, to: 0.1 }],
+        colours: [{ color: '#c8281e', share: 1, at: [0, 0.9] }],
+      };
+    },
+    compareReference: async (request) => {
+      note('compareReference', request);
+      return {
+        id: request.id,
+        view: 'front',
+        axes: ['x', 'y'],
+        score: request.id === 'empty' ? 0 : 0.873,
+        reference: SUMMARY.bounds,
+        model: request.id === 'empty' ? null : { min: [-0.3, 0], max: [0.25, 1.7] },
+        mismatches: ['at y 1.200, the -x side sticks out 0.060 (model x -0.310, reference -0.250)'],
+        base64: 'iVBORw0KGgo=',
+      };
+    },
     close: async () => {},
   };
   return { engine, calls };
 }
+
+/** What the fake engine says it measured in a reference. */
+const SUMMARY: ReferenceSummaryData = {
+  id: 'front',
+  view: 'front',
+  axes: ['x', 'y'],
+  pixels: [570, 1024],
+  metresPerPixel: 0.0018,
+  size: [0.5, 1.8],
+  bounds: { min: [-0.25, 0], max: [0.25, 1.8] },
+  covers: { min: [-0.5, -0.1], max: [0.5, 1.9] },
+  background: '#ffffff',
+  pieces: 1,
+  ignored: 0,
+};
 
 let folder: string;
 let config: Config;
@@ -122,6 +176,9 @@ describe('the tools', () => {
       'scripting_reference',
       'run_script',
       'render_views',
+      'load_reference',
+      'trace_reference',
+      'compare_to_reference',
       'export_model',
       'share_link',
       'open_file',
@@ -227,6 +284,157 @@ describe('the tools', () => {
     expect(
       (await readFile(join(folder, 'my_chair_top.png')).catch(() => null))?.length,
     ).toBeGreaterThan(0);
+  });
+
+  it('hands angles and a sheet on to the page, and names a saved sheet as one', async () => {
+    const { engine, calls } = fakeEngine();
+    engine.render = async (request) => (
+      calls.push({ method: 'render', argument: request }),
+      [{ view: 'front, right, yaw 30 pitch 10', base64: 'iVBORw0KGgo=' }]
+    );
+    const result = await callTool(
+      'render_views',
+      {
+        views: ['front', 'right'],
+        cameras: [{ yaw: 30, pitch: 10 }],
+        shading: 'silhouette',
+        sheet: true,
+        save: true,
+        name: 'mug',
+      },
+      { engine, config, protocolVersion: '2025-06-18' },
+    );
+
+    expect(calls[0].argument).toMatchObject({
+      cameras: [{ yaw: 30, pitch: 10 }],
+      shading: 'silhouette',
+      sheet: true,
+    });
+    expect(textOf(result)).toContain('One sheet of front, right, yaw 30 pitch 10');
+    expect(textOf(result)).toContain(join(folder, 'mug_sheet.png'));
+  });
+
+  it('loads a reference picture from the output folder, called by its view unless named', async () => {
+    const { engine, calls } = fakeEngine();
+    await writeFile(join(folder, 'mug.png'), 'png!');
+    const result = await callTool(
+      'load_reference',
+      { image: 'mug.png', view: 'front', height: 0.1, crop: [0, 0, 50, 80], holes: true },
+      { engine, config, protocolVersion: '' },
+    );
+
+    expect(calls[0]).toEqual({
+      method: 'loadReference',
+      argument: expect.objectContaining({
+        id: 'front',
+        name: 'mug.png',
+        base64: Buffer.from('png!').toString('base64'),
+        view: 'front',
+        height: 0.1,
+        crop: [0, 0, 50, 80],
+        holes: true,
+      }),
+    });
+    expect(result.content.filter((item) => item.type === 'image')).toHaveLength(1);
+    expect(textOf(result)).toMatch(
+      /Reference "front", seen from the front: its points are \[x, y\]/,
+    );
+    expect(textOf(result)).toContain('scene.reference("front")');
+
+    const named = await callTool(
+      'load_reference',
+      { image: join(folder, 'mug.png'), view: 'right', width: 0.12, id: 'side' },
+      { engine, config, protocolVersion: '' },
+    );
+    expect(calls[1].argument).toMatchObject({ id: 'side', view: 'right', width: 0.12 });
+    expect(named.isError).toBeUndefined();
+
+    const missing = await callTool(
+      'load_reference',
+      { image: 'gone.png', view: 'front', height: 1 },
+      { engine, config, protocolVersion: '' },
+    );
+    expect(textOf(missing)).toMatch(/There is no file at/);
+  });
+
+  it('downloads a reference from a web address, and refuses a web page', async () => {
+    const { engine, calls } = fakeEngine();
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    onTestFinished(() => fetch.mockRestore());
+
+    fetch.mockResolvedValueOnce(
+      new Response(Buffer.from('png!'), { headers: { 'content-type': 'image/png' } }),
+    );
+    await callTool(
+      'load_reference',
+      { image: 'https://example.com/refs/mug%20front.png', view: 'front', height: 0.1 },
+      { engine, config, protocolVersion: '' },
+    );
+    expect(calls[0].argument).toMatchObject({ name: 'mug front.png' });
+
+    fetch.mockResolvedValueOnce(
+      new Response('<html></html>', { headers: { 'content-type': 'text/html' } }),
+    );
+    const page = await callTool(
+      'load_reference',
+      { image: 'https://example.com/mug', view: 'front', height: 0.1 },
+      { engine, config, protocolVersion: '' },
+    );
+    expect(page.isError).toBe(true);
+    expect(textOf(page)).toMatch(/is a web page, not a picture/);
+
+    fetch.mockResolvedValueOnce(new Response('', { status: 404, statusText: 'Not Found' }));
+    const gone = await callTool(
+      'load_reference',
+      { image: 'https://example.com/gone.png', view: 'front', height: 0.1 },
+      { engine, config, protocolVersion: '' },
+    );
+    expect(textOf(gone)).toMatch(/404 Not Found/);
+  });
+
+  it('traces a reference as numbers, and says when it is cut down too far', async () => {
+    const { engine, calls } = fakeEngine();
+    const result = await callTool(
+      'trace_reference',
+      { id: 'front', points: 32, rows: 12 },
+      { engine, config, protocolVersion: '' },
+    );
+    expect(calls[0]).toEqual({
+      method: 'traceReference',
+      argument: { id: 'front', points: 32, rows: 12 },
+    });
+    expect(textOf(result)).toContain('Outline, 3 points [x, y]: [[-0.25,0],[0.25,0],[0,1.8]]');
+    expect(textOf(result)).toContain('Profile, bottom to top, [y, x from, x to]: [[0.9,-0.1,0.1]]');
+    expect(textOf(result)).toContain('#c8281e 100% at [0, 0.9]');
+    expect(textOf(result)).not.toMatch(/cross itself/);
+
+    const coarse = await callTool(
+      'trace_reference',
+      { id: 'front', points: 8 },
+      { engine, config, protocolVersion: '' },
+    );
+    expect(textOf(coarse)).toMatch(/cross itself at a thin part/);
+  });
+
+  it('compares the model with a reference in words and one picture', async () => {
+    const { engine, calls } = fakeEngine();
+    const result = await callTool(
+      'compare_to_reference',
+      { id: 'front', objects: ['MUG'] },
+      { engine, config, protocolVersion: '' },
+    );
+    expect(calls[0].argument).toEqual({ id: 'front', objects: ['MUG'] });
+    expect(textOf(result)).toContain('Overlap 0.873 with "front", seen from the front');
+    expect(textOf(result)).toContain('Reference: x -0.250 to 0.250, y 0.000 to 1.800.');
+    expect(textOf(result)).toContain('- at y 1.200, the -x side sticks out 0.060');
+    expect(result.content.filter((item) => item.type === 'image')).toHaveLength(1);
+
+    const empty = await callTool(
+      'compare_to_reference',
+      { id: 'empty' },
+      { engine, config, protocolVersion: '' },
+    );
+    expect(textOf(empty)).toMatch(/None of the model is in the reference's frame/);
   });
 
   it('opens the hosted editor, and says how to set one when there is none', async () => {

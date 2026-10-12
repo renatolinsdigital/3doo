@@ -1,8 +1,16 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
+import { STRAIGHT_VIEWS, VIEW_AXES } from '@kernel/index';
+
 import { OPENING_VIEW, axisViewAngles } from './CameraController';
-import { SNAPSHOT_VIEWS, snapshotAngles, snapshotCamera } from './snapshot';
+import {
+  SNAPSHOT_VIEWS,
+  framedCamera,
+  shotLabel,
+  snapshotAngles,
+  snapshotCamera,
+} from './snapshot';
 
 const box = new THREE.Box3(new THREE.Vector3(-1, 0, -0.5), new THREE.Vector3(3, 2, 0.5));
 const center = box.getCenter(new THREE.Vector3());
@@ -82,5 +90,73 @@ describe('snapshot cameras', () => {
     const { camera } = snapshotCamera('perspective', new THREE.Box3(), 1, 'auto');
     expect(Number.isFinite(camera.position.length())).toBe(true);
     expect(camera.position.length()).toBeGreaterThan(1);
+  });
+});
+
+describe('cameras at any angle', () => {
+  it('turn from the front toward the right with yaw, and rise with pitch', () => {
+    const from = (yaw: number, pitch: number) =>
+      snapshotCamera({ yaw, pitch }, box, 1, 'auto')
+        .camera.position.clone()
+        .sub(center)
+        .normalize();
+
+    expect(from(0, 0).z).toBeCloseTo(1);
+    expect(from(90, 0).x).toBeCloseTo(1);
+    expect(from(-90, 0).x).toBeCloseTo(-1);
+    expect(from(0, 90).y).toBeCloseTo(1, 2);
+    expect(from(0, -90).y).toBeCloseTo(-1, 2);
+    expect(snapshotAngles({ yaw: 45, pitch: 30 }).phi).toBeCloseTo(OPENING_VIEW.phi);
+    expect(snapshotAngles({ yaw: 45, pitch: 30 }).theta).toBeCloseTo(OPENING_VIEW.theta);
+  });
+
+  it('draw in perspective, through the field of view asked for', () => {
+    const { camera } = snapshotCamera({ yaw: 10, pitch: 5, fov: 20 }, box, 1, 'auto');
+    expect(camera).toBeInstanceOf(THREE.PerspectiveCamera);
+    expect((camera as THREE.PerspectiveCamera).fov).toBe(20);
+  });
+
+  it('are named by their angles', () => {
+    expect(shotLabel('front')).toBe('front');
+    expect(shotLabel({ yaw: 30, pitch: 10 })).toBe('yaw 30 pitch 10');
+    expect(shotLabel({ yaw: 30, pitch: 10, fov: 25 })).toBe('yaw 30 pitch 10 fov 25');
+  });
+});
+
+describe('the straight-on views', () => {
+  const vector = ({ x, y, z }: { x: number; y: number; z: number }) => new THREE.Vector3(x, y, z);
+
+  it('show the world the way VIEW_AXES says, which is how a reference is measured', () => {
+    for (const view of STRAIGHT_VIEWS) {
+      const { camera } = snapshotCamera(view, box, 1, 'auto');
+      const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+      const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+      const toward = camera.position.clone().sub(center).normalize();
+
+      expect(right.distanceTo(vector(VIEW_AXES[view].right)), view).toBeLessThan(0.01);
+      expect(up.distanceTo(vector(VIEW_AXES[view].up)), view).toBeLessThan(0.01);
+      expect(toward.distanceTo(vector(VIEW_AXES[view].toward)), view).toBeLessThan(0.01);
+    }
+  });
+
+  it('frame an exact rectangle of the world when told to, edge to edge', () => {
+    for (const view of STRAIGHT_VIEWS) {
+      const frame = { view, center: { x: 0.2, y: 1, z: -0.3 }, halfWidth: 1.5, halfHeight: 0.75 };
+      const { camera } = framedCamera(frame, box);
+      const { right, up } = VIEW_AXES[view];
+      const middle = vector(frame.center);
+      const at = (across: number, upward: number) =>
+        middle
+          .clone()
+          .addScaledVector(vector(right), across * frame.halfWidth)
+          .addScaledVector(vector(up), upward * frame.halfHeight)
+          .project(camera);
+
+      expect(at(1, 0).x, view).toBeCloseTo(1);
+      expect(at(-1, 0).x, view).toBeCloseTo(-1);
+      expect(at(0, 1).y, view).toBeCloseTo(1);
+      expect(at(0, -1).y, view).toBeCloseTo(-1);
+      for (const point of corners(camera)) expect(Math.abs(point.z), view).toBeLessThan(1);
+    }
   });
 });

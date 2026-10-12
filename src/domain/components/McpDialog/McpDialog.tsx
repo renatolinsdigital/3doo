@@ -159,17 +159,6 @@ export function McpDialog() {
               to download: add the server to your assistant and it fetches the published package
               itself the first time it starts.
             </p>
-            <ul className="mcp-dialog__points">
-              <li>Needs the internet, since the hidden browser loads the editor from the web.</li>
-              <li>
-                Pages it saves open the model on the hosted editor, so they work on any computer and
-                for anyone you send them to.
-              </li>
-              <li>
-                The hosted editor has to be on the same version as the server, or the first call
-                says which one to update.
-              </li>
-            </ul>
             <p className="mcp-dialog__text">In Claude Code:</p>
             <CopyBlock label="Claude Code command, hosted" text={hostedClaudeCodeCommand()} />
             <p className="mcp-dialog__text">

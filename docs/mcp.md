@@ -91,7 +91,7 @@ visitor's browser gets, and the scene lives only in the headless tab.
    Either way the server reads JSON-RPC requests on stdin, answers on stdout
    and logs to stderr. MCP needs no network port: stdio is the whole transport.
 3. **The handshake.** Claude sends `initialize` and `tools/list`. The server
-   answers both from its own code, with its instructions and its list of seven
+   answers both from its own code, with its instructions and its list of ten
    tools. No browser starts yet, so a session that never calls a tool never
    launches one.
 4. **The first tool call starts the browser.** `BrowserEngine`
@@ -275,16 +275,24 @@ and that address has to start with `http://` or `https://`.
 
 ## The tools
 
-Seven tools. Their descriptions in `mcp/tools.ts` are written for the model and
+Ten tools. Their descriptions in `mcp/tools.ts` are written for the model and
 say when to use each one, so the model learns the workflow from the tool list.
-The server's `instructions`, sent with `initialize`, repeat that workflow in one
-paragraph.
+The server's `instructions`, sent with `initialize`, lay that workflow out in
+stages: read the quickstart, load any pictures the user gave, then build a
+blockout, the forms and the detail, checking each stage before the next, and
+hand over only what was asked. The check after each stage replaced an earlier
+rule of one render and done, which capped every model at its first draft. A
+silhouette sheet or a reference comparison costs one image, so a check per
+stage stays cheap.
 
 | Tool | Arguments | Returns |
 | --- | --- | --- |
 | `scripting_reference` | `topic`, `example` | The quickstart by default; `api`, `examples`, `all` or one example on request, as Markdown |
 | `run_script` | `script` (required), `reset` | What the run did, console output, the scene summary |
-| `render_views` | `views`, `width`, `height`, `shading`, `projection`, `grid`, `save`, `name` | One PNG image per view |
+| `render_views` | `views`, `cameras`, `width`, `height`, `shading`, `sheet`, `projection`, `grid`, `save`, `name` | One PNG image per view, or one for a whole sheet |
+| `load_reference` | `image` and `view` (required), `height` or `width`, `id`, `crop`, `background`, `tolerance`, `holes` | What was measured, and the picture with the outline found and a metre grid drawn on |
+| `trace_reference` | `id` (required), `points`, `rows` | The outline, profile and colours, in world metres |
+| `compare_to_reference` | `id` (required), `objects` | The overlap, the worst mismatches in words, and a picture of where the two differ |
 | `export_model` | `format` (required), `name`, `preset`, `triangulate`, `directory`, `embed` | The path of each file written, a resource link to each, and the files themselves with `embed` |
 | `share_link` | `app_url`, `name`, `open` | The path of an `.html` page that carries the scene and opens it in the hosted editor, and a resource link to it |
 | `open_file` | `path` (required) | The scene summary after opening |
@@ -365,9 +373,11 @@ The result is a text label and an image for each view:
 
 | Argument | Values | Default |
 | --- | --- | --- |
-| `views` | any of `perspective`, `front`, `back`, `right`, `left`, `top`, `bottom` | `["perspective"]` |
-| `width`, `height` | 16 to 2048 pixels each | 800 by 600 |
-| `shading` | `solid`, `solidWire`, `wireframe`, `xray`, `matcap` | `solidWire`, the editor's own default |
+| `views` | any of `perspective`, `front`, `back`, `right`, `left`, `top`, `bottom` | `["perspective"]`, or none when `cameras` is given |
+| `cameras` | `{ yaw, pitch, fov }` angles in degrees, drawn after the named views | none |
+| `width`, `height` | 16 to 2048 pixels each, for each picture or for the whole sheet | 800 by 600 |
+| `shading` | `solid`, `solidWire`, `wireframe`, `xray`, `matcap`, `silhouette` | `solidWire`, the editor's own default |
+| `sheet` | `true` or `false`: every view in one labelled picture | `false` |
 | `projection` | `auto`, `perspective`, `orthographic` | `auto` |
 | `grid` | `true` or `false`: draw the ground grid and its centre lines | `true` |
 | `save` | `true` or `false`: also write each picture to the output folder as `<name>_<view>.png` | `false` |
@@ -389,6 +399,177 @@ The views are the editor's cameras:
 views in orthographic projection. That is how a set of views is read: with no
 perspective shrinking, proportions can be compared from one view to the next.
 The details are under [the snapshot renderer](#the-snapshot-renderer).
+
+A camera from `cameras` stands anywhere round the model. `yaw` turns from the
+front toward the right, so 90 is the right view, and `pitch` rises from level,
+so 90 looks straight down: `perspective` is yaw 45, pitch 30. `fov` narrows
+or widens the lens, 5 to 120 degrees around the editor's 50, to match a photo
+or concept art taken through a longer or shorter one. Under `auto` such a
+camera draws in perspective, and its picture is labelled `yaw 35 pitch 20`.
+
+`silhouette` draws every object in black on white, with no grid and no
+lighting. A shape that reads in black on white reads in any shading, so it is
+the check for proportions, and it is also what `compare_to_reference` measures
+with.
+
+`sheet` puts every view into one picture, as near square as the count allows,
+each labelled in its corner. `width` and `height` are then the size of the
+whole sheet, each view drawn at the size of its cell, and `save` writes one
+`<name>_sheet.png`. One image costs a model far fewer tokens to read than
+four, which is what makes a check per stage affordable.
+
+### References: building from a picture
+
+Three tools let an assistant replicate a drawing or a photo rather than guess
+at it. Models are poor at reading exact positions off a picture, so the server
+does the measuring and hands back numbers in world metres, with a picture
+beside them for judgement.
+
+```text
+ load_reference ── picture ─▶ subject found, scaled, placed ─▶ picture + grid
+        │
+        ├─ trace_reference / scene.reference ─▶ outline, profile, colours
+        │                                          │
+        │            scene.extrudeOutline, scene.lathe
+        │                                          ▼
+        └──────────── compare_to_reference ◀── the model's silhouette
+```
+
+#### `load_reference`
+
+```json
+{ "name": "load_reference",
+  "arguments": { "image": "drawings/bottle_front.png", "view": "front", "height": 0.3 } }
+```
+
+| Argument | Means | Default |
+| --- | --- | --- |
+| `image` | A file path, absolute or relative to the output folder, or an http(s) address. PNG, JPEG, WebP or GIF, up to 25 MB | required |
+| `view` | The straight-on view the picture shows: `front`, `back`, `right`, `left`, `top` or `bottom` | required |
+| `height`, `width` | The subject's real size in the picture, in metres. Exactly one | required |
+| `id` | What scripts and later calls name it by. Loading the same id again replaces it | the view |
+| `crop` | `[x, y, width, height]` in the picture's pixels: one view of a turnaround sheet, or the subject alone | the whole picture |
+| `background` | `auto`, or the colour behind the subject as `#rrggbb` | `auto` |
+| `tolerance` | How far a colour may stray from the background and still count as it, 0 to 1 | 0.12 |
+| `holes` | Count background-coloured gaps inside the subject as background too | `false` |
+
+The result is a summary and one picture: the reference paled, the outline
+found drawn round the subject in red, and a grid every round number of metres,
+labelled in world terms. When the red line does not hug the subject, the
+assistant loads it again with other settings.
+
+```text
+Loaded bottle_front.png.
+Reference "front", seen from the front: its points are [x, y] in world metres.
+The subject is 0.183 by 0.300 m, at x -0.092 to 0.092, y 0.000 to 0.300, ...
+```
+
+How the picture is read, in `src/domain/references/analysis.ts`:
+
+- **The subject.** A picture with transparency is read by its alpha. Otherwise
+  the background is the commonest colour in a band along the picture's edge,
+  counted in coarse buckets so the noise of a JPEG falls in one, and it is
+  flooded in from that whole band. The band reaches past a frame drawn round
+  a picture or a sheet's cell, which a fill from the outermost pixels alone
+  could not. Flooding from the edge keeps a highlight inside the subject the
+  colour of the background as part of it, which leaves a gap such as the
+  inside of a handle counted as subject too. `holes: true` cuts those gaps
+  out, and is off by default because a white shirt on a white background would
+  go with them.
+- **What is not the subject.** Pieces a line or two thick (frames, rules),
+  pieces under 1% of the largest (text, specks), and pieces under 10% of it
+  that stand well away from it (a label in a corner) are left out and counted
+  in the summary. A small piece close to the subject stays: a gem by a staff
+  is more likely part of it than a label is. When more than one piece is left,
+  the summary says that the size was measured round all of them, and to crop
+  a sheet to one view.
+- **The scale.** The subject's height or width in pixels against the metres
+  given. A picture is measured at no more than 1024 pixels on its longer side,
+  which is plenty to model from and keeps every step quick.
+- **The place.** Seen from the front, back or sides, the subject's middle is
+  on the vertical axis and its foot on the ground; from the top or bottom, its
+  middle is at the origin. So a front and a side picture of one subject line
+  up with each other, and with a model built standing at the origin.
+
+`src/domain/references/references.ts` keeps the references, by id, for the
+page's lifetime, and turns pixels into world metres and back (`toWorld`,
+`toPixel`). The engine keeps each request too: a page thrown away after a
+timeout takes its references with it, and the next page loads them again.
+
+#### Points, as each view sees them
+
+A point in a picture is written as the two world values its view spans, across
+then up, which is how `scene.extrudeOutline` reads them back:
+
+| View | Point | Across the picture is | Up the picture is |
+| --- | --- | --- | --- |
+| `front` | `[x, y]` | +x | +y |
+| `back` | `[x, y]` | -x | +y |
+| `right` | `[z, y]` | -z | +y |
+| `left` | `[z, y]` | +z | +y |
+| `top` | `[x, z]` | +x | -z |
+| `bottom` | `[x, z]` | +x | +z |
+
+The table is `VIEW_AXES` and `VIEW_PLANES` in `src/kernel/math/views.ts`. A
+test holds the snapshot renderer's cameras to it, so a point traced in a
+picture and the same point in a render of the model agree.
+
+#### `trace_reference`
+
+```json
+{ "name": "trace_reference", "arguments": { "id": "front", "points": 32, "rows": 12 } }
+```
+
+Returns the reference as numbers:
+
+- **outline**: the outline round the largest piece, holes left out, as world
+  points. It is traced along the pixel edges, so it is exactly the boundary
+  of the subject's pixels, then cut down by Douglas-Peucker to at most
+  `points` (8 to 1000, default 64), the smallest tolerance that fits.
+  `simple` says whether cutting it down made it cross itself at a thin part,
+  which more points cures.
+- **profile**: how far the subject reaches at `rows` evenly spaced heights
+  (2 to 200, default 24), bottom to top, as `{ at, from, to }`. Half of
+  `to - from` is the radius `scene.lathe` wants.
+- **colours**: up to six main colours, by k-means over the subject's pixels,
+  each with its share and the middle of where it is.
+
+A script reads the same through `scene.reference(id, { points, rows })`, so the
+assistant builds from the numbers without copying them into a script. The
+result text says so.
+
+#### `compare_to_reference`
+
+```json
+{ "name": "compare_to_reference", "arguments": { "id": "front", "objects": ["BOTTLE"] } }
+```
+
+Renders the model in `silhouette` from the reference's view, with an
+orthographic camera on exactly the world rectangle the reference covers
+(`framedCamera` in `src/viewport/snapshot.ts`), at the reference's own size.
+The two line up pixel for pixel, and `compareWithModel` measures them:
+
+```text
+Overlap 0.747 with "front", seen from the front (1 is a perfect match).
+Reference: x -0.336 to 0.336, y 0.000 to 1.100.
+Model: x -0.300 to 0.300, y 0.000 to 1.100.
+Worst places, worst first:
+- at x 0.301, the reference has shape from y 0.042 to 0.604 and the model none
+- at x -0.287, the +y side sticks out 0.471 (model y 1.100, reference 0.629)
+In the picture, red is model only, blue reference only and grey both.
+```
+
+- The overlap is shared pixels over pixels in either.
+- 48 rows and 48 columns are checked across both shapes. Each side where they
+  part by more than a pixel and a half, or 1% of the subject, is a mismatch,
+  said as which side of which axis, how far, and where each reaches.
+  Neighbouring rows usually report one feature, so only the worst of a run is
+  kept, and at most eight are listed.
+- `objects` limits the silhouette to some objects or outliner folders, for a
+  scene with a ground or other models in it.
+- The picture paints where only the model is red, where only the reference is
+  blue, where both are grey, and pales the reference everywhere else, with the
+  same grid as `load_reference`.
 
 ### `export_model`
 
@@ -518,6 +699,8 @@ The quickstart states the rules that a table of names cannot show:
 - `scene.boolean` refuses an object that still has a live modifier, and uses
   its cutters up, so duplicate one first to keep it.
 - `object.bounds` places one part against another.
+- `scene.reference(id)` is a loaded picture in world metres: its outline goes
+  into `scene.extrudeOutline`, its profile gives `scene.lathe` its radii.
 - A model is better built over several short scripts, because each run is
   checked on its own and a failure takes back only that run.
 
@@ -572,7 +755,10 @@ interface AutomationApi {
   exportFile(request: ExportRequest): Promise<ExportedFile[]>;  // { name, mimeType, base64 }[]
   render(request: RenderRequest): Promise<RenderedView[]>;      // { view, base64 }[]
   shareLink(appUrl: string): Promise<{ url: string; length: number }>;  // see below
-  reference(): string;
+  reference(request?: ReferenceRequest): string;        // the scripting reference
+  loadReference(request: LoadReferenceRequest): Promise<LoadedReference>;  // summary, picture
+  traceReference(request: TraceRequest): ReferenceTraceData;   // outline, profile, colours
+  compareReference(request: CompareRequest): Promise<ComparisonData>;  // score, mismatches, picture
 }
 ```
 
@@ -633,6 +819,20 @@ long thin model seen end on does not leave the frame mostly empty:
 
 An empty scene frames a two-metre box at the origin, so the picture shows the
 grid rather than failing.
+
+A shot is a named view, an angle (`{ yaw, pitch, fov }`, turned into the
+orbit's own angles by `snapshotAngles`), or a frame: a straight-on view on an
+exact world rectangle, which `framedCamera` builds from `VIEW_AXES` rather than
+from the model's box. That last is how a comparison lines up with its
+reference. `silhouette` swaps every material for one flat black one, drawn on
+both sides so a plane seen from behind still counts, on a white background
+with no grid. `objects` limits a render to some objects, by id.
+
+A sheet is put together in the page by `composeSheet` in
+`src/app/automation/pictures.ts`, which also decodes reference pictures and
+paints the grid and comparison pictures. That file is the only part of
+references that needs a canvas, and it is checked end to end through the
+server; the measuring it hands pixels to is plain arithmetic, tested in Node.
 
 Rendering needs WebGL. Headless Chromium on a machine with no GPU gets it from
 SwiftShader, a software renderer, which the server asks for with
@@ -731,10 +931,11 @@ its renderer process with it, and reports:
 
 ```text
 The script ran for more than 60 seconds and was stopped. The scene was lost
-with it: the next call starts on an empty one.
+with it: the next call starts on an empty one, with the references loaded again.
 ```
 
-The next call opens a fresh page in the same browser.
+The next call opens a fresh page in the same browser, and loads into it every
+reference loaded so far, since the engine keeps each request it made.
 
 A script runs in a browser page, not in Node. It cannot reach the file system
 or the server's process. It can do what any page can, network requests
@@ -745,8 +946,11 @@ assistant, and is not a sandbox for scripts from strangers.
 
 | Test | Covers |
 | --- | --- |
-| `src/app/automation/automation.test.ts` | Every page API method against the real store: summaries, failing lines, exports, opening, links, render argument checks, the reference |
-| `src/viewport/snapshot.test.ts` | The cameras match the editor's, look from the right side, and fit every corner of a box in frame from every view, projection and aspect |
+| `src/app/automation/automation.test.ts` | Every page API method against the real store: summaries, failing lines, exports, opening, links, render and reference argument checks, tracing, the reference |
+| `src/viewport/snapshot.test.ts` | The cameras match the editor's, look from the right side, and fit every corner of a box in frame from every view, projection and aspect; cameras at any angle; the straight-on views show the world as `VIEW_AXES` says, and a framed camera covers its rectangle edge to edge |
+| `src/domain/references/references.test.ts` | Finding the subject by alpha, by the border's colour and by a colour given; frames, labels and specks left out; outlines traced and cut down; colours; scale, place and the world terms of each view; comparisons in words |
+| `src/kernel/primitives/fromPoints.test.ts` | Lathes and outlines come out closed, valid and facing outward, on every plane and either way round |
+| `src/domain/scripting/shapesFromPoints.test.ts` | `scene.lathe`, `scene.extrudeOutline` and `scene.reference` from a script, and what each refuses |
 | `src/domain/services/sceneLink.test.ts` | The link codec, its compression and its errors |
 | `src/domain/hooks/useAutosave.test.tsx` | Opening a link, taking it off the address bar, the fallback, a pasted link; taking a scene handed over by the page that opened the tab, only from that page, and the cube when the page is gone, silent or damaged |
 | `mcp/protocol.test.ts` | The JSON-RPC transport |

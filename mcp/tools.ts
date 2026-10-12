@@ -4,7 +4,14 @@ import { basename, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
 
-import type { ExportRequest, RenderRequest, SceneSummary } from '../src/app/automation/types.ts';
+import type {
+  CameraAngle,
+  ComparisonData,
+  ExportRequest,
+  ReferenceSummaryData,
+  RenderRequest,
+  SceneSummary,
+} from '../src/app/automation/types.ts';
 
 import { type Config, linkTarget, outputPath } from './config.ts';
 import type { Engine } from './engine.ts';
@@ -48,7 +55,9 @@ interface Tool {
 
 /** The views, named as the editor names them; each is one of Shift and a number. */
 export const VIEWS = ['perspective', 'front', 'back', 'right', 'left', 'top', 'bottom'] as const;
-const SHADINGS = ['solid', 'solidWire', 'wireframe', 'xray', 'matcap'] as const;
+/** The straight-on views, the ones a reference picture can be seen from. */
+export const STRAIGHT = ['front', 'back', 'right', 'left', 'top', 'bottom'] as const;
+const SHADINGS = ['solid', 'solidWire', 'wireframe', 'xray', 'matcap', 'silhouette'] as const;
 const PROJECTIONS = ['auto', 'perspective', 'orthographic'] as const;
 const FORMATS = ['3doo', 'obj', 'fbx'] as const;
 const PRESETS = ['unity', 'unreal', 'blender', 'maya'] as const;
@@ -136,7 +145,7 @@ const runScript: Tool = {
     'Returns what the run did and a summary of the scene: every object with its vertex and face counts, position, rotation, scale, world size and colour, and the bounds of the whole scene.',
     'A script that fails reports the reason and the line, and leaves the scene exactly as it was before the run.',
     'To read values out, `return` one or console.log them: text comes back as it is, anything else as JSON, so `return box.bounds` reads where an object sits.',
-    'Afterwards, call render_views to look at the result, then export_model or share_link to hand it over.',
+    'Build in stages, the big shapes first, then their forms, then detail, and check each stage with render_views, or compare_to_reference when building from a picture, before starting the next. Then export_model or share_link hands it over.',
   ].join(' '),
   inputSchema: {
     type: 'object',
@@ -174,8 +183,9 @@ const renderViews: Tool = {
   title: 'Take pictures of the model',
   description: [
     "Renders the scene to PNG pictures, the way the editor's viewport draws it, and returns them as images.",
-    '"perspective" is the view a fresh editor opens on. The others are the straight-on cameras of the editor\'s Shift+number keys: front (Shift+1), right (Shift+3), top (Shift+7), back (Ctrl+Shift+1), left (Ctrl+Shift+3) and bottom (Ctrl+Shift+7).',
-    'Each picture frames the whole visible scene. Use one perspective view to check a result, and several views when the user asks to see the model from different sides.',
+    '"perspective" is the view a fresh editor opens on, yaw 45 pitch 30. The others are the straight-on cameras of the editor\'s Shift+number keys: front (Shift+1), right (Shift+3), top (Shift+7), back (Ctrl+Shift+1), left (Ctrl+Shift+3) and bottom (Ctrl+Shift+7). cameras adds views from any angle.',
+    'Each picture frames the whole visible scene.',
+    'To check proportions, render shading "silhouette" with sheet: true for front, right and top in one picture: a shape that reads in black on white reads in any shading. To check forms, one solid render from a three-quarter camera such as { yaw: 35, pitch: 20 }.',
   ].join(' '),
   inputSchema: {
     type: 'object',
@@ -184,7 +194,37 @@ const renderViews: Tool = {
         type: 'array',
         items: { type: 'string', enum: [...VIEWS] },
         default: ['perspective'],
-        description: 'Which views to render, one picture each.',
+        description:
+          'Which views to render, one picture each. None by default when cameras is given.',
+      },
+      cameras: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            yaw: {
+              type: 'number',
+              minimum: -360,
+              maximum: 360,
+              description: 'Degrees round from the front toward the right: 90 is the right side.',
+            },
+            pitch: {
+              type: 'number',
+              minimum: -90,
+              maximum: 90,
+              description: 'Degrees up from level: 90 looks straight down.',
+            },
+            fov: {
+              type: 'number',
+              minimum: 5,
+              maximum: 120,
+              description:
+                'Field of view in degrees, default 50. Lower flattens the perspective, as a long lens does.',
+            },
+          },
+          required: ['yaw', 'pitch'],
+        },
+        description: 'Views from any angle, in perspective, drawn after the named views.',
       },
       width: { type: 'integer', minimum: 16, maximum: 2048, default: 800 },
       height: { type: 'integer', minimum: 16, maximum: 2048, default: 600 },
@@ -193,7 +233,13 @@ const renderViews: Tool = {
         enum: [...SHADINGS],
         default: 'solidWire',
         description:
-          'solidWire shows the surface with its edges, which shows the topology. solid is the cleaner picture.',
+          'solidWire shows the surface with its edges, which shows the topology. solid is the cleaner picture. silhouette is the model in black on white, with no grid.',
+      },
+      sheet: {
+        type: 'boolean',
+        default: false,
+        description:
+          'All the views in one labelled picture, width by height in all: one image to read instead of several.',
       },
       projection: {
         type: 'string',
@@ -216,31 +262,317 @@ const renderViews: Tool = {
   },
   annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
   async run(args, context) {
+    const sheet = optional<boolean>(args, 'sheet', 'boolean');
     const request: RenderRequest = {
       views: args.views as string[] | undefined,
+      cameras: args.cameras as CameraAngle[] | undefined,
       width: optional<number>(args, 'width', 'number'),
       height: optional<number>(args, 'height', 'number'),
       shading: optional<string>(args, 'shading', 'string'),
       projection: optional<string>(args, 'projection', 'string'),
       grid: optional<boolean>(args, 'grid', 'boolean'),
+      sheet,
     };
     const shots = await context.engine.render(request);
     const content: Content[] = [];
     let saved: string[] = [];
+    // A file name per picture: a sheet's label lists every view in it.
+    const fileView = (view: string) => (sheet ? 'sheet' : view.replace(/\s+/g, '_'));
     if (optional<boolean>(args, 'save', 'boolean')) {
       const stem = optional<string>(args, 'name', 'string') ?? (await context.engine.scene()).name;
       saved = await writeFiles(
         context.config.outputDir,
-        shots.map((shot) => ({ name: `${safeStem(stem)}_${shot.view}.png`, base64: shot.base64 })),
+        shots.map((shot) => ({
+          name: `${safeStem(stem)}_${fileView(shot.view)}.png`,
+          base64: shot.base64,
+        })),
       );
     }
     shots.forEach((shot, index) => {
-      content.push(
-        text(saved[index] ? `${shot.view} view, saved to ${saved[index]}` : `${shot.view} view`),
-      );
+      const what = sheet
+        ? `One sheet of ${shot.view}`
+        : shot.view.startsWith('yaw ')
+          ? `View from ${shot.view}`
+          : `${shot.view} view`;
+      content.push(text(saved[index] ? `${what}, saved to ${saved[index]}` : what));
       content.push({ type: 'image', data: shot.base64, mimeType: 'image/png' });
     });
     return { content };
+  },
+};
+
+/** The largest picture `load_reference` reads, file or download. */
+const MAX_PICTURE_BYTES = 25 * 1024 * 1024;
+
+/** The bytes of a picture named by a path, relative to the output folder, or by an http(s) address. */
+async function readPicture(
+  image: string,
+  config: Config,
+): Promise<{ name: string; bytes: Buffer }> {
+  if (/^https?:\/\//i.test(image)) {
+    const response = await fetch(image, { signal: AbortSignal.timeout(30_000) }).catch(
+      (error: Error) => {
+        throw new Error(`Could not download ${image}: ${error.message}`);
+      },
+    );
+    if (!response.ok)
+      throw new Error(`Could not download ${image}: ${response.status} ${response.statusText}.`);
+    if (/^text\/html/i.test(response.headers.get('content-type') ?? '')) {
+      throw new Error(
+        `${image} is a web page, not a picture: give the address of the image itself.`,
+      );
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length > MAX_PICTURE_BYTES) throw new Error(`${image} is larger than 25 MB.`);
+    const name = decodeURIComponent(new URL(image).pathname.split('/').pop() || 'picture');
+    return { name, bytes };
+  }
+  const path = outputPath(config, image);
+  const bytes = await readFile(path).catch((error: NodeJS.ErrnoException) => {
+    throw new Error(error.code === 'ENOENT' ? `There is no file at ${path}.` : error.message);
+  });
+  if (bytes.length > MAX_PICTURE_BYTES) throw new Error(`${path} is larger than 25 MB.`);
+  return { name: basename(path), bytes };
+}
+
+const metres = (value: number) => (Math.round(value * 1000) / 1000 || 0).toFixed(3);
+
+/** `x -0.310 to 0.310, y 0.000 to 1.800`. */
+const span = (axes: readonly [string, string], box: { min: number[]; max: number[] }) =>
+  axes.map((axis, i) => `${axis} ${metres(box.min[i])} to ${metres(box.max[i])}`).join(', ');
+
+function referenceText(summary: ReferenceSummaryData): string {
+  const { id, view, axes, pieces, ignored } = summary;
+  const lines = [
+    `Reference "${id}", seen from the ${view}: its points are [${axes[0]}, ${axes[1]}] in world metres.`,
+    `The subject is ${metres(summary.size[0])} by ${metres(summary.size[1])} m, at ${span(axes, summary.bounds)}, measured on ${summary.pixels[0]} by ${summary.pixels[1]} pixels (${summary.metresPerPixel} m a pixel). Background ${summary.background}, ${pieces} ${pieces === 1 ? 'piece' : 'pieces'}.`,
+  ];
+  if (ignored > 0) {
+    lines.push(
+      `Left out ${ignored} small or thin ${ignored === 1 ? 'piece' : 'pieces'} as not the subject, such as text, a frame or specks.`,
+    );
+  }
+  if (pieces > 1) {
+    lines.push(
+      'The size was measured round every piece together: if the picture holds more than one view or object, crop it to one.',
+    );
+  }
+  return lines.join('\n');
+}
+
+const loadReference: Tool = {
+  name: 'load_reference',
+  title: 'Load a reference picture',
+  description: [
+    'Loads a picture of what the user wants modelled, seen straight on from one view, and measures it in metres: the size you give it scales the picture, the subject is placed standing at the origin (centred, its foot on the ground; centred from the top or bottom), and the subject is told from its background.',
+    'Returns the picture with the outline found drawn in red over a metre grid. If the red line does not hug the subject, load it again with the background colour, a tolerance, a crop or holes.',
+    'Load one picture per view: front, then right (or left) and top when there are any. A turnaround sheet holding several views loads once per view, each with its crop. Then trace_reference or scene.reference(id) in a script gives the outline and profile as numbers to build from, and compare_to_reference checks the model against it.',
+    'A picture the user pasted into the chat has no path: ask them where the file is.',
+  ].join(' '),
+  inputSchema: {
+    type: 'object',
+    properties: {
+      image: {
+        type: 'string',
+        description:
+          'The picture: a file path, absolute or relative to the output folder, or an http(s) address. PNG, JPEG, WebP or GIF.',
+      },
+      view: {
+        type: 'string',
+        enum: [...STRAIGHT],
+        description: 'Which side the picture shows the subject from.',
+      },
+      height: {
+        type: 'number',
+        exclusiveMinimum: 0,
+        description:
+          'How tall the subject is in the picture, in metres: from top to bottom of the picture, which is depth for a top view. Give this or width.',
+      },
+      width: {
+        type: 'number',
+        exclusiveMinimum: 0,
+        description: 'How wide the subject is in the picture, in metres. Give this or height.',
+      },
+      id: {
+        type: 'string',
+        description:
+          'What to call it in scripts and later calls. Defaults to the view, such as "front". Loading another under the same id replaces it.',
+      },
+      crop: {
+        type: 'array',
+        items: { type: 'integer' },
+        minItems: 4,
+        maxItems: 4,
+        description:
+          'The part of the picture to use, [x, y, width, height] in its pixels from the top left: one view of a sheet, or the subject alone.',
+      },
+      background: {
+        type: 'string',
+        default: 'auto',
+        description:
+          '"auto" reads it off the picture\'s border, or transparency when the picture has it. Or the colour behind the subject, "#rrggbb".',
+      },
+      tolerance: {
+        type: 'number',
+        minimum: 0,
+        maximum: 1,
+        default: 0.12,
+        description:
+          'How far a colour may stray from the background and still count as it. Raise it for a noisy or shaded background, lower it for a pale subject.',
+      },
+      holes: {
+        type: 'boolean',
+        default: false,
+        description:
+          'Count background-coloured gaps enclosed by the subject, such as the inside of a handle, as background too. Off by default because a pale part of the subject would be cut out with them.',
+      },
+    },
+    required: ['image', 'view'],
+  },
+  annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: true },
+  async run(args, context) {
+    const image = required<string>(args, 'image', 'string');
+    const view = required<string>(args, 'view', 'string');
+    const crop = args.crop;
+    if (crop !== undefined && !Array.isArray(crop)) {
+      throw new Error('crop has to be [x, y, width, height].');
+    }
+    const { name, bytes } = await readPicture(image, context.config);
+    const loaded = await context.engine.loadReference({
+      id: optional<string>(args, 'id', 'string') ?? view,
+      name,
+      base64: bytes.toString('base64'),
+      view,
+      height: optional<number>(args, 'height', 'number'),
+      width: optional<number>(args, 'width', 'number'),
+      crop: crop as number[] | undefined,
+      background: optional<string>(args, 'background', 'string'),
+      tolerance: optional<number>(args, 'tolerance', 'number'),
+      holes: optional<boolean>(args, 'holes', 'boolean'),
+    });
+    const { id } = loaded.summary;
+    return {
+      content: [
+        text(
+          [
+            `Loaded ${name}.`,
+            referenceText(loaded.summary),
+            'The picture shows the outline found in red over a grid in metres.',
+            `Build from it with scene.reference("${id}") in a script: its outline goes into scene.extrudeOutline with view "${loaded.summary.view}", its profile gives scene.lathe its radii. Check with compare_to_reference.`,
+          ].join('\n'),
+        ),
+        { type: 'image', data: loaded.base64, mimeType: 'image/png' },
+      ],
+    };
+  },
+};
+
+const traceReferenceTool: Tool = {
+  name: 'trace_reference',
+  title: 'Trace a reference',
+  description: [
+    'Returns a loaded reference as numbers, in world metres: the outline round the subject as [across, up] points on the axes of its view ([x, y] from the front, [z, y] from the side, [x, z] from above), the profile (how far the subject reaches at evenly spaced heights) and its main colours with where each sits.',
+    'Read it to plan the model and its proportions. To build from the numbers, use scene.reference(id) in a script, which gives exactly this, rather than copying them into the script.',
+  ].join(' '),
+  inputSchema: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', description: 'The reference, as load_reference named it.' },
+      points: {
+        type: 'integer',
+        minimum: 8,
+        maximum: 1000,
+        default: 64,
+        description: 'The most points the outline may have. More keeps finer detail.',
+      },
+      rows: {
+        type: 'integer',
+        minimum: 2,
+        maximum: 200,
+        default: 24,
+        description: 'How many heights the profile is measured at.',
+      },
+    },
+    required: ['id'],
+  },
+  annotations: { readOnlyHint: true, openWorldHint: false },
+  async run(args, { engine }) {
+    const id = required<string>(args, 'id', 'string');
+    const trace = await engine.traceReference({
+      id,
+      points: optional<number>(args, 'points', 'number'),
+      rows: optional<number>(args, 'rows', 'number'),
+    });
+    const [across, up] = trace.axes;
+    const lines = [
+      referenceText(trace),
+      `Outline, ${trace.outline.length} points [${across}, ${up}]: ${JSON.stringify(trace.outline)}`,
+    ];
+    if (!trace.simple) {
+      lines.push(
+        'Cutting the outline down to that many points made it cross itself at a thin part: ask for more points before building from it.',
+      );
+    }
+    lines.push(
+      `Profile, bottom to top, [${up}, ${across} from, ${across} to]: ${JSON.stringify(trace.profile.map((row) => [row.at, row.from, row.to]))}`,
+      `Colours, largest share first: ${trace.colours.map((colour) => `${colour.color} ${Math.round(colour.share * 100)}% at [${colour.at.join(', ')}]`).join('; ')}`,
+      `In a script: scene.reference("${trace.id}") gives the same as { outline, profile: [{ at, from, to }], colours }.`,
+    );
+    return { content: [text(lines.join('\n'))] };
+  },
+};
+
+function comparisonText(result: ComparisonData): string {
+  const lines = [
+    `Overlap ${result.score.toFixed(3)} with "${result.id}", seen from the ${result.view} (1 is a perfect match).`,
+    `Reference: ${span(result.axes, result.reference)}.`,
+  ];
+  if (!result.model) {
+    lines.push(
+      "None of the model is in the reference's frame. Is it built standing at the origin, with the 3D cursor there?",
+    );
+    return lines.join('\n');
+  }
+  lines.push(`Model: ${span(result.axes, result.model)}.`);
+  if (result.mismatches.length === 0) lines.push('No place is off by more than a pixel or two.');
+  else lines.push('Worst places, worst first:', ...result.mismatches.map((line) => `- ${line}`));
+  lines.push('In the picture, red is model only, blue reference only and grey both.');
+  return lines.join('\n');
+}
+
+const compareReferenceTool: Tool = {
+  name: 'compare_to_reference',
+  title: 'Compare the model with a reference',
+  description: [
+    "Draws the model's silhouette from a reference's view, framed exactly like the reference, and measures where the two differ.",
+    'Returns how much they overlap (1 is a perfect match), the worst places they part in words with the distances in metres ("at y 1.200, the -x side sticks out 0.060"), and one picture: red where only the model is, blue where only the reference is, grey where both are.',
+    'Use it after each stage of building from a reference, and fix the worst places first.',
+  ].join(' '),
+  inputSchema: {
+    type: 'object',
+    properties: {
+      id: { type: 'string', description: 'The reference, as load_reference named it.' },
+      objects: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Compare only these objects or outliner folders, by name, such as when the scene has a ground or other models in it. Default: everything visible.',
+      },
+    },
+    required: ['id'],
+  },
+  annotations: { readOnlyHint: true, openWorldHint: false },
+  async run(args, { engine }) {
+    const result = await engine.compareReference({
+      id: required<string>(args, 'id', 'string'),
+      objects: args.objects as string[] | undefined,
+    });
+    return {
+      content: [
+        text(comparisonText(result)),
+        { type: 'image', data: result.base64, mimeType: 'image/png' },
+      ],
+    };
   },
 };
 
@@ -457,6 +789,9 @@ export const TOOLS: readonly Tool[] = [
   scriptingReference,
   runScript,
   renderViews,
+  loadReference,
+  traceReferenceTool,
+  compareReferenceTool,
   exportModel,
   shareLink,
   openFile,

@@ -4,15 +4,31 @@ import {
   exportOBJ,
   importFBX,
   importOBJ,
+  STRAIGHT_VIEWS,
+  VIEW_PLANES,
   parseProject,
   radToDeg,
   resolveExportOptions,
 } from '@kernel/index';
 import { evaluatedMesh, useEditorStore } from '@store/index';
 import type { ShadingMode } from '@store/types';
-import { SNAPSHOT_VIEWS, type SnapshotProjection, renderSnapshots } from '@viewport/snapshot';
+import {
+  SNAPSHOT_VIEWS,
+  type SnapshotAngle,
+  type SnapshotProjection,
+  type SnapshotShading,
+  renderSnapshots,
+} from '@viewport/snapshot';
 
-import { worldBounds } from '@domain/scripting/api';
+import {
+  addReference,
+  compareWithModel,
+  getReference,
+  referenceFrame,
+  summarize,
+  traceReference,
+} from '@domain/references/references';
+import { readFields, worldBounds } from '@domain/scripting/api';
 import { SCRIPT_EXAMPLES } from '@domain/scripting/examples';
 import { runScript } from '@domain/scripting/runScript';
 import { exportObjects, exportPictures, hydrateAssets, projectText } from '@domain/services/assets';
@@ -25,26 +41,43 @@ import {
   MODIFIER_TYPES,
   OPERATOR_SPECS,
   PRIMITIVE_KINDS,
+  REFERENCE_OPTIONS,
 } from '@domain/scripting/reference';
 
 import { type DocsBlock, scriptingApiBlocks } from '../../modules/docs/content';
 
 import {
+  composeSheet,
+  decodePicture,
+  drawComparison,
+  drawReference,
+  rasterOf,
+  sheetLayout,
+  silhouetteMask,
+} from './pictures';
+import {
   AUTOMATION_VERSION,
   type AutomationApi,
+  type CompareRequest,
+  type ComparisonData,
   type ExportRequest,
   type ExportedFile,
+  type LoadReferenceRequest,
+  type LoadedReference,
   type ObjectSummary,
   type OpenRequest,
   type ReferenceRequest,
+  type ReferenceTraceData,
   type RenderRequest,
   type RenderedView,
   type SceneSummary,
   type ShareLink,
+  type TraceRequest,
   type Vec3Data,
 } from './types';
 
 const SHADING_MODES: readonly ShadingMode[] = ['solid', 'solidWire', 'wireframe', 'xray', 'matcap'];
+const SHADINGS: readonly SnapshotShading[] = [...SHADING_MODES, 'silhouette'];
 const PROJECTIONS: readonly SnapshotProjection[] = ['auto', 'perspective', 'orthographic'];
 const PRESETS = ['unity', 'unreal', 'blender', 'maya'] as const;
 const MAX_PICTURE_SIDE = 2048;
@@ -243,23 +276,186 @@ async function open(request: OpenRequest): Promise<SceneSummary> {
   throw new Error(`${name || 'That file'} is not a .3doo, .obj or .fbx file.`);
 }
 
+/** A number in a range, as a request field. */
+function within(value: unknown, what: string, min: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < min || value > max) {
+    throw new Error(
+      `${what} has to be a number from ${min} to ${max}, not ${JSON.stringify(value)}.`,
+    );
+  }
+  return value;
+}
+
+function readCameras(value: unknown): SnapshotAngle[] {
+  if (value === undefined || value === null) return [];
+  if (!Array.isArray(value)) {
+    throw new Error('cameras has to be a list of { yaw, pitch } angles, in degrees.');
+  }
+  return value.map((camera, index) => {
+    const what = `cameras[${index}]`;
+    if (camera === null || typeof camera !== 'object' || Array.isArray(camera)) {
+      throw new Error(`${what} has to be { yaw, pitch } in degrees, with fov if wanted.`);
+    }
+    const { yaw, pitch, fov, ...rest } = camera as Record<string, unknown>;
+    const extra = Object.keys(rest)[0];
+    if (extra) throw new Error(`${what} has no "${extra}": it takes yaw, pitch and fov.`);
+    return {
+      yaw: within(yaw, `${what}.yaw`, -360, 360),
+      pitch: within(pitch, `${what}.pitch`, -90, 90),
+      ...(fov === undefined ? {} : { fov: within(fov, `${what}.fov`, 5, 120) }),
+    };
+  });
+}
+
+const base64Of = (dataUrl: string) => dataUrl.slice(dataUrl.indexOf(',') + 1);
+
 async function render(request: RenderRequest): Promise<RenderedView[]> {
-  const asked = request?.views ?? ['perspective'];
-  if (!Array.isArray(asked) || asked.length === 0) {
+  const cameras = readCameras(request?.cameras);
+  const asked = request?.views ?? (cameras.length > 0 ? [] : ['perspective']);
+  if (!Array.isArray(asked) || asked.length + cameras.length === 0) {
     throw new Error(`views has to be a list of one or more of ${SNAPSHOT_VIEWS.join(', ')}.`);
   }
   const views = asked.map((view) => oneOf(view, SNAPSHOT_VIEWS, 'Each view', 'perspective'));
-  const shots = await renderSnapshots([...new Set(views)], {
-    width: side(request.width, 'width', 800),
-    height: side(request.height, 'height', 600),
-    shading: oneOf(request.shading, SHADING_MODES, 'shading', 'solidWire'),
+  const shots = [...new Set(views), ...cameras];
+  const width = side(request.width, 'width', 800);
+  const height = side(request.height, 'height', 600);
+  const shading = oneOf(request.shading, SHADINGS, 'shading', 'solidWire');
+  if (request.sheet !== undefined && typeof request.sheet !== 'boolean') {
+    throw new Error('sheet has to be true or false.');
+  }
+
+  // A sheet's views share its size, each drawn at the size of its cell.
+  const { columns, rows } = request.sheet ? sheetLayout(shots.length) : { columns: 1, rows: 1 };
+  const cell = { width: Math.floor(width / columns), height: Math.floor(height / rows) };
+  if (cell.width < 16 || cell.height < 16) {
+    throw new Error(
+      `A sheet ${width} by ${height} is too small for ${shots.length} views: make it larger.`,
+    );
+  }
+
+  const pictures = await renderSnapshots(shots, {
+    ...cell,
+    shading,
     projection: oneOf(request.projection, PROJECTIONS, 'projection', 'auto'),
     grid: request.grid ?? true,
   });
-  return shots.map((shot) => ({
-    view: shot.view,
-    base64: shot.dataUrl.slice(shot.dataUrl.indexOf(',') + 1),
-  }));
+  if (!request.sheet) {
+    return pictures.map((picture) => ({ view: picture.view, base64: base64Of(picture.dataUrl) }));
+  }
+  const background = shading === 'silhouette' ? '#ffffff' : store().viewportBackground;
+  const sheet = await composeSheet(
+    pictures.map((picture) => ({ label: picture.view, dataUrl: picture.dataUrl })),
+    width,
+    height,
+    background,
+  );
+  return [{ view: pictures.map((picture) => picture.view).join(', '), base64: sheet }];
+}
+
+// ------------------------------------------------------------- references
+
+const HEX = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+async function loadReference(request: LoadReferenceRequest): Promise<LoadedReference> {
+  if (typeof request?.id !== 'string' || request.id.trim() === '') {
+    throw new Error('A reference needs an id to be called by, such as "front".');
+  }
+  if (typeof request.base64 !== 'string')
+    throw new Error('loadReference needs the picture as base64.');
+  if (request.view === undefined) {
+    throw new Error(`view is required: one of ${STRAIGHT_VIEWS.join(', ')}.`);
+  }
+  const view = oneOf(request.view, STRAIGHT_VIEWS, 'view', 'front');
+  const { height, width } = request;
+  if ((height === undefined) === (width === undefined)) {
+    throw new Error(
+      'Give the subject one size in metres: height (how tall it is in the picture) or width (how wide).',
+    );
+  }
+  const size = (value: unknown, what: string) => within(value, what, 1e-4, 1e5);
+  const crop = request.crop;
+  if (
+    crop !== undefined &&
+    (!Array.isArray(crop) || crop.length !== 4 || !crop.every((n) => Number.isFinite(n)))
+  ) {
+    throw new Error("crop has to be [x, y, width, height] in the picture's pixels.");
+  }
+  const background = request.background ?? 'auto';
+  if (background !== 'auto' && (typeof background !== 'string' || !HEX.test(background))) {
+    throw new Error(`background has to be "auto" or "#rrggbb", not ${JSON.stringify(background)}.`);
+  }
+  if (request.holes !== undefined && typeof request.holes !== 'boolean') {
+    throw new Error('holes has to be true or false.');
+  }
+
+  const raster = await decodePicture(
+    base64ToBytes(request.base64),
+    crop?.map((n) => Math.round(n)),
+  );
+  const reference = addReference({
+    id: request.id.trim(),
+    view,
+    source: typeof request.name === 'string' && request.name ? request.name : 'the picture',
+    raster,
+    height: height === undefined ? undefined : size(height, 'height'),
+    width: width === undefined ? undefined : size(width, 'width'),
+    background,
+    tolerance:
+      request.tolerance === undefined ? undefined : within(request.tolerance, 'tolerance', 0, 1),
+    holes: request.holes,
+  });
+  return { summary: summarize(reference), base64: drawReference(reference) };
+}
+
+function traceReferenceData(request: TraceRequest): ReferenceTraceData {
+  if (typeof request?.id !== 'string') throw new Error('Name the reference to trace by its id.');
+  const options = readFields('trace_reference', REFERENCE_OPTIONS, {
+    points: request.points,
+    rows: request.rows,
+  });
+  return traceReference(getReference(request.id), options);
+}
+
+/** The ids of the objects, and of the objects in the folders, these names name. */
+function namedObjects(names: unknown): Set<string> {
+  if (!Array.isArray(names) || names.some((name) => typeof name !== 'string')) {
+    throw new Error('objects has to be a list of object or folder names.');
+  }
+  const state = store();
+  const ids = new Set<string>();
+  for (const name of names as string[]) {
+    const wanted = name.toLowerCase();
+    const group = state.groups.find((candidate) => candidate.name.toLowerCase() === wanted);
+    const found = state.objects.filter(
+      (object) => object.name.toLowerCase() === wanted || (group && object.groupId === group.id),
+    );
+    if (found.length === 0) throw new Error(`There is no object or folder called "${name}".`);
+    for (const object of found) ids.add(object.id);
+  }
+  return ids;
+}
+
+async function compareReference(request: CompareRequest): Promise<ComparisonData> {
+  if (typeof request?.id !== 'string')
+    throw new Error('Name the reference to compare with by its id.');
+  const reference = getReference(request.id);
+  const objects = request.objects === undefined ? undefined : namedObjects(request.objects);
+  const [shot] = await renderSnapshots([{ view: reference.view, ...referenceFrame(reference) }], {
+    width: reference.raster.width,
+    height: reference.raster.height,
+    shading: 'silhouette',
+    projection: 'orthographic',
+    grid: false,
+    objects,
+  });
+  const model = silhouetteMask(await rasterOf(shot.dataUrl));
+  return {
+    id: reference.id,
+    view: reference.view,
+    axes: VIEW_PLANES[reference.view],
+    ...compareWithModel(reference, model),
+    base64: drawComparison(reference, model),
+  };
 }
 
 async function shareLink(appUrl: string): Promise<ShareLink> {
@@ -319,6 +515,10 @@ line, leaving the scene exactly as it was before the run.
 const WHAT_A_SCRIPT_CAN_DO = `- Add the ten primitives, or build any mesh from a list of points and faces
   (\`scene.add\`, \`scene.addMesh\`), each named, placed, turned, scaled and
   coloured as it is added.
+- Build solids from points: turn a profile round the Y axis (\`scene.lathe\`),
+  or make a flat outline solid (\`scene.extrudeOutline\`).
+- Read a picture loaded with \`load_reference\` (\`scene.reference\`): its
+  outline, how wide it is at each height and its colours, in world metres.
 - Move, turn, scale, rename, hide, lock, duplicate (plain or linked) and delete
   objects; join them, split them into loose parts, put them in outliner
   folders, and cut them with booleans.
@@ -347,6 +547,11 @@ const HOW_A_SCRIPT_WORKS = `- An operation acts on the selection, as its button 
   \`mesh.deform\` to shape the mesh; a cage takes no other mesh operation.
 - \`object.bounds\` places one part against another: a lamp stands on a table
   at \`table.bounds.max.y\`.
+- \`scene.reference(id)\` is a loaded picture in world metres, its subject
+  standing at the origin. Its \`outline\` goes straight into
+  \`scene.extrudeOutline(ref.outline, { view: ref.view })\`, and its \`profile\`
+  rows \`{ at, from, to }\` give \`scene.lathe\` its radii. With the 3D cursor at
+  the origin, what you build lines up with the picture.
 - Build a model over several short scripts rather than one long one. Each run
   is checked on its own, and a failure takes back only that run.`;
 
@@ -479,6 +684,9 @@ export function createAutomationApi(): AutomationApi {
     render,
     shareLink,
     reference: scriptingReference,
+    loadReference,
+    traceReference: traceReferenceData,
+    compareReference,
   };
 }
 

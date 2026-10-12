@@ -22,8 +22,12 @@ const INSTRUCTIONS = `3DOO is a browser 3D mesh editor. These tools drive a priv
 
 Workflow:
 1. scripting_reference, once. The default is a short quickstart with every name the API has; it is enough to write scripts. Do not fetch topic "api", "examples" or "all" up front: use them only to look up one name or copy one finished model.
-2. run_script builds the model. The scene persists between calls, so build in several short scripts. reset: true starts over. A failed script changes nothing and names the line.
-3. render_views once to check the result. Send it back to the user as it is: do not keep refining a model that already matches the request.
+2. When the user gives pictures of the subject, load_reference each straight-on view (front, then right and top if there are any) with the subject's real height, and check that the red outline hugs it. Build from the numbers rather than by eye: in a script, scene.reference(id) gives the outline for scene.extrudeOutline and the profile for scene.lathe.
+3. run_script builds the model in stages, each in a few short scripts and each checked before the next. The scene persists between calls; reset: true starts over; a failed script changes nothing and names the line.
+   a. Blockout: the big shapes and their proportions only. Check with render_views, shading "silhouette" and sheet: true for front, right and top, or with compare_to_reference. Proportions are cheap to fix now and dear later.
+   b. Forms: taper, bevels and the secondary shapes. Check with one solid render from a three-quarter camera, { yaw: 35, pitch: 20 }.
+   c. Detail and colour. Check once more.
+   Stop at the stage the request needs: a quick blockout ends after a. Check once a stage, fix what the check shows, and do not polish a model that already matches the request.
 4. Hand over only what was asked: export_model (.3doo, .obj or .fbx files), share_link (saves an .html page whose button opens the model in the editor, opened in the user's browser with open: true; pass on the path of that file), or the pictures from render_views. For several sides, render the views named: front, back, right, left, top, bottom, or perspective.
 
 Units are metres and degrees, +Y is up, and the front view looks from +Z.`;

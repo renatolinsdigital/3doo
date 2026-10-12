@@ -12,7 +12,13 @@ import {
   type ExportRequest,
   type ExportedFile,
   type OpenRequest,
+  type CompareRequest,
+  type ComparisonData,
+  type LoadReferenceRequest,
+  type LoadedReference,
   type ReferenceRequest,
+  type ReferenceTraceData,
+  type TraceRequest,
   type RenderRequest,
   type RenderedView,
   type RunReport,
@@ -30,6 +36,9 @@ export interface Engine {
   exportFile(request: ExportRequest): Promise<ExportedFile[]>;
   render(request: RenderRequest): Promise<RenderedView[]>;
   reference(request?: ReferenceRequest): Promise<string>;
+  loadReference(request: LoadReferenceRequest): Promise<LoadedReference>;
+  traceReference(request: TraceRequest): Promise<ReferenceTraceData>;
+  compareReference(request: CompareRequest): Promise<ComparisonData>;
   close(): Promise<void>;
 }
 
@@ -119,6 +128,11 @@ export class BrowserEngine implements Engine {
   private url: string | null = null;
   private starting: Promise<Page> | null = null;
   private pageErrors: string[] | null = null;
+  /**
+   * The pictures loaded as references, by id. They live in the page, so a page
+   * thrown away after a timeout takes them with it; a new page loads them again.
+   */
+  private readonly references = new Map<string, LoadReferenceRequest>();
 
   constructor(config: Config) {
     this.config = config;
@@ -163,6 +177,11 @@ export class BrowserEngine implements Engine {
         `${this.url} speaks version ${version} of the automation API and this server speaks ${AUTOMATION_VERSION}. Rebuild with \`npm run build\`, or point THREEDOO_ENGINE_URL at a matching 3DOO.`,
       );
     }
+    for (const [id, request] of this.references) {
+      await page
+        .evaluate((value) => window.threedoo?.loadReference(value), request)
+        .catch(() => this.references.delete(id));
+    }
     this.page = page;
     return page;
   }
@@ -192,7 +211,7 @@ export class BrowserEngine implements Engine {
       if (!(error instanceof TimedOut)) throw unwrap(error);
       await this.discardPage();
       throw new Error(
-        `${what} ran for more than ${this.config.timeoutMs / 1000} seconds and was stopped. The scene was lost with it: the next call starts on an empty one.`,
+        `${what} ran for more than ${this.config.timeoutMs / 1000} seconds and was stopped. The scene was lost with it: the next call starts on an empty one, with the references loaded again.`,
       );
     } finally {
       clearTimeout(timer);
@@ -261,6 +280,20 @@ export class BrowserEngine implements Engine {
 
   reference(request?: ReferenceRequest): Promise<string> {
     return this.call('Reading the reference', 'reference', request);
+  }
+
+  async loadReference(request: LoadReferenceRequest): Promise<LoadedReference> {
+    const loaded = await this.call('Loading the reference', 'loadReference', request);
+    this.references.set(loaded.summary.id, request);
+    return loaded;
+  }
+
+  traceReference(request: TraceRequest): Promise<ReferenceTraceData> {
+    return this.call('Tracing the reference', 'traceReference', request);
+  }
+
+  compareReference(request: CompareRequest): Promise<ComparisonData> {
+    return this.call('Comparing with the reference', 'compareReference', request);
   }
 
   async close(): Promise<void> {

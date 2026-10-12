@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
 import { ObjectView, imageTexture } from '@bridge/index';
+import { type StraightView, VIEW_AXES } from '@kernel/index';
 import { evaluatedMesh, useEditorStore } from '@store/index';
 import type { ShadingMode, ViewportSettings } from '@store/types';
 
@@ -26,25 +27,77 @@ export const SNAPSHOT_VIEWS = [
 export type SnapshotView = (typeof SNAPSHOT_VIEWS)[number];
 
 /**
- * How the picture is projected. `auto` draws the opening view in perspective
- * and the straight-on views flat, which is what a set of views of a model is
- * read as: the straight-on ones are for measuring against each other.
+ * A camera anywhere round the model, in degrees: `yaw` turns from the front
+ * toward the right, so 90 is the right view, and `pitch` rises from level, so
+ * 90 looks straight down. The opening view is yaw 45, pitch 30.
+ */
+export interface SnapshotAngle {
+  yaw: number;
+  pitch: number;
+  /** How tall a slice of the scene the picture takes in, in degrees. Default 50. */
+  fov?: number;
+}
+
+/**
+ * A straight-on view framed on an exact rectangle of the world rather than on
+ * the model, so the picture lines up pixel for pixel with another of the same
+ * rectangle: a reference picture, measured in metres.
+ */
+export interface SnapshotFrame {
+  view: StraightView;
+  /** The world point in the middle of the picture. */
+  center: { x: number; y: number; z: number };
+  /** Half the picture's width and height, in metres. */
+  halfWidth: number;
+  halfHeight: number;
+}
+
+export type SnapshotShot = SnapshotView | SnapshotAngle | SnapshotFrame;
+
+/**
+ * How the picture is projected. `auto` draws the opening view and any angle in
+ * perspective and the straight-on views flat, which is what a set of views of
+ * a model is read as: the straight-on ones are for measuring against each other.
  */
 export type SnapshotProjection = 'auto' | 'perspective' | 'orthographic';
+
+/**
+ * The viewport's own shadings, and `silhouette`: the model in black on white,
+ * which shows whether its shape reads before anything else about it, and is
+ * what a reference is compared against.
+ */
+export type SnapshotShading = ShadingMode | 'silhouette';
 
 export interface SnapshotOptions {
   width: number;
   height: number;
-  shading: ShadingMode;
+  shading: SnapshotShading;
   projection: SnapshotProjection;
   /** The ground grid and its two centre lines, as the viewport draws them. */
   grid: boolean;
+  /** Draw only the objects with these ids. Default: every visible object. */
+  objects?: ReadonlySet<string>;
 }
 
 export interface Snapshot {
-  view: SnapshotView;
+  /** The view's name, or the angle it was taken from, such as `yaw 30 pitch 10`. */
+  view: string;
   /** A PNG, as a `data:` URL. */
   dataUrl: string;
+}
+
+const isAngle = (shot: SnapshotShot): shot is SnapshotAngle =>
+  typeof shot === 'object' && 'yaw' in shot;
+
+const isFrame = (shot: SnapshotShot): shot is SnapshotFrame =>
+  typeof shot === 'object' && 'halfWidth' in shot;
+
+/** What a picture from `shot` is called. */
+export function shotLabel(shot: SnapshotShot): string {
+  if (isFrame(shot)) return shot.view;
+  if (!isAngle(shot)) return shot;
+  const fov = shot.fov === undefined ? '' : ` fov ${shot.fov}`;
+  return `yaw ${shot.yaw} pitch ${shot.pitch}${fov}`;
 }
 
 const AXIS_OF_VIEW: Record<Exclude<SnapshotView, 'perspective'>, ['x' | 'y' | 'z', boolean]> = {
@@ -62,16 +115,66 @@ const FOV = 50;
 /** Room left round the model, as a share of its size on screen. */
 const MARGIN = 1.12;
 
+/** Where the poles are kept from, as the editor's orbit keeps them. */
+const POLE_MARGIN = 0.001;
+
 /** Where the camera stands for a view, as the editor's orbit would put it. */
-export function snapshotAngles(view: SnapshotView): ViewAngles {
+export function snapshotAngles(view: SnapshotView | SnapshotAngle): ViewAngles {
+  if (isAngle(view)) {
+    const phi = Math.PI / 2 - THREE.MathUtils.degToRad(view.pitch);
+    return {
+      phi: Math.min(Math.PI - POLE_MARGIN, Math.max(POLE_MARGIN, phi)),
+      theta: THREE.MathUtils.degToRad(view.yaw),
+    };
+  }
   if (view === 'perspective') return OPENING_VIEW;
   const [axis, negative] = AXIS_OF_VIEW[view];
   return axisViewAngles(axis, negative);
 }
 
-function isFlat(view: SnapshotView, projection: SnapshotProjection): boolean {
-  if (projection === 'auto') return view !== 'perspective';
+function isFlat(view: SnapshotView | SnapshotAngle, projection: SnapshotProjection): boolean {
+  if (projection === 'auto') return !isAngle(view) && view !== 'perspective';
   return projection === 'orthographic';
+}
+
+/**
+ * An orthographic camera on exactly the rectangle `frame` names, looking along
+ * its view, with depth enough for everything in `box`.
+ */
+export function framedCamera(
+  frame: SnapshotFrame,
+  box: THREE.Box3,
+): { camera: THREE.OrthographicCamera; distance: number } {
+  const { up, toward } = VIEW_AXES[frame.view];
+  const center = new THREE.Vector3(frame.center.x, frame.center.y, frame.center.z);
+  const back = new THREE.Vector3(toward.x, toward.y, toward.z);
+
+  let reach = 1;
+  if (!box.isEmpty()) {
+    for (let index = 0; index < 8; index++) {
+      const corner = new THREE.Vector3(
+        index & 1 ? box.max.x : box.min.x,
+        index & 2 ? box.max.y : box.min.y,
+        index & 4 ? box.max.z : box.min.z,
+      );
+      reach = Math.max(reach, Math.abs(corner.sub(center).dot(back)));
+    }
+  }
+
+  const { halfWidth, halfHeight } = frame;
+  const camera = new THREE.OrthographicCamera(
+    -halfWidth,
+    halfWidth,
+    halfHeight,
+    -halfHeight,
+    0.01,
+    reach * 2 + 2,
+  );
+  camera.position.copy(center).addScaledVector(back, reach + 1);
+  camera.up.set(up.x, up.y, up.z);
+  camera.lookAt(center);
+  camera.updateMatrixWorld();
+  return { camera, distance: halfHeight / 0.6 };
 }
 
 /**
@@ -83,7 +186,7 @@ function isFlat(view: SnapshotView, projection: SnapshotProjection): boolean {
  * part seen end on does not leave the frame mostly empty.
  */
 export function snapshotCamera(
-  view: SnapshotView,
+  view: SnapshotView | SnapshotAngle,
   box: THREE.Box3,
   aspect: number,
   projection: SnapshotProjection,
@@ -137,7 +240,8 @@ export function snapshotCamera(
     return { camera, distance: half / 0.6 };
   }
 
-  const halfV = Math.tan(THREE.MathUtils.degToRad(FOV) / 2);
+  const fov = isAngle(view) && view.fov !== undefined ? view.fov : FOV;
+  const halfV = Math.tan(THREE.MathUtils.degToRad(fov) / 2);
   const halfH = halfV * aspect;
   let distance = 0;
   for (const corner of corners) {
@@ -150,7 +254,7 @@ export function snapshotCamera(
   }
 
   const near = Math.max(distance * 0.01, distance - radius * 1.5);
-  const camera = new THREE.PerspectiveCamera(FOV, aspect, near, distance * 20 + radius * 4);
+  const camera = new THREE.PerspectiveCamera(fov, aspect, near, distance * 20 + radius * 4);
   camera.position.copy(center).addScaledVector(toEye, distance);
   camera.up.copy(up);
   camera.lookAt(center);
@@ -177,11 +281,13 @@ async function texturesLoaded(textures: readonly THREE.Texture[], timeoutMs = 50
  * drives.
  */
 export async function renderSnapshots(
-  views: readonly SnapshotView[],
+  shots: readonly SnapshotShot[],
   options: SnapshotOptions,
 ): Promise<Snapshot[]> {
   const state = useEditorStore.getState();
   const { width, height } = options;
+  const silhouette = options.shading === 'silhouette';
+  const showGrid = options.grid && !silhouette;
 
   const canvas = document.createElement('canvas');
   canvas.width = width;
@@ -196,8 +302,13 @@ export async function renderSnapshots(
   renderer.setSize(width, height, false);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(state.viewportBackground);
+  scene.background = new THREE.Color(silhouette ? 0xffffff : state.viewportBackground);
   addViewportLights(scene);
+  // Both sides, so a plane seen from behind is in the silhouette too.
+  const ink = silhouette
+    ? new THREE.MeshBasicMaterial({ color: 0x000000, side: THREE.DoubleSide })
+    : null;
+  scene.overrideMaterial = ink;
 
   const grid = new ViewportGrid({
     scale: state.gridScale,
@@ -207,11 +318,11 @@ export async function renderSnapshots(
     majorColor: state.gridMajorColor,
     majorOpacity: state.gridMajorOpacity,
   });
-  grid.setVisibility(options.grid, options.grid);
+  grid.setVisibility(showGrid, showGrid);
   scene.add(grid.group);
 
   const settings: ViewportSettings = {
-    shading: options.shading,
+    shading: options.shading === 'silhouette' ? 'solid' : options.shading,
     overlays: { ...state.overlays, origins: false, normals: false, faceOrientation: false },
     backfaceCulling: state.backfaceCulling,
     orthographic: options.projection === 'orthographic',
@@ -227,6 +338,7 @@ export async function renderSnapshots(
   try {
     for (const object of state.objects) {
       if (!object.visible || object.lattice) continue;
+      if (options.objects && !options.objects.has(object.id)) continue;
       const asset = object.image ? state.assets[object.image.assetId] : undefined;
       const texture = asset ? imageTexture(asset) : null;
       if (texture) textures.push(texture);
@@ -250,20 +362,23 @@ export async function renderSnapshots(
     }
     await texturesLoaded(textures);
 
-    const shots: Snapshot[] = [];
-    for (const view of views) {
-      const { camera, distance } = snapshotCamera(view, box, width / height, options.projection);
+    const pictures: Snapshot[] = [];
+    for (const shot of shots) {
+      const { camera, distance } = isFrame(shot)
+        ? framedCamera(shot, box)
+        : snapshotCamera(shot, box, width / height, options.projection);
       grid.update(distance);
       const eye = camera.position;
       for (const objectView of objectViews) {
         objectView.refreshForCamera({ x: eye.x, y: eye.y, z: eye.z });
       }
       renderer.render(scene, camera);
-      shots.push({ view, dataUrl: canvas.toDataURL('image/png') });
+      pictures.push({ view: shotLabel(shot), dataUrl: canvas.toDataURL('image/png') });
     }
-    return shots;
+    return pictures;
   } finally {
     for (const view of objectViews) view.dispose();
+    ink?.dispose();
     grid.dispose();
     renderer.dispose();
     renderer.forceContextLoss();

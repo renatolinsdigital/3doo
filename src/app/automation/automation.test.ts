@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useEditorStore } from '@store/index';
 
 import { API_ENTRIES, OPERATOR_SPECS } from '@domain/scripting/reference';
+import { addReference, clearReferences } from '@domain/references/references';
 import { decodeScenePayload, scenePayloadIn } from '@domain/services/sceneLink';
 
 import {
@@ -166,6 +167,65 @@ describe('the automation API', () => {
     await expect(api.render({ width: 9000 })).rejects.toThrow(/16 to 2048/);
     await expect(api.render({ shading: 'shiny' })).rejects.toThrow(/shading has to be/);
     await expect(api.render({ views: [] })).rejects.toThrow(/one or more/);
+    await expect(api.render({ cameras: [{ yaw: 0, pitch: 120 }] })).rejects.toThrow(
+      /cameras\[0\]\.pitch has to be a number from -90 to 90/,
+    );
+    await expect(api.render({ cameras: [{ yaw: 0, pitch: 0, zoom: 2 }] as never })).rejects.toThrow(
+      /has no "zoom"/,
+    );
+    await expect(api.render({ sheet: 'yes' as never })).rejects.toThrow(/sheet has to be/);
+    await expect(
+      api.render({ views: ['front', 'back', 'left', 'right'], sheet: true, width: 20 }),
+    ).rejects.toThrow(/too small for 4 views/);
+  });
+
+  it('checks a reference before it decodes the picture', async () => {
+    const picture = { id: 'front', name: 'a.png', base64: '' };
+    await expect(api.loadReference({ ...picture, height: 1 } as never)).rejects.toThrow(
+      /view is required/,
+    );
+    await expect(api.loadReference({ ...picture, view: 'side', height: 1 })).rejects.toThrow(
+      /view has to be one of front, back, right, left, top, bottom/,
+    );
+    await expect(api.loadReference({ ...picture, view: 'front' })).rejects.toThrow(
+      /one size in metres/,
+    );
+    await expect(
+      api.loadReference({ ...picture, view: 'front', height: 1, width: 1 }),
+    ).rejects.toThrow(/one size in metres/);
+    await expect(
+      api.loadReference({ ...picture, view: 'front', height: 1, background: 'white' }),
+    ).rejects.toThrow(/"auto" or "#rrggbb"/);
+    await expect(
+      api.loadReference({ ...picture, view: 'front', height: 1, crop: [0, 0, 10] }),
+    ).rejects.toThrow(/crop has to be/);
+  });
+
+  it('traces a loaded reference, checking what it is asked for', () => {
+    const raster = { width: 40, height: 40, data: new Uint8ClampedArray(40 * 40 * 4).fill(255) };
+    for (let y = 10; y < 30; y++) {
+      for (let x = 15; x < 25; x++) raster.data.set([0, 0, 0, 255], (y * 40 + x) * 4);
+    }
+    addReference({ id: 'front', view: 'front', source: 'post.png', raster, height: 2 });
+    try {
+      const trace = api.traceReference({ id: 'front', rows: 2 });
+      expect(trace.size).toEqual([1, 2]);
+      expect(trace.outline).toHaveLength(4);
+      expect(trace.profile).toEqual([
+        { at: 0.5, from: -0.5, to: 0.5 },
+        { at: 1.5, from: -0.5, to: 0.5 },
+      ]);
+      expect(() => api.traceReference({ id: 'front', points: 2 })).toThrow(
+        /trace_reference: points has to be from 8 to 1000/,
+      );
+      expect(() => api.traceReference({ id: 'side' })).toThrow(/The references are "front"/);
+    } finally {
+      clearReferences();
+    }
+  });
+
+  it('refuses to compare with a reference it does not have, or objects it cannot find', async () => {
+    await expect(api.compareReference({ id: 'front' })).rejects.toThrow(/none is loaded/);
   });
 
   it('is put on window for the headless browser to find', () => {

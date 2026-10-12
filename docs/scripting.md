@@ -228,6 +228,28 @@ parameters would lose what its faces wear.
 object's transform. `worldBounds` in `api.ts` is the one function for it: the
 MCP scene summary reads each object's size and the scene's bounds from it too.
 
+### Shapes from points, and references
+
+`scene.lathe` and `scene.extrudeOutline` hand their points to `createLathe` and
+`createOutlinePrism` in `src/kernel/primitives/fromPoints.ts`, then add the
+mesh the way `scene.addMesh` does, at the 3D cursor. The kernel winds the faces
+itself: a profile or an outline may be written either way round and the
+result faces outward, which a test checks by signed volume on every plane. An
+outline that crosses itself is refused before it reaches the kernel, naming a
+point by the crossing, since ear clipping would fill it wrong without a word.
+
+An outline is written as seen from one of the six straight-on views, `[x, y]`
+from the front, `[z, y]` from the side, `[x, z]` from above. Those are the
+terms `VIEW_PLANES` in `src/kernel/math/views.ts` sets, and the same ones a
+reference picture is measured in.
+
+`scene.reference` reads `src/domain/references`: the pictures the MCP server
+loads, measured in world metres (see [mcp.md](mcp.md#references-building-from-a-picture)).
+It is part of the API rather than only a tool of the server so that a script
+builds from the numbers directly. An outline of a few hundred points would cost
+a model tokens to copy into a script, and characters to get wrong. In the
+editor no reference is loaded, and the call says so.
+
 ### Finding the failing line
 
 The script is compiled with `new AsyncFunction('scene', 'view', body)`, where

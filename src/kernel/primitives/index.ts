@@ -543,3 +543,5 @@ export function createTorus(radius = 0.5, tubeRadius = 0.2, segments = 24, rings
   mesh.computeNormals();
   return mesh;
 }
+
+export * from './fromPoints';
