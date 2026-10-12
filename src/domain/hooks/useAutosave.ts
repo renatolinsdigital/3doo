@@ -195,6 +195,7 @@ function openOnCube(): void {
   // The cube is the editor's doing, not the user's. A tab opened and left
   // alone has nothing worth keeping, so it is not counted as a change.
   state.markSaved();
+  useEditorStore.setState({ startFingerprint: sceneFingerprint(state.snapshotDocument()) });
 }
 
 /**

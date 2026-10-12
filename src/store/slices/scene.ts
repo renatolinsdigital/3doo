@@ -626,6 +626,17 @@ export interface SceneSlice {
    */
   savedFingerprint: number | null;
   /**
+   * `sceneFingerprint` of the scene the editor started on, the cube a fresh
+   * tab or FILE > NEW opens on, or null before there is one.
+   *
+   * FILE > NEW and FILE > OPEN go ahead without offering a save while the
+   * scene still matches it, since none of the user's work is on screen to
+   * lose. A fingerprint rather than a flag lowered on the first touch,
+   * because a trip into edit mode and back touches the scene without
+   * changing it.
+   */
+  startFingerprint: number | null;
+  /**
    * Whether this exact scene is sitting in a `.3doo` on disk.
    *
    * Lowered by the same subscription that raises `dirty`, so the first edit
@@ -930,6 +941,7 @@ export const createSceneSlice: StateCreator<
   status: 'Ready',
   dirty: false,
   savedFingerprint: null,
+  startFingerprint: null,
   savedToFile: false,
   projectFile: null,
   autosaveLocation: null,
@@ -2636,7 +2648,13 @@ export const createSceneSlice: StateCreator<
     // is in place, so the watcher that raises the flag on a changed scene would
     // raise it again on the way out of the set above.
     // The new scene has never been in a file, whatever the old one had been.
-    set({ dirty: false, savedFingerprint: null, savedToFile: false, projectFile: null });
+    set({
+      dirty: false,
+      savedFingerprint: null,
+      startFingerprint: null,
+      savedToFile: false,
+      projectFile: null,
+    });
   },
 });
 

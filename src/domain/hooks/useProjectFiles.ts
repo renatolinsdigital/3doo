@@ -68,6 +68,21 @@ async function writeProject(write: (contents: string) => Promise<SaveResult>): P
   return result;
 }
 
+/**
+ * Whether FILE > NEW and FILE > OPEN may replace the scene on screen without
+ * offering a save first: a file on disk holds it, or it is still the scene the
+ * editor started on. A prompt about losing nothing is one people learn to
+ * click straight past, which is how a real warning gets missed later.
+ */
+export function replacingLosesNothing(): boolean {
+  const state = useEditorStore.getState();
+  if (state.savedToFile) return true;
+  return (
+    state.startFingerprint !== null &&
+    sceneFingerprint(state.snapshotDocument()) === state.startFingerprint
+  );
+}
+
 /** New / save / load / import / export, kept out of the components that trigger them. */
 export function useProjectFiles() {
   const newProject = useCallback(() => {
@@ -80,7 +95,11 @@ export function useProjectFiles() {
     state.addPrimitive('cube');
     // The cube is where the new project starts, not an edit to it: an editor
     // left alone from here has nothing worth writing.
-    useEditorStore.setState({ status: 'New project', dirty: false });
+    useEditorStore.setState({
+      status: 'New project',
+      dirty: false,
+      startFingerprint: sceneFingerprint(state.snapshotDocument()),
+    });
     // Discarding the scene is the one project action that used to happen in
     // silence, which reads identically to a button that did nothing at all.
     state.pushToast('info', 'Started a new project');

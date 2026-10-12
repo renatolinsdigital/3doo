@@ -29,7 +29,7 @@ import type {
   ViewLostReason,
 } from '@store/types';
 
-import { useProjectFiles } from '../../hooks/useProjectFiles';
+import { replacingLosesNothing, useProjectFiles } from '../../hooks/useProjectFiles';
 import { canWriteBack, saveTarget } from '../../services/download';
 
 import './TopBar.scss';
@@ -156,7 +156,6 @@ export function TopBar({ brand }: TopBarProps) {
 
   const { newProject, saveProject, saveProjectAs, openProject, importMesh, importImage } =
     useProjectFiles();
-  const savedToFile = useEditorStore((state) => state.savedToFile);
   const projectFile = useEditorStore((state) => state.projectFile);
   const saveFile = saveTarget(projectFile, projectName);
 
@@ -187,11 +186,9 @@ export function TopBar({ brand }: TopBarProps) {
       id: 'new',
       label: 'NEW',
       hint: 'Start a fresh project on a cube, discarding this one',
-      // NEW discards the scene on screen, so it offers the save first. The one
-      // exception is a scene already saved to a .3doo and untouched since:
-      // there is a file to open it from, and a prompt about losing nothing is
-      // one people learn to click straight past.
-      onSelect: () => (savedToFile ? newProject() : openDialog('newProject')),
+      // NEW discards the scene on screen, so it offers the save first, unless
+      // that loses nothing: a scene already in a .3doo, or the starting cube.
+      onSelect: () => (replacingLosesNothing() ? newProject() : openDialog('newProject')),
     },
     {
       id: 'open',
@@ -199,7 +196,7 @@ export function TopBar({ brand }: TopBarProps) {
       hint: 'Load a .3doo project file from disk, over this project',
       // Opening costs what NEW costs: the file replaces the scene on screen,
       // so it asks on the same terms.
-      onSelect: () => (savedToFile ? void openProject() : openDialog('openProject')),
+      onSelect: () => (replacingLosesNothing() ? void openProject() : openDialog('openProject')),
     },
     {
       id: 'save',

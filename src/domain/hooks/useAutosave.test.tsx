@@ -21,7 +21,7 @@ import {
   turnAutosaveOn,
   useAutosave,
 } from './useAutosave';
-import { useProjectFiles } from './useProjectFiles';
+import { replacingLosesNothing, useProjectFiles } from './useProjectFiles';
 
 /** The location the last session was writing its numbered copies to. */
 let storedLocation: FileSystemDirectoryHandle | null = null;
@@ -249,6 +249,20 @@ describe('what the editor opens on', () => {
     expect(useEditorStore.getState().activeObjectId).toBe(objects()[0].id);
   });
 
+  it('lets NEW and OPEN replace the cube without asking until it is changed', async () => {
+    renderHook(() => useAutosave());
+    await waitFor(() => expect(objects()).toHaveLength(1));
+
+    expect(replacingLosesNothing()).toBe(true);
+
+    act(() => useEditorStore.getState().addPrimitive('torus'));
+    expect(replacingLosesNothing()).toBe(false);
+
+    // Taken back, it is the scene the tab opened on again.
+    act(() => useEditorStore.getState().undo());
+    expect(replacingLosesNothing()).toBe(true);
+  });
+
   it('is one undo away from the empty scene, for anyone who wants that', async () => {
     renderHook(() => useAutosave());
     await waitFor(() => expect(objects()).toHaveLength(1));
@@ -326,6 +340,7 @@ describe('opening a scene link', () => {
     await waitFor(() => expect(objects()).toHaveLength(1));
     expect(useEditorStore.getState().dirty).toBe(true);
     expect(useEditorStore.getState().savedToFile).toBe(false);
+    expect(replacingLosesNothing()).toBe(false);
     expect(useEditorStore.getState().canUndo).toBe(false);
   });
 

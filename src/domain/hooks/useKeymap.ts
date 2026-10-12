@@ -5,7 +5,7 @@ import type { PivotMode, SelectMode, ShadingMode } from '@store/types';
 
 import { matchBinding, reloadShortcut } from '../keymap/keymap';
 
-import { useProjectFiles } from './useProjectFiles';
+import { replacingLosesNothing, useProjectFiles } from './useProjectFiles';
 
 const SHADING_CYCLE: ShadingMode[] = ['solid', 'solidWire', 'wireframe', 'xray', 'matcap'];
 
@@ -334,7 +334,7 @@ export function useKeymap(): void {
         case 'open':
           // Through the same prompt the menu goes through: the shortcut is a
           // faster route to the action, not a way around what it costs.
-          if (state.savedToFile) void openProject();
+          if (replacingLosesNothing()) void openProject();
           else state.openDialog('openProject');
           break;
         case 'export':

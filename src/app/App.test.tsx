@@ -284,6 +284,63 @@ describe('App shell', () => {
     expect(useEditorStore.getState().objects[0].name).toBe('CUBE');
   });
 
+  describe('over a new project nobody has worked on', () => {
+    async function startNew() {
+      await userEvent.click(screen.getByRole('button', { name: 'FILE' }));
+      await userEvent.click(screen.getByRole('menuitem', { name: 'NEW' }));
+    }
+
+    async function startFresh() {
+      render(<App />);
+      act(() => useEditorStore.getState().addPrimitive('torus'));
+      await startNew();
+      const dialog = screen.getByRole('dialog', { name: 'START A NEW PROJECT' });
+      await userEvent.click(within(dialog).getByRole('button', { name: 'START WITHOUT SAVING' }));
+      await waitFor(() => expect(useEditorStore.getState().objects[0].name).toBe('CUBE'));
+    }
+
+    it('starts another without asking: the starting cube is nothing to lose', async () => {
+      await startFresh();
+      const cube = useEditorStore.getState().objects[0].id;
+
+      await startNew();
+
+      expect(screen.queryByRole('dialog', { name: 'START A NEW PROJECT' })).not.toBeInTheDocument();
+      expect(useEditorStore.getState().objects[0].id).not.toBe(cube);
+    });
+
+    it('opens a file without asking', async () => {
+      await startFresh();
+
+      await userEvent.click(screen.getByRole('button', { name: 'FILE' }));
+      await userEvent.click(screen.getByRole('menuitem', { name: 'OPEN' }));
+
+      expect(screen.queryByRole('dialog', { name: 'OPEN A PROJECT FILE' })).not.toBeInTheDocument();
+    });
+
+    it('does not count a trip into edit mode and back as work', async () => {
+      await startFresh();
+      act(() => {
+        useEditorStore.getState().setMode('edit');
+        useEditorStore.getState().setMode('object');
+      });
+
+      await startNew();
+
+      expect(screen.queryByRole('dialog', { name: 'START A NEW PROJECT' })).not.toBeInTheDocument();
+    });
+
+    it('asks again once the starting cube has been changed', async () => {
+      await startFresh();
+      const cube = useEditorStore.getState().objects[0].id;
+      act(() => useEditorStore.getState().renameObject(cube, 'BOX'));
+
+      await startNew();
+
+      expect(screen.getByRole('dialog', { name: 'START A NEW PROJECT' })).toBeInTheDocument();
+    });
+  });
+
   it('asks before a file opened from disk throws the scene on screen away', async () => {
     render(<App />);
     act(() => useEditorStore.getState().addPrimitive('torus'));
