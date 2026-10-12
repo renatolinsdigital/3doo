@@ -61,7 +61,7 @@ so the smoothest way to work is to use both:
 3. **Bring the assistant back for a specific part.** The assistant works in a
    copy of 3DOO of its own and might not control your browser's tab, so give it
    the project itself. Save a copy as a `.3doo` file (FILE > SAVE AS, or
-   Ctrl+Shift+S) and ask it to edit that file. 
+   Ctrl+Shift+S) and ask it to edit that file directly. 
 4. **Or let the assistant edit .3doo files directly.** If you would rather do most of the
    work through the assistant, keep the `.3doo` file in a working folder, tell
    the assistant its path, and ask it to save each change back to that file.
@@ -137,6 +137,18 @@ Sass. No Tailwind, no CSS-in-JS, no component library.
 
 The user manual is not in this folder. It is the in-app Docs module, written in
 [content.ts](src/modules/docs/content.ts).
+
+## Support 3DOO
+
+3DOO is free: no install, no account, no ads. If it saves you time, a donation
+pays for the hours behind the next release.
+
+- **[Donate with PayPal](https://www.paypal.com/donate/?business=renato.digital.crafts%40gmail.com&currency_code=USD&item_name=Support+3DOO)**,
+  any amount.
+- Or send it from your own PayPal app to `renato.digital.crafts@gmail.com`.
+
+The same offer is behind the DONATE button in the editor's footer. PayPal takes
+the payment, so 3DOO never sees your card or account.
 
 ## License
 
