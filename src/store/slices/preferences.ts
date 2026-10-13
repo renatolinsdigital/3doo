@@ -30,6 +30,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   gridSubdivisions: 10,
   lockVerticalOrbit: false,
   wheelZoom: 'pointer',
+  wheelZoomStep: 5,
   snapEnabled: false,
   snapMode: 'grid',
   snapStep: 0.1,
@@ -53,6 +54,13 @@ export const MAX_GRID_SCALE = 1000;
 /** One is no subdivision at all (every line heavy) and the cap keeps the mesh sane. */
 export const MIN_GRID_SUBDIVISIONS = 1;
 export const MAX_GRID_SUBDIVISIONS = 100;
+
+/**
+ * Percent of the way in one wheel notch closes. At one it takes seventy notches
+ * to halve the distance; past a quarter a single notch jumps rather than zooms.
+ */
+export const MIN_WHEEL_ZOOM_STEP = 1;
+export const MAX_WHEEL_ZOOM_STEP = 25;
 
 /** The same range as the grid scale it multiplies: past useful either way. */
 export const MIN_SNAP_STEP = MIN_GRID_SCALE;
@@ -185,6 +193,15 @@ export function coercePreferences(raw: unknown): Preferences {
       DEFAULT_PREFERENCES.lockVerticalOrbit,
     ),
     wheelZoom: source.wheelZoom === 'centred' ? 'centred' : DEFAULT_PREFERENCES.wheelZoom,
+    // Rounded: the slider moves in whole percent and has to show the value back.
+    wheelZoomStep: Math.round(
+      coerceNumber(
+        source.wheelZoomStep,
+        MIN_WHEEL_ZOOM_STEP,
+        MAX_WHEEL_ZOOM_STEP,
+        DEFAULT_PREFERENCES.wheelZoomStep,
+      ),
+    ),
     snapEnabled: coerceBoolean(source.snapEnabled, DEFAULT_PREFERENCES.snapEnabled),
     snapMode: source.snapMode === 'custom' ? 'custom' : DEFAULT_PREFERENCES.snapMode,
     snapStep: coerceNumber(
@@ -282,6 +299,7 @@ export const createPreferencesSlice: StateCreator<
         viewportBackground,
         lockVerticalOrbit,
         wheelZoom,
+        wheelZoomStep,
         gridScale,
         gridSubdivisions,
         snapEnabled,
@@ -303,6 +321,7 @@ export const createPreferencesSlice: StateCreator<
         viewportBackground,
         lockVerticalOrbit,
         wheelZoom,
+        wheelZoomStep,
         gridScale,
         gridSubdivisions,
         snapEnabled,

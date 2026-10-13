@@ -342,7 +342,11 @@ each face's ring instead of merging the faces.
 #### Implementation
 
 - **`dissolveEdge`** merges the two faces sharing an edge by rotating both rings
-  and splicing them.
+  and splicing them. `dissolveEdges` then drops each end left with two edges in
+  a straight line, rebuilding the faces on either side without it. Left in
+  place, such a point shapes nothing, yet extrude walls each side of it
+  separately and the dissolved edge reappears along the walls. An end where the
+  outline turns stays, since dropping it would change the face's shape.
 - **`dissolveFaces`** does *not* dissolve interior edges one at a time. The last
   interior edge of a fan always ends up with both loops on the same face, which
   no pairwise merge can resolve. Instead it rebuilds each connected region's

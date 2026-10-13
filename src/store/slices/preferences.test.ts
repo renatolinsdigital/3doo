@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { DEFAULT_PREFERENCES, autosaveIntervalLabel, coercePreferences } from './preferences';
+import {
+  DEFAULT_PREFERENCES,
+  MAX_WHEEL_ZOOM_STEP,
+  MIN_WHEEL_ZOOM_STEP,
+  autosaveIntervalLabel,
+  coercePreferences,
+} from './preferences';
 
 const STORAGE_KEY = '3doo:preferences';
 
@@ -153,6 +159,17 @@ describe('coercePreferences', () => {
     expect(DEFAULT_PREFERENCES.wheelZoom).toBe('pointer');
     expect(coercePreferences({ wheelZoom: 'centred' }).wheelZoom).toBe('centred');
     expect(coercePreferences({ wheelZoom: 'sideways' }).wheelZoom).toBe('pointer');
+  });
+
+  it('keeps the wheel zoom step a whole percent inside its range', () => {
+    expect(DEFAULT_PREFERENCES.wheelZoomStep).toBe(5);
+    expect(coercePreferences({ wheelZoomStep: 12 }).wheelZoomStep).toBe(12);
+    expect(coercePreferences({ wheelZoomStep: 7.6 }).wheelZoomStep).toBe(8);
+    expect(coercePreferences({ wheelZoomStep: 0 }).wheelZoomStep).toBe(MIN_WHEEL_ZOOM_STEP);
+    expect(coercePreferences({ wheelZoomStep: 90 }).wheelZoomStep).toBe(MAX_WHEEL_ZOOM_STEP);
+    expect(coercePreferences({ wheelZoomStep: 'fast' }).wheelZoomStep).toBe(
+      DEFAULT_PREFERENCES.wheelZoomStep,
+    );
   });
 
   it('names every interval, thirty seconds to fifteen minutes', () => {

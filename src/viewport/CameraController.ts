@@ -67,9 +67,10 @@ const ZOOM_REACH = 0.1;
 export function zoomSpent(radius: number, gap: number): boolean {
   // The orbit is as tight as it is allowed to get, so the wheel has nothing
   // left to do at all: the next notch changes no number anywhere, which is
-  // the stall a user actually runs into. It takes about eighty-five notches
-  // from a framed object to get here, and the gap does not come into it: by
-  // then the camera is usually inside the thing it was closing in on.
+  // the stall a user actually runs into. It takes about two hundred notches
+  // at the default step from a framed object to get here, and the gap does
+  // not come into it: by then the camera is usually inside the thing it was
+  // closing in on.
   if (radius <= MIN_ORBIT_DISTANCE) return true;
 
   // Short of that the wheel still moves the camera, and the question is
@@ -103,6 +104,13 @@ export const VIEW_TWEEN_MS = 200;
  * keeps the zoom centred and lets the pointer steer it.
  */
 export const WHEEL_POINTER_LEAN = 0.3;
+
+/**
+ * The `deltaY` one notch of a mouse wheel reports in Chrome and Edge, which is
+ * what the zoom step is measured against. A touchpad sends the same distance
+ * as a run of small deltas, so it zooms by the same total, only finer.
+ */
+export const WHEEL_NOTCH = 100;
 
 /** Slow off the mark and slow into the stop, quick through the middle. */
 function ease(t: number): number {
@@ -268,7 +276,8 @@ export class CameraController {
 
   orbitSpeed = 0.005;
   panSpeed = 0.0018;
-  zoomSpeed = 0.0012;
+  /** The share of the way in one wheel notch closes, 0 to 1. */
+  zoomStep = 0.05;
   preset: NavigationPreset = 'blender';
   /** Whether a vertical orbit stops at the poles instead of rolling over them. */
   lockVerticalOrbit = false;
@@ -552,7 +561,7 @@ export class CameraController {
   onWheel(event: WheelEvent, surface: THREE.Vector3 | null = null): void {
     const middleX = this.element.clientWidth / 2;
     const middleY = this.element.clientHeight / 2;
-    const factor = Math.exp(event.deltaY * this.zoomSpeed);
+    const factor = Math.pow(1 - this.zoomStep, -event.deltaY / WHEEL_NOTCH);
     if (this.wheelZoom === 'centred') {
       this.zoomAbout(factor, middleX, middleY);
       this.apply();

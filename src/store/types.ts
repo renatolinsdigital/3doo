@@ -298,6 +298,12 @@ export interface Preferences {
    */
   wheelZoom: WheelZoom;
   /**
+   * How much nearer one notch of the wheel brings the view, in percent of the
+   * way to what it is closing on. Out is the same notch undone, so a notch in
+   * and a notch out land back where they started.
+   */
+  wheelZoomStep: number;
+  /**
    * Multiplier on the grid's own step, not a length: the plane rescales itself
    * by powers of ten as the camera pulls back, so a square is this many units
    * times whichever decade the zoom has settled on.

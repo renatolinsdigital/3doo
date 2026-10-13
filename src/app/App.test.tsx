@@ -1120,6 +1120,25 @@ describe('App shell', () => {
     act(() => useEditorStore.getState().setPreferences({ wheelZoom: 'pointer' }));
   });
 
+  it('sets how far a wheel notch zooms from preferences', async () => {
+    render(<App />);
+    expect(useEditorStore.getState().wheelZoomStep).toBe(DEFAULT_PREFERENCES.wheelZoomStep);
+
+    await userEvent.click(screen.getByRole('button', { name: 'PREFS' }));
+    const dialog = screen.getByRole('dialog', { name: 'PREFERENCES' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'VIEWPORT' }));
+    fireEvent.change(within(dialog).getByRole('slider', { name: 'ZOOM STEP' }), {
+      target: { value: '12' },
+    });
+
+    expect(useEditorStore.getState().wheelZoomStep).toBe(12);
+    act(() =>
+      useEditorStore.getState().setPreferences({
+        wheelZoomStep: DEFAULT_PREFERENCES.wheelZoomStep,
+      }),
+    );
+  });
+
   describe('autosave in preferences', () => {
     afterEach(() => {
       Reflect.deleteProperty(window, 'showDirectoryPicker');

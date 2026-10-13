@@ -951,7 +951,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'Orbit, pan, zoom',
-            'Middle-drag orbits, Shift+middle-drag pans, the wheel zooms, leaning toward whatever is under the pointer (set WHEEL ZOOM under PREFS to CENTRED to zoom into the middle of the view instead). A vertical drag can carry the view over the top and down the far side, upside down. Turn on LOCK VERTICAL ORBIT under PREFS to stop at the poles instead.',
+            'Middle-drag orbits, Shift+middle-drag pans, the wheel zooms, leaning toward whatever is under the pointer (set WHEEL ZOOM under PREFS to CENTRED to zoom into the middle of the view instead). Each notch closes 5% of the way in; ZOOM STEP under PREFS makes that finer or coarser. A vertical drag can carry the view over the top and down the far side, upside down. Turn on LOCK VERTICAL ORBIT under PREFS to stop at the poles instead.',
           ],
           [
             'Frame the selection',

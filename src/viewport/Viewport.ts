@@ -1234,6 +1234,13 @@ export class Viewport {
         { fireImmediately: true },
       ),
       store.subscribe(
+        (state) => state.wheelZoomStep,
+        (percent) => {
+          this.controls.zoomStep = percent / 100;
+        },
+        { fireImmediately: true },
+      ),
+      store.subscribe(
         (state) => [state.orthographic, state.focalLength, state.clipStart, state.clipEnd] as const,
         () => this.applyCameraSettings(),
         { equalityFn: shallowArrayEqual, fireImmediately: true },

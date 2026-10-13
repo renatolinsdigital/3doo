@@ -16,11 +16,13 @@ import {
   MAX_HISTORY_SIZE,
   MAX_SELECTION_LINE_WIDTH,
   MAX_SNAP_STEP,
+  MAX_WHEEL_ZOOM_STEP,
   MIN_GRID_SCALE,
   MIN_GRID_SUBDIVISIONS,
   MIN_HISTORY_SIZE,
   MIN_SELECTION_LINE_WIDTH,
   MIN_SNAP_STEP,
+  MIN_WHEEL_ZOOM_STEP,
   autosaveIntervalLabel,
   useEditorStore,
 } from '@store/index';
@@ -133,6 +135,7 @@ export function PreferencesDialog() {
   const viewportBackground = useEditorStore((state) => state.viewportBackground);
   const lockVerticalOrbit = useEditorStore((state) => state.lockVerticalOrbit);
   const wheelZoom = useEditorStore((state) => state.wheelZoom);
+  const wheelZoomStep = useEditorStore((state) => state.wheelZoomStep);
   const gridScale = useEditorStore((state) => state.gridScale);
   const gridSubdivisions = useEditorStore((state) => state.gridSubdivisions);
   const snapEnabled = useEditorStore((state) => state.snapEnabled);
@@ -268,6 +271,15 @@ export function PreferencesDialog() {
           options={WHEEL_ZOOM_OPTIONS}
           hint="Where the mouse wheel zooms. FOLLOW POINTER stays mostly centred and drifts toward whatever the pointer is over. CENTRED zooms straight into the middle of the view"
           onChange={(mode) => setPreferences({ wheelZoom: mode })}
+        />
+        <Slider
+          label="ZOOM STEP"
+          value={wheelZoomStep}
+          min={MIN_WHEEL_ZOOM_STEP}
+          max={MAX_WHEEL_ZOOM_STEP}
+          suffix="%"
+          hint="How much nearer one notch of the mouse wheel brings the view. Lower zooms in smaller, smoother steps; higher covers more ground per notch"
+          onChange={(step) => setPreferences({ wheelZoomStep: step })}
         />
       </Accordion>
 

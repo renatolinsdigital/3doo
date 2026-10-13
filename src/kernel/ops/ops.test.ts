@@ -1435,6 +1435,72 @@ describe('delete and dissolve', () => {
     expect(cube.validate()).toEqual([]);
   });
 
+  describe('an edge cut across a face', () => {
+    /** A cube whose top is split in two by an edge between two edge midpoints. */
+    function cutCube() {
+      const cube = createBox(2);
+      const top = faceAt(cube, vec3(0, 1, 0));
+      const [front, , back] = cube.faceEdges(top);
+      const [a, b] = subdivideEdges(cube, [front, back]);
+      const cut = connectVerts(cube, a, b).edge as Edge;
+      return { cube, cut, ends: [a, b] };
+    }
+
+    it('takes the ends it leaves on a straight side with it', () => {
+      const { cube, cut, ends } = cutCube();
+
+      const [merged] = dissolveEdges(cube, [cut]);
+
+      expect(cube.faces.has(merged.id)).toBe(true);
+      expect(cube.faceVerts(merged)).toHaveLength(4);
+      for (const end of ends) expect(cube.verts.has(end.id)).toBe(false);
+      expect(cube.verts.size).toBe(8);
+      expect(cube.edges.size).toBe(12);
+      for (const face of cube.faces.values()) expect(cube.faceVerts(face)).toHaveLength(4);
+      expect(cube.validate()).toEqual([]);
+    });
+
+    it('leaves nothing behind for an extrude to wall around', () => {
+      const { cube, cut } = cutCube();
+      const [merged] = dissolveEdges(cube, [cut]);
+
+      extrudeFaces(cube, [merged], { offset: 1 });
+
+      expect(cube.verts.size).toBe(12);
+      expect(cube.faces.size).toBe(10);
+      expect(isClosed(cube)).toBe(true);
+      expect(cube.validate()).toEqual([]);
+    });
+
+    it('leaves the face on the far side of each end as it was', () => {
+      const { cube, cut, ends } = cutCube();
+      const side = cube.vertFaces(ends[0]).find((face) => face.normal.y < 0.5) as Face;
+      side.materialIndex = 2;
+      for (const loop of cube.faceLoops(side)) loop.uv = { u: loop.vert.co.x, v: loop.vert.co.y };
+
+      dissolveEdges(cube, [cut]);
+
+      const after = faceAt(cube, side.normal);
+      expect(after.selected).toBe(false);
+      expect(after.materialIndex).toBe(2);
+      for (const loop of cube.faceLoops(after)) {
+        expect(loop.uv).toEqual({ u: loop.vert.co.x, v: loop.vert.co.y });
+      }
+    });
+
+    it('keeps an end the outline turns at', () => {
+      const plane = createPlane(2);
+      const [a, , c] = plane.faceVerts([...plane.faces.values()][0]);
+      const diagonal = connectVerts(plane, a, c).edge as Edge;
+
+      dissolveEdges(plane, [diagonal]);
+
+      expect(plane.verts.size).toBe(4);
+      expect(plane.faces.size).toBe(1);
+      expect(plane.validate()).toEqual([]);
+    });
+  });
+
   it('dissolves a face region into one face', () => {
     const cube = createBox(2);
     subdivideFaces(cube, [faceAt(cube, vec3(0, 1, 0))], { cuts: 1 });

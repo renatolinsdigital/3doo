@@ -9,6 +9,7 @@ import {
   MIN_ORBIT_DISTANCE,
   ORBIT_STEP,
   VIEW_TWEEN_MS,
+  WHEEL_NOTCH,
   WHEEL_POINTER_LEAN,
   orbitPhi,
   orbitStepPhi,
@@ -303,6 +304,31 @@ describe('zooming in on something small', () => {
   });
 });
 
+describe('the wheel zoom step', () => {
+  it('closes the share of the way it is set to per notch, and gives it back going out', () => {
+    const { controls } = controllerAt(Math.PI / 3);
+    controls.zoomStep = 0.2;
+
+    controls.onWheel(new WheelEvent('wheel', { deltaY: -WHEEL_NOTCH }));
+    expect(controls.distance).toBeCloseTo(4, 10);
+
+    controls.onWheel(new WheelEvent('wheel', { deltaY: WHEEL_NOTCH }));
+    expect(controls.distance).toBeCloseTo(5, 10);
+  });
+
+  it('takes a run of small touchpad deltas as far as the notch they add up to', () => {
+    const notched = controllerAt(Math.PI / 3).controls;
+    const swiped = controllerAt(Math.PI / 3).controls;
+
+    notched.onWheel(new WheelEvent('wheel', { deltaY: -WHEEL_NOTCH }));
+    for (let delta = 0; delta < 10; delta += 1) {
+      swiped.onWheel(new WheelEvent('wheel', { deltaY: -WHEEL_NOTCH / 10 }));
+    }
+
+    expect(swiped.distance).toBeCloseTo(notched.distance, 10);
+  });
+});
+
 describe('leaning the zoom toward the pointer', () => {
   const WIDTH = 800;
   const HEIGHT = 600;
@@ -425,7 +451,7 @@ describe('leaning the zoom toward the pointer', () => {
     const { camera, controls } = sized(false);
     const surface = surfaceAt(camera, 560, 220, 2);
 
-    for (let notch = 0; notch < 40; notch += 1) {
+    for (let notch = 0; notch < 80; notch += 1) {
       controls.onWheel(
         new WheelEvent('wheel', { deltaY: -100, clientX: 560, clientY: 220 }),
         surface,
@@ -443,7 +469,7 @@ describe('leaning the zoom toward the pointer', () => {
     const { camera, controls } = sized(false);
     const surface = surfaceAt(camera, 300, 380, 30);
 
-    for (let notch = 0; notch < 30; notch += 1) {
+    for (let notch = 0; notch < 80; notch += 1) {
       controls.onWheel(
         new WheelEvent('wheel', { deltaY: -100, clientX: 300, clientY: 380 }),
         surface,
@@ -463,7 +489,7 @@ describe('leaning the zoom toward the pointer', () => {
     );
 
     expect(controls.focusPoint.length()).toBeCloseTo(0, 10);
-    expect(controls.distance).toBeCloseTo(5 * Math.exp(-100 * controls.zoomSpeed), 10);
+    expect(controls.distance).toBeCloseTo(5 * (1 - controls.zoomStep), 10);
   });
 
   it('leaves the depth out of an orthographic zoom', () => {
@@ -475,7 +501,7 @@ describe('leaning the zoom toward the pointer', () => {
       new THREE.Vector3(0.3, 0.2, 2),
     );
 
-    expect(controls.distance).toBeCloseTo(5 * Math.exp(-100 * controls.zoomSpeed), 10);
+    expect(controls.distance).toBeCloseTo(5 * (1 - controls.zoomStep), 10);
     expect(controls.focusPoint.length()).toBeCloseTo(0, 10);
   });
 });
@@ -525,7 +551,7 @@ describe('a zoom that has stopped biting', () => {
     );
     expect(zoomSpent(controls.distance, gapToBox(camera))).toBe(false);
 
-    zoomIn(controls, 100);
+    zoomIn(controls, 250);
 
     expect(controls.distance).toBe(MIN_ORBIT_DISTANCE);
     expect(gapToBox(camera)).toBe(0);
@@ -537,7 +563,7 @@ describe('a zoom that has stopped biting', () => {
     controls.frameBox(
       new THREE.Box3(new THREE.Vector3(-0.5, -0.5, -0.5), new THREE.Vector3(0.5, 0.5, 0.5)),
     );
-    zoomIn(controls, 100);
+    zoomIn(controls, 250);
 
     const stalled = controls.distance;
     zoomIn(controls, 50);
