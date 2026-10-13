@@ -421,11 +421,28 @@ nowhere are pruned first. A sheet's outline traces as a region too, but winds
 against the faces along it where a hole winds with them, and is skipped. The
 rings come out wound the way the surface faces, so their normals agree with it.
 
+The faces' plane is the wrong one where they stand square to an open edge. A
+gap in the side of an extruded outline is the usual case: the loose edge down
+the wall between two gaps meets the top and bottom faces at right angles, their
+plane flattens it to a point, and the walk carried on along the outline instead
+of turning down the wall. Two walks into that vertex then leave by the same
+edge, which no set of regions does. So wherever that happens, the plane the
+open edges at the vertex span (`spannedNormal`) takes over, facing whichever
+way gives every walk its own way out.
+
 A selected face folded flat back over the faces around it (back to back with a
 face along every edge, on the same side, and onto at least two different faces)
 is looked past. The old outline cap was one: it put a second face on every hole
 edge, so nothing looked open. Fill removes such a face once a region it bordered
 is filled, and leaves one that hid no hole.
+
+After the walk, any ring the selected open edges still close gets a face too
+(`selectedRings`). Each selected edge is closed by the shortest way round
+through the others, so a loose edge between two holes ends the ring of each,
+and the rings fill shortest first. The new face is wound the way most of the
+faces along it agree on, and the outline test above still applies. The walk can
+lose its way, around faces flipped against each other for one, and a ring
+plainly selected should never be refused for that.
 
 `edgeLoopsFrom` chains selected edges into ordered rings and says whether each
 closed. Bridge uses it, and so does fill's fallback in vertex and edge mode:

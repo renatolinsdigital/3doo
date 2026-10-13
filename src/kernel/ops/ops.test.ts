@@ -1541,6 +1541,69 @@ describe('fill and bridge', () => {
     expect(mesh.faceVerts(filled[0])).toHaveLength(4);
   });
 
+  it('fills a hole the faces round it are wound against each other about', () => {
+    const cube = createBox(2);
+    const top = faceAt(cube, vec3(0, 1, 0));
+    const ring = cube.faceEdges(top);
+    deleteGeometry(cube, { verts: [], edges: [], faces: [top] }, 'onlyFaces');
+    flipNormals(cube, [faceAt(cube, vec3(1, 0, 0))]);
+
+    const filled = fillHole(cube, ring);
+
+    expect(filled).toHaveLength(1);
+    expect(filled[0].normal.y).toBeCloseTo(1);
+    expect(isClosed(cube)).toBe(true);
+  });
+
+  describe('round gaps in the side of a slab', () => {
+    // Two cells long with the front wall left out. The loose edge between the
+    // two gaps meets the top and bottom faces square on.
+    const slab = () => {
+      const mesh = new BMesh();
+      const verts = new Map<string, Vert>();
+      const at = (x: number, y: number, z: number) => {
+        const key = `${x},${y},${z}`;
+        const vert = verts.get(key) ?? mesh.addVert(vec3(x, y, z));
+        verts.set(key, vert);
+        return vert;
+      };
+      for (const x of [0, 1]) {
+        mesh.addFace([at(x, 1, 0), at(x, 1, 1), at(x + 1, 1, 1), at(x + 1, 1, 0)]);
+        mesh.addFace([at(x + 1, 0, 0), at(x + 1, 0, 1), at(x, 0, 1), at(x, 0, 0)]);
+        mesh.addFace([at(x, 0, 1), at(x + 1, 0, 1), at(x + 1, 1, 1), at(x, 1, 1)]);
+      }
+      mesh.addFace([at(0, 0, 0), at(0, 0, 1), at(0, 1, 1), at(0, 1, 0)]);
+      mesh.addFace([at(2, 0, 0), at(2, 1, 0), at(2, 1, 1), at(2, 0, 1)]);
+      mesh.addEdge(at(1, 0, 0), at(1, 1, 0));
+      mesh.computeNormals();
+      return { mesh, at };
+    };
+
+    it('fills the one gap selected', () => {
+      const { mesh, at } = slab();
+      const ring = [at(0, 1, 0), at(1, 1, 0), at(1, 0, 0), at(0, 0, 0)];
+      const edges = ring.map((vert, i) => mesh.findEdge(vert, ring[(i + 1) % 4]) as Edge);
+
+      const filled = fillHole(mesh, edges);
+
+      expect(filled).toHaveLength(1);
+      expect(filled[0].normal.z).toBeCloseTo(-1);
+      expect(mesh.validate()).toEqual([]);
+    });
+
+    it('fills each gap with everything selected', () => {
+      const { mesh } = slab();
+      mesh.selectAll();
+
+      const filled = fillHole(mesh, mesh.selectedEdges());
+
+      expect(filled.map((face) => mesh.faceVerts(face).length)).toEqual([4, 4]);
+      for (const face of filled) expect(face.normal.z).toBeCloseTo(-1);
+      expect(isClosed(mesh)).toBe(true);
+      expect(mesh.validate()).toEqual([]);
+    });
+  });
+
   describe('with faces selected', () => {
     let grid: BMesh;
     const fillFaces = (centers: Vec3[]) => {

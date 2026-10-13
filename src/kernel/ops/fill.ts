@@ -90,6 +90,52 @@ function edgeLoopsFrom(mesh: BMesh, edges: readonly Edge[]): EdgeRing[] {
 }
 
 /**
+ * The closed rings the selection's open edges make, shortest first.
+ *
+ * Each edge is closed by the shortest way round through the others, so a loose
+ * edge between two holes ends the ring of each rather than both being strung
+ * round it into one.
+ */
+function selectedRings(mesh: BMesh, edges: readonly Edge[]): Vert[][] {
+  const open = edges.filter((edge) => mesh.edges.has(edge.id) && edge.loops.length < 2);
+  const around = new Map<Vert, Edge[]>();
+  for (const edge of open) {
+    for (const vert of [edge.v0, edge.v1]) {
+      const list = around.get(vert);
+      if (list) list.push(edge);
+      else around.set(vert, [edge]);
+    }
+  }
+
+  const rings = new Map<string, Vert[]>();
+  for (const edge of open) {
+    const previous = new Map<Vert, Vert>([[edge.v1, edge.v1]]);
+    const queue = [edge.v1];
+    for (let i = 0; i < queue.length && !previous.has(edge.v0); i++) {
+      for (const next of around.get(queue[i]) ?? []) {
+        const other = mesh.edgeOther(next, queue[i]);
+        if (next === edge || previous.has(other)) continue;
+        previous.set(other, queue[i]);
+        queue.push(other);
+      }
+    }
+    if (!previous.has(edge.v0)) continue;
+    const ring = [edge.v0];
+    while (ring[ring.length - 1] !== edge.v1) {
+      ring.push(previous.get(ring[ring.length - 1]) as Vert);
+    }
+    rings.set(
+      ring
+        .map((vert) => vert.id)
+        .sort((a, b) => a - b)
+        .join(),
+      ring,
+    );
+  }
+  return [...rings.values()].sort((a, b) => a.length - b.length);
+}
+
+/**
  * Gives a face to each empty region the selection runs all the way round.
  *
  * The regions come from the mesh's open edges, bordering a face or loose, so
@@ -97,10 +143,15 @@ function edgeLoopsFrom(mesh: BMesh, edges: readonly Edge[]): EdgeRing[] {
  * only the holes fill, one face for each part a loose edge divides a hole
  * into. The mesh's own outline closes around nothing and stays open.
  *
+ * Any ring the selected open edges still close after that gets a face too,
+ * unless it winds against the faces along it the way an outline does. The
+ * walk can lose its way, round faces flipped against each other for one, and
+ * a ring plainly selected should not be refused for it.
+ *
  * With `fromFaces`, the edges are those of the selected faces. A loose edge
  * across a hole belongs to no face, so it divides the hole without having to
- * be selected. Otherwise, when no region fills and every selected edge is
- * open, a run of them that does not close gets a face across its two ends.
+ * be selected. Otherwise, when nothing fills and every selected edge is open,
+ * a run of them that does not close gets a face across its two ends.
  * Only then: inside a bigger selection, a loose line stopped short on a face
  * would lay a stray face over it.
  *
@@ -137,6 +188,15 @@ export function fillHole(
     }
   }
   for (const face of inTheWay) mesh.removeFace(face);
+
+  for (const ring of selectedRings(mesh, edges)) {
+    const open = ring.every(
+      (vert, i) => (mesh.findEdge(vert, ring[(i + 1) % ring.length]) as Edge).loops.length < 2,
+    );
+    if (!open || mesh.findFace(ring)) continue;
+    const wound = orientAgainstNeighbours(mesh, ring);
+    if (fillable(wound, (vert) => averageNormal(mesh, mesh.vertFaces(vert)))) make(wound);
+  }
 
   if (created.length === 0 && !fromFaces && edges.every((edge) => edge.loops.length < 2)) {
     for (const { verts, closed } of edgeLoopsFrom(mesh, edges)) {
@@ -219,8 +279,7 @@ function emptyRegions(mesh: BMesh, ignored: ReadonlySet<Face>): Region[] {
   const walked = new Set<number>();
   const regions: Region[] = [];
 
-  const turn = (edge: Edge, from: Vert, at: Vert): Edge | null => {
-    const normal = normals.get(at.id) as Vec3;
+  const turn = (edge: Edge, from: Vert, at: Vert, normal: Vec3): Edge | null => {
     const back = flatten(sub(from.co, at.co), normal);
     let best: Edge | null = null;
     let bestAngle = -1;
@@ -237,6 +296,38 @@ function emptyRegions(mesh: BMesh, ignored: ReadonlySet<Face>): Region[] {
     return best;
   };
 
+  // Every walk into a vertex has to leave by an edge of its own. Where two
+  // leave by the same one, the faces' plane is the wrong one to turn in: round
+  // a gap in the side of a solid it is the top's, square to the wall, and it
+  // flattens the loose edge down the wall to nothing. The plane the open edges
+  // there lie in takes over, facing whichever way gives each walk its own way
+  // out.
+  const planes = new Map<number, Vec3>();
+  for (const [id, around] of network) {
+    if (around.length < 3) continue;
+    const at = mesh.verts.get(id) as Vert;
+    const leavesApart = (normal: Vec3) => {
+      const taken = new Set<Edge>();
+      for (const edge of around) {
+        const from = mesh.edgeOther(edge, at);
+        if (!uncovered(edge, from)) continue;
+        const next = turn(edge, from, at, normal);
+        if (!next) continue;
+        if (taken.has(next)) return false;
+        taken.add(next);
+      }
+      return true;
+    };
+    const normal = normals.get(id) as Vec3;
+    if (leavesApart(normal)) continue;
+    const plane = spannedNormal(mesh, at, around);
+    const facing = dot(plane, normal) < 0 ? mul(plane, -1) : plane;
+    const chosen = [facing, mul(facing, -1)].find(
+      (side) => lengthSq(side) > 0 && leavesApart(side),
+    );
+    if (chosen) planes.set(id, chosen);
+  }
+
   for (const [id, around] of network) {
     for (const start of around) {
       const first = mesh.verts.get(id) as Vert;
@@ -252,7 +343,7 @@ function emptyRegions(mesh: BMesh, ignored: ReadonlySet<Face>): Region[] {
         verts.push(from);
         edges.push(edge);
         const at = mesh.edgeOther(edge, from);
-        const next = turn(edge, from, at);
+        const next = turn(edge, from, at, planes.get(at.id) ?? (normals.get(at.id) as Vec3));
         if (!next) break;
         edge = next;
         from = at;
@@ -267,14 +358,7 @@ function emptyRegions(mesh: BMesh, ignored: ReadonlySet<Face>): Region[] {
       // A loose edge joining two rings is walked once each way, which a face
       // cannot do.
       if (new Set(verts).size < verts.length) continue;
-      const facing = polygonNormal(verts.map((vert) => vert.co));
-      if (lengthSq(facing) === 0) continue;
-      // The outline of an open sheet winds against the faces along it, where a
-      // hole winds with them. Around the rim of a tube they stand square to it.
-      const agreement =
-        verts.reduce((sum, vert) => sum + dot(facing, normals.get(vert.id) as Vec3), 0) /
-        verts.length;
-      if (agreement < -0.5) continue;
+      if (!fillable(verts, (vert) => normals.get(vert.id) as Vec3)) continue;
       regions.push({ verts, edges });
     }
   }
@@ -334,12 +418,7 @@ function turningNormals(
     const vert = mesh.verts.get(id) as Vert;
     const faces = mesh.vertFaces(vert).filter((face) => !ignored.has(face));
     if (faces.length === 0) continue;
-    normals.set(
-      id,
-      normalize(
-        faces.reduce((sum, face) => add(sum, polygonNormal(mesh.facePoints(face))), vec3()),
-      ),
-    );
+    normals.set(id, averageNormal(mesh, faces));
     queue.push(vert);
   }
 
@@ -379,6 +458,41 @@ function turningNormals(
 
 function flatten(direction: Vec3, normal: Vec3): Vec3 {
   return sub(direction, mul(normal, dot(direction, normal)));
+}
+
+/**
+ * The normal of the plane a vertex's edges come nearest to lying in: the cross
+ * of each pair of them, every one turned to agree with the longest.
+ */
+function spannedNormal(mesh: BMesh, vert: Vert, edges: readonly Edge[]): Vec3 {
+  const directions = edges.map((edge) => normalize(sub(mesh.edgeOther(edge, vert).co, vert.co)));
+  const crosses: Vec3[] = [];
+  for (let i = 0; i < directions.length; i++) {
+    for (let j = i + 1; j < directions.length; j++) {
+      crosses.push(cross(directions[i], directions[j]));
+    }
+  }
+  const longest = crosses.reduce((best, each) => (lengthSq(each) > lengthSq(best) ? each : best));
+  return normalize(crosses.reduce((sum, each) => add(sum, mul(each, dot(each, longest))), vec3()));
+}
+
+function averageNormal(mesh: BMesh, faces: readonly Face[]): Vec3 {
+  return normalize(
+    faces.reduce((sum, face) => add(sum, polygonNormal(mesh.facePoints(face))), vec3()),
+  );
+}
+
+/**
+ * Whether a ring can take a face: it has an area, and it does not wind against
+ * the faces along it. The outline of an open sheet does, where a hole winds
+ * with them. Around the rim of a tube they stand square to it.
+ */
+function fillable(verts: readonly Vert[], normalAt: (vert: Vert) => Vec3): boolean {
+  const facing = polygonNormal(verts.map((vert) => vert.co));
+  if (lengthSq(facing) === 0) return false;
+  const agreement =
+    verts.reduce((sum, vert) => sum + dot(facing, normalAt(vert)), 0) / verts.length;
+  return agreement >= -0.5;
 }
 
 /**
@@ -434,17 +548,16 @@ function alignRing(reference: readonly Vert[], candidate: readonly Vert[]): Vert
 
 /**
  * Winds a new face against the boundary it fills, so its normal agrees with the
- * surrounding surface rather than pointing into it.
+ * surrounding surface rather than pointing into it. Where faces flipped against
+ * each other border it, most of them have their way.
  */
 function orientAgainstNeighbours(mesh: BMesh, ring: readonly Vert[]): Vert[] {
+  let votes = 0;
   for (let i = 0; i < ring.length; i++) {
     const from = ring[i];
-    const to = ring[(i + 1) % ring.length];
-    const edge = mesh.findEdge(from, to);
-    const loop = edge?.loops[0];
-    if (!loop) continue;
+    const edge = mesh.findEdge(from, ring[(i + 1) % ring.length]);
     // A manifold neighbour traverses the shared edge the other way round.
-    return loop.vert === from ? [...ring].reverse() : [...ring];
+    for (const loop of edge?.loops ?? []) votes += loop.vert === from ? -1 : 1;
   }
-  return [...ring];
+  return votes < 0 ? [...ring].reverse() : [...ring];
 }
