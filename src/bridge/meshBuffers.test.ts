@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { type Edge, createBox, createPlane, vec3, BMesh } from '@kernel/index';
+import { type Edge, type Vert, createBox, createPlane, vec3, BMesh } from '@kernel/index';
 
 import {
   buildEdgeCull,
@@ -101,6 +101,27 @@ describe('front edges', () => {
     const mesh = createBox(4);
 
     expect(frontEdges(mesh, vec3(0, 0, 0))).toBe(mesh.edges.size);
+  });
+
+  it('still culls from a camera inside the bounds but outside the mesh', () => {
+    // Between two parts of one mesh, the way a close-up stands between the
+    // arms of a fork. Each cube shows the one face looking at the camera, and
+    // the far side's edges came through the depth test as ticks off its corners.
+    const mesh = new BMesh();
+    for (const x of [-3, 3]) {
+      const box = createBox(1);
+      const copies = new Map<number, Vert>();
+      for (const vert of box.verts.values()) {
+        copies.set(vert.id, mesh.addVert(vec3(vert.co.x + x, vert.co.y, vert.co.z)));
+      }
+      for (const face of box.faces.values()) {
+        mesh.addFace(box.faceLoops(face).flatMap((loop) => copies.get(loop.vert.id) ?? []));
+      }
+    }
+    mesh.computeNormals();
+
+    expect(frontEdges(mesh, vec3(0, 0, 0))).toBe(8);
+    expect(frontEdges(mesh, vec3(3, 0, 0))).toBe(mesh.edges.size);
   });
 
   it('reads the same tables from any camera, since only the mesh sets them', () => {

@@ -362,6 +362,10 @@ export interface EdgeCull {
   closed: boolean;
   /** The mesh's extent in its own space, as `[minX, minY, minZ, maxX, maxY, maxZ]`. */
   bounds: Float32Array;
+  /** Every face's corners, face after face, for `encloses`. */
+  corners: Float32Array;
+  /** Where each face starts in `corners`, counted in corners, and one past the last. */
+  faceStarts: Uint32Array;
   /** The sharp edges, as indices into `ends` and `sides`. */
   sharp: Int32Array;
 }
@@ -371,7 +375,13 @@ export function buildEdgeCull(mesh: BMesh): EdgeCull {
   const centres = new Float32Array(mesh.faces.size * 3);
   const indexOfFace = new Map<number, number>();
 
+  let cornerCount = 0;
+  for (const face of mesh.faces.values()) cornerCount += mesh.faceLoopCount(face);
+  const faceCorners = new Float32Array(cornerCount * 3);
+  const faceStarts = new Uint32Array(mesh.faces.size + 1);
+
   let f = 0;
+  let c = 0;
   for (const face of mesh.faces.values()) {
     // The centre is averaged in place: `faceCenter` allocates a vector per
     // face, and a drag rebuilds this on every pointer move.
@@ -384,6 +394,10 @@ export function buildEdgeCull(mesh: BMesh): EdgeCull {
       x += loop.vert.co.x;
       y += loop.vert.co.y;
       z += loop.vert.co.z;
+      faceCorners[c * 3] = loop.vert.co.x;
+      faceCorners[c * 3 + 1] = loop.vert.co.y;
+      faceCorners[c * 3 + 2] = loop.vert.co.z;
+      c++;
       corners++;
       loop = loop.next;
     } while (loop !== face.loop && corners < 4096);
@@ -396,6 +410,7 @@ export function buildEdgeCull(mesh: BMesh): EdgeCull {
     centres[f * 3 + 2] = z / corners;
     indexOfFace.set(face.id, f);
     f++;
+    faceStarts[f] = c;
   }
 
   const ends = new Float32Array(mesh.edges.size * 6);
@@ -441,6 +456,8 @@ export function buildEdgeCull(mesh: BMesh): EdgeCull {
     facing: new Uint8Array(mesh.faces.size),
     closed,
     bounds,
+    corners: faceCorners,
+    faceStarts,
     sharp: Int32Array.from(sharp),
   };
 }
@@ -449,11 +466,8 @@ export function buildEdgeCull(mesh: BMesh): EdgeCull {
  * Whether the camera stands inside the mesh's extent.
  *
  * A camera outside the box around a closed mesh is outside the mesh itself,
- * which is the whole of what the far-side cull needs to know. Inside the box
- * it may well be inside the surface, where every face it can see is turned
- * away: standing in a room modelled as a cube, the cull would have taken the
- * wireframe off the walls the user is looking at. The box is cheap and errs
- * towards drawing an edge, which is the safe way to be wrong.
+ * which is the whole of what the far-side cull needs to know, and the box
+ * answers that for next to nothing. Inside the box `encloses` has to settle it.
  */
 function withinBounds(bounds: Float32Array, eye: Vec3): boolean {
   return (
@@ -467,12 +481,66 @@ function withinBounds(bounds: Float32Array, eye: Vec3): boolean {
 }
 
 /**
+ * Whether the camera stands inside a closed mesh, by the mesh's winding number
+ * about the eye.
+ *
+ * Inside, every face the camera can see is turned away from it: standing in a
+ * room modelled as a cube, the cull would take the wireframe off the walls
+ * being looked at. The bounding box alone used to stand in for this, and it
+ * says inside far too often. A close-up between the arms of a fork, or in the
+ * gap between two parts of one mesh, is inside the box and out in the open, and
+ * the cull standing down there let the far side's edges back through the depth
+ * test as ticks off every corner of the near side.
+ *
+ * Each face is summed as a fan from its first corner, as the solid angle it
+ * covers from the eye, signed by which way it is turned. Over a closed surface
+ * that comes to a whole sphere from inside and to nothing from outside, whatever
+ * shape the surface is and however its faces are cut, which is why the test
+ * asks only which of the two it is nearer.
+ */
+function encloses(cull: EdgeCull, eye: Vec3): boolean {
+  const { corners, faceStarts } = cull;
+  let solidAngle = 0;
+
+  for (let f = 0; f + 1 < faceStarts.length; f++) {
+    const first = faceStarts[f] * 3;
+    const end = faceStarts[f + 1] * 3;
+    const ax = corners[first] - eye.x;
+    const ay = corners[first + 1] - eye.y;
+    const az = corners[first + 2] - eye.z;
+    const al = Math.sqrt(ax * ax + ay * ay + az * az);
+
+    for (let at = first + 3; at + 3 < end; at += 3) {
+      const bx = corners[at] - eye.x;
+      const by = corners[at + 1] - eye.y;
+      const bz = corners[at + 2] - eye.z;
+      const cx = corners[at + 3] - eye.x;
+      const cy = corners[at + 4] - eye.y;
+      const cz = corners[at + 5] - eye.z;
+      const bl = Math.sqrt(bx * bx + by * by + bz * bz);
+      const cl = Math.sqrt(cx * cx + cy * cy + cz * cz);
+
+      // Van Oosterom and Strackee: the angle here is half the triangle's solid angle.
+      const volume = ax * (by * cz - bz * cy) + ay * (bz * cx - bx * cz) + az * (bx * cy - by * cx);
+      const spread =
+        al * bl * cl +
+        (ax * bx + ay * by + az * bz) * cl +
+        (bx * cx + by * cy + bz * cz) * al +
+        (cx * ax + cy * ay + cz * az) * bl;
+      solidAngle += 2 * Math.atan2(volume, spread);
+    }
+  }
+
+  return Math.abs(solidAngle) > 2 * Math.PI;
+}
+
+/**
  * Records in `cull.facing` which faces are turned towards the camera, or says
  * the cull does not hold from here (see `frontEdgeLines`).
  */
 function faceCamera(cull: EdgeCull, eye: Vec3): boolean {
   const { normals, centres, facing, closed, bounds } = cull;
-  if (!closed || withinBounds(bounds, eye)) return false;
+  if (!closed || (withinBounds(bounds, eye) && encloses(cull, eye))) return false;
 
   for (let f = 0; f < facing.length; f++) {
     const towards =
@@ -503,7 +571,7 @@ function onNearSide(cull: EdgeCull, edge: number): boolean {
  * exact at any zoom.
  *
  * That answer holds only while the mesh's own surface is what stands in the
- * way, so an open mesh, or a camera in among the geometry, keeps every edge.
+ * way, so an open mesh, or a camera inside a closed one, keeps every edge.
  * A box cut in half shows the inside of its walls, and the faces you are
  * looking at there are turned away: culling them left the cut with no lines
  * on the side you can see into. Depth decides in those views, contour rounding
