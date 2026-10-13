@@ -1031,6 +1031,22 @@ describe('operands that are surfaces rather than solids', () => {
     expect(surfaceArea(result)).toBeCloseTo(12, 6);
   });
 
+  it('cuts one surface with another lying in the same plane', () => {
+    // Two planes have no inside, so this used to hand the target back whole
+    // while the cutter was still consumed.
+    const notched = booleanMesh('difference', createPlane(2), createPlane(2), offsetBy(vec3(1)));
+
+    expect(areaAt(notched, 0)).toBeCloseTo(2, 6);
+    expect(surfaceArea(notched)).toBeCloseTo(2, 6);
+    expect(notched.faces.size).toBe(1);
+    expect(Math.max(...[...notched.verts.values()].map((vert) => vert.co.x))).toBeCloseTo(0, 6);
+
+    const holed = booleanMesh('difference', createPlane(4), createPlane(1), offsetBy(vec3()));
+
+    expect(surfaceArea(holed)).toBeCloseTo(15, 6);
+    expect(pieces(holed)).toBe(1);
+  });
+
   it('keeps the part of a surface inside the solid on an intersect', () => {
     for (const [target, tool] of [
       [createBox(2), disc()],

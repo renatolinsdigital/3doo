@@ -14,6 +14,9 @@ New entries go under `Unreleased` until a version is cut. Group them under
 
 ### Fixed
 
+- A difference between two planes lying flat in the same plane now cuts the
+  overlap out of the active one. It used to leave it whole while the cutter
+  still disappeared.
 - Fill (F) no longer fills only half a hole. When the selected edges split
   into more than one run, for instance where a diagonal crosses the hole,
   each run now fills whole instead of only the part after the edge it

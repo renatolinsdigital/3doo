@@ -482,7 +482,9 @@ function drain<T>(steps: Generator<number, T>): T {
  * nothing inside it, a surface removes nothing from the other operand and
  * keeps whatever part of itself the other one's inside does not claim. A union
  * still cuts each operand where the other meets it, so the two come back
- * joined along the contact rather than merely overlapping.
+ * joined along the contact rather than merely overlapping. Two surfaces lying
+ * in one plane are the exception: there the tool covers part of the target,
+ * and a difference takes that part away.
  *
  * The fractions are measured, not guessed: building the two BSP trees is about
  * sixty per cent of the work and the final rebuild most of the rest, while the
@@ -534,6 +536,9 @@ function* csgStaged(
   }
 
   if (op === 'difference') {
+    // Neither has an inside, but where the two lie in one plane the tool still
+    // covers part of the target, and that part is what a cut takes away.
+    if (!solid.a && !solid.b) return uncovered(allPolys(left), allPolys(right), epsilon);
     invert(left);
     if (solid.b) clipTo(left, right, epsilon);
     // The tool's surface only ever comes back as the wall of the cavity it
