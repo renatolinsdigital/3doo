@@ -1,9 +1,12 @@
 import {
+  type Transform,
   type Vec3,
   EPSILON,
   add,
   centroid,
   clamp,
+  composeMatrix,
+  dot,
   length,
   mul,
   mulVec,
@@ -168,26 +171,98 @@ export function rotateVerts(
   );
 }
 
+/**
+ * Scales `verts` about `pivot` by `scale` along the mesh's own axes or, given
+ * the object's transform as `frame`, along the world's.
+ */
 export function scaleVerts(
   mesh: BMesh,
   verts: readonly Vert[],
   scale: Vec3,
   pivot: Vec3,
   proportional?: ProportionalOptions | ProportionalInfluence,
+  frame?: Transform,
 ): void {
+  const rows = frame ? worldScaleRows(frame, scale) : null;
+  const along = rows ? alongOwnAxes(rows) : scale;
+
   applyDisplacement(
     mesh,
     verts,
     (vert, influence) => {
+      const offset = sub(vert.co, pivot);
+      if (rows && !along) {
+        // The stretch is linear in the factor and none at a factor of one, so
+        // a partial influence takes the same share of the whole displacement.
+        const stretched = vec3(dot(rows[0], offset), dot(rows[1], offset), dot(rows[2], offset));
+        return add(add(offset, mul(sub(stretched, offset), influence)), pivot);
+      }
+      const factor = along ?? scale;
       const blended = vec3(
-        1 + (scale.x - 1) * influence,
-        1 + (scale.y - 1) * influence,
-        1 + (scale.z - 1) * influence,
+        1 + (factor.x - 1) * influence,
+        1 + (factor.y - 1) * influence,
+        1 + (factor.z - 1) * influence,
       );
-      return add(mulVec(sub(vert.co, pivot), blended), pivot);
+      return add(mulVec(offset, blended), pivot);
     },
     proportional,
   );
+}
+
+/**
+ * A scale of `factor` along the world's axes as the object placed by `frame`
+ * sees it: the rows of the matrix it applies to an offset in its own space.
+ *
+ * The edit-mode handles stand world-aligned while the mesh is stored in the
+ * object's own space. Handing the factor straight to the mesh stretched a
+ * turned object along whichever of its own axes shared the name: on a plane
+ * stood upright, the vertical handle pushed its edges back and forth in depth.
+ *
+ * Entry (i, j) is how much of own axis j, stretched out in the world, lands
+ * back along own axis i, rescaled by the object's size along each: an axis
+ * drawn twice as long needs half the coordinate to cover the same distance.
+ */
+function worldScaleRows(frame: Transform, factor: Vec3): [Vec3, Vec3, Vec3] {
+  const turn = composeMatrix({ position: vec3(), rotation: frame.rotation, scale: vec3(1, 1, 1) });
+  const axes = [0, 1, 2].map((column) =>
+    vec3(turn[column * 4], turn[column * 4 + 1], turn[column * 4 + 2]),
+  );
+  const sizes = [frame.scale.x, frame.scale.y, frame.scale.z];
+
+  const row = (i: number) => {
+    const entry = (j: number) => {
+      const share = dot(axes[i], mulVec(axes[j], factor));
+      if (i === j) return share;
+      // An axis flattened to nothing has no length in the world for the
+      // others to land along, so its coordinates keep only their own share.
+      return Math.abs(sizes[i]) < EPSILON ? 0 : (share * sizes[j]) / sizes[i];
+    };
+    return vec3(entry(0), entry(1), entry(2));
+  };
+  return [row(0), row(1), row(2)];
+}
+
+/** The factor along each own axis when `rows` stretch along those alone, else null. */
+function alongOwnAxes(rows: readonly [Vec3, Vec3, Vec3]): Vec3 | null {
+  const largest = Math.max(
+    ...rows.flatMap(({ x, y, z }) => [Math.abs(x), Math.abs(y), Math.abs(z)]),
+  );
+  const across = [rows[0].y, rows[0].z, rows[1].x, rows[1].z, rows[2].x, rows[2].y];
+  if (across.some((value) => Math.abs(value) > largest * 1e-9)) return null;
+  return vec3(rows[0].x, rows[1].y, rows[2].z);
+}
+
+/**
+ * The factor along the object's own axes that does what a scale of `factor`
+ * along the world's does, or null when none can.
+ *
+ * There is one whenever the world's axes the factor differs along lie along
+ * the object's own: no turn, a turn in quarter turns, or a factor the same in
+ * every direction. Otherwise the scale also leans each own axis toward the
+ * others, which a factor per axis cannot say.
+ */
+export function ownAxesScale(frame: Transform, factor: Vec3): Vec3 | null {
+  return alongOwnAxes(worldScaleRows(frame, factor));
 }
 
 /**

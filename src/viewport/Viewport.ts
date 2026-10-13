@@ -1880,7 +1880,8 @@ export class Viewport {
    * Applies a whole edit-mode move to the selection, from where it began.
    *
    * The handles are world-aligned and the mesh is edited in object space, so
-   * a move arrives here already brought back through the object's frame.
+   * a move or a turn arrives here already brought back through the object's
+   * frame, and a scale carries the frame for the kernel to scale through.
    */
   private applyEditMove(state: EditorStore, object: SceneObject, move: EditMove): void {
     const drag = this.editMove;
@@ -2590,7 +2591,12 @@ export class Viewport {
     const pivot = this.editMove?.pivot;
     if (!object || !pivot) return;
 
-    this.applyEditMove(state, object, { kind: 'scale', factor: target, pivot });
+    this.applyEditMove(state, object, {
+      kind: 'scale',
+      factor: target,
+      pivot,
+      frame: object.transform,
+    });
   }
 
   /**

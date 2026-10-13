@@ -3,8 +3,10 @@ import {
   type FalloffCurve,
   type ProportionalInfluence,
   type ProportionalOptions,
+  type Transform,
   type Vec3,
   type Vert,
+  ownAxesScale,
   proportionalInfluence,
   radToDeg,
   rotateVerts,
@@ -12,11 +14,15 @@ import {
   translateVerts,
 } from '@kernel/index';
 
-/** The whole of what an edit-mode transform does, measured from where it began. */
+/**
+ * The whole of what an edit-mode transform does, measured from where it began.
+ * A scale's factor runs along the world's axes when it names the object's
+ * `frame`, and along the mesh's own when it does not.
+ */
 export type EditMove =
   | { kind: 'translate'; offset: Vec3 }
   | { kind: 'rotate'; axis: Vec3; angle: number; pivot: Vec3 }
-  | { kind: 'scale'; factor: Vec3; pivot: Vec3 };
+  | { kind: 'scale'; factor: Vec3; pivot: Vec3; frame?: Transform };
 
 /** The operation that repeats a transform, in the parameters the kernel's operator reads. */
 export interface EditMoveCall {
@@ -104,7 +110,7 @@ export class EditMoveDrag {
     } else if (move.kind === 'rotate') {
       rotateVerts(this.mesh, selected, move.axis, move.angle, move.pivot, spread);
     } else {
-      scaleVerts(this.mesh, selected, move.factor, move.pivot, spread);
+      scaleVerts(this.mesh, selected, move.factor, move.pivot, spread, move.frame);
     }
 
     this.moved = moving;
@@ -125,8 +131,9 @@ export class EditMoveDrag {
 
   /**
    * The operation that does what the transform did, or null when it ended
-   * where it began. `median` says the pivot was the middle of the selection,
-   * which the operations turn and scale about when given none.
+   * where it began or no one operation can. `median` says the pivot was the
+   * middle of the selection, which the operations turn and scale about when
+   * given none.
    */
   call(median: boolean): EditMoveCall | null {
     const move = this.move;
@@ -146,8 +153,13 @@ export class EditMoveDrag {
     } else {
       const { x, y, z } = move.factor;
       if (isZero({ x: x - 1, y: y - 1, z: z - 1 })) return null;
+      // `scale` takes a factor along the mesh's own axes. On an object turned
+      // off its quarter turns a scale along the world's leans those axes
+      // toward each other, which no factor says, so the log reads the vertices.
+      const factor = move.frame ? ownAxesScale(move.frame, move.factor) : move.factor;
+      if (!factor) return null;
       name = 'scale';
-      params.scale = move.factor;
+      params.scale = factor;
       if (!median) params.pivot = move.pivot;
     }
 

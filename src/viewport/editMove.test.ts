@@ -3,9 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   type BMesh,
   type ProportionalOptions,
+  type Vec3,
+  composeMatrix,
   createGrid,
   execOperator,
   medianPoint,
+  transformPoint,
   vec3,
 } from '@kernel/index';
 
@@ -142,6 +145,50 @@ describe('EditMoveDrag', () => {
 
     expect(transform.call(true)).toBeNull();
     expectSameShape(mesh, grid());
+  });
+
+  it('scales an object stood upright along the world axis the handle shows', () => {
+    // The grid lies in its own XZ, so stood upright its own Z runs down the
+    // world's Y. The vertical handle once stretched it along its own Y instead,
+    // which it is flat along, and nothing moved.
+    const upright = { position: vec3(), rotation: vec3(Math.PI / 2, 0, 0), scale: vec3(1, 0.5, 2) };
+    const before = grid();
+    const { mesh, transform } = drag([
+      [{ kind: 'scale', factor: vec3(1, 2, 1), pivot, frame: upright }, falloff(0.6)],
+    ]);
+
+    const scale = transform.call(true)?.params.scale as Vec3;
+    expect(scale.x).toBeCloseTo(1, 9);
+    expect(scale.y).toBeCloseTo(1, 9);
+    expect(scale.z).toBeCloseTo(2, 9);
+    expectSameShape(mesh, replay(transform));
+
+    const start = [...before.verts.values()].find((vert) => vert.selected && vert.co.z > 0.1);
+    const moved = start && mesh.verts.get(start.id);
+    expect(moved?.co.z).toBeCloseTo((start?.co.z ?? 0) * 2, 9);
+    expect(moved?.co.x).toBeCloseTo(start?.co.x ?? 0, 9);
+  });
+
+  it('scales a turned object along the world and leaves the log to read the vertices', () => {
+    const turned = { position: vec3(), rotation: vec3(0, Math.PI / 4, 0), scale: vec3(1, 1, 1) };
+    const before = grid();
+    const { mesh, transform } = drag([
+      [{ kind: 'scale', factor: vec3(2, 1, 1), pivot, frame: turned }, off],
+    ]);
+
+    // Along world X on a grid turned an eighth of a turn about Y, one factor
+    // per own axis cannot say it, so no single call is offered.
+    expect(transform.call(true)).toBeNull();
+
+    const place = (co: Vec3) => transformPoint(composeMatrix(turned), co);
+    for (const start of before.verts.values()) {
+      if (!start.selected) continue;
+      const was = place(start.co);
+      const now = place(mesh.verts.get(start.id)?.co ?? vec3());
+      expect(now.x).toBeCloseTo(was.x * 2, 9);
+      expect(now.y).toBeCloseTo(was.y, 9);
+      expect(now.z).toBeCloseTo(was.z, 9);
+    }
   });
 
   it('does nothing for a step that asks for the move already made', () => {

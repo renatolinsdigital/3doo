@@ -2,14 +2,19 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   type Vec3,
+  add,
   clamp,
+  composeMatrix,
   cross,
   degToRad,
   distance,
   dot,
+  length,
   lerp,
+  mulVec,
   normalize,
   sub,
+  transformPoint,
   vec3,
 } from '../math';
 import { execOperator } from '../commands/operators';
@@ -60,6 +65,7 @@ import {
 import {
   clampObjectScale,
   edgeLength,
+  ownAxesScale,
   proportionalInfluence,
   rotateVerts,
   scaleVerts,
@@ -2054,6 +2060,82 @@ describe('transform', () => {
 
     expect(cube.boundingBox().max.x).toBeCloseTo(2);
     expect(cube.boundingBox().max.y).toBeCloseTo(1);
+  });
+
+  describe('along the world axes of a placed object', () => {
+    const turned = {
+      position: vec3(1, 2, 3),
+      rotation: vec3(degToRad(30), degToRad(45), degToRad(10)),
+      scale: vec3(0.5, 2, 1.5),
+    };
+
+    const world = (point: Vec3) => transformPoint(composeMatrix(turned), point);
+
+    const expectNear = (actual: Vec3, expected: Vec3) => {
+      expect(actual.x).toBeCloseTo(expected.x, 9);
+      expect(actual.y).toBeCloseTo(expected.y, 9);
+      expect(actual.z).toBeCloseTo(expected.z, 9);
+    };
+
+    it('stretches the shape in the world along the axis named, however it is turned', () => {
+      const cube = createBox(2);
+      const verts = [...cube.verts.values()];
+      const pivot = vec3(0.2, -0.1, 0.3);
+      const factor = vec3(1, 3, 1);
+      const before = verts.map((vert) => world(vert.co));
+      const center = world(pivot);
+
+      scaleVerts(cube, verts, factor, pivot, undefined, turned);
+
+      verts.forEach((vert, index) => {
+        expectNear(world(vert.co), add(mulVec(sub(before[index], center), factor), center));
+      });
+    });
+
+    it('gives a vertex the falloff reaches its share of the stretch out in the world', () => {
+      const grid = createGrid(4, 8);
+      const middle = [...grid.verts.values()].filter((vert) => length(vert.co) < 0.3);
+      const proportional = { enabled: true, radius: 1.5, falloff: 'linear' as const };
+      const influence = proportionalInfluence(grid, middle, proportional);
+      const factor = vec3(2, 1, 1);
+      const before = new Map([...grid.verts.values()].map((vert) => [vert, world(vert.co)]));
+      const center = world(vec3());
+
+      scaleVerts(grid, middle, factor, vec3(), influence, turned);
+
+      expect(influence.reached.length).toBeGreaterThan(0);
+      for (const { vert, influence: share } of influence.reached) {
+        const start = before.get(vert) ?? vec3();
+        const full = add(mulVec(sub(start, center), factor), center);
+        expectNear(world(vert.co), lerp(start, full, share));
+      }
+    });
+
+    it('keeps an object flattened along one axis finite', () => {
+      const cube = createBox(2);
+      const flat = { ...turned, scale: vec3(1, 0, 1) };
+
+      scaleVerts(cube, [...cube.verts.values()], vec3(2, 1, 1), vec3(), undefined, flat);
+
+      for (const vert of cube.verts.values()) {
+        expect(Number.isFinite(vert.co.x + vert.co.y + vert.co.z)).toBe(true);
+      }
+    });
+
+    it('names the factor along the own axes when the world axes lie along them', () => {
+      // A plane stood upright: its own Z runs along the world's Y.
+      const upright = {
+        position: vec3(),
+        rotation: vec3(Math.PI / 2, 0, 0),
+        scale: vec3(0.59, 0.335, 0.59),
+      };
+      const own = ownAxesScale(upright, vec3(1, 2, 1));
+      expect(own).not.toBeNull();
+      expectNear(own ?? vec3(), vec3(1, 1, 2));
+
+      expectNear(ownAxesScale(turned, vec3(3, 3, 3)) ?? vec3(), vec3(3, 3, 3));
+      expect(ownAxesScale(turned, vec3(2, 1, 1))).toBeNull();
+    });
   });
 
   it('spreads a move through the falloff radius when proportional editing is on', () => {
