@@ -37,8 +37,8 @@ import {
   inverseTransformOffset,
   inverseTransformPoint,
   medianPoint,
-  mulVec,
   pivotPosition,
+  pivotScale,
   planEdgeSlide,
   planVertexSlide,
   selectEdgeLoop,
@@ -2920,6 +2920,9 @@ export class Viewport {
       .multiply(this.gizmoBaseline.quaternion.clone().invert());
     const { axis: rotationAxis, angle: rotationAngle } = quaternionToAxisAngle(deltaQuaternion);
 
+    const handles = new THREE.Euler().setFromQuaternion(this.gizmoBaseline.quaternion, 'XYZ');
+    const scaleFrame = vec3(handles.x, handles.y, handles.z);
+
     const patches = this.transformGroup.reduce<
       { id: string; transform: Partial<SceneObject['transform']> }[]
     >((accumulator, id) => {
@@ -2933,6 +2936,7 @@ export class Viewport {
         rotationAxis,
         rotationAngle,
         scaleRatio,
+        scaleFrame,
       });
 
       let rotation = baseline.rotation;
@@ -2949,7 +2953,7 @@ export class Viewport {
         const newEuler = new THREE.Euler().setFromQuaternion(newQuaternion, 'XYZ');
         rotation = vec3(newEuler.x, newEuler.y, newEuler.z);
       } else if (tool === 'scale') {
-        scale = mulVec(baseline.scale, scaleRatio);
+        scale = pivotScale(baseline.scale, baseline.rotation, scaleFrame, scaleRatio);
       }
 
       accumulator.push({ id, transform: { position, rotation, scale } });

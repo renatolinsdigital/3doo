@@ -3,6 +3,7 @@ import {
   type Vec3,
   add,
   composeMatrix,
+  length,
   mulVec,
   rotationMatrix,
   sub,
@@ -20,6 +21,11 @@ export interface PivotDelta {
   rotationAngle: number;
   /** Componentwise scale factor since the drag started (scale tool). */
   scaleRatio: Vec3;
+  /**
+   * Euler XYZ of the axes `scaleRatio` runs along: the handles' own turn,
+   * which is the object's for a lone object and the world's for a group.
+   */
+  scaleFrame: Vec3;
 }
 
 /**
@@ -51,7 +57,7 @@ export function pivotPosition(
     return add(transformDirection(matrix, offset), pivot);
   }
 
-  return add(mulVec(offset, delta.scaleRatio), pivot);
+  return add(scaleAlong(delta.scaleFrame, delta.scaleRatio, offset), pivot);
 }
 
 /** The turn a Euler XYZ names, with no position or scale left on it. */
@@ -87,4 +93,33 @@ function unrotate(m: Mat4, direction: Vec3): Vec3 {
 export function pivotReorient(basePosition: Vec3, pivot: Vec3, from: Vec3, to: Vec3): Vec3 {
   const offset = sub(basePosition, pivot);
   return add(transformDirection(eulerMatrix(to), unrotate(eulerMatrix(from), offset)), pivot);
+}
+
+/** `direction` stretched by `ratio` along the axes of the Euler XYZ `frame`. */
+function scaleAlong(frame: Vec3, ratio: Vec3, direction: Vec3): Vec3 {
+  const turn = eulerMatrix(frame);
+  return transformDirection(turn, mulVec(unrotate(turn, direction), ratio));
+}
+
+/**
+ * An object's own scale after a scale of `ratio` along the axes of `frame`.
+ *
+ * The object's scale runs along its own axes, which need not be the frame's: a
+ * group's handles are world-aligned while each object in it is turned its own
+ * way. Multiplying the ratio straight onto the scale stretched a turned object
+ * along whichever of its axes shared the name, sideways or upward on screen.
+ *
+ * Each of the object's axes instead takes on however much the scale lengthens
+ * it. That is exact whenever the object's axes lie along the frame's, as they
+ * do for a lone object and for one turned in quarter turns. At any other angle
+ * the true answer is a shear, which a position, rotation and scale cannot
+ * hold, so the turn stays and each axis keeps the length the scale gave it.
+ */
+export function pivotScale(baseScale: Vec3, rotation: Vec3, frame: Vec3, ratio: Vec3): Vec3 {
+  const turn = eulerMatrix(rotation);
+  const stretch = (column: number) =>
+    length(
+      scaleAlong(frame, ratio, vec3(turn[column * 4], turn[column * 4 + 1], turn[column * 4 + 2])),
+    );
+  return mulVec(baseScale, vec3(stretch(0), stretch(1), stretch(2)));
 }

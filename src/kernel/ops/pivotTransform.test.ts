@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import { vec3 } from '../math';
 
-import { pivotPosition, pivotReorient } from './pivotTransform';
+import { pivotPosition, pivotReorient, pivotScale } from './pivotTransform';
 
 const noRotation = { rotationAxis: vec3(0, 1, 0), rotationAngle: 0 };
-const noScale = { scaleRatio: vec3(1, 1, 1) };
+const worldFrame = vec3(0, 0, 0);
+const noScale = { scaleRatio: vec3(1, 1, 1), scaleFrame: worldFrame };
 const noMove = { translation: vec3(0, 0, 0) };
 
 describe('pivotPosition', () => {
@@ -80,6 +81,7 @@ describe('pivotPosition', () => {
       const result = pivotPosition(point, point, 'scale', {
         ...noMove,
         ...noRotation,
+        scaleFrame: worldFrame,
         scaleRatio: vec3(2, 2, 2),
       });
       expect(result).toEqual(point);
@@ -90,6 +92,7 @@ describe('pivotPosition', () => {
       const result = pivotPosition(vec3(5, 0, 0), vec3(3, 0, 0), 'scale', {
         ...noMove,
         ...noRotation,
+        scaleFrame: worldFrame,
         scaleRatio: vec3(2, 1, 1),
       });
       expect(result.x).toBeCloseTo(7);
@@ -101,12 +104,63 @@ describe('pivotPosition', () => {
       const result = pivotPosition(vec3(1, 1, 1), vec3(0, 0, 0), 'scale', {
         ...noMove,
         ...noRotation,
+        scaleFrame: worldFrame,
         scaleRatio: vec3(2, 0.5, 3),
       });
       expect(result.x).toBeCloseTo(2);
       expect(result.y).toBeCloseTo(0.5);
       expect(result.z).toBeCloseTo(3);
     });
+
+    it('spreads a point along the axes of the handles, not the world', () => {
+      // Handles turned a quarter about Y put their X along world -Z, so a
+      // stretch along that X carries an offset on world Z and leaves world X.
+      const result = pivotPosition(vec3(1, 0, 1), vec3(0, 0, 0), 'scale', {
+        ...noMove,
+        ...noRotation,
+        scaleFrame: vec3(0, Math.PI / 2, 0),
+        scaleRatio: vec3(2, 1, 1),
+      });
+      expect(result.x).toBeCloseTo(1);
+      expect(result.y).toBeCloseTo(0);
+      expect(result.z).toBeCloseTo(2);
+    });
+  });
+});
+
+describe('pivotScale', () => {
+  it('multiplies straight through when the object and the handles agree', () => {
+    const result = pivotScale(vec3(1, 2, 3), worldFrame, worldFrame, vec3(2, 1, 0.5));
+    expect(result.x).toBeCloseTo(2);
+    expect(result.y).toBeCloseTo(2);
+    expect(result.z).toBeCloseTo(1.5);
+  });
+
+  it('scales a lone turned object along its own axes', () => {
+    const turn = vec3(0.4, -1.1, 2.3);
+    const result = pivotScale(vec3(1, 1, 1), turn, turn, vec3(3, 1, 1));
+    expect(result.x).toBeCloseTo(3);
+    expect(result.y).toBeCloseTo(1);
+    expect(result.z).toBeCloseTo(1);
+  });
+
+  it('stretches a turned object in a group along the world axis dragged', () => {
+    // Stood on end by a quarter turn about X, the object's own Z points down
+    // world Y. Scaling the group taller has to lengthen that axis, not the
+    // object's Y, which now runs along world Z.
+    const result = pivotScale(vec3(1, 1, 1), vec3(Math.PI / 2, 0, 0), worldFrame, vec3(1, 2, 1));
+    expect(result.x).toBeCloseTo(1);
+    expect(result.y).toBeCloseTo(1);
+    expect(result.z).toBeCloseTo(2);
+  });
+
+  it('keeps an axis lying across the drag at its length', () => {
+    // Turned an eighth about Z, the object's X and Y both lean into world X,
+    // and its Z is untouched by a stretch along world X.
+    const result = pivotScale(vec3(1, 1, 1), vec3(0, 0, Math.PI / 4), worldFrame, vec3(2, 1, 1));
+    expect(result.x).toBeCloseTo(Math.sqrt(2.5));
+    expect(result.y).toBeCloseTo(Math.sqrt(2.5));
+    expect(result.z).toBeCloseTo(1);
   });
 });
 
