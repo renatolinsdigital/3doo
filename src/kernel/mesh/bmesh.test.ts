@@ -10,7 +10,13 @@ import {
 } from '../primitives';
 
 import { BMesh } from './bmesh';
-import { cloneMesh, deserializeMesh, serializeMesh, splitLooseParts } from './serialize';
+import {
+  cloneMesh,
+  deserializeMesh,
+  serializeMesh,
+  splitLooseParts,
+  splitSelectedFaces,
+} from './serialize';
 import { triangulatePolygon } from './triangulate';
 
 describe('BMesh', () => {
@@ -287,6 +293,47 @@ describe('serialization', () => {
 
     expect(parts).toHaveLength(2);
     for (const part of parts) expect(part.edges.size).toBe(1);
+  });
+
+  it('splits the selected faces off, giving the border vertices to both', () => {
+    const mesh = createBox(1);
+    const top = [...mesh.faces.values()].find((face) => face.normal.y > 0.99);
+    if (!top) throw new Error('No top face');
+    top.selected = true;
+    top.materialIndex = 2;
+    mesh.flushSelection('face');
+
+    const [rest, selected] = splitSelectedFaces(mesh);
+
+    expect(rest.faces.size).toBe(5);
+    expect(selected.faces.size).toBe(1);
+    // The top's four corners go to both, so the box keeps all eight.
+    expect(rest.verts.size).toBe(8);
+    expect(selected.verts.size).toBe(4);
+    expect([...selected.faces.values()][0].materialIndex).toBe(2);
+    // What left was the selection, so nothing is selected in what stayed.
+    expect(rest.selectedVerts()).toHaveLength(0);
+    expect(selected.selectedFaces()).toHaveLength(1);
+    expect(rest.validate()).toEqual([]);
+    expect(selected.validate()).toEqual([]);
+  });
+
+  it('keeps loose vertices and wire edges with the faces left behind', () => {
+    const mesh = createBox(1);
+    const corner = [...mesh.verts.values()].find((vert) => vert.co.y > 0);
+    if (!corner) throw new Error('No top corner');
+    mesh.addEdge(corner, mesh.addVert(vec3(0, 3, 0)));
+    mesh.addVert(vec3(9, 9, 9));
+    for (const face of mesh.faces.values()) face.selected = true;
+    mesh.flushSelection('face');
+
+    const [rest, selected] = splitSelectedFaces(mesh);
+
+    expect(selected.faces.size).toBe(6);
+    expect(selected.edges.size).toBe(12);
+    expect(rest.faces.size).toBe(0);
+    expect(rest.edges.size).toBe(1);
+    expect(rest.verts.size).toBe(3);
   });
 
   it('produces an independent copy', () => {

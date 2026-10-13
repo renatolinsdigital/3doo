@@ -415,7 +415,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Shift+D makes an independent copy. Alt+D makes a linked copy that shares the same mesh data.',
           ],
           ['Join objects', 'Select several and press M to merge them into the active one.'],
-          ['Separate', 'P splits the loose parts of a mesh into an object each.'],
+          [
+            'Separate',
+            'P splits the loose parts of a mesh into an object each. To split off faces that are still attached, use SEPARATE SELECTED in edit mode.',
+          ],
           [
             'Apply transform',
             'Ctrl+A bakes rotation and scale into the vertices, leaving the transform clean.',
@@ -566,7 +569,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'The edit-mode operations live in three panels. OPERATIONS adds geometry (extrude, inset, bevel). LOOP OPERATIONS works along edge loops (loop cut, subdivide, relax, circle, space). TOPOLOGY joins, welds, cleans up or widens the selection. Most operations have a shortcut. A button is disabled when the current selection cannot feed it, and its hint says what to select instead.',
+        text: 'The edit-mode operations live in three panels. OPERATIONS adds geometry (extrude, inset, bevel). LOOP OPERATIONS works along edge loops (loop cut, subdivide, relax, circle, space). TOPOLOGY joins, welds, cleans up, widens the selection or separates it into an object of its own. Most operations have a shortcut. A button is disabled when the current selection cannot feed it, and its hint says what to select instead.',
       },
       {
         kind: 'table',
@@ -622,11 +625,15 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Fill (F) and bridge',
-            'Fill closes a selected boundary loop with a face. Only open edges count, so with the whole mesh selected, F fills its holes and nothing else. Bridge (Alt+B) connects two open loops of matching length with a band of quads.',
+            'Fill gives a face to each empty region the selection runs all the way round. Only open edges count, so with the whole mesh selected, F fills its holes and nothing else, and the outline of an open sheet stays open. Loose edges across a hole, such as knife lines, divide it, and each part gets a face of its own. A face lying folded flat back over the mesh, the way an earlier fill of a whole outline could leave one, does not hide a hole: F fills the hole and takes that face out, and the status bar says so. In face mode, select the faces all the way round a hole and F fills it. In vertex or edge mode, a selected run of open edges that does not close, with nothing else selected, gets a face across its two ends. Bridge (Alt+B) connects two open loops of matching length with a band of quads.',
           ],
           [
             'Connect (J)',
             'Runs an edge between two selected vertices, splitting the face they share.',
+          ],
+          [
+            'Separate selected',
+            'In the SELECTION row of the TOPOLOGY panel. Moves the selected faces into a new object, named after this one with .PART on the end, and takes them out of this one. The vertices along the border go to both, so the two come apart there and each is left with an open edge. The new object keeps the material slots and modifiers, and gets its origin on its own middle. You stay in edit mode on the original.',
           ],
           [
             'Triangulate (Alt+T) / tris to quads (Alt+J)',
@@ -715,7 +722,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'A face is divided wherever the cut crosses it from one of its edges to another, through any points you placed inside it. A cut that stops inside a face divides nothing, and its edges are left loose on top of the face: carry it on to an edge to divide the face. Where two lines of one cut cross, the face divides along both. Click the first point again to close a cut on itself. A cut closed inside one face makes what it encloses a face of its own, ready to select, and one or two new edges join it to the corners, since a face cannot have a hole in it.',
+        text: 'A face is divided wherever the cut crosses it from one of its edges to another, through any points you placed inside it. A cut that stops inside a face divides nothing, and its edges are left loose on top of the face: carry it on to an edge, in the same cut or a later one started from its loose end, to divide the face. Where two lines of one cut cross, the face divides along both, and the same goes for a later cut crossing a loose line. Click the first point again to close a cut on itself. A cut closed inside one face makes what it encloses a face of its own, ready to select, and one or two new edges join it to the corners, since a face cannot have a hole in it.',
       },
       {
         kind: 'note',

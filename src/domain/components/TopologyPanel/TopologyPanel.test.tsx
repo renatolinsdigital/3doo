@@ -47,6 +47,7 @@ describe('TopologyPanel', () => {
       'SHRINK',
       'EDGE LOOP',
       'FACE LOOP',
+      'SEPARATE SELECTED',
       'VERTEX SLIDE',
       'EDGE SLIDE',
     ]) {
@@ -72,6 +73,27 @@ describe('TopologyPanel', () => {
     }
     // Connect runs one edge between two vertices; a whole cube is not that.
     expect(button('CONNECT')).toHaveAttribute('aria-disabled', 'true');
+    // Separating every face would leave the object empty.
+    expect(button('SEPARATE SELECTED')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('separates the selected faces into a new object', async () => {
+    render(<TopologyPanel />);
+
+    act(() => {
+      const mesh = activeMesh();
+      mesh.deselectAll();
+      [...mesh.faces.values()][0].selected = true;
+      mesh.flushSelection('face');
+      useEditorStore.getState().touchMesh();
+    });
+
+    expect(button('SEPARATE SELECTED')).not.toHaveAttribute('aria-disabled');
+
+    await userEvent.click(button('SEPARATE SELECTED'));
+
+    expect(useEditorStore.getState().objects).toHaveLength(2);
+    expect(activeMesh().faces.size).toBe(5);
   });
 
   it('enables connect on exactly two vertices', () => {

@@ -1511,6 +1511,207 @@ describe('fill and bridge', () => {
     expect(cube.validate()).toEqual([]);
   });
 
+  it('fills both halves of a loop a diagonal runs across', () => {
+    const mesh = new BMesh();
+    const [a, b, c, d] = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(1, 0, 1), vec3(0, 0, 1)].map((co) =>
+      mesh.addVert(co),
+    );
+    // Ordered so the walk closes the triangle through the diagonal first and
+    // then meets what is left of the rim from its far end.
+    const rim = [mesh.addEdge(c, d), mesh.addEdge(d, a), mesh.addEdge(b, a), mesh.addEdge(c, b)];
+    const diagonal = mesh.addEdge(a, c);
+
+    const filled = fillHole(mesh, [diagonal, ...rim]);
+
+    expect(filled.map((face) => mesh.faceVerts(face).length)).toEqual([3, 3]);
+    expect(rim.every((edge) => edge.loops.length === 1)).toBe(true);
+    expect(mesh.validate()).toEqual([]);
+  });
+
+  it('fills an open chain whole whichever edge it starts from', () => {
+    const mesh = new BMesh();
+    const [a, b, c, d] = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(1, 0, 1), vec3(0, 0, 1)].map((co) =>
+      mesh.addVert(co),
+    );
+    const chain = [mesh.addEdge(b, c), mesh.addEdge(a, b), mesh.addEdge(c, d)];
+
+    const filled = fillHole(mesh, chain);
+
+    expect(filled).toHaveLength(1);
+    expect(mesh.faceVerts(filled[0])).toHaveLength(4);
+  });
+
+  describe('with faces selected', () => {
+    let grid: BMesh;
+    const fillFaces = (centers: Vec3[]) => {
+      for (const center of centers) faceAtCenter(grid, center).selected = true;
+      grid.flushSelection('face');
+      return execOperator({ mesh: grid, selectMode: 'face', cursor: vec3() }, 'fill');
+    };
+
+    beforeEach(() => {
+      grid = createGrid(3, 3);
+      deleteGeometry(
+        grid,
+        { verts: [], edges: [], faces: [faceAtCenter(grid, vec3(0, 0, 0))] },
+        'onlyFaces',
+      );
+    });
+
+    it('fills the hole they surround and leaves the outline open', () => {
+      const ring = [-1, 0, 1].flatMap((x) => [-1, 0, 1].map((z) => vec3(x, 0, z)));
+      // Leaving a corner out breaks the outline into an open run of edges.
+      const selected = ring.filter((c) => (c.x || c.z) && !(c.x === -1 && c.z === -1));
+
+      const result = fillFaces(selected);
+
+      expect(result.refused).toBeUndefined();
+      expect(grid.faces.size).toBe(9);
+      expect(grid.faceVerts(faceAtCenter(grid, vec3(0, 0, 0)))).toHaveLength(4);
+      expect(grid.validate()).toEqual([]);
+    });
+
+    it('lays nothing across a hole they only partly surround', () => {
+      const result = fillFaces([vec3(0, 0, -1), vec3(1, 0, -1), vec3(1, 0, 0)]);
+
+      expect(result.refused).toBe(true);
+      expect(grid.faces.size).toBe(8);
+    });
+  });
+
+  describe('with everything selected', () => {
+    const vertAt = (mesh: BMesh, co: Vec3) =>
+      [...mesh.verts.values()].find((vert) => distance(vert.co, co) < 1e-6) as Vert;
+    const fillAll = (mesh: BMesh) => {
+      mesh.selectAll();
+      return execOperator({ mesh, selectMode: 'vertex', cursor: vec3() }, 'fill');
+    };
+    const holeIn = (size: number, centers: Vec3[]) => {
+      const grid = createGrid(size, size);
+      const faces = centers.map((center) => faceAtCenter(grid, center));
+      // Only the faces go, so the edges between them stay behind, loose.
+      deleteGeometry(grid, { verts: [], edges: [], faces }, 'onlyFaces');
+      return grid;
+    };
+
+    it('gives each part loose edges divide a hole into a face of its own', () => {
+      const grid = holeIn(4, [
+        vec3(-0.5, 0, -0.5),
+        vec3(0.5, 0, -0.5),
+        vec3(0.5, 0, 0.5),
+        vec3(-0.5, 0, 0.5),
+      ]);
+
+      fillAll(grid);
+
+      expect(grid.faces.size).toBe(16);
+      for (const face of grid.faces.values()) expect(grid.faceVerts(face)).toHaveLength(4);
+      expect(grid.validate()).toEqual([]);
+    });
+
+    it('splits a hole a loose edge runs across, and leaves the outline open', () => {
+      const grid = holeIn(3, [vec3(0, 0, 0)]);
+      grid.addEdge(vertAt(grid, vec3(-0.5, 0, -0.5)), vertAt(grid, vec3(0.5, 0, 0.5)));
+
+      fillAll(grid);
+
+      expect(grid.faces.size).toBe(10);
+      const outline = [...grid.edges.values()].filter((edge) => edge.loops.length === 1);
+      expect(outline).toHaveLength(12);
+      for (const face of grid.faces.values()) expect(face.normal.y).toBeCloseTo(1);
+      expect(grid.validate()).toEqual([]);
+    });
+
+    it('fills round a loose line that stops inside the hole', () => {
+      const grid = holeIn(3, [vec3(0, 0, 0)]);
+      grid.addEdge(vertAt(grid, vec3(-0.5, 0, -0.5)), grid.addVert(vec3(-0.1, 0, -0.2)));
+
+      fillAll(grid);
+
+      expect(grid.faces.size).toBe(9);
+      expect(grid.faceVerts(faceAtCenter(grid, vec3(0, 0, 0)))).toHaveLength(4);
+    });
+
+    it('fills cells enclosed by loose edges alone', () => {
+      const centers = [-1, 0, 1].flatMap((x) => [-1, 0, 1].map((z) => vec3(x, 0, z)));
+      const grid = holeIn(5, centers);
+
+      fillAll(grid);
+
+      expect(grid.faces.size).toBe(25);
+      expect(grid.validate()).toEqual([]);
+    });
+
+    // Laid the other way round from the grid's faces, so each lies back to back
+    // with the faces under it.
+    const foldBack = (grid: BMesh, corners: [number, number][]) => {
+      const face = grid.addFace(corners.map(([x, z]) => vertAt(grid, vec3(x, 0, z))));
+      grid.computeNormals();
+      expect(face.normal.y).toBeCloseTo(-1);
+      return face;
+    };
+
+    it('replaces a face folded back over the mesh that hides a hole', () => {
+      const grid = holeIn(3, [vec3(0, 0, 0)]);
+      // Folds over the three faces in an L round one corner of the hole, two
+      // of the hole's edges among its own.
+      const fold = foldBack(grid, [
+        [-0.5, -1.5],
+        [0.5, -1.5],
+        [1.5, -1.5],
+        [1.5, -0.5],
+        [1.5, 0.5],
+        [0.5, 0.5],
+        [0.5, -0.5],
+        [-0.5, -0.5],
+      ]);
+
+      const result = fillAll(grid);
+
+      expect(result.status).toBe('Created 1 face(s), replacing 1 folded back over the mesh');
+      expect(grid.faces.has(fold.id)).toBe(false);
+      expect(grid.faces.size).toBe(9);
+      for (const face of grid.faces.values()) expect(face.normal.y).toBeCloseTo(1);
+      expect(grid.validate()).toEqual([]);
+    });
+
+    it('keeps a face folded back over the mesh that hides no hole', () => {
+      const grid = holeIn(3, [vec3(0, 0, 0)]);
+      const fold = foldBack(grid, [
+        [-1.5, -1.5],
+        [-0.5, -1.5],
+        [0.5, -1.5],
+        [1.5, -1.5],
+        [1.5, -0.5],
+        [1.5, 0.5],
+        [1.5, 1.5],
+        [0.5, 1.5],
+        [-0.5, 1.5],
+        [-1.5, 1.5],
+        [-1.5, 0.5],
+        [-1.5, -0.5],
+      ]);
+
+      const result = fillAll(grid);
+
+      expect(result.status).toBe('Created 1 face(s)');
+      expect(grid.faces.has(fold.id)).toBe(true);
+      const filled = [...grid.faces.values()].filter(
+        (face) => face !== fold && distance(grid.faceCenter(face), vec3()) < 1e-6,
+      );
+      expect(filled).toHaveLength(1);
+      expect(filled[0].normal.y).toBeCloseTo(1);
+      expect(grid.faces.size).toBe(10);
+    });
+
+    it('refuses a sheet with no holes rather than capping its outline', () => {
+      const grid = createGrid(2, 2);
+
+      expect(fillAll(grid).refused).toBe(true);
+      expect(grid.faces.size).toBe(4);
+    });
+  });
+
   it('refuses to fill a closed mesh', () => {
     const cube = createBox(2);
     cube.selectAll();

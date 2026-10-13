@@ -253,12 +253,14 @@ export function knifeSections(
   const margin = 0.5 / length;
   const param = (pixel: THREE.Vector2) => pixel.clone().sub(a).dot(along) / (length * length);
 
+  /** Which side of the line a vertex truly lies, before one within a pixel of it is taken as on it. */
+  const lean = (vert: Vert): number => dot(sub(vert.co, from.at), normal);
   const sides = new Map<number, number>();
   const side = (vert: Vert): number => {
     let distance = sides.get(vert.id);
     if (distance !== undefined) return distance;
 
-    distance = dot(sub(vert.co, from.at), normal);
+    distance = lean(vert);
     const pixel = view.project(vert.co);
     if (pixel) {
       const s = param(pixel);
@@ -271,18 +273,19 @@ export function knifeSections(
 
   const vertMarks = new Map<number, KnifeMark>();
   const edgeMarks = new Map<number, KnifeMark>();
-  const markOf = (loop: Loop, t: number): KnifeMark => {
-    if (t === 0 || t === 1) {
-      const vert = t === 0 ? loop.vert : loop.next.vert;
-      let mark = vertMarks.get(vert.id);
-      if (!mark) {
-        mark = marks.find(
-          (known) => known.point.kind === 'vert' && known.point.vert === vert.id,
-        ) ?? { point: { kind: 'vert', vert: vert.id }, co: vert.co };
-        vertMarks.set(vert.id, mark);
-      }
-      return mark;
+  const vertMark = (vert: Vert): KnifeMark => {
+    let mark = vertMarks.get(vert.id);
+    if (!mark) {
+      mark = marks.find((known) => known.point.kind === 'vert' && known.point.vert === vert.id) ?? {
+        point: { kind: 'vert', vert: vert.id },
+        co: vert.co,
+      };
+      vertMarks.set(vert.id, mark);
     }
+    return mark;
+  };
+  const markOf = (loop: Loop, t: number): KnifeMark => {
+    if (t === 0 || t === 1) return vertMark(t === 0 ? loop.vert : loop.next.vert);
 
     const { edge } = loop;
     let mark = edgeMarks.get(edge.id);
@@ -302,6 +305,38 @@ export function knifeSections(
   };
 
   const slices = sliceFaces(mesh, normal, side, markOf);
+
+  // Where the line starts and ends, not corners it passes: half a pixel either
+  // side of a click belongs to the click, so a piece can start a hair behind it.
+  const clicked = new Set(
+    [from.mark?.point, to.mark?.point].flatMap((point) =>
+      point?.kind === 'vert' ? [point.vert] : [],
+    ),
+  );
+
+  /**
+   * Whether a corner the line was taken through pokes across a straight piece
+   * of the face, which makes it a point of that piece. Cut straight past, it
+   * lands a hair on the wrong side and the face keeping it folds over itself,
+   * drawing over its neighbours and taking their clicks. A corner the piece
+   * already clears stays out: bending through it would leave the face.
+   */
+  const pokes = (face: Face, vert: Vert): boolean => {
+    const corner = mesh.loopOfVertInFace(face, vert);
+    if (!corner || side(vert) !== 0 || clicked.has(vert.id)) return false;
+    const here = Math.sign(lean(vert));
+    return (
+      here === 0 ||
+      [corner.prev.vert, corner.next.vert].some(
+        (next) => side(next) === 0 || Math.sign(lean(next)) === -here,
+      )
+    );
+  };
+  const at = (mark: KnifeMark): number => {
+    const pixel = view.project(mark.co);
+    return pixel ? param(pixel) : NaN;
+  };
+
   const clip = (slice: Slice<KnifeMark>, anchor: KnifeAnchor, pixel: THREE.Vector2): KnifeMark => {
     // A click inside the face is where its piece ends. Anywhere else the piece
     // stops where the click's line of sight passes it, which in a see-through
@@ -340,7 +375,20 @@ export function knifeSections(
     ) {
       continue;
     }
-    sections.push({ from: start, to: end, face: slice.face.id });
+
+    const low = Math.min(at(start), at(end));
+    const high = Math.max(at(start), at(end));
+    const through = mesh
+      .faceVerts(slice.face)
+      .filter((vert) => pokes(slice.face, vert))
+      .map(vertMark)
+      .filter((mark) => mark !== start && mark !== end && at(mark) > low && at(mark) < high)
+      .sort((first, second) => Math.abs(at(first) - at(start)) - Math.abs(at(second) - at(start)));
+
+    const chain = [start, ...through, end];
+    for (let i = 0; i + 1 < chain.length; i++) {
+      sections.push({ from: chain[i], to: chain[i + 1], face: slice.face.id });
+    }
   }
   return sections;
 }

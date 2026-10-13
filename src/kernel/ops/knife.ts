@@ -134,9 +134,25 @@ export function knifeCut(mesh: BMesh, runs: readonly (readonly KnifePoint[])[]):
     }
   }
 
+  // A line an earlier cut left loose on a face is part of the net that divides
+  // it now. Without it, carrying that line on to an edge in a later cut, or
+  // crossing it, drew a line that looked like it divided the face and did not:
+  // the face stayed whole under every line drawn across it.
+  const wires = [...mesh.edges.values()].filter((edge) => edge.loops.length === 0);
   const bridges: Pair<Node>[] = [];
+  const earlier: Pair<Node>[] = [];
+  const broken: Pair<Node>[] = [];
   for (const [face, pieces] of byFace) {
-    const met = meetPieces(mesh, face, pieces, nodes);
+    const lines = wires
+      .filter((edge) => liesWithin(mesh, face, edge))
+      .flatMap((edge) => nodes.lineAlong(edge));
+    const meetings = meetPieces(mesh, face, [...pieces, ...lines], nodes);
+    meetings.slice(pieces.length).forEach((chain, i) => {
+      earlier.push(...chain);
+      if (chain.length > 1) broken.push(lines[i]);
+    });
+
+    const met = meetings.flat();
     const bridged = bridgeLoops(mesh, face, met, nodes);
     bridges.push(...bridged);
     byFace.set(face, [...met, ...bridged]);
@@ -144,6 +160,13 @@ export function knifeCut(mesh: BMesh, runs: readonly (readonly KnifePoint[])[]):
 
   const created = nodes.build(new Set([...[...byFace.values()].flat(2), ...along.flat()]));
   const bridgeKeys = new Set(bridges.map(([a, b]) => pairKey(nodes.vert(a), nodes.vert(b))));
+  const earlierKeys = new Set(earlier.map(([a, b]) => pairKey(nodes.vert(a), nodes.vert(b))));
+
+  // A loose line this cut crosses gives way to its pieces either side.
+  for (const [a, b] of broken) {
+    const edge = mesh.findEdge(nodes.vert(a), nodes.vert(b));
+    if (edge && edge.loops.length === 0) mesh.removeEdge(edge);
+  }
   const cut = new Set<Edge>();
   let splits = 0;
   let loose = 0;
@@ -156,8 +179,9 @@ export function knifeCut(mesh: BMesh, runs: readonly (readonly KnifePoint[])[]):
 
   /**
    * Divides whichever face a path runs across, from its first vertex to its
-   * last, through the free vertices between. Two ends an edge already joins
-   * count as done: that edge is the cut.
+   * last, through the free vertices between. Two ends a face's edge already
+   * joins count as done: that edge is the cut. A loose edge between them is
+   * one the face still has to be divided along.
    */
   const divide = (path: readonly Vert[]): boolean => {
     const from = path[0];
@@ -165,7 +189,7 @@ export function knifeCut(mesh: BMesh, runs: readonly (readonly KnifePoint[])[]):
     const inner = path.slice(1, -1);
 
     const existing = inner.length === 0 ? mesh.findEdge(from, to) : null;
-    if (existing) {
+    if (existing && existing.loops.length > 0) {
       cut.add(existing);
       return true;
     }
@@ -205,6 +229,11 @@ export function knifeCut(mesh: BMesh, runs: readonly (readonly KnifePoint[])[]):
     for (const [a, b] of net) {
       // A bridge that divided nothing would be an edge nobody drew.
       if (bridgeKeys.has(pairKey(a, b))) continue;
+      // Loose before this cut and still loose, so not part of it.
+      if (earlierKeys.has(pairKey(a, b))) {
+        mesh.addEdge(a, b);
+        continue;
+      }
       const existing = mesh.findEdge(a, b);
       if (!existing) loose++;
       cut.add(existing ?? mesh.addEdge(a, b));
@@ -283,7 +312,8 @@ function divideOnce(
 const INSIDE_PIECE = 1e-9;
 
 /**
- * The pieces inside one face, split wherever two of them meet.
+ * The pieces inside one face, split wherever two of them meet: each piece as
+ * the chain it becomes, in the order the pieces came.
  *
  * Two pieces that cross get a point of their own where they cross, and a piece
  * ending on another splits that one where it lands, so the face divides along
@@ -295,8 +325,8 @@ function meetPieces(
   face: Face,
   pieces: readonly Pair<Node>[],
   nodes: NodeTable,
-): Pair<Node>[] {
-  if (pieces.length < 2) return [...pieces];
+): Pair<Node>[][] {
+  if (pieces.length < 2) return pieces.map((piece) => [piece]);
 
   const { u, v } = basisFromNormal(polygonNormal(mesh.facePoints(face)));
   const flat = (node: Node) => ({ x: dot(node.co, u), y: dot(node.co, v) });
@@ -359,7 +389,7 @@ function meetPieces(
     }
   }
 
-  return pieces.flatMap((piece, i) => {
+  return pieces.map((piece, i) => {
     const chain = withoutRepeats([
       piece[0],
       ...meets[i].sort((a, b) => a.at - b.at).map(({ node }) => node),
@@ -410,7 +440,10 @@ function bridgeLoops(
     ends: [corner, corners[(i + 1) % corners.length]] as Pair<Node>,
     edge: sides[i].edge.id,
   }));
-  const targets = [...corners, ...[...next.keys()].filter((node) => node.point.kind === 'edge')];
+  const targets = [
+    ...corners,
+    ...[...next.keys()].filter((node) => node.point.kind === 'edge' && onBorder(mesh, node)),
+  ];
 
   const { u, v } = basisFromNormal(polygonNormal(mesh.facePoints(face)));
   const flat = (node: Node) => ({ x: dot(node.co, u), y: dot(node.co, v) });
@@ -461,7 +494,7 @@ function bridgeLoops(
     const attached = new Set<Node>();
     const reached = new Set<Node>();
     for (const node of loop) {
-      const ends = exits(node, loop, next);
+      const ends = exits(mesh, node, loop, next);
       if (ends.length === 0) continue;
       attached.add(node);
       for (const end of ends) reached.add(end);
@@ -539,11 +572,12 @@ function closedLoops(next: ReadonlyMap<Node, ReadonlySet<Node>>): Set<Node>[] {
  * lines of the cut running out from it.
  */
 function exits(
+  mesh: BMesh,
   start: Node,
   loop: ReadonlySet<Node>,
   next: ReadonlyMap<Node, ReadonlySet<Node>>,
 ): Node[] {
-  if (start.point.kind !== 'face') return [start];
+  if (onBorder(mesh, start)) return [start];
   const found: Node[] = [];
   const seen = new Set(loop);
   const stack = [start];
@@ -552,8 +586,8 @@ function exits(
     for (const other of next.get(node) ?? []) {
       if (seen.has(other)) continue;
       seen.add(other);
-      if (other.point.kind === 'face') stack.push(other);
-      else found.push(other);
+      if (onBorder(mesh, other)) found.push(other);
+      else stack.push(other);
     }
   }
   return found;
@@ -562,6 +596,19 @@ function exits(
 /** A vertex is on a face's border once any face has it as a corner. */
 function onFace(vert: Vert): boolean {
   return vert.edges.some((edge) => edge.loops.length > 0);
+}
+
+/**
+ * Whether a point of the cut lies on a face's border, read off the mesh before
+ * it is cut. A loose vertex or edge an earlier cut left inside a face is not,
+ * for all that it is a vertex or an edge.
+ */
+function onBorder(mesh: BMesh, node: Node): boolean {
+  const { point } = node;
+  if (point.kind === 'face') return false;
+  if (point.kind === 'edge') return (mesh.edges.get(point.edge)?.loops.length ?? 0) > 0;
+  const vert = mesh.verts.get(point.vert);
+  return vert !== undefined && onFace(vert);
 }
 
 /**
@@ -623,6 +670,15 @@ class NodeTable {
     siblings.push(node);
     table.set(id, siblings);
     return node;
+  }
+
+  /** An edge as pieces of the cut, from end to end through the points the cut has on it. */
+  lineAlong(edge: Edge): Pair<Node>[] {
+    const ends = [edge.v0, edge.v1].map((vert) => this.node({ kind: 'vert', vert: vert.id }));
+    if (!ends[0] || !ends[1]) return [];
+    const on = [...(this.edges.get(edge.id) ?? [])].sort((a, b) => along(a) - along(b));
+    const chain = [ends[0], ...on, ends[1]];
+    return chain.slice(1).map((node, i): Pair<Node> => [chain[i], node]);
   }
 
   /** Splits the edges and makes the face vertices the cut uses; returns every vertex it made. */
@@ -695,18 +751,105 @@ function samePoint(a: KnifePoint, b: KnifePoint): boolean {
   return false;
 }
 
-/** The faces a point lies on: round a vertex, either side of an edge, or the one it is inside. */
+/**
+ * The faces a point lies on: round a vertex, either side of an edge, or the one
+ * it is inside. A loose vertex or edge, left by a line that stopped inside a
+ * face, lies on that face, which is what lets a later cut carry the line on.
+ */
 export function knifePointFaces(mesh: BMesh, point: KnifePoint): Face[] {
   if (point.kind === 'vert') {
     const vert = mesh.verts.get(point.vert);
-    return vert ? mesh.vertFaces(vert) : [];
+    if (!vert) return [];
+    const faces = mesh.vertFaces(vert);
+    return faces.length > 0 ? faces : facesUnder(mesh, vert, vert.co);
   }
   if (point.kind === 'edge') {
     const edge = mesh.edges.get(point.edge);
-    return edge ? mesh.edgeFaces(edge) : [];
+    if (!edge) return [];
+    const faces = mesh.edgeFaces(edge);
+    if (faces.length > 0) return faces;
+    return facesUnder(mesh, edge.v0, lerp(edge.v0.co, edge.v1.co, point.t));
   }
   const face = mesh.faces.get(point.face);
   return face ? [face] : [];
+}
+
+/**
+ * The faces a point of loose geometry lies on.
+ *
+ * Asked first of the faces where its run of loose edges meets the surface,
+ * which for a line carried in from an edge is the face it stops inside. A run
+ * that meets the surface nowhere, drawn wholly inside one face, asks them all.
+ */
+function facesUnder(mesh: BMesh, start: Vert, co: Vec3): Face[] {
+  const near = new Set<Face>();
+  const seen = new Set<Vert>([start]);
+  const stack = [start];
+  while (stack.length > 0) {
+    const vert = stack.pop() as Vert;
+    for (const face of mesh.vertFaces(vert)) near.add(face);
+    for (const edge of vert.edges) {
+      const other = mesh.edgeOther(edge, vert);
+      if (edge.loops.length > 0 || seen.has(other)) continue;
+      seen.add(other);
+      stack.push(other);
+    }
+  }
+
+  const found = [...near].filter((face) => liesOn(mesh, face, co));
+  if (found.length > 0) return found;
+  return [...mesh.faces.values()].filter((face) => liesOn(mesh, face, co));
+}
+
+/**
+ * How far off a face's plane a point may lie and still be on the face, beyond
+ * what its own corners stray, as a fraction of the face's size.
+ */
+const ON_PLANE = 1e-6;
+
+/** Whether a point is no further off a face's plane than the face's own corners stray. */
+function onPlane(mesh: BMesh, face: Face, co: Vec3): boolean {
+  const corners = mesh.facePoints(face);
+  const normal = polygonNormal(corners);
+  const heights = corners.map((corner) => dot(corner, normal));
+  const height = dot(co, normal);
+  const slack = ON_PLANE * Math.sqrt(polygonArea(corners));
+  return height >= Math.min(...heights) - slack && height <= Math.max(...heights) + slack;
+}
+
+function liesOn(mesh: BMesh, face: Face, co: Vec3): boolean {
+  return insideFace(mesh, face, co) && onPlane(mesh, face, co);
+}
+
+/**
+ * Whether a loose edge lies on a face, short of crossing its border: its ends
+ * may touch the border, but nothing else of it may leave the face.
+ */
+function liesWithin(mesh: BMesh, face: Face, edge: Edge): boolean {
+  // An end on the border is one of the face's corners: the cut that left the
+  // line split the border there.
+  const reaches = (vert: Vert) => !onFace(vert) || mesh.vertFaces(vert).includes(face);
+  if (!reaches(edge.v0) || !reaches(edge.v1)) return false;
+  if (!liesOn(mesh, face, lerp(edge.v0.co, edge.v1.co, 0.5))) return false;
+  if (!onPlane(mesh, face, edge.v0.co) || !onPlane(mesh, face, edge.v1.co)) return false;
+
+  const corners = mesh.facePoints(face);
+  const { u, v } = basisFromNormal(polygonNormal(corners));
+  const flat = (co: Vec3) => ({ x: dot(co, u), y: dot(co, v) });
+  const turn = (a: Flat, b: Flat, c: Flat) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  const p = flat(edge.v0.co);
+  const q = flat(edge.v1.co);
+  for (let i = 0; i < corners.length; i++) {
+    const r = flat(corners[i]);
+    const s = flat(corners[(i + 1) % corners.length]);
+    if (turn(r, s, p) * turn(r, s, q) < 0 && turn(p, q, r) * turn(p, q, s) < 0) return false;
+  }
+  return true;
+}
+
+interface Flat {
+  x: number;
+  y: number;
 }
 
 /** Whether two points lie on one edge already there, end to end or part of the way along it. */

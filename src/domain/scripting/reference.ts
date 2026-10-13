@@ -371,7 +371,8 @@ export const OPERATOR_SPECS: readonly OperatorSpec[] = [
     name: 'fill',
     group: 'topology',
     needs: { of: 'edges', count: 3 },
-    summary: 'Fills the hole a selected boundary loop runs around.',
+    summary:
+      'Gives a face to each hole the selected edges run all the way round, one per part where loose edges divide it. In face mode, only holes the selected faces surround fill.',
     params: [
       {
         name: 'bridge',

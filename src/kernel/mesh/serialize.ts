@@ -166,10 +166,6 @@ export function cloneMesh(mesh: BMesh): BMesh {
  * wire edges: the shells a mesh falls into when nothing joins them. Always
  * returns at least one mesh, so a caller reads "nothing to separate" as a
  * length of one.
- *
- * Going through `MeshData` rather than the half-edge graph is what carries UVs,
- * sharp edges, smoothing, material slots and the selection across for free:
- * every part is rebuilt the same way a saved file is.
  */
 export function splitLooseParts(mesh: BMesh): BMesh[] {
   const data = serializeMesh(mesh);
@@ -210,55 +206,96 @@ export function splitLooseParts(mesh: BMesh): BMesh[] {
   if (groups.size <= 1) return [deserializeMesh(data)];
 
   return [...groups.values()].map((vertices) => {
-    const remap = new Map(vertices.map((index, position) => [index, position]));
-    const inPart = (index: number): boolean => remap.has(index);
-    const at = (index: number): number => remap.get(index) as number;
-    const pairsInPart = (pairs: readonly [number, number][]): [number, number][] =>
-      pairs.filter(([a]) => inPart(a)).map(([a, b]) => [at(a), at(b)]);
+    const inPart = new Set(vertices);
+    const faces = data.faces.flatMap((face, faceIndex) => (inPart.has(face[0]) ? [faceIndex] : []));
+    return meshPart(data, vertices, faces, true);
+  });
+}
 
-    const positions: number[] = [];
-    for (const index of vertices) {
-      positions.push(
-        data.positions[index * 3],
-        data.positions[index * 3 + 1],
-        data.positions[index * 3 + 2],
-      );
-    }
+/**
+ * Splits the selected faces off a mesh: the first mesh holds the rest, the
+ * second the selection. A vertex on the border between them goes into both, so
+ * the two come apart there instead of sharing it.
+ *
+ * Wire edges and loose vertices stay with the rest, since no selected face
+ * holds them. The rest comes back with nothing selected: the selection is what
+ * left it.
+ */
+export function splitSelectedFaces(mesh: BMesh): [rest: BMesh, selected: BMesh] {
+  const data = serializeMesh(mesh);
+  const chosen = new Set(data.selection.faces);
+  const selectedFaces: number[] = [];
+  const restFaces: number[] = [];
+  data.faces.forEach((_, faceIndex) =>
+    (chosen.has(faceIndex) ? selectedFaces : restFaces).push(faceIndex),
+  );
 
-    const faces: number[][] = [];
-    const materialIndices: number[] = [];
-    const smooth: boolean[] = [];
-    const uvs: number[][] = [];
-    const kept: number[] = [];
+  const selectedVerts = new Set(selectedFaces.flatMap((faceIndex) => data.faces[faceIndex]));
+  const restVerts = new Set(restFaces.flatMap((faceIndex) => data.faces[faceIndex]));
+  for (const [a, b] of data.wireEdges) restVerts.add(a).add(b);
 
-    data.faces.forEach((face, faceIndex) => {
-      if (!inPart(face[0])) return;
-      faces.push(face.map(at));
-      materialIndices.push(data.materialIndices[faceIndex] ?? 0);
-      smooth.push(data.smooth[faceIndex] ?? false);
-      uvs.push(data.uvs[faceIndex] ?? []);
-      kept.push(faceIndex);
-    });
+  const vertices = Array.from({ length: data.positions.length / 3 }, (_, index) => index);
+  const rest = meshPart(
+    data,
+    vertices.filter((index) => restVerts.has(index) || !selectedVerts.has(index)),
+    restFaces,
+    true,
+  );
+  rest.deselectAll();
 
-    const facePosition = new Map(kept.map((faceIndex, position) => [faceIndex, position]));
+  return [
+    rest,
+    meshPart(
+      data,
+      vertices.filter((index) => selectedVerts.has(index)),
+      selectedFaces,
+      false,
+    ),
+  ];
+}
 
-    return deserializeMesh({
-      version: 1,
-      positions,
-      faces,
-      materialIndices,
-      smooth,
-      uvs,
-      wireEdges: pairsInPart(data.wireEdges),
-      sharpEdges: pairsInPart(data.sharpEdges),
-      selection: {
-        verts: data.selection.verts.filter(inPart).map(at),
-        edges: pairsInPart(data.selection.edges),
-        faces: data.selection.faces
-          .filter((faceIndex) => facePosition.has(faceIndex))
-          .map((faceIndex) => facePosition.get(faceIndex) as number),
-        vertOrder: data.selection.vertOrder?.filter(inPart).map(at),
-      },
-    });
+/**
+ * The piece of `data` made of `vertices` and `faces`, renumbered to stand on
+ * its own. Sharp and selected edges come along when both their ends are in the
+ * piece, and so do wire edges when `wireEdges` is set.
+ *
+ * Going through `MeshData` rather than the half-edge graph is what carries UVs,
+ * sharp edges, smoothing, material slots and the selection across for free:
+ * every piece is rebuilt the same way a saved file is.
+ */
+function meshPart(
+  data: MeshData,
+  vertices: readonly number[],
+  faces: readonly number[],
+  wireEdges: boolean,
+): BMesh {
+  const remap = new Map(vertices.map((index, position) => [index, position]));
+  const inPart = (index: number): boolean => remap.has(index);
+  const at = (index: number): number => remap.get(index) as number;
+  const pairsInPart = (pairs: readonly [number, number][]): [number, number][] =>
+    pairs.filter(([a, b]) => inPart(a) && inPart(b)).map(([a, b]) => [at(a), at(b)]);
+  const facePosition = new Map(faces.map((faceIndex, position) => [faceIndex, position]));
+
+  return deserializeMesh({
+    version: 1,
+    positions: vertices.flatMap((index) => [
+      data.positions[index * 3],
+      data.positions[index * 3 + 1],
+      data.positions[index * 3 + 2],
+    ]),
+    faces: faces.map((faceIndex) => data.faces[faceIndex].map(at)),
+    materialIndices: faces.map((faceIndex) => data.materialIndices[faceIndex] ?? 0),
+    smooth: faces.map((faceIndex) => data.smooth[faceIndex] ?? false),
+    uvs: faces.map((faceIndex) => data.uvs[faceIndex] ?? []),
+    wireEdges: wireEdges ? pairsInPart(data.wireEdges) : [],
+    sharpEdges: pairsInPart(data.sharpEdges),
+    selection: {
+      verts: data.selection.verts.filter(inPart).map(at),
+      edges: pairsInPart(data.selection.edges),
+      faces: data.selection.faces
+        .filter((faceIndex) => facePosition.has(faceIndex))
+        .map((faceIndex) => facePosition.get(faceIndex) as number),
+      vertOrder: data.selection.vertOrder?.filter(inPart).map(at),
+    },
   });
 }

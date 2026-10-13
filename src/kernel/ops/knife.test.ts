@@ -196,6 +196,77 @@ describe('knifeCut', () => {
     expect(plane.validate()).toEqual([]);
   });
 
+  it('divides the face when a later cut carries a loose line on to an edge', () => {
+    const plane = createPlane(2);
+    const { nearLeft, nearRight, farRight, farLeft } = planeCorners(plane);
+    knifeCut(plane, [[onEdge(plane, farLeft, nearLeft), inFace(onlyFace(plane), vec3(0, 0, 0))]]);
+    const end = vertAt(plane, 0, 0, 0);
+
+    const result = knifeCut(plane, [[atVert(end), onEdge(plane, nearRight, farRight)]]);
+
+    // Carried on from the loose end itself, not from a second vertex on top of it.
+    expect(result.splits).toBe(1);
+    expect(result.loose).toBe(0);
+    expect(plane.verts.size).toBe(7);
+    expect(plane.faces.size).toBe(2);
+    for (const half of plane.faces.values()) expect(plane.faceArea(half)).toBeCloseTo(2);
+    for (const edge of plane.edges.values()) expect(edge.loops.length).toBeGreaterThan(0);
+    expect(plane.vertFaces(end)).toHaveLength(2);
+    expect(plane.validate()).toEqual([]);
+
+    // The whole line now divides the face, so the whole line is the cut.
+    const left = vertAt(plane, -1, 0, 0);
+    expect(result.edges).toContain(plane.findEdge(left, end));
+  });
+
+  it('joins a loose line a later cut crosses, and divides where it now reaches an edge', () => {
+    const plane = createPlane(2);
+    const { nearLeft, nearRight, farRight, farLeft } = planeCorners(plane);
+    knifeCut(plane, [[onEdge(plane, farLeft, nearLeft), inFace(onlyFace(plane), vec3(0.5, 0, 0))]]);
+
+    const result = knifeCut(plane, [
+      [onEdge(plane, farLeft, farRight), onEdge(plane, nearLeft, nearRight)],
+    ]);
+
+    // The left half is divided by the loose line, which now runs edge to edge
+    // across it. Across the right half it still stops inside, and stays loose.
+    expect(plane.faces.size).toBe(3);
+    expect(result.loose).toBe(0);
+    expect(totalArea(plane)).toBeCloseTo(4);
+    expect(plane.validate()).toEqual([]);
+
+    const crossing = vertAt(plane, 0, 0, 0);
+    expect(plane.vertFaces(crossing)).toHaveLength(3);
+    const stub = [...plane.edges.values()].filter((edge) => edge.loops.length === 0);
+    expect(stub).toHaveLength(1);
+    expect([stub[0].v0, stub[0].v1]).toContain(crossing);
+    expect(result.edges).not.toContain(stub[0]);
+  });
+
+  it('cuts out a loop a later cut closes through a line left loose inside the face', () => {
+    const plane = createPlane(2);
+    const face = onlyFace(plane);
+    knifeCut(plane, [[inFace(face, vec3(-0.5, 0, -0.5)), inFace(face, vec3(0.5, 0, -0.5))]]);
+    const first = vertAt(plane, -0.5, 0, -0.5);
+    const second = vertAt(plane, 0.5, 0, -0.5);
+
+    const result = knifeCut(plane, [
+      [
+        atVert(second),
+        inFace(face, vec3(0.5, 0, 0.5)),
+        inFace(face, vec3(-0.5, 0, 0.5)),
+        atVert(first),
+      ],
+    ]);
+
+    expect(result.loose).toBe(0);
+    expect(plane.faces.size).toBe(3);
+    expect(plane.validate()).toEqual([]);
+    const inside = faceOf(plane, [first, second, ...result.verts]);
+    expect(inside && plane.faceArea(inside)).toBeCloseTo(1);
+    expect(totalArea(plane)).toBeCloseTo(4);
+  });
+
   it('makes the inside of a loop drawn within a face a face of its own', () => {
     const plane = createPlane(2);
     const square: [number, number][] = [

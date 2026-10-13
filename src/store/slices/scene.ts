@@ -44,6 +44,7 @@ import {
   flipNormals,
   imagePlaneSize,
   splitLooseParts,
+  splitSelectedFaces,
   inverseMatrix,
   inverseTransformOffset,
   inverseTransformPoint,
@@ -780,6 +781,8 @@ export interface SceneSlice {
    */
   booleanWithSelected: (op: BooleanOp) => Promise<void>;
   separateLooseParts: () => void;
+  /** Moves the selected faces of the object in edit mode into an object of their own. */
+  separateSelection: () => void;
   /** Deletes the selection, or the objects named: the outliner's row menu names one. */
   deleteSelected: (ids?: readonly string[]) => void;
   /** Bakes the selection's transforms, or those of the objects named. */
@@ -1842,6 +1845,66 @@ export const createSceneSlice: StateCreator<
       selectedObjectIds: [object.id, ...separated.map((part) => part.id)],
       meshVersion: state.meshVersion + 1,
       status: `Separated ${parts.length} loose parts`,
+    }));
+  },
+
+  /**
+   * Moves the selected faces into an object of their own, taking them out of
+   * the object being edited.
+   *
+   * The new object keeps the material slots and modifier stack, as a loose
+   * part does, and gets its origin on its own middle. The edited object keeps
+   * its origin and stays in edit mode: it lost a piece of itself, not its
+   * place.
+   */
+  separateSelection: () => {
+    const state = get();
+    const object = activeObject(state);
+    if (!object) return;
+    if (object.locked) {
+      get().noteLockedAttempt(object.id);
+      return;
+    }
+
+    const selected = object.mesh.selectedFaces().length;
+    const refusal = object.lattice
+      ? CAGE_REFUSAL
+      : state.objects.some((other) => other.id !== object.id && other.mesh === object.mesh)
+        ? LINKED_MESH_REFUSAL
+        : selected === 0
+          ? 'Select the faces to separate'
+          : selected === object.mesh.faces.size
+            ? 'Every face is selected, so nothing would be left behind'
+            : null;
+    if (refusal) {
+      set({ status: refusal });
+      get().pushToast('warning', refusal);
+      return;
+    }
+
+    get().recordHistory('Separate selection');
+
+    const [rest, piece] = splitSelectedFaces(object.mesh);
+    const separated = recenterOrigin({
+      ...object,
+      id: nextObjectId(),
+      name: `${object.name}.PART`,
+      mesh: piece,
+      transform: structuredClone(object.transform),
+      materials: structuredClone(object.materials),
+      modifiers: structuredClone(object.modifiers),
+      primitive: null,
+    });
+
+    set((state) => ({
+      objects: state.objects.flatMap((candidate) =>
+        candidate.id === object.id
+          ? [{ ...candidate, mesh: rest, primitive: null }, separated]
+          : [candidate],
+      ),
+      selectedObjectIds: [object.id, separated.id],
+      meshVersion: state.meshVersion + 1,
+      status: `Separated ${selected} face(s) into ${separated.name}`,
     }));
   },
 

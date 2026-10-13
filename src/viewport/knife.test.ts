@@ -1,7 +1,19 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
-import { type BMesh, type Vert, createBox, createPlane, execOperator, vec3 } from '@kernel/index';
+import {
+  type BMesh,
+  type Face,
+  type Vert,
+  createBox,
+  createPlane,
+  cross,
+  execOperator,
+  length,
+  sub,
+  triangulatePolygon,
+  vec3,
+} from '@kernel/index';
 
 import { KNIFE_CURSOR } from './Viewport';
 import {
@@ -62,6 +74,26 @@ function vertAt(mesh: BMesh, x: number, y: number, z: number): Vert {
 /** A click out over empty space, `x` along the horizontal through the middle of the view. */
 function offMesh(x: number): KnifeAnchor {
   return { at: vec3(x, 0, 0), mark: null };
+}
+
+/** A click over empty space beside a plane seen from above. */
+function offMeshAt(x: number, z: number): KnifeAnchor {
+  return { at: vec3(x, 0, z), mark: null };
+}
+
+/**
+ * How much area a face's triangles cover. More than the face's own area is a
+ * face folded over itself, drawn spilling over its neighbours.
+ */
+function drawnArea(mesh: BMesh, face: Face): number {
+  const points = mesh.facePoints(face);
+  const indices = triangulatePolygon(points, face.normal);
+  let area = 0;
+  for (let i = 0; i < indices.length; i += 3) {
+    const [a, b, c] = [points[indices[i]], points[indices[i + 1]], points[indices[i + 2]]];
+    area += length(cross(sub(b, a), sub(c, a))) / 2;
+  }
+  return area;
 }
 
 /** A click that landed on the mesh, so its mark is there to be compared against. */
@@ -385,6 +417,40 @@ describe('a knife cut, click to mesh', () => {
     const selected = plane.selectedFaces();
     expect(selected).toHaveLength(1);
     expect(plane.faceArea(selected[0])).toBeCloseTo(1);
+  });
+
+  it('takes a line through a corner it passes within a pixel of, whichever way it is drawn', () => {
+    for (const anchors of [
+      [offMeshAt(0.19, -3), offMeshAt(0.19, 3)],
+      [offMeshAt(0.19, 3), offMeshAt(0.19, -3)],
+    ]) {
+      // A cut bent at a click inside the face leaves the bend a corner the
+      // face on its right wraps round.
+      const plane = createPlane(2);
+      const face = [...plane.faces.values()][0];
+      const bend = vec3(0.2, 0, -0.6);
+      const view = viewFrom(above());
+      cut(
+        plane,
+        draw(plane, view, [
+          offMeshAt(0, 3),
+          { at: bend, mark: { point: { kind: 'face', face: face.id, co: bend }, co: bend } },
+          offMeshAt(-2.8, -3),
+        ]),
+      );
+      const corner = vertAt(plane, 0.2, 0, -0.6);
+
+      // Forty pixels to the unit here, so this line passes the corner under half a pixel off.
+      cut(plane, draw(plane, view, anchors));
+
+      expect(plane.selectedEdges().some((edge) => edge.v0 === corner || edge.v1 === corner)).toBe(
+        true,
+      );
+      for (const piece of plane.faces.values()) {
+        expect(drawnArea(plane, piece)).toBeCloseTo(plane.faceArea(piece), 9);
+      }
+      expect(plane.validate()).toEqual([]);
+    }
   });
 
   it('crosses an earlier line of the same cut and divides the face four ways', () => {

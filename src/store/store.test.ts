@@ -997,6 +997,51 @@ describe('editor store', () => {
     expect(store().status).toContain('single-user');
   });
 
+  it('separates the selected faces into an object of their own', () => {
+    store().addPrimitive('cube');
+    const original = activeObject();
+    store().setObjectTransform(original.id, { position: { x: 2, y: 0, z: 0 } });
+    store().setMode('edit');
+    selectTopFace();
+
+    store().separateSelection();
+
+    expect(store().objects).toHaveLength(2);
+    const separated = store().objects.find((object) => object.id !== original.id);
+    if (!separated) throw new Error('Nothing was separated');
+    expect(activeObject().id).toBe(original.id);
+    expect(activeObject().mesh.faces.size).toBe(5);
+    expect(activeObject().transform.position.x).toBeCloseTo(2);
+    expect(separated.mesh.faces.size).toBe(1);
+    expect(separated.name).toBe(`${original.name}.PART`);
+    // Its origin sits on the face it holds, which has not moved on screen.
+    expect(separated.transform.position.x).toBeCloseTo(2);
+    expect(separated.transform.position.y).toBeCloseTo(0.5);
+    expect(separated.mesh.boundingBox().max.y).toBeCloseTo(0);
+    expect(store().mode).toBe('edit');
+    expect(store().selectedObjectIds).toEqual([original.id, separated.id]);
+
+    store().undo();
+
+    expect(store().objects).toHaveLength(1);
+    expect(activeObject().mesh.faces.size).toBe(6);
+  });
+
+  it.each([
+    ['no face is selected', () => activeObject().mesh.deselectAll(), /Select the faces/],
+    ['every face is selected', () => activeObject().mesh.selectAll(), /nothing would be left/],
+  ])('refuses to separate when %s', (_, select, status) => {
+    store().addPrimitive('cube');
+    store().setMode('edit');
+    select();
+
+    store().separateSelection();
+
+    expect(store().objects).toHaveLength(1);
+    expect(activeObject().mesh.faces.size).toBe(6);
+    expect(store().status).toMatch(status);
+  });
+
   it('leaves objects outside the merge unchanged when they share the mesh', () => {
     store().addPrimitive('cube');
     const original = activeObject().id;

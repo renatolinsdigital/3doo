@@ -591,15 +591,30 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     };
   },
 
-  fill: ({ mesh }, params) => {
+  fill: ({ mesh, selectMode }, params) => {
     const edges = mesh.selectedEdges();
     if (edges.length < 3) return { status: 'Select a boundary loop to fill' };
     if (readBoolean(params, 'bridge', false)) {
       return { status: `Created ${bridgeEdgeLoops(mesh, edges).length} face(s)` };
     }
-    const created = fillHole(mesh, edges);
-    if (created.length === 0) return { status: 'No holes in the selection to fill', refused: true };
-    return { status: `Created ${created.length} face(s)` };
+    const faceMode = selectMode === 'face';
+    const before = mesh.faces.size;
+    const created = fillHole(mesh, edges, { fromFaces: faceMode });
+    if (created.length === 0) {
+      return {
+        status: faceMode
+          ? 'No hole has selected faces all the way round it'
+          : 'No holes in the selection to fill',
+        refused: true,
+      };
+    }
+    const replaced = before + created.length - mesh.faces.size;
+    return {
+      status:
+        replaced > 0
+          ? `Created ${created.length} face(s), replacing ${replaced} folded back over the mesh`
+          : `Created ${created.length} face(s)`,
+    };
   },
 
   bridge: ({ mesh }) => {

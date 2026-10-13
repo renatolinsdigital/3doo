@@ -64,6 +64,7 @@ function previewSlide(mesh: BMesh, way: SlideWay, distance: number, scale: Vec3)
  */
 export function TopologyPanel() {
   const exec = useEditorStore((state) => state.exec);
+  const separateSelection = useEditorStore((state) => state.separateSelection);
   const openDialog = useEditorStore((state) => state.openDialog);
   const proportional = useEditorStore((state) => state.proportional);
   const setProportional = useEditorStore((state) => state.setProportional);
@@ -99,6 +100,7 @@ export function TopologyPanel() {
   const editMode = useEditorStore((state) => state.mode === 'edit');
   const version = useEditorStore((state) => state.meshVersion);
   const setSlidePreview = useEditorStore((state) => state.setSlidePreview);
+  const totalFaces = object?.mesh.faces.size ?? 0;
 
   // Off to begin with: the row draws over the mesh while it is on, and a
   // preview nobody asked for only stands in front of the geometry behind it.
@@ -181,7 +183,9 @@ export function TopologyPanel() {
           disabled={selection.edges < 3}
           hint={
             selection.edges >= 3
-              ? 'Fill a selected open boundary loop with a new face (F)'
+              ? faceMode
+                ? 'Fill each hole the selected faces go all the way round (F)'
+                : 'Fill a selected open boundary loop with a new face (F)'
               : 'Select an open boundary loop (three edges or more) to fill (F)'
           }
           onClick={() => exec('fill', {}, 'Fill')}
@@ -287,6 +291,19 @@ export function TopologyPanel() {
                   : 'Extend the selection along the whole loop those faces sit in (Alt+L)'
           }
           onClick={() => exec('selectFaceLoop', {}, 'Select face loop')}
+        />
+        <Button
+          label="SEPARATE SELECTED"
+          className="topology__wide"
+          disabled={selection.faces === 0 || selection.faces === totalFaces}
+          hint={
+            selection.faces === 0
+              ? 'Select the faces to move into an object of their own'
+              : selection.faces === totalFaces
+                ? 'Every face is selected, so nothing would be left behind. Deselect the faces that should stay'
+                : 'Move the selected faces into a new object, taking them out of this one'
+          }
+          onClick={separateSelection}
         />
       </FieldRow>
 

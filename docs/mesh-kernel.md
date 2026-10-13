@@ -410,9 +410,27 @@ operation that cuts or rebuilds edges has to pass the mark on:
 
 ### Fill and bridge (`fill.ts`)
 
-`edgeLoopsFrom` chains selected edges into ordered rings; both fill and bridge
-build on it. Fills are wound against the surrounding surface so their normals
-agree with it. Bridge aligns the second loop by testing every rotation and both
+Fill traces the empty regions the mesh's open edges (boundary or loose) close
+around, and fills each one the selection runs all the way round. The walk keeps
+the uncovered side of each edge on its left and, where several open edges meet,
+takes the first one clockwise from the edge it came in on, in the plane of the
+vertex's faces. That keeps it to the smallest region, so loose knife lines
+across a hole divide it into a face per part. Chaining edges by whichever came
+next strung parts of different regions into one ring. Loose lines that lead
+nowhere are pruned first. A sheet's outline traces as a region too, but winds
+against the faces along it where a hole winds with them, and is skipped. The
+rings come out wound the way the surface faces, so their normals agree with it.
+
+A selected face folded flat back over the faces around it (back to back with a
+face along every edge, on the same side, and onto at least two different faces)
+is looked past. The old outline cap was one: it put a second face on every hole
+edge, so nothing looked open. Fill removes such a face once a region it bordered
+is filled, and leaves one that hid no hole.
+
+`edgeLoopsFrom` chains selected edges into ordered rings and says whether each
+closed. Bridge uses it, and so does fill's fallback in vertex and edge mode:
+when no region fills and the selection is only open edges, an open run gets a
+face across its ends, the way Blender's F makes a face from a chain. Bridge aligns the second loop by testing every rotation and both
 directions, picking the one with the least total distance. Without that, bridging
 two rings built in opposite directions folds the band over itself.
 
