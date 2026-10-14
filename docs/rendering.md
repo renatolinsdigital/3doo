@@ -368,6 +368,13 @@ reasons:
 The preset is the store's `navigation` field, set with `setNavigation`. No
 control in the UI calls it yet, so every session runs the default.
 
+Holding the left and right buttons together pans in both presets. The second
+button of a chord raises no `pointerdown`, only a `pointermove` with both bits
+set in `buttons`, so `onPointerChord` is asked on every move and the viewport
+drops whatever the first button had started. On Windows the right button's
+`contextmenu` arrives as it lets go, possibly after the pan has ended, so the
+viewport owes one swallowed menu until it arrives or the next press.
+
 The camera orbits a target point in spherical coordinates. The polar angle is
 clamped just short of the poles to avoid the gimbal flip at straight up or
 down.

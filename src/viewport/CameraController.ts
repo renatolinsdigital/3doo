@@ -161,6 +161,9 @@ const POLE_EPSILON = 0.001;
 
 const TWO_PI = Math.PI * 2;
 
+/** The bits of `PointerEvent.buttons` for the left and right mouse buttons. */
+const LEFT_AND_RIGHT = 0b11;
+
 /**
  * Where a vertical drag leaves the polar angle.
  *
@@ -348,7 +351,24 @@ export class CameraController {
     this.pointers.set(event.pointerId, new THREE.Vector2(event.clientX, event.clientY));
     const action = this.resolveAction(event);
     if (!action) return false;
+    this.begin(action, event);
+    return true;
+  }
 
+  /**
+   * Pans while the left and right buttons are held together, in every preset.
+   *
+   * The second button of a chord raises no pointerdown: the browser reports it
+   * as a move with both bits set in `buttons`, so this is asked on every move.
+   * The pan then runs until the last button lets go, like any other drag.
+   */
+  onPointerChord(event: PointerEvent): boolean {
+    if (this.action || (event.buttons & LEFT_AND_RIGHT) !== LEFT_AND_RIGHT) return false;
+    this.begin('pan', event);
+    return true;
+  }
+
+  private begin(action: 'orbit' | 'pan', event: PointerEvent): void {
     // The hand wins: a drag that starts mid-turn takes the camera from where
     // it has got to rather than fighting the move for it.
     this.move = null;
@@ -356,7 +376,6 @@ export class CameraController {
     this.moved = false;
     this.lastPosition.set(event.clientX, event.clientY);
     this.element.setPointerCapture(event.pointerId);
-    return true;
   }
 
   onPointerMove(event: PointerEvent): boolean {
@@ -587,7 +606,8 @@ export class CameraController {
       return null;
     }
 
-    // Blender: MMB orbits, Shift + MMB pans.
+    // Blender: MMB orbits, Shift + MMB pans. Left and right together pan too,
+    // which `onPointerChord` catches, since that chord never arrives here.
     if (event.button !== 1) return null;
     return event.shiftKey ? 'pan' : 'orbit';
   }

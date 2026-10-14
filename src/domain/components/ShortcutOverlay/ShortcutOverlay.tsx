@@ -52,6 +52,10 @@ export function ShortcutOverlay() {
               <dd className="shortcuts__action">Pan</dd>
             </div>
             <div className="shortcuts__row">
+              <dt className="shortcuts__keys">LMB + RMB</dt>
+              <dd className="shortcuts__action">Pan</dd>
+            </div>
+            <div className="shortcuts__row">
               <dt className="shortcuts__keys">Wheel</dt>
               <dd className="shortcuts__action">Zoom</dd>
             </div>

@@ -721,6 +721,13 @@ export class Viewport {
   private steeringTouches: [number, number] | null = null;
   /** A finger resting where it went down, and the timer that turns it into a right-click. */
   private longPress: { pointerId: number; at: THREE.Vector2; timer: number } | null = null;
+  /**
+   * Set by a left and right pan, whose right button still raises the menu a
+   * right-click opens. On Windows that comes as the button lets go, which can
+   * be after the pan has ended, so it is owed until it arrives or the next
+   * press makes it moot.
+   */
+  private chordMenuOwed = false;
   /** What the pointer events are caught on before the gizmo sees them. */
   private touchHost: HTMLElement | null = null;
   /** The system's reduce-motion setting, watched so the camera follows it as it changes. */
@@ -1145,6 +1152,10 @@ export class Viewport {
     this.canvas.addEventListener('pointerup', this.handlePointerUp);
     this.canvas.addEventListener('wheel', this.handleWheel, { passive: false });
     this.canvas.addEventListener('contextmenu', this.handleContextMenu);
+    // Added here, before the knife and the modal operations add theirs on the
+    // same phase, so it runs first and can keep a pan's menu from calling a
+    // cut off.
+    window.addEventListener('contextmenu', this.handleChordMenu, true);
     this.canvas.addEventListener('pointerleave', this.handlePointerLeave);
     this.canvas.addEventListener('lostpointercapture', this.handleLostPointerCapture);
     window.addEventListener('keydown', this.handleModifierKey);
@@ -3049,6 +3060,7 @@ export class Viewport {
     this.pointerInside = true;
     this.readModifiers(event);
     this.pressSlop = event.pointerType === 'touch' ? TOUCH_SLOP_PIXELS : CLICK_SLOP_PIXELS;
+    this.chordMenuOwed = false;
     if (this.gizmo.dragging) return;
     if (this.controls.onPointerDown(event)) return;
     if (event.button !== 0) return;
@@ -3104,6 +3116,10 @@ export class Viewport {
     }
     if (this.offsetDrag) {
       this.applyOffsetDrag();
+      return;
+    }
+    if (!this.gizmoDragging && this.controls.onPointerChord(event)) {
+      this.startChordPan();
       return;
     }
     if (this.controls.onPointerMove(event)) {
@@ -3196,6 +3212,35 @@ export class Viewport {
     // one onto the selection or takes it back out, by the same rule as a
     // single element, and Shift+Ctrl+Alt only ever takes one out.
     this.clickSelect(end, intent, event.altKey);
+  };
+
+  /**
+   * Hands the press to the camera once the left and right buttons are down
+   * together.
+   *
+   * Whichever went down first has started something of its own by now: a
+   * region drag, a held-back handle grab or a knife point, all dropped as if
+   * the press had been the pan from the start. Where the menu opens on the
+   * right button's press rather than its release (macOS, Linux), a chord begun
+   * on the right has opened it already, so it is shut again.
+   */
+  private startChordPan(): void {
+    this.abandonPress();
+    this.chordMenuOwed = true;
+    useEditorStore.getState().closeCursorMenu();
+    this.clearHoverVert();
+    this.refreshKnife();
+  }
+
+  /**
+   * Swallows the menu a left and right pan's right button raises, before the
+   * cursor menu opens on it or the knife takes it for a cancel.
+   */
+  private handleChordMenu = (event: MouseEvent): void => {
+    if (!this.chordMenuOwed) return;
+    this.chordMenuOwed = false;
+    event.preventDefault();
+    event.stopImmediatePropagation();
   };
 
   /**
@@ -4807,6 +4852,7 @@ export class Viewport {
     this.canvas.removeEventListener('pointerup', this.handlePointerUp);
     this.canvas.removeEventListener('wheel', this.handleWheel);
     this.canvas.removeEventListener('contextmenu', this.handleContextMenu);
+    window.removeEventListener('contextmenu', this.handleChordMenu, true);
     this.canvas.removeEventListener('pointerleave', this.handlePointerLeave);
     this.canvas.removeEventListener('lostpointercapture', this.handleLostPointerCapture);
     window.removeEventListener('keydown', this.handleModifierKey);

@@ -123,6 +123,7 @@ keyboard the way a modal transform does, and the ordinary bindings wait.
 | --- | --- |
 | Middle-drag | Orbit |
 | <kbd>Shift</kbd> + middle-drag | Pan |
+| Left + right-drag | Pan, with both buttons held together, in either order. For a mouse whose wheel is awkward to press, the role Blender's Emulate 3 Button Mouse fills. The right button's menu stays shut |
 | Wheel | Zoom, leaning toward the surface under the pointer. Blender's Zoom to Mouse Position with Auto Depth, toned down: the zoom closes on a point 0.3 of the way from the middle of the view to the pointer, so it stays mostly centred. Over empty space it uses the pivot's depth. Set WHEEL ZOOM in PREFS to CENTRED for a plain zoom into the middle of the view. Each notch closes 5% of the way in by default; ZOOM STEP in PREFS sets it from 1% to 25% |
 | <kbd>Alt</kbd> + click | Select the edge loop (edge select) or face loop (face select) under the pointer |
 | Right-click | The 3D cursor menu. During a knife cut it calls the cut off instead |

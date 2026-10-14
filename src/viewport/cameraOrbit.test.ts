@@ -793,6 +793,91 @@ describe('a view that turns rather than jumps', () => {
   });
 });
 
+describe('panning with the left and right buttons together', () => {
+  /** A pointer event stand-in, for the same reason as `middleDrag` above. */
+  function pointer(fields: Partial<PointerEvent>): PointerEvent {
+    return {
+      pointerId: 1,
+      button: -1,
+      buttons: 0,
+      clientX: 0,
+      clientY: 0,
+      shiftKey: false,
+      altKey: false,
+      ...fields,
+    } as unknown as PointerEvent;
+  }
+
+  function rig() {
+    const element = document.createElement('div');
+    element.setPointerCapture = () => {};
+    element.hasPointerCapture = () => false;
+    element.releasePointerCapture = () => {};
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 2000);
+    const controls = new CameraController(camera, element);
+    controls.setPose({ target: { x: 0, y: 0, z: 0 }, radius: 5, phi: Math.PI / 3, theta: 0.4 });
+    return { controls };
+  }
+
+  /** Where Shift and a middle-drag to `x`, `y` leaves the pivot. */
+  function shiftMiddlePan(x: number, y: number): THREE.Vector3 {
+    const { controls } = rig();
+    controls.onPointerDown(pointer({ button: 1, buttons: 4, shiftKey: true }));
+    controls.onPointerMove(pointer({ buttons: 4, clientX: x, clientY: y }));
+    return controls.focusPoint;
+  }
+
+  it.each([
+    ['right joins a held left', { button: 0, buttons: 1 }, 2],
+    ['left joins a held right', { button: 2, buttons: 2 }, 0],
+  ])('pans the way Shift and a middle-drag does, %s', (_, first, joining) => {
+    const { controls } = rig();
+    // The first button's press is the viewport's, never the camera's.
+    expect(controls.onPointerDown(pointer(first))).toBe(false);
+
+    expect(controls.onPointerChord(pointer({ button: joining, buttons: 3 }))).toBe(true);
+    controls.onPointerMove(pointer({ buttons: 3, clientX: 40, clientY: -25 }));
+
+    expect(controls.isNavigating).toBe(true);
+    expect(controls.didMove).toBe(true);
+    const expected = shiftMiddlePan(40, -25);
+    expect(controls.focusPoint.distanceTo(expected)).toBeCloseTo(0, 10);
+    expect(controls.distance).toBeCloseTo(5, 10);
+  });
+
+  it('leaves either button alone', () => {
+    const { controls } = rig();
+    expect(controls.onPointerChord(pointer({ buttons: 1 }))).toBe(false);
+    expect(controls.onPointerChord(pointer({ buttons: 2 }))).toBe(false);
+    expect(controls.isNavigating).toBe(false);
+  });
+
+  it('keeps panning until the last button lets go', () => {
+    // Nobody lifts two fingers on the same millisecond, and the pan should not
+    // hand the one still down to a region drag.
+    const { controls } = rig();
+    controls.onPointerChord(pointer({ button: 2, buttons: 3 }));
+    controls.onPointerMove(pointer({ button: 2, buttons: 1, clientX: 10 }));
+    const before = controls.focusPoint;
+    controls.onPointerMove(pointer({ buttons: 1, clientX: 30 }));
+    expect(controls.focusPoint.equals(before)).toBe(false);
+
+    controls.onPointerUp(pointer({ button: 0 }));
+    expect(controls.isNavigating).toBe(false);
+  });
+
+  it('does not take over an orbit already under way', () => {
+    const { controls } = rig();
+    controls.onPointerDown(pointer({ button: 1, buttons: 4 }));
+    expect(controls.onPointerChord(pointer({ button: 0, buttons: 7 }))).toBe(false);
+
+    const before = controls.pose();
+    controls.onPointerMove(pointer({ buttons: 7, clientX: 50 }));
+    expect(controls.pose().theta).not.toBeCloseTo(before.theta);
+    expect(controls.focusPoint.toArray()).toEqual([0, 0, 0]);
+  });
+});
+
 describe('the orthographic depth range', () => {
   const WIDEST = { near: -2000, far: 2000 };
   const box = (min: number, max: number) =>
