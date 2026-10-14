@@ -369,8 +369,9 @@ export const OPERATOR_SPECS: readonly OperatorSpec[] = [
   {
     name: 'connect',
     group: 'topology',
-    needs: { of: 'verts', count: 2, exactly: true },
-    summary: 'Joins exactly two selected vertices with an edge, splitting the face between them.',
+    needs: { of: 'verts', count: 2 },
+    summary:
+      'Joins the selected vertices one after the next, in the order they were picked, cutting every face the path crosses. A vertex goes on each edge crossed, so every face either side is whole. Refused, changing nothing, when two vertices in a row share no surface.',
     params: [],
   },
   {

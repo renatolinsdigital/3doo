@@ -629,7 +629,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Connect (J)',
-            'Runs an edge between two selected vertices, splitting the face they share.',
+            'Joins the selected vertices one after the next, in the order you picked them. Each pair is joined across the surface, not through the air: every face the path passes over is cut along it, a vertex goes on each edge it crosses, and a vertex it passes through is used rather than doubled. The faces either side of the path end up separate, with no vertex left hanging in the middle of an edge. Vertices picked with box select or select all, which have no order, are chained from one end, each to the nearest one left. If two vertices in a row share no surface, such as corners of separate pieces, nothing changes and the status bar says which pair. A vertex with no face at all gets a plain edge.',
           ],
           [
             'Separate selected',

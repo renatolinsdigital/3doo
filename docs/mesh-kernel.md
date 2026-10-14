@@ -249,17 +249,36 @@ exactly what committing does.
 
 ### Connect (`connect.ts`)
 
-Runs an edge between two vertices (<kbd>J</kbd>). When both sit on the same face
-it *splits* that face rather than laying an edge across it: a bare edge through a
-face divides nothing, so the result would look cut while still shading and
-extruding as one surface. Walking the face ring both ways from one vertex to the
-other gives the two halves, and because each keeps the parent's vertex order the
-split faces inherit its winding for free.
+Joins the selected vertices one after the next (<kbd>J</kbd>), like Blender's
+Connect Vertex Path. The order is the click order (`selectSeq`) when every
+vertex has a distinct stamp; otherwise `connectionOrder` chains them from the
+vertex farthest from their centroid, each to the nearest one left.
 
-Vertices with no face in common (two loose verts, or corners of separate islands)
-get a plain edge instead, which is the only thing that can be meant there.
-Vertices an edge already joins are refused, and that covers ring neighbours too,
-since consecutive corners of a face always already have the edge between them.
+Each pair is joined *across the surface*, never with a bare edge through a face:
+a bare edge divides nothing, so the result would look cut while still shading
+and extruding as one surface. The path is found by `planePath`, a shortest-path
+walk over where a plane through both vertices meets the mesh. The plane contains
+the segment between them and is stood up along the summed normals of the faces
+round both ends, so on a flat or gently curved surface it is the straight line
+the user means. The walk's nodes are vertices on the plane and the points where
+it crosses edges, its steps are straight pieces inside one face (checked with
+`knifeSegmentFace`, which also rejects pieces that leave a concave face), and
+the first path to reach the far vertex is the shortest.
+
+A plane can meet a winding surface such as a torus in pieces that never join, so
+when the averaged plane fails the planes stood up along each face round either
+end are tried, then the axes. If none reaches, the pair is split at the vertex
+halfway along the fewest edges between them and each half is cut the same way.
+Halving ends at two neighbours, so only vertices on separate islands are ever
+refused, and then nothing changes and the status names the pair.
+
+Every path is found on the mesh as it stands and handed to `knifeCut` as one
+run per pair, so the knife does the cutting: each crossed edge is split (both
+faces beside it gain the vertex, so no T-junction is left), every face is divided
+along the path, and paths that cross inside one face meet at a shared vertex. A
+crossing within `EDGE_END` of an edge's end is taken as that end vertex rather
+than leaving a sliver beside it. A vertex with no faces at all can only get a
+plain edge.
 
 ### Delete and dissolve (`delete.ts`, `dissolve.ts`)
 

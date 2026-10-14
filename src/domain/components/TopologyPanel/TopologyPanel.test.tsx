@@ -68,11 +68,9 @@ describe('TopologyPanel', () => {
       useEditorStore.getState().touchMesh();
     });
 
-    for (const name of ['FILL', 'BRIDGE', 'MERGE', 'GROW', 'SHRINK']) {
+    for (const name of ['FILL', 'BRIDGE', 'MERGE', 'GROW', 'SHRINK', 'CONNECT']) {
       expect(button(name)).not.toHaveAttribute('aria-disabled');
     }
-    // Connect runs one edge between two vertices; a whole cube is not that.
-    expect(button('CONNECT')).toHaveAttribute('aria-disabled', 'true');
     // Separating every face would leave the object empty.
     expect(button('SEPARATE SELECTED')).toHaveAttribute('aria-disabled', 'true');
   });
@@ -96,7 +94,7 @@ describe('TopologyPanel', () => {
     expect(activeMesh().faces.size).toBe(5);
   });
 
-  it('enables connect on exactly two vertices', () => {
+  it('enables connect on two or more vertices', () => {
     render(<TopologyPanel />);
 
     act(() => {

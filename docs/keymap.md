@@ -47,7 +47,7 @@ object mode only. The rest work in both.
 | `Ctrl+D` | Subdivide: split selected edges at their midpoint, or cut up faces (*edit*) |
 | `M` | Merge by distance (*edit*) |
 | `F` | Fill a boundary loop with a face (*edit*) |
-| `J` | Connect two vertices with an edge, splitting the face (*edit*) |
+| `J` | Connect the selected vertices in order, cutting the faces between them (*edit*) |
 | `Alt+B` | Bridge two open edge loops with a band of quads (*edit*) |
 | `Alt+T` | Triangulate every face (*edit*) |
 | `Alt+J` | Merge adjacent, near-coplanar triangle pairs back into quads (*edit*) |

@@ -168,13 +168,13 @@ export function TopologyPanel() {
       <FieldRow legend="BUILD" columns={2}>
         <Button
           label="CONNECT"
-          disabled={!vertexMode || selection.verts !== 2}
+          disabled={!vertexMode || selection.verts < 2}
           hint={
             !vertexMode
               ? 'Connecting joins vertices, so switch to vertex select mode (1)'
-              : selection.verts !== 2
-                ? 'Select exactly two vertices to run an edge between (J)'
-                : 'Create an edge between the two selected vertices, splitting their faces (J)'
+              : selection.verts < 2
+                ? 'Select two or more vertices to join, in the order they should run (J)'
+                : 'Join the selected vertices one after the next in the order picked, cutting every face in between (J)'
           }
           onClick={() => exec('connect', {}, 'Connect')}
         />

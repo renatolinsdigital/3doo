@@ -132,7 +132,7 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
     id: 'connect',
     key: 'j',
     mode: 'edit',
-    label: 'Connect two vertices with an edge, splitting the face',
+    label: 'Connect the selected vertices in order, cutting the faces between them',
     group: 'Modelling',
   },
   {

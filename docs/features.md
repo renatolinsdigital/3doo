@@ -229,7 +229,7 @@ its hint says what to select instead:
 | Operation | Needs |
 | --- | --- |
 | Merge | Two or more vertices |
-| Connect | Exactly two vertices |
+| Connect | Two or more vertices |
 | Fill | Three edges |
 | Bridge | Four edges |
 | Bevel, Loop Cut | Edges |

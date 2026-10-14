@@ -13,7 +13,8 @@ import {
   budgetRefusal,
   bridgeEdgeLoops,
   circleVerts,
-  connectVerts,
+  connectVertPath,
+  connectionOrder,
   deleteGeometry,
   dissolveEdges,
   dissolveFaces,
@@ -586,18 +587,32 @@ export const OPERATORS: Record<string, OperatorHandler> = {
   },
 
   connect: ({ mesh, selectMode }) => {
-    const verts = mesh.selectedVerts();
-    if (verts.length !== 2) return { status: 'Select exactly two vertices to connect' };
+    const verts = connectionOrder(mesh.selectedVerts());
+    if (verts.length < 2)
+      return { status: 'Select two or more vertices to connect', refused: true };
 
-    const result = connectVerts(mesh, verts[0], verts[1]);
-    if (result.reason === 'connected') {
-      return { status: 'Those vertices already share an edge' };
+    const before = mesh.edges.size;
+    const result = connectVertPath(mesh, verts);
+    if (!result.connected) {
+      return {
+        status: `Vertices ${result.gap + 1} and ${result.gap + 2} in the sequence share no surface to cut across, so nothing was connected`,
+        refused: true,
+      };
+    }
+    if (mesh.edges.size === before) {
+      return { status: 'Those vertices are already connected', refused: true };
     }
 
+    // The path is what gets worked on next, and nothing selected before it is.
+    mesh.deselectAll();
+    for (const edge of result.edges) edge.selected = true;
+    mesh.flushSelection('edge');
     mesh.flushSelection(selectMode);
+
+    const added = result.verts.length > 0 ? `, adding ${result.verts.length} vertex(es)` : '';
     return {
-      status:
-        result.reason === 'split' ? 'Connected, splitting the face in two' : 'Created an edge',
+      status: `Connected ${verts.length} vertices, cutting ${result.splits} face(s)${added}`,
+      createdVerts: result.verts.map((vert) => vert.id),
     };
   },
 
