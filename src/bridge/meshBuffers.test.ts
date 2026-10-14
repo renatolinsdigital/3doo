@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { type Edge, type Vert, createBox, createPlane, vec3, BMesh } from '@kernel/index';
+import {
+  type Edge,
+  type Vert,
+  createBox,
+  createCircle,
+  createPlane,
+  vec3,
+  BMesh,
+} from '@kernel/index';
 
 import {
   UNKNOWN_POINT_FACES,
@@ -425,5 +433,154 @@ describe('sharp edges', () => {
     for (const edge of plane.edges.values()) edge.sharp = true;
 
     expect(edgeCount(frontSharpLines(buildEdgeCull(plane), vec3(0, 10, 0)).positions)).toBe(4);
+  });
+});
+
+describe('triangle corners', () => {
+  /** Which sides of triangle `t` are marked as edges of its face. */
+  function marked(corners: Float32Array, t: number): boolean[] {
+    const sides = Math.floor(corners[t * 3] / 4) & 7;
+    return [0, 1, 2].map((k) => (sides & (1 << k)) !== 0);
+  }
+
+  it('numbers the corners of every triangle, and gives all three the same sides', () => {
+    const { triangleCorners } = buildMeshBuffers(createBox(1), 'far').solid;
+
+    expect(triangleCorners).toHaveLength(36);
+    triangleCorners.forEach((code, i) => {
+      expect(code % 4).toBe(i % 3);
+      expect(Math.floor(code / 4)).toBe(Math.floor(triangleCorners[i - (i % 3)] / 4));
+    });
+  });
+
+  it('marks every side of a triangle face', () => {
+    const mesh = new BMesh();
+    mesh.addFace([
+      mesh.addVert(vec3(0, 0, 0)),
+      mesh.addVert(vec3(1, 0, 0)),
+      mesh.addVert(vec3(0, 1, 0)),
+    ]);
+    mesh.computeNormals();
+
+    expect(marked(buildMeshBuffers(mesh, 'far').solid.triangleCorners, 0)).toEqual([
+      true,
+      true,
+      true,
+    ]);
+  });
+
+  it('leaves out the diagonal a quad is cut along, whichever side of each triangle it is', () => {
+    // The two triangles are one face, and the dot occlusion test has to see it
+    // carry on across the cut rather than end there.
+    const { positions, triangleCorners } = buildMeshBuffers(createPlane(2), 'far').solid;
+    const at = (i: number) => positions.slice(i * 3, i * 3 + 3);
+
+    for (let t = 0; t < 2; t++) {
+      const sides = marked(triangleCorners, t);
+      for (let k = 0; k < 3; k++) {
+        const [a, b] = [at(t * 3 + ((k + 1) % 3)), at(t * 3 + ((k + 2) % 3))];
+        const length = Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+        // The plane's sides are 2 long and its diagonal 2.83.
+        expect(sides[k]).toBe(length < 2.5);
+      }
+    }
+  });
+
+  it('marks each side round an n-gon on one triangle and none of its diagonals', () => {
+    const { triangleCorners } = buildMeshBuffers(createCircle(1, 8), 'far').solid;
+    let sides = 0;
+    for (let t = 0; t < triangleCorners.length / 3; t++) {
+      sides += marked(triangleCorners, t).filter(Boolean).length;
+    }
+
+    expect(triangleCorners).toHaveLength(18);
+    expect(sides).toBe(8);
+  });
+
+  it("gives each half of a quad the other half's far corner, with both sides out to it edges", () => {
+    // A quad's diagonal is no end to it, so the occlusion pass needs the quad's
+    // real edges on the far side, where the other triangle may be a sliver.
+    const { positions, triangleCorners, farCorners } = buildMeshBuffers(
+      createPlane(2),
+      'far',
+    ).solid;
+    const corner = (t: number, c: number) => [
+      ...positions.slice((t * 3 + c) * 3, (t * 3 + c) * 3 + 3),
+    ];
+
+    for (let t = 0; t < 2; t++) {
+      const other = 1 - t;
+      const mine = [0, 1, 2].map((c) => corner(t, c).join());
+      const far = [0, 1, 2].map((c) => corner(other, c)).find((p) => !mine.includes(p.join()));
+      for (let c = 0; c < 3; c++) {
+        // Three floats a corner: with no face past four corners, one diagonal.
+        expect([...farCorners.slice((t * 3 + c) * 3, (t * 3 + c) * 3 + 3)]).toEqual(far);
+        // Both sides from the diagonal's ends out to it are edges of the quad.
+        expect(Math.floor(triangleCorners[t * 3 + c] / 32) & 3).toBe(3);
+      }
+    }
+    expect(farCorners).toHaveLength(18);
+  });
+
+  it('gives a triangle of an n-gon the far corner across each diagonal, and which sides to it are the rim', () => {
+    const { positions, triangleCorners, farCorners } = buildMeshBuffers(
+      createCircle(1, 8),
+      'far',
+    ).solid;
+    // Which of the eight corners round the circle a point is, by its angle.
+    const cornerAt = (p: ArrayLike<number>) =>
+      (Math.round(Math.atan2(p[2], p[0]) / (Math.PI / 4)) + 8) % 8;
+    const besides = (a: number, b: number) => [1, 7].includes((a - b + 8) % 8);
+
+    let diagonals = 0;
+    for (let t = 0; t < triangleCorners.length / 3; t++) {
+      const code = Math.floor(triangleCorners[t * 3] / 4);
+      const own = [0, 1, 2].map((c) => cornerAt(positions.slice((t * 3 + c) * 3)));
+      let slot = 0;
+      for (let k = 0; k < 3; k++) {
+        const [first, second] = [own[(k + 1) % 3], own[(k + 2) % 3]];
+        if (besides(first, second)) continue;
+        // Only the first two diagonals carry a far corner.
+        if (slot < 2) {
+          const far = cornerAt(farCorners.slice(t * 18 + slot * 3));
+          const edges = (code >> (3 + 2 * slot)) & 3;
+          expect(own).not.toContain(far);
+          expect(edges & 1).toBe(besides(first, far) ? 1 : 0);
+          expect(edges & 2).toBe(besides(far, second) ? 2 : 0);
+        }
+        slot++;
+        diagonals++;
+      }
+    }
+    // Six triangles share five diagonals, each seen from both sides.
+    expect(diagonals).toBe(10);
+  });
+
+  it('leaves a triangle face with no far corners', () => {
+    const mesh = new BMesh();
+    mesh.addFace([
+      mesh.addVert(vec3(0, 0, 0)),
+      mesh.addVert(vec3(1, 0, 0)),
+      mesh.addVert(vec3(0, 1, 0)),
+    ]);
+    mesh.computeNormals();
+    const { triangleCorners, farCorners } = buildMeshBuffers(mesh, 'far').solid;
+
+    expect([...farCorners]).toEqual(new Array(9).fill(0));
+    expect(Math.floor(triangleCorners[0] / 32)).toBe(0);
+  });
+
+  it('carries none of it unless asked, and the far corners only when asked for them', () => {
+    // Each costs every rebuild time, and the occlusion pass reads them only
+    // while vertices are marked.
+    const plain = buildMeshBuffers(createPlane(2)).solid;
+    const edges = buildMeshBuffers(createPlane(2), 'edges').solid;
+
+    expect(plain.triangleCorners).toHaveLength(0);
+    expect(plain.farCorners).toHaveLength(0);
+    expect(edges.triangleCorners).toHaveLength(6);
+    expect(edges.farCorners).toHaveLength(0);
+    // Asked for the edges alone, a diagonal says nothing of what is across it.
+    for (const code of edges.triangleCorners) expect(Math.floor(code / 32)).toBe(0);
   });
 });

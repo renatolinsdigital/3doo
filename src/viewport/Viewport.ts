@@ -775,14 +775,17 @@ export class Viewport {
   private readonly gridBox = new THREE.Box3();
   private readonly depthView = new THREE.Vector3();
   /**
-   * The surfaces the vertex dots are tested against, a float a channel; see
-   * `renderDotOcclusion`. At CSS pixels rather than device ones: the slope
-   * carries a pixel's surface to the vertex exactly at any size, and four
-   * floats a pixel at a high-density screen's full count is a lot of memory
-   * for an edge a device pixel sharper.
+   * The surfaces the vertex dots are tested against, four words a pixel; see
+   * `renderDotOcclusion` and `createDotOcclusionMaterial`. At CSS pixels rather
+   * than device ones: the slope and the triangle's sides carry a pixel's
+   * surface to the vertex exactly at any size, and sixteen bytes a pixel at a
+   * high-density screen's full count is a lot of memory for an edge a device
+   * pixel sharper.
    */
   private readonly dotOcclusion = new THREE.WebGLRenderTarget(1, 1, {
-    type: THREE.FloatType,
+    type: THREE.UnsignedIntType,
+    format: THREE.RGBAIntegerFormat,
+    internalFormat: 'RGBA32UI',
     minFilter: THREE.NearestFilter,
     magFilter: THREE.NearestFilter,
     generateMipmaps: false,
@@ -4455,16 +4458,13 @@ export class Viewport {
    * and says whether it did (see `DOT_OCCLUSION`).
    *
    * Only while a dot is on screen, since it draws every surface a second
-   * time, and only on a GPU that can draw into a float target: a byte a
-   * channel holds nothing like a depth. Without it the dots fall back on the
-   * depth test and their lift.
+   * time. Without it the dots fall back on the depth test and their lift.
    *
    * The surfaces on `OCCLUDER_LAYER` are the ones writing depth in the frame
    * proper, drawn here with a material of the test's own. Its side follows the
    * culling preference, as theirs does.
    */
   private renderDotOcclusion(): boolean {
-    if (!this.renderer.extensions.has('EXT_color_buffer_float')) return false;
     let dots = false;
     for (const view of this.views.values()) dots ||= view.showsDots;
     if (!dots) return false;
@@ -4483,6 +4483,7 @@ export class Viewport {
     this.dotOcclusionMaterial.side = useEditorStore.getState().backfaceCulling
       ? THREE.FrontSide
       : THREE.DoubleSide;
+    this.dotOcclusionMaterial.uniforms.size.value.set(width, height);
     scene.background = null;
     scene.overrideMaterial = this.dotOcclusionMaterial;
     camera.layers.set(OCCLUDER_LAYER);

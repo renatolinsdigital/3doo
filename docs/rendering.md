@@ -240,25 +240,86 @@ surfaces as they stand in that frame.
 
 - **The pass.** While any dot is on screen, `Viewport.renderDotOcclusion` draws
   the surfaces that write depth, the ones `ObjectView` puts on
-  `OCCLUDER_LAYER`, into a float target at CSS resolution with
-  `createDotOcclusionMaterial`. Each pixel holds its surface's depth (1 / w
-  under perspective, the depth buffer's own value under an orthographic
-  camera) and how fast that changes across the screen.
+  `OCCLUDER_LAYER`, into an integer target at CSS resolution with
+  `createDotOcclusionMaterial`. Each pixel holds four words: its surface's
+  depth (1 / w under perspective, the depth buffer's own value under an
+  orthographic camera), how fast that changes across the screen, and the three
+  edges of the face drawn there nearest the pixel (see below).
 - **The test.** The dot shader reads the four pixels round its vertex and
   carries each one's surface to the vertex's exact spot along that slope. Both
   depths run straight across the screen over a face, so the carry is exact: a
   vertex meets the faces it sits on to the last rounding error, at any zoom,
-  and needs no margin of pixels. The dot is dropped when all four surfaces
-  stand in front of it by more than `DOT_OCCLUSION_MARGIN`, a share of the
-  distance small enough for rounding alone. One pixel with nothing in front is
-  enough to draw it, since a vertex that close to an edge is on it.
+  and needs no margin of pixels. A surface in front of the vertex by more than
+  `DOT_OCCLUSION_MARGIN`, small enough for rounding alone, hides the dot when
+  its face reaches the vertex's spot. The margin is a share of the distance
+  under perspective. Under an orthographic camera it is a share of a depth
+  range that runs a hundred view heights past the scene, so it is ten times
+  finer there: at the same share, the far corners of a part thinner than two
+  pixels of depth came up through its front.
+- **Where a face ends.** Depth and slope say how deep a pixel's face would be
+  at the vertex, not whether the face gets that far. So the pass also writes
+  the three edges of that face nearest the pixel: how far off each is and the
+  way into the face, rounded to under a hundredth of a pixel at the spots a
+  dot asks about, sixteen bits an edge. A corner's weight runs straight across
+  the screen and is nothing along the side facing it, which gives the sides of
+  the triangle drawn there. `buildSolid` hands every triangle corner a
+  `triangleCorner`, which says which of those sides are edges of the face
+  rather than diagonals the triangulation drew.
+- **Diagonals.** A diagonal is no end to a face, and the triangle across one is
+  often a sliver no pixel lands on. Along a contour that sliver can end a
+  hundredth of a pixel past the diagonal, short of a vertex on the contour, or
+  run on over a vertex hidden behind the face: taken as an end, the diagonal
+  let the second through as half a dot, and taken as nothing, it hid the
+  first. So each triangle also carries the far corner across each of its first
+  two diagonals (`farCornerA` and `farCornerB`) and which sides out to it are
+  edges of the face. The pass finds the triangle's own corners from the
+  weights, where a corner's weight is one and the others nothing, and draws
+  those sides between them and the far corner. A quad comes out exact. A long
+  fan is exact one triangle beyond each diagonal, and taken to go on past that.
+- **What it costs.** The far corners are an array as long as the positions
+  again, and filling it took a rebuild of a 90k-quad mesh from about 77 ms to
+  about 108. Only the object whose vertices are marked has its own faces asked
+  about, so only it builds them (`buildMeshBuffers` with `'far'`). Every other
+  object in edit mode builds the cheap codes alone (`'edges'`), which cost
+  nothing measurable, and outside edit mode nothing is built, since no pass
+  runs.
+- **Another object.** Its face at one of the four pixels hides the vertex when
+  it is in front there and also at the face's nearest point to the vertex.
+  Where that object's edge passes between the pixel and the vertex,
+  the vertex is behind the edge to within a pixel, and the far side of the edge
+  may be faces thinner than one, which no pixel lands on: the vertex of a part
+  tucked behind a cylinder's contour came up there. A surface in front only
+  once carried past its own edge is an outline the vertex stands beside, and
+  hides nothing. The cost is a vertex peeking out from behind another object's
+  edge by less than a pixel, which goes until the zoom comes in. The pass
+  knows whose pixel is whose from `userData.ownsDots`, which `ObjectView` sets
+  on its solid while it has dots on screen, read per object as the pass draws
+  it.
+- **Why not one pixel, or all four.** The rule used to be that one of the four
+  pixels with nothing in front drew the dot. A far-side vertex a fraction of a
+  pixel inside a contour has background beside it, so it came up as half a dot
+  next to the contour's own vertex, and a vertex just under a thin part did the
+  same along the part's edge. Requiring all four to be clear instead loses a
+  contour vertex whose own face is narrower than a pixel: the next face over
+  leans in front of the vertex without reaching it. Asking whether the face
+  reaches settles both.
+- **Faces smaller than a pixel.** A face none of the four pixels lands on
+  cannot be asked. When all four surfaces stand in front by more than two
+  pixels of depth, the dot is hidden anyway: that is something solid in front,
+  where the faces round a vertex on a dense curved surface lean in front of it
+  by far less. What this misses is a vertex a fraction of a pixel inside a
+  contour of its own object made of faces thinner than a pixel.
+- **Snapping.** A GPU snaps a triangle's corners to a grid before filling it,
+  as coarse as a sixteenth of a pixel, which tilts the depth the pass paints.
+  On a steep face through a vertex that is more than the margin, and it read as
+  the vertex's own face standing in front of it. Each surface is allowed as much
+  slack as it climbs across that sixteenth (`RASTER_SNAP`).
 - **What counts.** X-ray writes no depth and hides nothing. A picture plane is
   opaque in every shading and hides what is behind it in every one, as it does
   in the frame itself.
 - **The fallback.** `DOT_OCCLUSION` is switched on only while the viewport
-  draws its own frame, and only on a GPU that can draw into a float target.
-  Anywhere else, snapshots included, the dots are left to the depth test and
-  their lift.
+  draws its own frame. Anywhere else, snapshots included, the dots are left to
+  the depth test and their lift.
 - **The lift stays.** It is what keeps the square whole once the dot is drawn.
 
 The pass costs a second draw of every opaque surface, which is why it waits for

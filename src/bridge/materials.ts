@@ -225,9 +225,9 @@ export const OCCLUDER_LAYER = 1;
  *
  * Shared by every point material, the uniforms being these very objects: there
  * is one viewport, and one picture of its surfaces a frame. `active` is on only
- * while that viewport draws its own frame. Anywhere else, a snapshot or a GPU
- * that cannot draw into a float target, the dots are left to the depth test
- * and their lift, as they were before this existed.
+ * while that viewport draws its own frame. Anywhere else, a snapshot included,
+ * the dots are left to the depth test and their lift, as they were before this
+ * existed.
  */
 export const DOT_OCCLUSION = {
   dotOcclusionActive: { value: false },
@@ -236,31 +236,188 @@ export const DOT_OCCLUSION = {
   dotOcclusionSize: { value: new THREE.Vector2(1, 1) },
 };
 
+/**
+ * How far from a pixel's centre the occlusion pass looks for the edges of the
+ * face drawn there, in pixels. A dot asks about its vertex from the four pixels
+ * round it, none of them this far off, so an edge any further away is as good
+ * as none.
+ */
+const FACE_EDGE_REACH = 2;
+
+/**
+ * An edge as the pass packs it into sixteen bits: its distance, in 255 steps of
+ * the reach, then the way into the face, in 256 steps of a turn. That is under
+ * a hundredth of a pixel each way at the spots a dot asks about.
+ */
+const EDGE_GLSL = {
+  reach: FACE_EDGE_REACH.toFixed(1),
+  turn: (2 * Math.PI).toFixed(8),
+};
+
+/** Set on every pixel the pass draws a face on, which an empty one never has. */
+const DRAWN_BIT = 1 << 19;
+
+/** Set where the face drawn is the dots' own object's (see `createDotOcclusionMaterial`). */
+const OWN_BIT = 1 << 20;
+
 const DOT_OCCLUSION_VERTEX = /* glsl */ `
+attribute float triangleCorner;
+attribute vec3 farCornerA;
+attribute vec3 farCornerB;
+
+// The weights of the triangle's corners, multiplied by w here and by 1 / w in
+// the fragment. That undoes the perspective-correct interpolation and leaves
+// weights that run straight across the screen.
+varying vec3 vCornerWeights;
+flat varying int vFaceCode;
+flat varying vec4 vFarCornerA;
+flat varying vec4 vFarCornerB;
+
 void main() {
 
 	gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+
+	float corner = mod( triangleCorner, 4.0 );
+	vCornerWeights = vec3( equal( vec3( corner ), vec3( 0.0, 1.0, 2.0 ) ) ) * gl_Position.w;
+	vFaceCode = int( triangleCorner / 4.0 );
+	vFarCornerA = projectionMatrix * modelViewMatrix * vec4( farCornerA, 1.0 );
+	vFarCornerB = projectionMatrix * modelViewMatrix * vec4( farCornerB, 1.0 );
 
 }
 `;
 
 const DOT_OCCLUSION_FRAGMENT = /* glsl */ `
+uniform bool ownsDots;
+uniform vec2 size;
+
+varying vec3 vCornerWeights;
+flat varying int vFaceCode;
+flat varying vec4 vFarCornerA;
+flat varying vec4 vFarCornerB;
+
+layout( location = 0 ) out highp uvec4 occlusion;
+
+// The three edges of the face nearest this pixel's centre: how far off each
+// is, in pixels, and the way into the face.
+float edgeAway[ 3 ];
+vec2 edgeInward[ 3 ];
+
+void keepEdge( float away, vec2 inward ) {
+
+	for ( int i = 0; i < 3; i ++ ) {
+
+		if ( away >= edgeAway[ i ] ) continue;
+		float nextAway = edgeAway[ i ];
+		vec2 nextInward = edgeInward[ i ];
+		edgeAway[ i ] = away;
+		edgeInward[ i ] = inward;
+		away = nextAway;
+		inward = nextInward;
+
+	}
+
+}
+
+// The edge from a to b, from this pixel's centre, with the face on c's side.
+void keepEdgeThrough( vec2 a, vec2 b, vec2 c ) {
+
+	vec2 along = b - a;
+	if ( dot( along, along ) == 0.0 ) return;
+	vec2 inward = normalize( vec2( - along.y, along.x ) );
+	if ( dot( inward, c - a ) < 0.0 ) inward = - inward;
+	keepEdge( - dot( inward, a ), inward );
+
+}
+
+// Corner j of the triangle, from this pixel's centre in pixels: where its own
+// weight is one and the other two are nothing.
+vec2 cornerAt( int j, vec3 weights, vec3 weightsX, vec3 weightsY ) {
+
+	int m = ( j + 1 ) % 3;
+	int n = ( j + 2 ) % 3;
+	mat2 climb = mat2( weightsX[ m ], weightsX[ n ], weightsY[ m ], weightsY[ n ] );
+	return inverse( climb ) * - vec2( weights[ m ], weights[ n ] );
+
+}
+
 void main() {
 
 	// 1 / w under perspective and the depth under an orthographic camera, each
 	// of which runs straight across the screen over a face.
 	float depth = isOrthographic ? gl_FragCoord.z : gl_FragCoord.w;
-	gl_FragColor = vec4( depth, dFdx( depth ), dFdy( depth ), 1.0 );
+	vec2 slope = vec2( dFdx( depth ), dFdy( depth ) );
+
+	vec3 weights = vCornerWeights * gl_FragCoord.w;
+	vec3 weightsX = dFdx( weights );
+	vec3 weightsY = dFdy( weights );
+
+	for ( int i = 0; i < 3; i ++ ) {
+
+		edgeAway[ i ] = ${EDGE_GLSL.reach};
+		edgeInward[ i ] = vec2( 1.0, 0.0 );
+
+	}
+
+	int diagonal = 0;
+	for ( int k = 0; k < 3; k ++ ) {
+
+		// An edge of the face: a corner's weight is nothing along the side
+		// facing it and climbs at one rate across the screen, so that side is
+		// the weight over the rate away, and lies across the way it climbs.
+		if ( ( vFaceCode & ( 1 << k ) ) != 0 ) {
+
+			vec2 climb = vec2( weightsX[ k ], weightsY[ k ] );
+			float rate = length( climb );
+			if ( rate > 0.0 ) keepEdge( weights[ k ] / rate, climb / rate );
+			continue;
+
+		}
+
+		// A diagonal: the face goes on into the triangle across it, whose sides
+		// out to its far corner may be edges of the face. Past those it is
+		// taken to go on, as it does across a diagonal.
+		if ( diagonal > 1 ) continue;
+		vec4 far = diagonal == 0 ? vFarCornerA : vFarCornerB;
+		int edges = ( vFaceCode >> ( 3 + 2 * diagonal ) ) & 3;
+		diagonal ++;
+		if ( edges == 0 || far.w <= 0.0 ) continue;
+
+		vec2 farAt = ( far.xy / far.w * 0.5 + 0.5 ) * size - gl_FragCoord.xy;
+		vec2 first = cornerAt( ( k + 1 ) % 3, weights, weightsX, weightsY );
+		vec2 second = cornerAt( ( k + 2 ) % 3, weights, weightsX, weightsY );
+		if ( ( edges & 1 ) != 0 ) keepEdgeThrough( first, farAt, second );
+		if ( ( edges & 2 ) != 0 ) keepEdgeThrough( farAt, second, first );
+
+	}
+
+	uvec3 packed;
+	for ( int i = 0; i < 3; i ++ ) {
+
+		uint awayStep = uint( clamp( edgeAway[ i ] / ${EDGE_GLSL.reach}, 0.0, 1.0 ) * 255.0 + 0.5 );
+		uint facingStep = uint( fract( atan( edgeInward[ i ].y, edgeInward[ i ].x ) / ${EDGE_GLSL.turn} ) * 256.0 + 0.5 ) & 255u;
+		packed[ i ] = awayStep | facingStep << 8;
+
+	}
+
+	// The slope as a share of the depth under perspective, which keeps it in
+	// the range a half float holds at any distance.
+	occlusion = uvec4(
+		floatBitsToUint( depth ),
+		packHalf2x16( isOrthographic ? slope : slope / depth ),
+		packed.x | packed.y << 16,
+		packed.z | ${DRAWN_BIT}u | ( ownsDots ? ${OWN_BIT}u : 0u )
+	);
 
 }
 `;
 
 /**
- * Paints the surfaces for `DOT_OCCLUSION`: how deep each pixel's surface is,
- * and how fast that changes across the screen, with alpha left at zero where
- * there is none.
+ * Paints the surfaces for `DOT_OCCLUSION`, four words a pixel: how deep the
+ * surface there is, how fast that changes across the screen, and the three
+ * edges of the face drawn there nearest the pixel. A pixel with no surface is
+ * left at zero.
  *
- * The slope is what makes the test exact. A depth buffer only answers at pixel
+ * The slope is what makes the depth exact. A depth buffer only answers at pixel
  * centres, and a vertex is up to a pixel from the nearest one, where the faces
  * it sits on have climbed towards the camera by as much as they lean. Telling
  * them from a surface really in front took a margin of pixels of depth, the
@@ -268,13 +425,44 @@ void main() {
  * face lands on the vertex's own spot, and the faces through the vertex land
  * on its depth.
  *
+ * The edges are what say whether a face in front gets as far as the vertex at
+ * all. The slope carries a face past its own edge as readily as up to it, so
+ * without them a vertex a fraction of a pixel inside a contour could not be
+ * told from one on it (see `dotOccluded`).
+ *
+ * Edges of the face, not sides of the triangle. A quad's diagonal is no end to
+ * it, and the triangle across one is often a sliver no pixel lands on: along a
+ * contour it can end a hundredth of a pixel further on, or carry on over the
+ * vertex. So each triangle brings the far corner across its diagonals and
+ * which sides out to it are edges (`triangleCorner` and `farCornerA` and
+ * `farCornerB`, from `buildSolid`), and the pass finds its corners from the
+ * weights to draw those sides between. It needs `size`, the target's in
+ * pixels, to place the far corner on it.
+ *
+ * Integers rather than floats, so that all of that fits the sixteen bytes a
+ * pixel the depth and slope alone used to take as floats.
+ *
+ * Each pixel also says whether its face is the dots' own object's, which a
+ * solid says with `userData.ownsDots`. Another object's faces are never the
+ * ones round a vertex, so the test asks less of them: only whether they are in
+ * front of it as far as their own edge.
+ *
  * No depth offset: the test wants the faces where they are.
  */
 export function createDotOcclusionMaterial(): THREE.ShaderMaterial {
-  return new THREE.ShaderMaterial({
+  const material = new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3,
+    uniforms: { ownsDots: { value: false }, size: { value: new THREE.Vector2(1, 1) } },
     vertexShader: DOT_OCCLUSION_VERTEX,
     fragmentShader: DOT_OCCLUSION_FRAGMENT,
   });
+  // The pass draws every surface with this one material, so the flag is set
+  // per object as each is drawn.
+  material.onBeforeRender = (_renderer, _scene, _camera, _geometry, object) => {
+    material.uniforms.ownsDots.value = object.userData.ownsDots === true;
+    material.uniformsNeedUpdate = true;
+  };
+  return material;
 }
 
 /** Where the lift is spliced into `PointsMaterial`'s vertex shader. */
@@ -284,65 +472,155 @@ const POINT_LIFT_UNIFORM = 'uniform float scale;';
 
 /**
  * How much nearer than a vertex a surface has to be to hide its dot: a share of
- * the distance under perspective, of the depth range under an orthographic
+ * the distance under perspective, and of the depth range under an orthographic
  * camera.
  *
- * Only rounding has to fit in it. Ten microns a metre out, where the error in
- * carrying a pixel's surface to the vertex is a fiftieth of that.
+ * Only rounding has to fit in it, which under perspective is ten microns a
+ * metre out. An orthographic range runs a hundred view heights past the scene
+ * (see `fitOrthographicDepth`), and a share of it that size was two pixels of
+ * depth zoomed out: the far corners of a thin part came up through its front.
+ * There it is a millionth, still sixteen times the rounding in a depth of a
+ * half. What carrying a pixel's surface to the vertex adds grows with the
+ * surface's slope, which the pass holds to a half float, and the slack below
+ * grows with it too.
  */
-const DOT_OCCLUSION_MARGIN = 1e-5;
+const DOT_OCCLUSION_MARGIN = { perspective: 1e-5, orthographic: 1e-6 };
+
+/**
+ * The grid a GPU snaps a triangle's corners to before filling it, in pixels:
+ * a sixteenth, where most snap to a 256th. It tilts the depth the occlusion
+ * pass paints by as much as the face climbs across that, which on a steep face
+ * through a vertex is more than the margin above, so each surface is given
+ * that much of its own slope as slack.
+ */
+const RASTER_SNAP = 1 / 16;
+
+/**
+ * How far past a vertex one of its own object's faces has to reach to hide it,
+ * in pixels: the rounding in the edges as the pass packs them, a hundredth of a
+ * pixel and a bit, and the snap most GPUs give a corner, a 256th. A vertex on
+ * the contour sits on the line of the next face's edge, and that rounding alone
+ * could put it inside.
+ */
+const EDGE_SLACK = 1 / 48;
 
 const POINT_LIFT_DECLARATIONS = /* glsl */ `
 uniform float pointHalfSize;
 attribute vec4 pointFaces;
 
 uniform bool dotOcclusionActive;
-uniform sampler2D dotOcclusionMap;
+uniform highp usampler2D dotOcclusionMap;
 uniform vec2 dotOcclusionSize;
+
+// The way into the face from one of its edges, as the occlusion pass packed it.
+vec2 dotEdgeInward( uint edge ) {
+
+	float facing = float( edge >> 8 ) * ${EDGE_GLSL.turn} / 256.0;
+	return vec2( cos( facing ), sin( facing ) );
+
+}
+
+// How far inside one edge of a face \`offset\` from a pixel's centre is, in
+// pixels: the edge's distance from that centre, plus how far the offset runs
+// away from it.
+float dotEdgeReach( uint edge, vec2 offset ) {
+
+	return float( edge & 255u ) * ${EDGE_GLSL.reach} / 255.0 + dot( dotEdgeInward( edge ), offset );
+
+}
 
 // Whether a surface stands in front of the vertex at \`clip\`, asked of the
 // four pixels of \`dotOcclusionMap\` round it. Each pixel's surface is carried
 // to the vertex's own spot along its slope, which is exact across a face, so a
-// vertex meets the faces it sits on to the last rounding error at any zoom. One
-// of the four with nothing in front is enough to draw the dot: a vertex that
-// close to an edge is on it.
-bool dotOccluded( vec4 clip ) {
+// vertex meets the faces it sits on to the last rounding error at any zoom.
+// \`span\` is a pixel's width a unit of depth away, as the lift takes it.
+bool dotOccluded( vec4 clip, float span ) {
 
 	vec2 at = ( clip.xy / clip.w * 0.5 + 0.5 ) * dotOcclusionSize;
 	ivec2 first = ivec2( floor( at - 0.5 ) );
 	ivec2 last = ivec2( dotOcclusionSize ) - 1;
 	bool perspective = projectionMatrix[ 2 ][ 3 ] == - 1.0;
 	float own = perspective ? 1.0 / clip.w : clip.z / clip.w * 0.5 + 0.5;
+	float margin = perspective
+		? ${DOT_OCCLUSION_MARGIN.perspective.toExponential()}
+		: ${DOT_OCCLUSION_MARGIN.orthographic.toExponential()};
+	// Two pixels of depth at the vertex, in the units \`ahead\` is in.
+	float deep = perspective ? 2.0 * span : span * abs( projectionMatrix[ 2 ][ 2 ] );
+	int deepInFront = 0;
 
 	for ( int i = 0; i < 4; i ++ ) {
 
 		ivec2 texel = clamp( first + ivec2( i & 1, i >> 1 ), ivec2( 0 ), last );
-		vec4 surface = texelFetch( dotOcclusionMap, texel, 0 );
-		if ( surface.a == 0.0 ) return false;
+		uvec4 surface = texelFetch( dotOcclusionMap, texel, 0 );
+		if ( ( surface.a & ${DRAWN_BIT}u ) == 0u ) continue;
 
-		float there = surface.x + dot( surface.yz, at - ( vec2( texel ) + 0.5 ) );
-		// Nearer is a larger 1 / w under perspective, and a smaller depth under
-		// an orthographic camera.
-		bool covers = perspective
-			? there > own * ( 1.0 + ${DOT_OCCLUSION_MARGIN.toExponential()} )
-			: there < own - ${DOT_OCCLUSION_MARGIN.toExponential()};
-		if ( ! covers ) return false;
+		float depth = uintBitsToFloat( surface.r );
+		vec2 slope = unpackHalf2x16( surface.g ) * ( perspective ? depth : 1.0 );
+		vec2 offset = at - ( vec2( texel ) + 0.5 );
+		float there = depth + dot( slope, offset );
+		float slack = ${RASTER_SNAP.toFixed(4)} * length( slope );
+		// How much nearer than the vertex the surface is, short of the slack: a
+		// share of the distance under perspective, where nearer is a larger
+		// 1 / w, and in the depth buffer's own units under an orthographic
+		// camera, where it is a smaller depth.
+		float ahead = perspective ? ( there - slack ) / own - 1.0 : own - ( there + slack );
+		if ( ahead <= margin ) continue;
+		uvec3 edges = uvec3( surface.b & 65535u, surface.b >> 16, surface.a & 65535u );
+
+		// Another object hides the vertex if it is in front at the nearest
+		// point of its own face too. Where its edge runs between the pixel and
+		// the vertex, the vertex is behind that edge to within a pixel, and the
+		// far side of it may be faces thinner than one. In front only once
+		// carried past its edge, it is an outline the vertex stands beside.
+		if ( ( surface.a & ${OWN_BIT}u ) == 0u ) {
+
+			vec2 nearest = offset;
+			for ( int k = 0; k < 3; k ++ ) {
+
+				float reach = dotEdgeReach( edges[ k ], offset );
+				if ( reach < 0.0 ) nearest -= reach * dotEdgeInward( edges[ k ] );
+
+			}
+			float atEdge = depth + dot( slope, nearest );
+			float aheadAtEdge = perspective ? ( atEdge - slack ) / own - 1.0 : own - ( atEdge + slack );
+			if ( aheadAtEdge > margin ) return true;
+			continue;
+
+		}
+
+		if ( ahead > deep ) deepInFront ++;
+
+		// One of its own faces in front hides it if the face reaches the
+		// vertex's spot, by more than the rounding in where its edges are.
+		// Short of it, the face stops there: the next face over at a contour
+		// leans in front of the vertex it runs up to.
+		bool reaches = true;
+		for ( int k = 0; k < 3; k ++ ) {
+
+			if ( dotEdgeReach( edges[ k ], offset ) <= ${EDGE_SLACK.toFixed(4)} ) reaches = false;
+
+		}
+		if ( reaches ) return true;
 
 	}
 
-	return true;
+	// A face smaller than a pixel may be the one over the vertex with none of
+	// the four landing on it. Its own faces two pixels of depth in front all
+	// round are something solid in front all the same, where the faces round a
+	// vertex of a dense curved surface lean in front of it by far less.
+	return deepInFront == 4;
 
 }
 `;
 
 const POINT_LIFT_GLSL = /* glsl */ `
-			// Asked before the lift moves it: the test wants the vertex itself.
-			bool pointHidden = dotOcclusionActive && dotOccluded( gl_Position );
-
 			// \`scale\` is half the viewport's height in CSS pixels, the unit the
 			// point's own size is given in, where \`size\` is in device pixels.
 			float pointSpan = 1.0 / ( scale * projectionMatrix[ 1 ][ 1 ] );
 			bool pointPerspective = projectionMatrix[ 2 ][ 3 ] == - 1.0;
+
+			// Asked before the lift moves it: the test wants the vertex itself.
+			bool pointHidden = dotOcclusionActive && dotOccluded( gl_Position, pointSpan );
 
 			// The furthest any face round the vertex can be turned from the
 			// ray: the faces' axis's own turn, plus how far they spread from

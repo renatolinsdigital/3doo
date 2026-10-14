@@ -437,7 +437,16 @@ export class ObjectView {
       return;
     }
 
-    const buffers = buildMeshBuffers(displayMesh);
+    // Where faces end is read only while vertices are marked, which is edit
+    // mode, and the far corners only of the object they are marked on.
+    const marksVerts =
+      state.mode === 'edit' &&
+      state.isActive &&
+      (state.selectMode === 'vertex' || !!state.recentVerts?.size);
+    const buffers = buildMeshBuffers(
+      displayMesh,
+      marksVerts ? 'far' : state.mode === 'edit' ? 'edges' : undefined,
+    );
 
     // Edit mode works on the object's own mesh, so that is what it draws the
     // elements of and what a pick lands on. The modifier stack rebuilds its
@@ -481,6 +490,18 @@ export class ObjectView {
     geometry.setAttribute('position', new THREE.BufferAttribute(solid.positions, 3));
     geometry.setAttribute('normal', new THREE.BufferAttribute(solid.normals, 3));
     geometry.setAttribute('uv', new THREE.BufferAttribute(solid.uvs, 2));
+    if (solid.triangleCorners.length > 0) {
+      geometry.setAttribute('triangleCorner', new THREE.BufferAttribute(solid.triangleCorners, 1));
+    }
+    if (solid.farCorners.length > 0) {
+      // Three floats a corner, or six for a mesh with triangles on two diagonals.
+      const stride = (solid.farCorners.length * 3) / solid.positions.length;
+      const farCorners = new THREE.InterleavedBuffer(solid.farCorners, stride);
+      geometry.setAttribute('farCornerA', new THREE.InterleavedBufferAttribute(farCorners, 3, 0));
+      if (stride === 6) {
+        geometry.setAttribute('farCornerB', new THREE.InterleavedBufferAttribute(farCorners, 3, 3));
+      }
+    }
     geometry.computeBoundingSphere();
     geometry.computeBoundingBox();
 
@@ -853,6 +874,8 @@ export class ObjectView {
       drawn || recent
         ? { points, faces: buildPointFaces(mesh, object.transform.scale), drawn, recent }
         : null;
+    // The occlusion test reads its own faces apart from everything else's.
+    this.solid.userData.ownsDots = this.dots !== null;
 
     // The hover mark belongs to the dots it grows out of, and goes away with
     // them. The viewport puts it back on the next pointer move or resync.

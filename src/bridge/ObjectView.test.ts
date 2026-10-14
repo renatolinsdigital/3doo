@@ -547,6 +547,45 @@ describe('ObjectView vertex dots', () => {
     expect(solid.layers.isEnabled(0)).toBe(true);
   });
 
+  it('gives the surface the corners the test finds where each face ends by', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+    view.update(object, evaluatedMesh(object), editState(settings, 'solid'));
+
+    const geometry = (view.group.getObjectByName(`${object.id}:solid`) as THREE.Mesh).geometry;
+    const corners = geometry.getAttribute('position').count;
+    expect(geometry.getAttribute('triangleCorner').count).toBe(corners);
+    expect(geometry.getAttribute('farCornerA').count).toBe(corners);
+    // A box is quads, whose triangles are each on one diagonal.
+    expect(geometry.getAttribute('farCornerB')).toBeUndefined();
+  });
+
+  it('spares the surface those corners while no vertex is marked', () => {
+    // Rebuilding them costs every sync, and nothing reads them outside edit mode.
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+    view.update(object, evaluatedMesh(object), {
+      ...editState(settings, 'solid'),
+      mode: 'object',
+    });
+
+    const geometry = (view.group.getObjectByName(`${object.id}:solid`) as THREE.Mesh).geometry;
+    expect(geometry.getAttribute('triangleCorner')).toBeUndefined();
+    expect(geometry.getAttribute('farCornerA')).toBeUndefined();
+  });
+
+  it('says on the surface whether the dots are its own, for the test to read', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+    const solid = () => view.group.getObjectByName(`${object.id}:solid`) as THREE.Mesh;
+
+    view.update(object, evaluatedMesh(object), editState(settings, 'solid'));
+    expect(solid().userData.ownsDots).toBe(true);
+
+    view.update(object, evaluatedMesh(object), { ...editState(settings, 'solid'), mode: 'object' });
+    expect(solid().userData.ownsDots).toBe(false);
+  });
+
   it('says when it has a dot on screen, which is when the viewport tests them', () => {
     const { object, settings } = scene();
     const view = new ObjectView(object.id);

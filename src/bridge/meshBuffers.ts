@@ -11,6 +11,25 @@ export interface SolidBuffers {
   positions: Float32Array;
   normals: Float32Array;
   uvs: Float32Array;
+  /**
+   * Per triangle corner: which corner of its triangle it is (0 to 2), plus four
+   * times a code. Its low three bits say which of the triangle's sides are edges
+   * of its face rather than diagonals the triangulation drew, bit k for the side
+   * facing corner k. Above them, two bits for each of the first two diagonals,
+   * in that order: whether the triangle across it has an edge of the face from
+   * the diagonal's first end to its far corner, and from there to the second
+   * end. The dot occlusion pass reads it to find where a face ends (see
+   * `createDotOcclusionMaterial`). Empty unless built with `FaceEnds`.
+   */
+  triangleCorners: Float32Array;
+  /**
+   * Per triangle corner, the far corner across each of the first two diagonals
+   * of its triangle: the corner of the face the triangle across it stands on.
+   * Zero where there is none. Three floats a corner, for the first diagonal
+   * alone, unless the mesh has a face of five corners or more, the only kind
+   * that cuts a triangle with two; then six. Empty unless built with `'far'`.
+   */
+  farCorners: Float32Array;
   /** Face id behind each triangle, so a raycast hit maps back to the kernel. */
   triangleFaceIds: Int32Array;
   /** Material groups for the Three.js multi-material draw. */
@@ -63,15 +82,23 @@ export interface MeshBuffers {
 }
 
 /**
+ * How much the solid carries of where its faces end, for the dot occlusion
+ * pass: which sides of each triangle are edges of its face (`'edges'`), or that
+ * and the far corners across its diagonals (`'far'`). Each costs every rebuild
+ * time, and only an object whose vertices are marked has its far corners read.
+ */
+export type FaceEnds = 'edges' | 'far';
+
+/**
  * Converts a BMesh into the three GPU buffer sets the viewport draws:
  * a triangulated solid, an edge line set, and a vertex point cloud.
  *
  * Triangulation happens only here, at the display boundary: the kernel keeps
  * n-gons throughout.
  */
-export function buildMeshBuffers(mesh: BMesh): MeshBuffers {
+export function buildMeshBuffers(mesh: BMesh, faceEnds?: FaceEnds): MeshBuffers {
   return {
-    solid: buildSolid(mesh),
+    solid: buildSolid(mesh, faceEnds),
     edges: buildEdges(mesh),
     points: buildPoints(mesh),
   };
@@ -91,11 +118,12 @@ const scratchPoints: Vec3[] = [];
  * first and filling fixed buffers measured 362 ms against 147 ms on that mesh,
  * and a drag pays this on every pointer move.
  */
-function buildSolid(mesh: BMesh): SolidBuffers {
+function buildSolid(mesh: BMesh, faceEnds?: FaceEnds): SolidBuffers {
   // Faces are visited in material order so each material becomes one draw call.
   const byMaterial = new Map<number, Face[]>();
   let triangles = 0;
   let selectedTriangleCount = 0;
+  let ngons = false;
   for (const face of mesh.faces.values()) {
     const bucket = byMaterial.get(face.materialIndex);
     if (bucket) bucket.push(face);
@@ -105,11 +133,17 @@ function buildSolid(mesh: BMesh): SolidBuffers {
     const faceTriangles = Math.max(0, corners - 2);
     triangles += faceTriangles;
     if (face.selected) selectedTriangleCount += faceTriangles;
+    if (corners > 4) ngons = true;
   }
 
   const positions = new Float32Array(triangles * 9);
   const normals = new Float32Array(triangles * 9);
   const uvs = new Float32Array(triangles * 6);
+  const triangleCorners = new Float32Array(faceEnds ? triangles * 3 : 0);
+  // Only a face of five corners or more cuts a triangle with two diagonals, so
+  // a mesh of quads and triangles holds one far corner a corner, not two.
+  const farStride = faceEnds !== 'far' ? 0 : ngons ? 6 : 3;
+  const farCorners = new Float32Array(triangles * 3 * farStride);
   const triangleFaceIds = new Int32Array(triangles);
   const selectedTriangles = new Float32Array(selectedTriangleCount * 9);
 
@@ -143,11 +177,42 @@ function buildSolid(mesh: BMesh): SolidBuffers {
 
       const loops = scratchLoops;
       const indices = triangulatePolygon(scratchPoints, face.normal);
+      const across = farStride > 0 ? acrossDiagonals(indices, corners) : null;
 
       for (let i = 0; i < indices.length; i += 3) {
         triangleFaceIds[triangle++] = face.id;
 
+        // Which sides are edges of the face, and across the first two that are
+        // diagonals, the far corner and which sides out to it are edges, as
+        // `triangleCorners` and `farCorners` hold them.
+        let code = 0;
+        let diagonal = 0;
+        for (let k = 0; faceEnds && k < 3; k++) {
+          const first = indices[i + ((k + 1) % 3)];
+          const second = indices[i + ((k + 2) % 3)];
+          if (isFaceEdge(first, second, corners)) {
+            code |= 1 << k;
+            continue;
+          }
+          const far = across ? across[i + k] : -1;
+          if (diagonal * 3 < farStride && far >= 0) {
+            const edges =
+              (isFaceEdge(first, far, corners) ? 1 : 0) |
+              (isFaceEdge(far, second, corners) ? 2 : 0);
+            code |= edges << (3 + 2 * diagonal);
+            const co = loops[far].vert.co;
+            const from = (vertex / 3) * farStride + diagonal * 3;
+            for (let at = from; at < from + 3 * farStride; at += farStride) {
+              farCorners[at] = co.x;
+              farCorners[at + 1] = co.y;
+              farCorners[at + 2] = co.z;
+            }
+          }
+          diagonal++;
+        }
+
         for (let corner = 0; corner < 3; corner++) {
+          if (faceEnds) triangleCorners[vertex / 3] = corner + 4 * code;
           const loop = loops[indices[i + corner]];
           const normal = face.smooth
             ? (splitNormals.get(loop.id) ?? loop.vert.normal)
@@ -180,7 +245,94 @@ function buildSolid(mesh: BMesh): SolidBuffers {
     if (count > 0) groups.push({ start, count, materialIndex });
   }
 
-  return { positions, normals, uvs, triangleFaceIds, groups, selectedTriangles };
+  return {
+    positions,
+    normals,
+    uvs,
+    triangleCorners,
+    farCorners,
+    triangleFaceIds,
+    groups,
+    selectedTriangles,
+  };
+}
+
+/**
+ * Whether corners `p` and `q` of a face of `count` corners are joined by one of
+ * its edges, being next to each other round it, rather than by a diagonal.
+ */
+function isFaceEdge(p: number, q: number, count: number): boolean {
+  const apart = Math.abs(p - q);
+  return apart === 1 || apart === count - 1;
+}
+
+/** Where in `indices` the corner of one triangle is that the other one lacks. */
+function offDiagonal(indices: readonly number[], triangle: number, other: number): number {
+  for (let k = triangle; k < triangle + 3; k++) {
+    const corner = indices[k];
+    if (
+      corner !== indices[other] &&
+      corner !== indices[other + 1] &&
+      corner !== indices[other + 2]
+    ) {
+      return k;
+    }
+  }
+  return -1;
+}
+
+/** Refilled per face by `acrossDiagonals`, rather than allocated once per face. */
+const scratchAcross: number[] = [];
+const scratchDiagonals = new Map<number, number>();
+
+/**
+ * For each diagonal among the sides of the triangles `indices` cuts a face of
+ * `count` corners into, at the position of the corner the side faces: the
+ * face's corner across it, the third corner of the other triangle standing on
+ * it, or -1 if none does. What it holds for an edge of the face is left over
+ * from an earlier face, since nothing asks.
+ */
+function acrossDiagonals(indices: readonly number[], count: number): number[] {
+  const across = scratchAcross;
+  if (count < 4) return across;
+
+  // A quad is two triangles on one diagonal. The corner of each that is off it
+  // faces it, and is the far corner for the other. Most faces are quads, and
+  // this spares them the general walk below.
+  if (count === 4 && indices.length === 6) {
+    const first = offDiagonal(indices, 0, 3);
+    const second = offDiagonal(indices, 3, 0);
+    for (let i = 0; i < 6; i++) across[i] = -1;
+    if (first >= 0 && second >= 0) {
+      across[first] = indices[second];
+      across[second] = indices[first];
+    }
+    return across;
+  }
+
+  across.length = indices.length;
+  across.fill(-1);
+
+  // Where each diagonal was first seen, by its two corners.
+  const seen = scratchDiagonals;
+  seen.clear();
+  for (let i = 0; i < indices.length; i += 3) {
+    for (let k = 0; k < 3; k++) {
+      const p = indices[i + ((k + 1) % 3)];
+      const q = indices[i + ((k + 2) % 3)];
+      if (isFaceEdge(p, q, count)) continue;
+
+      const key = Math.min(p, q) * count + Math.max(p, q);
+      const other = seen.get(key);
+      if (other === undefined) {
+        seen.set(key, i + k);
+      } else {
+        across[i + k] = indices[other];
+        across[other] = indices[i + k];
+      }
+    }
+  }
+  return across;
 }
 
 function buildEdges(mesh: BMesh): EdgeBuffers {

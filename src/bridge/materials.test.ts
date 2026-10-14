@@ -174,9 +174,34 @@ describe('vertex point material', () => {
     expect(shader.uniforms.dotOcclusionMap).toBe(DOT_OCCLUSION.dotOcclusionMap);
     expect(shader.uniforms.dotOcclusionSize).toBe(DOT_OCCLUSION.dotOcclusionSize);
 
-    const test = shader.vertexShader.indexOf('dotOccluded( gl_Position )');
+    const test = shader.vertexShader.indexOf('dotOccluded( gl_Position, pointSpan )');
     expect(test).toBeGreaterThan(shader.vertexShader.indexOf('#include <project_vertex>'));
     expect(test).toBeLessThan(shader.vertexShader.indexOf('float pointLift'));
+  });
+
+  it('hides a dot only behind a face that reaches its vertex', () => {
+    // A far-side vertex a fraction of a pixel inside a contour has background
+    // in one of the four pixels round it, and that pixel alone used to draw it:
+    // half a dot beside the contour's own vertex.
+    const material = createPointMaterial();
+    const shader = {
+      uniforms: THREE.UniformsUtils.clone(THREE.ShaderLib.points.uniforms),
+      vertexShader: THREE.ShaderLib.points.vertexShader,
+      fragmentShader: THREE.ShaderLib.points.fragmentShader,
+    } as unknown as THREE.WebGLProgramParametersWithUniforms;
+
+    material.onBeforeCompile(shader, {} as THREE.WebGLRenderer);
+
+    const test = shader.vertexShader;
+    const empty = test.indexOf('if ( ( surface.a & 524288u ) == 0u ) continue;');
+    expect(empty).toBeGreaterThan(0);
+    // Another object in front hides it where its face's nearest point is in
+    // front too; of its own faces, the edges nearest the pixel are asked about
+    // the spot.
+    expect(test).toContain('if ( ( surface.a & 1048576u ) == 0u ) {');
+    expect(test).toContain('if ( aheadAtEdge > margin ) return true;');
+    expect(test).toContain('if ( dotEdgeReach( edges[ k ], offset ) <= ');
+    expect(test.indexOf('if ( reaches ) return true;')).toBeGreaterThan(empty);
   });
 
   it('is left to the depth test outside the viewport frame that fills it', () => {
@@ -194,6 +219,50 @@ describe('dot occlusion material', () => {
 
   it('leaves the faces where they are, with no offset to sink them', () => {
     expect(createDotOcclusionMaterial().polygonOffset).toBe(false);
+  });
+
+  it("paints the face's own edges, past the diagonals it was cut along", () => {
+    // Depth and slope say how deep a face would be at a vertex, not whether the
+    // face gets that far, and a quad's diagonal is no end to it: the sides out
+    // to the far corner across it are.
+    const material = createDotOcclusionMaterial();
+
+    expect(material.vertexShader).toContain('attribute float triangleCorner;');
+    expect(material.vertexShader).toContain('attribute vec3 farCornerA;');
+    expect(material.fragmentShader).toContain('keepEdgeThrough( first, farAt, second );');
+    expect(material.fragmentShader).toContain('keepEdgeThrough( farAt, second, first );');
+    expect(material.uniforms.size.value).toBeInstanceOf(THREE.Vector2);
+  });
+
+  it('packs all of it into four words a pixel, the size four floats took', () => {
+    const material = createDotOcclusionMaterial();
+
+    expect(material.glslVersion).toBe(THREE.GLSL3);
+    expect(material.fragmentShader).toContain('out highp uvec4 occlusion;');
+  });
+
+  it("marks which pixels are the dots' own object's, object by object", () => {
+    // Another object in front needs no more asking than that it is there; the
+    // faces round a vertex need their sides asked.
+    const material = createDotOcclusionMaterial();
+    const own = new THREE.Mesh();
+    own.userData.ownsDots = true;
+    const draw = (object: THREE.Object3D) =>
+      material.onBeforeRender(
+        {} as THREE.WebGLRenderer,
+        new THREE.Scene(),
+        new THREE.Camera(),
+        new THREE.BufferGeometry(),
+        object,
+        new THREE.Group(),
+      );
+
+    draw(own);
+    expect(material.uniforms.ownsDots.value).toBe(true);
+    expect(material.uniformsNeedUpdate).toBe(true);
+
+    draw(new THREE.Mesh());
+    expect(material.uniforms.ownsDots.value).toBe(false);
   });
 });
 
