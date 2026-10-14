@@ -6,8 +6,11 @@ import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeome
 
 import {
   AXIS_COLORS,
+  DOT_OCCLUSION,
+  OCCLUDER_LAYER,
   ObjectView,
   VIEWPORT_COLORS,
+  createDotOcclusionMaterial,
   disposeMaterial,
   imageTexture,
   releaseTextures,
@@ -123,6 +126,16 @@ const LONG_PRESS_MS = 500;
  * parallel.
  */
 const ORTHO_EYE_DISTANCE = 1e6;
+
+/**
+ * How far the orthographic depth range reaches past what it is fitted round,
+ * in view heights (see `fitOrthographicDepth`).
+ *
+ * Room for what sits outside the scene's bounds, the gizmo's handles first. It
+ * costs nothing worth counting: two hundred view heights spread over the depth
+ * buffer leave each step around a hundredth of a pixel deep.
+ */
+const ORTHO_DEPTH_MARGIN = 100;
 
 /** How long freshly created vertices stay flagged in the viewport. */
 const RECENT_VERTS_MS = 1600;
@@ -555,6 +568,40 @@ export function addViewportLights(scene: THREE.Scene): void {
 }
 
 /**
+ * The near and far planes that hold `box` for an orthographic camera standing
+ * at `position` and looking along `view`, `margin` to spare either side, and
+ * never wider than `widest` (see `Viewport.fitOrthographicDepth`).
+ *
+ * A box lying wholly past `widest` was clipped away by it all along, and gets
+ * `widest` back rather than planes that cross.
+ */
+export function orthographicDepthRange(
+  box: THREE.Box3,
+  position: THREE.Vector3,
+  view: THREE.Vector3,
+  margin: number,
+  widest: { near: number; far: number },
+): { near: number; far: number } {
+  let nearest = Infinity;
+  let furthest = -Infinity;
+  const corner = new THREE.Vector3();
+  for (let index = 0; index < 8; index++) {
+    corner.set(
+      index & 1 ? box.max.x : box.min.x,
+      index & 2 ? box.max.y : box.min.y,
+      index & 4 ? box.max.z : box.min.z,
+    );
+    const depth = corner.sub(position).dot(view);
+    nearest = Math.min(nearest, depth);
+    furthest = Math.max(furthest, depth);
+  }
+
+  const near = Math.max(widest.near, nearest - margin);
+  const far = Math.min(widest.far, furthest + margin);
+  return near < far ? { near, far } : { ...widest };
+}
+
+/**
  * Three.js owns everything in here: the renderer, camera, gizmo, picking and
  * overlays. It is created once against a canvas ref and never re-rendered by
  * React; it reads the store through `subscribeWithSelector` and pushes
@@ -716,6 +763,25 @@ export class Viewport {
    * rather than once per frame.
    */
   private sceneBoxCache: THREE.Box3 | null = null;
+  /** Scratch for `fitOrthographicDepth`, which runs every frame in ortho. */
+  private readonly depthBox = new THREE.Box3();
+  private readonly gridBox = new THREE.Box3();
+  private readonly depthView = new THREE.Vector3();
+  /**
+   * The surfaces the vertex dots are tested against, a float a channel; see
+   * `renderDotOcclusion`. At CSS pixels rather than device ones: the slope
+   * carries a pixel's surface to the vertex exactly at any size, and four
+   * floats a pixel at a high-density screen's full count is a lot of memory
+   * for an edge a device pixel sharper.
+   */
+  private readonly dotOcclusion = new THREE.WebGLRenderTarget(1, 1, {
+    type: THREE.FloatType,
+    minFilter: THREE.NearestFilter,
+    magFilter: THREE.NearestFilter,
+    generateMipmaps: false,
+  });
+  private readonly dotOcclusionMaterial = createDotOcclusionMaterial();
+  private readonly clearColor = new THREE.Color();
   /** Last cursor written to the canvas; the render loop would otherwise set it every frame. */
   private appliedCursor = '';
   private recentVerts: { objectId: string; ids: Set<number>; expiresAt: number } | null = null;
@@ -4322,6 +4388,7 @@ export class Viewport {
     this.grid.update(distance);
     this.extendFarPlane(distance);
     this.tightenNearPlane(distance);
+    if (this.camera === this.orthographicCamera) this.fitOrthographicDepth(distance);
     this.updateViewLost(distance);
     this.updateCursor();
     this.updateProportionalRing();
@@ -4332,8 +4399,62 @@ export class Viewport {
     if (this.modalGuideUp()) this.standDownGizmo();
     this.expireRecentVerts();
     this.publishViewAxes();
+    DOT_OCCLUSION.dotOcclusionActive.value = this.renderDotOcclusion();
     this.renderer.render(this.scene, this.camera);
+    DOT_OCCLUSION.dotOcclusionActive.value = false;
+    DOT_OCCLUSION.dotOcclusionMap.value = null;
   };
+
+  /**
+   * Draws the surfaces for the vertex dots to be tested against in this frame,
+   * and says whether it did (see `DOT_OCCLUSION`).
+   *
+   * Only while a dot is on screen, since it draws every surface a second
+   * time, and only on a GPU that can draw into a float target: a byte a
+   * channel holds nothing like a depth. Without it the dots fall back on the
+   * depth test and their lift.
+   *
+   * The surfaces on `OCCLUDER_LAYER` are the ones writing depth in the frame
+   * proper, drawn here with a material of the test's own. Its side follows the
+   * culling preference, as theirs does.
+   */
+  private renderDotOcclusion(): boolean {
+    if (!this.renderer.extensions.has('EXT_color_buffer_float')) return false;
+    let dots = false;
+    for (const view of this.views.values()) dots ||= view.showsDots;
+    if (!dots) return false;
+
+    const width = Math.max(1, this.canvas.clientWidth);
+    const height = Math.max(1, this.canvas.clientHeight);
+    const target = this.dotOcclusion;
+    if (target.width !== width || target.height !== height) target.setSize(width, height);
+
+    const { renderer, scene, camera } = this;
+    const background = scene.background;
+    const layers = camera.layers.mask;
+    const clearAlpha = renderer.getClearAlpha();
+    renderer.getClearColor(this.clearColor);
+
+    this.dotOcclusionMaterial.side = useEditorStore.getState().backfaceCulling
+      ? THREE.FrontSide
+      : THREE.DoubleSide;
+    scene.background = null;
+    scene.overrideMaterial = this.dotOcclusionMaterial;
+    camera.layers.set(OCCLUDER_LAYER);
+    renderer.setClearColor(0x000000, 0);
+    renderer.setRenderTarget(target);
+    renderer.render(scene, camera);
+
+    renderer.setRenderTarget(null);
+    renderer.setClearColor(this.clearColor, clearAlpha);
+    camera.layers.mask = layers;
+    scene.overrideMaterial = null;
+    scene.background = background;
+
+    DOT_OCCLUSION.dotOcclusionMap.value = target.texture;
+    DOT_OCCLUSION.dotOcclusionSize.value.set(width, height);
+    return true;
+  }
 
   /**
    * Hands the corner widget the camera's orientation and whatever axis a
@@ -4556,19 +4677,60 @@ export class Viewport {
    * the far plane against distance (with room to spare) means the grid keeps
    * rendering for the entire zoom range instead of vanishing partway through.
    * `clipEnd` still acts as a floor for users who raise it directly.
+   *
+   * The orthographic camera's far plane is `fitOrthographicDepth`'s to set,
+   * inside the same limit.
    */
   private extendFarPlane(distance: number): void {
-    const required = distance * 2 + 200;
-    const far = Math.max(useEditorStore.getState().clipEnd, required);
-
+    const far = this.farPlaneFor(distance);
     if (Math.abs(this.perspectiveCamera.far - far) > 1) {
       this.perspectiveCamera.far = far;
       this.perspectiveCamera.updateProjectionMatrix();
     }
-    if (Math.abs(this.orthographicCamera.far - far) > 1) {
-      this.orthographicCamera.far = far;
-      this.orthographicCamera.updateProjectionMatrix();
+  }
+
+  private farPlaneFor(distance: number): number {
+    return Math.max(useEditorStore.getState().clipEnd, distance * 2 + 200);
+  }
+
+  /**
+   * Fits the orthographic camera's depth range round what there is to draw.
+   *
+   * An orthographic depth buffer spreads its steps evenly from near to far,
+   * and those used to stand a fixed `clipEnd` either side of the camera: four
+   * kilometres of depth at every zoom. Closed in on a part a few millimetres
+   * thick, one step came out wider than a pixel, and the fill's depth offset of
+   * a few steps sank it further than the part was deep. The edges and vertex
+   * dots behind it came through as though drawn on it. Perspective never had
+   * this, since its near plane follows the zoom in (see `tightenNearPlane`).
+   * Spanning the scene, the grid and the cursor instead keeps a step far under
+   * a pixel at any zoom.
+   *
+   * Never wider than the fixed range was, so nothing it drew is clipped away.
+   */
+  private fitOrthographicDepth(distance: number): void {
+    const camera = this.orthographicCamera;
+    const box = this.depthBox.copy(this.sceneBounds());
+    box.union(this.gridBox.setFromObject(this.grid.group));
+    box.expandByPoint(this.cursor.position);
+
+    const margin = ((camera.top - camera.bottom) / camera.zoom) * ORTHO_DEPTH_MARGIN;
+    const { near, far } = orthographicDepthRange(
+      box,
+      camera.position,
+      camera.getWorldDirection(this.depthView),
+      margin,
+      { near: -useEditorStore.getState().clipEnd, far: this.farPlaneFor(distance) },
+    );
+
+    // A quarter of the margin still leaves room either side, and spares an
+    // orbit a projection rebuild on every frame.
+    if (Math.abs(camera.near - near) < margin / 4 && Math.abs(camera.far - far) < margin / 4) {
+      return;
     }
+    camera.near = near;
+    camera.far = far;
+    camera.updateProjectionMatrix();
   }
 
   /**
@@ -4657,6 +4819,8 @@ export class Viewport {
     this.views.clear();
     this.grid.dispose();
     this.disposeGizmo();
+    this.dotOcclusion.dispose();
+    this.dotOcclusionMaterial.dispose();
     this.renderer.dispose();
   }
 

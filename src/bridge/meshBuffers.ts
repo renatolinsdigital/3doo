@@ -368,12 +368,25 @@ export interface EdgeCull {
   faceStarts: Uint32Array;
   /** The sharp edges, as indices into `ends` and `sides`. */
   sharp: Int32Array;
+  /** Both ends of every edge, as indices into the point buffer `buildPoints` writes. */
+  edgeVerts: Uint32Array;
+  vertCount: number;
+  /** The vertices with no edge at all, which have no side to be on. */
+  looseVerts: Uint32Array;
 }
 
 export function buildEdgeCull(mesh: BMesh): EdgeCull {
   const normals = new Float32Array(mesh.faces.size * 3);
   const centres = new Float32Array(mesh.faces.size * 3);
   const indexOfFace = new Map<number, number>();
+
+  // In the order `buildPoints` walks them, which is what the dots are drawn in.
+  const indexOfVert = new Map<number, number>();
+  const looseVerts: number[] = [];
+  for (const vert of mesh.verts.values()) {
+    if (vert.edges.length === 0) looseVerts.push(indexOfVert.size);
+    indexOfVert.set(vert.id, indexOfVert.size);
+  }
 
   let cornerCount = 0;
   for (const face of mesh.faces.values()) cornerCount += mesh.faceLoopCount(face);
@@ -416,6 +429,7 @@ export function buildEdgeCull(mesh: BMesh): EdgeCull {
   const ends = new Float32Array(mesh.edges.size * 6);
   const sideNormals = new Float32Array(mesh.edges.size * 6);
   const sides = new Int32Array(mesh.edges.size * 2).fill(-1);
+  const edgeVerts = new Uint32Array(mesh.edges.size * 2);
   const bounds = new Float32Array([Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]);
   const sharp: number[] = [];
   let closed = mesh.faces.size > 0;
@@ -423,6 +437,8 @@ export function buildEdgeCull(mesh: BMesh): EdgeCull {
   let e = 0;
   for (const edge of mesh.edges.values()) {
     if (edge.sharp) sharp.push(e);
+    edgeVerts[e * 2] = indexOfVert.get(edge.v0.id) ?? 0;
+    edgeVerts[e * 2 + 1] = indexOfVert.get(edge.v1.id) ?? 0;
     ends[e * 6] = edge.v0.co.x;
     ends[e * 6 + 1] = edge.v0.co.y;
     ends[e * 6 + 2] = edge.v0.co.z;
@@ -459,6 +475,9 @@ export function buildEdgeCull(mesh: BMesh): EdgeCull {
     corners: faceCorners,
     faceStarts,
     sharp: Int32Array.from(sharp),
+    edgeVerts,
+    vertCount: mesh.verts.size,
+    looseVerts: Uint32Array.from(looseVerts),
   };
 }
 
@@ -641,6 +660,32 @@ export function frontSharpLines(cull: EdgeCull, eye: Vec3): EdgeLines {
 }
 
 /**
+ * Which vertex dots are worth drawing over an opaque surface, as 1 or 0 per
+ * point in `buildPoints` order, or null to draw every one.
+ *
+ * A vertex is on the far side when every face round it is, which is when no
+ * edge of it is on the near one. The depth test fails the dots there for the
+ * reason it fails the wire: near a contour the far side runs within a dot's
+ * lift of the near one. Zoomed out, a whole model can be that thin in depth,
+ * and its far side came through as a scatter of squares along every contour.
+ */
+export function frontVerts(cull: EdgeCull, eye: Vec3): Uint8Array | null {
+  if (!faceCamera(cull, eye)) return null;
+
+  const front = new Uint8Array(cull.vertCount);
+  for (const vert of cull.looseVerts) front[vert] = 1;
+
+  const edges = cull.sides.length / 2;
+  for (let edge = 0; edge < edges; edge++) {
+    if (!onNearSide(cull, edge)) continue;
+    front[cull.edgeVerts[edge * 2]] = 1;
+    front[cull.edgeVerts[edge * 2 + 1]] = 1;
+  }
+
+  return front;
+}
+
+/**
  * The edges that trace a mesh's outline from where the camera stands.
  *
  * An edge is on the silhouette when the two faces sharing it disagree about
@@ -681,6 +726,105 @@ function buildPoints(mesh: BMesh): PointBuffers {
   }
 
   return { positions, vertIds, selection };
+}
+
+/**
+ * Lifts a dot for the steepest surface there is: its faces are not known, as
+ * for the hover mark, or they cancel out and give no axis to lean about.
+ */
+export const UNKNOWN_POINT_FACES = [0, 0, 0, Math.PI / 2] as const;
+
+/**
+ * The faces round each vertex, as the dot's lift reads them (see
+ * `liftPoints`): four floats per point, in `buildPoints` order.
+ *
+ * The first three are an axis the faces lean about and the fourth is how far
+ * the furthest of them leans from it, in radians. However the camera turns, no
+ * face round the vertex is turned further from the view than the axis is plus
+ * that much, which bounds the steepest surface the dot has to clear. A vertex
+ * on a flat stretch spreads by nothing and is lifted for exactly the face it
+ * sits on. A corner is lifted for its steepest side.
+ *
+ * Measured with the object's scale applied, since squashing an object turns
+ * its faces' normals further apart than they are in its own space. Rotation
+ * keeps every angle as it was and is left to the shader's normal matrix. That
+ * matrix divides the scale back out of whatever it is handed, which is why the
+ * axis comes back stretched by it.
+ *
+ * A vertex with no face has nothing to clear and is left at zero.
+ *
+ * Walks each vertex's faces twice, for the axis and then for the face leaning
+ * furthest from it, rather than holding their normals in between. A drag in
+ * vertex mode rebuilds this on every pointer move, and the walk is the cheaper
+ * of the two.
+ */
+export function buildPointFaces(mesh: BMesh, scale: Vec3): Float32Array {
+  const faces = new Float32Array(mesh.verts.size * 4);
+  const inverse = (value: number) => 1 / (Math.abs(value) < 1e-12 ? 1e-12 : value);
+  const ix = inverse(scale.x);
+  const iy = inverse(scale.y);
+  const iz = inverse(scale.z);
+
+  let at = -4;
+  for (const vert of mesh.verts.values()) {
+    at += 4;
+    let sx = 0;
+    let sy = 0;
+    let sz = 0;
+    let corners = 0;
+
+    // A face's corner at this vertex is the one loop of it that starts here.
+    for (const edge of vert.edges) {
+      for (const loop of edge.loops) {
+        if (loop.vert !== vert) continue;
+        const { normal } = loop.face;
+        const x = normal.x * ix;
+        const y = normal.y * iy;
+        const z = normal.z * iz;
+        const length = Math.sqrt(x * x + y * y + z * z);
+        if (length === 0) continue;
+        sx += x / length;
+        sy += y / length;
+        sz += z / length;
+        corners++;
+      }
+    }
+    if (corners === 0) continue;
+
+    const sum = Math.sqrt(sx * sx + sy * sy + sz * sz);
+    const ax = sx / sum;
+    const ay = sy / sum;
+    const az = sz / sum;
+    const ox = ax * scale.x;
+    const oy = ay * scale.y;
+    const oz = az * scale.z;
+    const out = Math.sqrt(ox * ox + oy * oy + oz * oz);
+    if (!(sum > 1e-6) || !(out > 0)) {
+      faces.set(UNKNOWN_POINT_FACES, at);
+      continue;
+    }
+
+    let least = 1;
+    for (const edge of vert.edges) {
+      for (const loop of edge.loops) {
+        if (loop.vert !== vert) continue;
+        const { normal } = loop.face;
+        const x = normal.x * ix;
+        const y = normal.y * iy;
+        const z = normal.z * iz;
+        const length = Math.sqrt(x * x + y * y + z * z);
+        if (length === 0) continue;
+        least = Math.min(least, (ax * x + ay * y + az * z) / length);
+      }
+    }
+
+    faces[at] = ox / out;
+    faces[at + 1] = oy / out;
+    faces[at + 2] = oz / out;
+    faces[at + 3] = Math.acos(Math.max(-1, Math.min(1, least)));
+  }
+
+  return faces;
 }
 
 /** Line segments showing each face normal, for the normals overlay. */

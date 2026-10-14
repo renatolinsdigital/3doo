@@ -3,11 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { type Edge, type Vert, createBox, createPlane, vec3, BMesh } from '@kernel/index';
 
 import {
+  UNKNOWN_POINT_FACES,
   buildEdgeCull,
   buildMeshBuffers,
+  buildPointFaces,
   buildSilhouetteEdges,
   frontEdgeLines,
   frontSharpLines,
+  frontVerts,
 } from './meshBuffers';
 
 /** Silhouette buffers are pairs of points, so two vertices per edge. */
@@ -174,6 +177,156 @@ describe('edge sides', () => {
       const [a, b] = sidesOf(lines.sides, i);
       expect(Math.max(a[2], b[2])).toBeCloseTo(1);
     }
+  });
+});
+
+describe('front vertices', () => {
+  /** The positions of the dots the cull keeps, or every one when it stands down. */
+  function keptPoints(mesh: BMesh, eye: ReturnType<typeof vec3>): number[][] {
+    const front = frontVerts(buildEdgeCull(mesh), eye);
+    const { positions } = buildMeshBuffers(mesh).points;
+    const kept: number[][] = [];
+    for (let i = 0; i < positions.length / 3; i++) {
+      if (!front || front[i] === 1) kept.push([...positions.slice(i * 3, i * 3 + 3)]);
+    }
+    return kept;
+  }
+
+  it('leaves a cube seen face on with the corners of the near face', () => {
+    // Zoomed out, the whole cube is thinner in depth than a dot is lifted, and
+    // the four behind came through as a second set of squares.
+    const kept = keptPoints(createBox(1), vec3(0, 0, 10));
+
+    expect(kept).toHaveLength(4);
+    for (const [, , z] of kept) expect(z).toBeCloseTo(0.5);
+  });
+
+  it('keeps every corner of a cube seen from a corner but the one behind it', () => {
+    const kept = keptPoints(createBox(1), vec3(10, 10, 10));
+
+    expect(kept).toHaveLength(7);
+    expect(kept).not.toContainEqual([-0.5, -0.5, -0.5]);
+  });
+
+  it('keeps every dot of a box with a face taken out, as it does every edge', () => {
+    const mesh = createBox(1);
+    mesh.removeFace([...mesh.faces.values()][0]);
+
+    expect(frontVerts(buildEdgeCull(mesh), vec3(0, 0, 10))).toBeNull();
+  });
+
+  it('always keeps a vertex with no edge, which has no side to be on', () => {
+    const mesh = createBox(1);
+    mesh.addVert(vec3(0, 0, -5));
+
+    expect(keptPoints(mesh, vec3(0, 0, 10))).toContainEqual([0, 0, -5]);
+  });
+});
+
+describe('point faces', () => {
+  /** The axis and spread written for point `i`. */
+  const facesAt = (faces: Float32Array, i: number) => ({
+    axis: [...faces.slice(i * 4, i * 4 + 3)],
+    spread: faces[i * 4 + 3],
+  });
+
+  /**
+   * Two faces folded 45 degrees apart along the edge from the first vertex to
+   * the second, which is what a dot on that edge has to clear.
+   */
+  function fold(): BMesh {
+    const mesh = new BMesh();
+    const [a, b, c, d, e, f] = [
+      vec3(0, 0, 0),
+      vec3(1, 0, 0),
+      vec3(1, 1, 0),
+      vec3(0, 1, 0),
+      vec3(1, -1, -1),
+      vec3(0, -1, -1),
+    ].map((co) => mesh.addVert(co));
+    mesh.addFace([a, b, c, d]);
+    mesh.addFace([f, e, b, a]);
+    mesh.computeNormals();
+    return mesh;
+  }
+
+  it('lifts a dot on a flat stretch for exactly the face it sits on', () => {
+    const faces = buildPointFaces(createPlane(1), vec3(1, 1, 1));
+
+    for (let i = 0; i < faces.length / 4; i++) {
+      const { axis, spread } = facesAt(faces, i);
+      expect(Math.abs(axis[1])).toBeCloseTo(1);
+      expect(spread).toBeCloseTo(0);
+    }
+  });
+
+  it('lifts a box corner for its steepest side', () => {
+    const faces = buildPointFaces(createBox(1), vec3(1, 1, 1));
+
+    for (let i = 0; i < faces.length / 4; i++) {
+      expect(facesAt(faces, i).spread).toBeCloseTo(Math.acos(1 / Math.sqrt(3)));
+    }
+  });
+
+  it('spreads a fold by half the angle between its faces', () => {
+    expect(facesAt(buildPointFaces(fold(), vec3(1, 1, 1)), 0).spread).toBeCloseTo(Math.PI / 8);
+  });
+
+  it('measures the fold with the object scaled, since scale turns its faces', () => {
+    // Squashed, the tilted face lies closer to flat and the fold closes up.
+    // Stretched, it stands up and the fold opens. Measured unscaled, the
+    // stretched one was lifted for less than it needed.
+    const squashed = buildPointFaces(fold(), vec3(1, 1, 0.25));
+    const stretched = buildPointFaces(fold(), vec3(1, 1, 4));
+
+    expect(facesAt(squashed, 0).spread).toBeCloseTo(Math.atan(1 / 4) / 2);
+    expect(facesAt(stretched, 0).spread).toBeCloseTo(Math.atan(4) / 2);
+  });
+
+  it('hands the axis back stretched by the scale, for the normal matrix to undo', () => {
+    // A box's faces stay square under any scale on its own axes, so each
+    // corner's axis seen in the world points out along its diagonal.
+    const mesh = createBox(1);
+    const faces = buildPointFaces(mesh, vec3(1, 1, 4));
+    const { positions } = buildMeshBuffers(mesh).points;
+
+    for (let i = 0; i < faces.length / 4; i++) {
+      const { axis } = facesAt(faces, i);
+      const world = [axis[0], axis[1], axis[2] / 4];
+      const length = Math.hypot(world[0], world[1], world[2]);
+      for (let k = 0; k < 3; k++) {
+        expect(world[k] / length).toBeCloseTo(Math.sign(positions[i * 3 + k]) / Math.sqrt(3));
+      }
+    }
+  });
+
+  it('leaves a vertex with no face at nothing to clear', () => {
+    const mesh = new BMesh();
+    mesh.addEdge(mesh.addVert(vec3(0, 0, 0)), mesh.addVert(vec3(1, 0, 0)));
+
+    expect([...buildPointFaces(mesh, vec3(1, 1, 1))]).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+  });
+
+  it('lifts for the steepest surface when the faces cancel out', () => {
+    // A fin: the second face folded flat back over the first, so the two face
+    // opposite ways and leave no axis to lean about.
+    const mesh = new BMesh();
+    const [a, b, c, d, e, f] = [
+      vec3(0, 0, 0),
+      vec3(1, 0, 0),
+      vec3(1, 1, 0),
+      vec3(0, 1, 0),
+      vec3(1, 1, 0),
+      vec3(0, 1, 0),
+    ].map((co) => mesh.addVert(co));
+    mesh.addFace([a, b, c, d]);
+    mesh.addFace([b, a, f, e]);
+    mesh.computeNormals();
+
+    expect(facesAt(buildPointFaces(mesh, vec3(1, 1, 1)), 0)).toEqual({
+      axis: [0, 0, 0],
+      spread: Math.fround(UNKNOWN_POINT_FACES[3]),
+    });
   });
 });
 

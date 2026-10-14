@@ -5,6 +5,8 @@ import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ShadingMode } from '@store/types';
 
 import {
+  DOT_OCCLUSION,
+  createDotOcclusionMaterial,
   createHoverPointMaterial,
   createOutlineMaterial,
   createPointMaterial,
@@ -142,9 +144,56 @@ describe('vertex point material', () => {
     expect(shader.uniforms.pointHalfSize.value).toBe(material.size / 2);
     expect(shader.vertexShader).toContain('uniform float pointHalfSize;');
     expect(shader.vertexShader).toContain('mvPosition.xyz *= 1.0 - pointLift');
+    // By the faces round its own vertex rather than the steepest any face
+    // could be, which carried a whole thin part's far side up through it.
+    expect(shader.vertexShader).toContain('attribute vec4 pointFaces;');
+    expect(shader.vertexShader).toContain('pointHalfSize * pointSlope * pointSpan');
     expect(shader.vertexShader.indexOf('pointLift')).toBeGreaterThan(
       shader.vertexShader.indexOf('#include <project_vertex>'),
     );
+  });
+
+  it.each([
+    ['dot', createPointMaterial],
+    ['hover mark', createHoverPointMaterial],
+    ['fresh-vertex mark', createRecentPointMaterial],
+  ])('settles whether the %s is drawn at its own vertex, before the lift', (_, create) => {
+    // A lift is pixels of depth, and zoomed out that is deeper than another
+    // object a few millimetres in front: its vertices came up through it.
+    const material = create();
+    const shader = {
+      uniforms: THREE.UniformsUtils.clone(THREE.ShaderLib.points.uniforms),
+      vertexShader: THREE.ShaderLib.points.vertexShader,
+      fragmentShader: THREE.ShaderLib.points.fragmentShader,
+    } as unknown as THREE.WebGLProgramParametersWithUniforms;
+
+    material.onBeforeCompile(shader, {} as THREE.WebGLRenderer);
+
+    // The very objects the viewport fills each frame, shared by every mark.
+    expect(shader.uniforms.dotOcclusionActive).toBe(DOT_OCCLUSION.dotOcclusionActive);
+    expect(shader.uniforms.dotOcclusionMap).toBe(DOT_OCCLUSION.dotOcclusionMap);
+    expect(shader.uniforms.dotOcclusionSize).toBe(DOT_OCCLUSION.dotOcclusionSize);
+
+    const test = shader.vertexShader.indexOf('dotOccluded( gl_Position )');
+    expect(test).toBeGreaterThan(shader.vertexShader.indexOf('#include <project_vertex>'));
+    expect(test).toBeLessThan(shader.vertexShader.indexOf('float pointLift'));
+  });
+
+  it('is left to the depth test outside the viewport frame that fills it', () => {
+    expect(DOT_OCCLUSION.dotOcclusionActive.value).toBe(false);
+  });
+});
+
+describe('dot occlusion material', () => {
+  it('paints the depth of each surface with its slope across the screen', () => {
+    // The slope is what carries a pixel's surface to the vertex's own spot,
+    // where the faces through the vertex meet it exactly.
+    const material = createDotOcclusionMaterial();
+    expect(material.fragmentShader).toContain('dFdx( depth ), dFdy( depth )');
+  });
+
+  it('leaves the faces where they are, with no offset to sink them', () => {
+    expect(createDotOcclusionMaterial().polygonOffset).toBe(false);
   });
 });
 

@@ -17,6 +17,7 @@ import {
   viewLostReason,
   zoomSpent,
 } from './CameraController';
+import { orthographicDepthRange } from './Viewport';
 
 const TWO_PI = Math.PI * 2;
 
@@ -789,5 +790,38 @@ describe('a view that turns rather than jumps', () => {
 
     expect(controls.isMoving).toBe(false);
     expect(camera.position.x).toBeCloseTo(-5, 6);
+  });
+});
+
+describe('the orthographic depth range', () => {
+  const WIDEST = { near: -2000, far: 2000 };
+  const box = (min: number, max: number) =>
+    new THREE.Box3(new THREE.Vector3(min, min, min), new THREE.Vector3(max, max, max));
+  /** Standing ten out along +Z and looking back down it. */
+  const range = (scene: THREE.Box3, margin: number, widest = WIDEST) =>
+    orthographicDepthRange(
+      scene,
+      new THREE.Vector3(0, 0, 10),
+      new THREE.Vector3(0, 0, -1),
+      margin,
+      widest,
+    );
+
+  it('spans the scene, with the margin to spare either side', () => {
+    // A fixed four kilometres made one step of the depth buffer wider than a
+    // pixel on a millimetre part, and the far side came through its faces.
+    expect(range(box(-1, 1), 0.5)).toEqual({ near: 8.5, far: 11.5 });
+  });
+
+  it('reaches behind the camera, which an orthographic view still draws', () => {
+    expect(range(box(-1, 12), 0.5).near).toBeCloseTo(-2.5);
+  });
+
+  it('never reaches past the fixed range it replaced', () => {
+    expect(range(box(-5000, 5000), 1)).toEqual(WIDEST);
+  });
+
+  it('falls back to the fixed range when the scene lies wholly past it', () => {
+    expect(range(box(-100, -50), 1, { near: -20, far: 20 })).toEqual({ near: -20, far: 20 });
   });
 });

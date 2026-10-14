@@ -108,13 +108,14 @@ const SURFACE_DEPTH_OFFSET = {
 const MARK_LIFT_SLOPE = 8;
 
 /**
- * The least a wire is lifted by, as a slope: a face at 45 degrees.
+ * The least a wire or a vertex dot is lifted by, as a slope: a face at 45
+ * degrees.
  *
  * A face seen square on needs no lift at all, and the surface's own offset
  * settles the tie there. This is margin for the rounding in working the slope
- * out, and costs a fraction of a pixel's depth at the wire's width.
+ * out, and costs a fraction of a pixel's depth at a mark's size.
  */
-const WIRE_LIFT_MIN_SLOPE = 1;
+const MARK_LIFT_MIN_SLOPE = 1;
 
 /** Where the wire's extra attributes, and the slope it is lifted by, are declared. */
 const WIRE_SIDES_ANCHOR = 'attribute vec3 instanceEnd;';
@@ -141,7 +142,7 @@ const WIRE_SIDES_GLSL = /* glsl */ `
 
 			vec3 ray = projectionMatrix[ 2 ][ 3 ] == - 1.0 ? normalize( at ) : vec3( 0.0, 0.0, - 1.0 );
 			float slope = max( wireSideSlope( instanceSideA, ray ), wireSideSlope( instanceSideB, ray ) );
-			return clamp( slope, ${WIRE_LIFT_MIN_SLOPE.toFixed(1)}, ${MARK_LIFT_SLOPE.toFixed(1)} );
+			return clamp( slope, ${MARK_LIFT_MIN_SLOPE.toFixed(1)}, ${MARK_LIFT_SLOPE.toFixed(1)} );
 
 		}
 `;
@@ -212,18 +213,157 @@ function liftWire<T extends LineMaterial>(material: T): T {
   return material;
 }
 
+/**
+ * The layer a surface is on, besides its own, while it hides what is behind it.
+ * The pass that fills `DOT_OCCLUSION` draws this layer and nothing else.
+ */
+export const OCCLUDER_LAYER = 1;
+
+/**
+ * The surfaces every vertex dot is tested against, as the viewport drew them
+ * for this frame with `createDotOcclusionMaterial`.
+ *
+ * Shared by every point material, the uniforms being these very objects: there
+ * is one viewport, and one picture of its surfaces a frame. `active` is on only
+ * while that viewport draws its own frame. Anywhere else, a snapshot or a GPU
+ * that cannot draw into a float target, the dots are left to the depth test
+ * and their lift, as they were before this existed.
+ */
+export const DOT_OCCLUSION = {
+  dotOcclusionActive: { value: false },
+  dotOcclusionMap: { value: null as THREE.Texture | null },
+  /** The map's size in pixels. */
+  dotOcclusionSize: { value: new THREE.Vector2(1, 1) },
+};
+
+const DOT_OCCLUSION_VERTEX = /* glsl */ `
+void main() {
+
+	gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+
+}
+`;
+
+const DOT_OCCLUSION_FRAGMENT = /* glsl */ `
+void main() {
+
+	// 1 / w under perspective and the depth under an orthographic camera, each
+	// of which runs straight across the screen over a face.
+	float depth = isOrthographic ? gl_FragCoord.z : gl_FragCoord.w;
+	gl_FragColor = vec4( depth, dFdx( depth ), dFdy( depth ), 1.0 );
+
+}
+`;
+
+/**
+ * Paints the surfaces for `DOT_OCCLUSION`: how deep each pixel's surface is,
+ * and how fast that changes across the screen, with alpha left at zero where
+ * there is none.
+ *
+ * The slope is what makes the test exact. A depth buffer only answers at pixel
+ * centres, and a vertex is up to a pixel from the nearest one, where the faces
+ * it sits on have climbed towards the camera by as much as they lean. Telling
+ * them from a surface really in front took a margin of pixels of depth, the
+ * same thing the lift is and with the same fault. Carried along the slope, a
+ * face lands on the vertex's own spot, and the faces through the vertex land
+ * on its depth.
+ *
+ * No depth offset: the test wants the faces where they are.
+ */
+export function createDotOcclusionMaterial(): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    vertexShader: DOT_OCCLUSION_VERTEX,
+    fragmentShader: DOT_OCCLUSION_FRAGMENT,
+  });
+}
+
 /** Where the lift is spliced into `PointsMaterial`'s vertex shader. */
 const POINT_LIFT_ANCHOR = '#include <project_vertex>';
 
 const POINT_LIFT_UNIFORM = 'uniform float scale;';
 
+/**
+ * How much nearer than a vertex a surface has to be to hide its dot: a share of
+ * the distance under perspective, of the depth range under an orthographic
+ * camera.
+ *
+ * Only rounding has to fit in it. Ten microns a metre out, where the error in
+ * carrying a pixel's surface to the vertex is a fiftieth of that.
+ */
+const DOT_OCCLUSION_MARGIN = 1e-5;
+
+const POINT_LIFT_DECLARATIONS = /* glsl */ `
+uniform float pointHalfSize;
+attribute vec4 pointFaces;
+
+uniform bool dotOcclusionActive;
+uniform sampler2D dotOcclusionMap;
+uniform vec2 dotOcclusionSize;
+
+// Whether a surface stands in front of the vertex at \`clip\`, asked of the
+// four pixels of \`dotOcclusionMap\` round it. Each pixel's surface is carried
+// to the vertex's own spot along its slope, which is exact across a face, so a
+// vertex meets the faces it sits on to the last rounding error at any zoom. One
+// of the four with nothing in front is enough to draw the dot: a vertex that
+// close to an edge is on it.
+bool dotOccluded( vec4 clip ) {
+
+	vec2 at = ( clip.xy / clip.w * 0.5 + 0.5 ) * dotOcclusionSize;
+	ivec2 first = ivec2( floor( at - 0.5 ) );
+	ivec2 last = ivec2( dotOcclusionSize ) - 1;
+	bool perspective = projectionMatrix[ 2 ][ 3 ] == - 1.0;
+	float own = perspective ? 1.0 / clip.w : clip.z / clip.w * 0.5 + 0.5;
+
+	for ( int i = 0; i < 4; i ++ ) {
+
+		ivec2 texel = clamp( first + ivec2( i & 1, i >> 1 ), ivec2( 0 ), last );
+		vec4 surface = texelFetch( dotOcclusionMap, texel, 0 );
+		if ( surface.a == 0.0 ) return false;
+
+		float there = surface.x + dot( surface.yz, at - ( vec2( texel ) + 0.5 ) );
+		// Nearer is a larger 1 / w under perspective, and a smaller depth under
+		// an orthographic camera.
+		bool covers = perspective
+			? there > own * ( 1.0 + ${DOT_OCCLUSION_MARGIN.toExponential()} )
+			: there < own - ${DOT_OCCLUSION_MARGIN.toExponential()};
+		if ( ! covers ) return false;
+
+	}
+
+	return true;
+
+}
+`;
+
 const POINT_LIFT_GLSL = /* glsl */ `
+			// Asked before the lift moves it: the test wants the vertex itself.
+			bool pointHidden = dotOcclusionActive && dotOccluded( gl_Position );
+
 			// \`scale\` is half the viewport's height in CSS pixels, the unit the
 			// point's own size is given in, where \`size\` is in device pixels.
 			float pointSpan = 1.0 / ( scale * projectionMatrix[ 1 ][ 1 ] );
-			float pointLift = pointHalfSize * ${MARK_LIFT_SLOPE.toFixed(1)} * pointSpan;
+			bool pointPerspective = projectionMatrix[ 2 ][ 3 ] == - 1.0;
 
-			if ( projectionMatrix[ 2 ][ 3 ] == - 1.0 ) {
+			// The furthest any face round the vertex can be turned from the
+			// ray: the faces' axis's own turn, plus how far they spread from
+			// it. Back faces count the same as front ones, as for the wire.
+			// With no axis the spread alone says how steep to allow for.
+			float pointTurn = pointFaces.w;
+			if ( dot( pointFaces.xyz, pointFaces.xyz ) > 0.25 ) {
+
+				vec3 pointRay = pointPerspective ? normalize( mvPosition.xyz ) : vec3( 0.0, 0.0, - 1.0 );
+				float pointFacing = abs( dot( normalize( normalMatrix * pointFaces.xyz ), pointRay ) );
+				pointTurn += acos( min( pointFacing, 1.0 ) );
+
+			}
+			float pointSlope = clamp(
+				tan( min( pointTurn, ${Math.atan(MARK_LIFT_SLOPE).toFixed(6)} ) ),
+				${MARK_LIFT_MIN_SLOPE.toFixed(1)},
+				${MARK_LIFT_SLOPE.toFixed(1)}
+			);
+			float pointLift = pointHalfSize * pointSlope * pointSpan;
+
+			if ( pointPerspective ) {
 
 				mvPosition.xyz *= 1.0 - pointLift;
 
@@ -234,6 +374,9 @@ const POINT_LIFT_GLSL = /* glsl */ `
 			}
 
 			gl_Position = projectionMatrix * mvPosition;
+
+			// Past the far plane, which clips a point whole.
+			if ( pointHidden ) gl_Position = vec4( 0.0, 0.0, 2.0, 1.0 );
 `;
 
 /**
@@ -247,6 +390,19 @@ const POINT_LIFT_GLSL = /* glsl */ `
  * and a dot on an edge came out a short dash. A corner, with every face round
  * it falling away, stayed square, which is what gave it away.
  *
+ * Lifted by what its own faces need, which every geometry drawn with this
+ * carries as `pointFaces` (see `buildPointFaces`). It used to be the most any
+ * face could need, a face at 83 degrees, on every dot: twelve pixels of depth
+ * at a dot's size. Zoomed out, that is more than a thin part is deep, and the
+ * vertices behind its faces came up through them.
+ *
+ * Even sized by its own faces, a lift is pixels of depth, and zoomed out far
+ * enough a pixel is deeper than whatever is in front: the faces of a thin
+ * part, or another object a few millimetres over the one being edited. So in
+ * the viewport's own frame, whether a dot is drawn at all is settled at the
+ * vertex instead, against the surfaces as they stand (see `DOT_OCCLUSION`).
+ * The lift is left to keep the square whole once it is.
+ *
  * The half size goes in as a uniform rather than spliced into the source:
  * three.js keys its program cache on this callback's text, so every point
  * material sharing it shares one compiled shader.
@@ -254,8 +410,9 @@ const POINT_LIFT_GLSL = /* glsl */ `
 function liftPoints(material: THREE.PointsMaterial): THREE.PointsMaterial {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.pointHalfSize = { value: material.size / 2 };
+    Object.assign(shader.uniforms, DOT_OCCLUSION);
     shader.vertexShader = shader.vertexShader
-      .replace(POINT_LIFT_UNIFORM, `${POINT_LIFT_UNIFORM}\nuniform float pointHalfSize;`)
+      .replace(POINT_LIFT_UNIFORM, POINT_LIFT_UNIFORM + POINT_LIFT_DECLARATIONS)
       .replace(POINT_LIFT_ANCHOR, POINT_LIFT_ANCHOR + POINT_LIFT_GLSL);
   };
   return material;

@@ -8,6 +8,7 @@ import { DEFAULT_PREFERENCES, evaluatedMesh, useEditorStore } from '@store/index
 import type { SceneObject, ViewportSettings } from '@store/types';
 
 import { ObjectView } from './ObjectView';
+import { OCCLUDER_LAYER } from './materials';
 import * as meshBuffers from './meshBuffers';
 import { buildEdgeCull, frontEdgeLines } from './meshBuffers';
 
@@ -131,6 +132,8 @@ describe('ObjectView image plane', () => {
 
       expect(solid.visible).toBe(true);
       expect(material.map).toBe(texture);
+      // Opaque in every shading, so it hides the dots behind it in every one.
+      expect(solid.layers.isEnabled(OCCLUDER_LAYER)).toBe(true);
       // Solid + wire would rule the reference into squares, and the object is
       // an image before it is four vertices.
       expect(wireOf(view)?.visible ?? false).toBe(false);
@@ -433,6 +436,134 @@ describe('ObjectView hover mark', () => {
     // And stays away while that mode is what the viewport is in, whoever asks.
     view.showHoverVert(vec3(0.5, -0.5, 0.5));
     expect(hoverOf(view).visible).toBe(false);
+  });
+});
+
+describe('ObjectView vertex dots', () => {
+  /** The dots, the hover mark and the just-created marks, in render order. */
+  function pointsOf(view: ObjectView): THREE.Points[] {
+    return view.group.children.filter(
+      (child): child is THREE.Points => child instanceof THREE.Points,
+    );
+  }
+
+  /** The z of every point a mark draws, which says which side of the cube it is on. */
+  function depthsOf(points: THREE.Points): number[] {
+    const position = points.geometry.getAttribute('position');
+    return Array.from({ length: position.count }, (_, i) => position.getZ(i));
+  }
+
+  function editState(settings: ViewportSettings, shading: ViewportSettings['shading']) {
+    return {
+      mode: 'edit' as const,
+      selectMode: 'vertex' as const,
+      isActive: true,
+      isSelected: true,
+      eye: vec3(0, 0, 10),
+      selectionLine: SELECTION_LINE,
+      meshVersion: 1,
+      settings: { ...settings, shading },
+    };
+  }
+
+  it('leaves out the dots on the far side of an opaque surface', () => {
+    // Zoomed out, a model can be thinner in depth than a dot is lifted, and its
+    // far side came up through the near one as a scatter of squares.
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+    view.update(object, evaluatedMesh(object), editState(settings, 'solid'));
+
+    const depths = depthsOf(pointsOf(view)[0]);
+    expect(depths).toHaveLength(4);
+    for (const z of depths) expect(z).toBeGreaterThan(0);
+  });
+
+  it('leaves them out afresh as the camera moves round', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+    view.update(object, evaluatedMesh(object), editState(settings, 'solid'));
+
+    view.refreshForCamera(vec3(0, 0, -10));
+
+    const depths = depthsOf(pointsOf(view)[0]);
+    expect(depths).toHaveLength(4);
+    for (const z of depths) expect(z).toBeLessThan(0);
+  });
+
+  it('keeps every dot in x-ray, where seeing through the model is the point', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+    view.update(object, evaluatedMesh(object), editState(settings, 'xray'));
+
+    expect(depthsOf(pointsOf(view)[0])).toHaveLength(8);
+  });
+
+  it('leaves the far side out of the marks on just-created vertices too', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+    view.update(object, evaluatedMesh(object), {
+      ...editState(settings, 'solid'),
+      recentVerts: new Set(object.mesh.verts.keys()),
+    });
+
+    const marks = pointsOf(view)[2];
+    expect(marks.visible).toBe(true);
+    expect(depthsOf(marks)).toHaveLength(4);
+  });
+
+  it('hands every dot the faces its lift is sized by, and the hover mark the steepest', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+    view.update(object, evaluatedMesh(object), {
+      ...editState(settings, 'solid'),
+      recentVerts: new Set(object.mesh.verts.keys()),
+    });
+    const [dots, hover, marks] = pointsOf(view);
+
+    for (const points of [dots, marks]) {
+      expect(points.geometry.getAttribute('pointFaces').count).toBe(
+        points.geometry.getAttribute('position').count,
+      );
+    }
+    expect([...(hover.geometry.getAttribute('pointFaces').array as Float32Array)]).toEqual(
+      [...meshBuffers.UNKNOWN_POINT_FACES].map(Math.fround),
+    );
+  });
+
+  it.each([
+    ['solid', true],
+    ['xray', false],
+  ] as const)('tests the dots against a %s surface: %s', (shading, hides) => {
+    // What hides a dot is what writes depth, and x-ray writes none.
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+    view.update(object, evaluatedMesh(object), editState(settings, shading));
+
+    const solid = view.group.getObjectByName(`${object.id}:solid`) as THREE.Mesh;
+    const layer = new THREE.Layers();
+    layer.set(OCCLUDER_LAYER);
+    expect(solid.layers.test(layer)).toBe(hides);
+    // Still drawn in the frame itself, whatever the test makes of it.
+    expect(solid.layers.isEnabled(0)).toBe(true);
+  });
+
+  it('says when it has a dot on screen, which is when the viewport tests them', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), editState(settings, 'solid'));
+    expect(view.showsDots).toBe(true);
+
+    view.update(object, evaluatedMesh(object), { ...editState(settings, 'solid'), mode: 'object' });
+    expect(view.showsDots).toBe(false);
+
+    // The marks on fresh vertices show in edge mode too, where the dots do not.
+    view.update(object, evaluatedMesh(object), {
+      ...editState(settings, 'solid'),
+      selectMode: 'edge',
+      recentVerts: new Set(object.mesh.verts.keys()),
+    });
+    expect(view.showsDots).toBe(true);
   });
 });
 

@@ -8,6 +8,7 @@ import { DEFAULT_PREFERENCES } from '@store/index';
 import type { SceneObject, SelectMode, ShadingMode, ViewportSettings } from '@store/types';
 
 import {
+  OCCLUDER_LAYER,
   POINT_MARK_SIZES,
   VIEWPORT_COLORS,
   createFaceOrientationMaterial,
@@ -32,12 +33,15 @@ import {
   NO_EDGE_LINES,
   type PointBuffers,
   type SolidBuffers,
+  UNKNOWN_POINT_FACES,
   buildEdgeCull,
   buildMeshBuffers,
   buildNormalLines,
+  buildPointFaces,
   buildSilhouetteEdges,
   frontEdgeLines,
   frontSharpLines,
+  frontVerts,
 } from './meshBuffers';
 
 /**
@@ -101,6 +105,60 @@ function vertexHighlightColors(weights: Float32Array): Float32Array {
   }
 
   return colors;
+}
+
+/**
+ * What the vertex dots and the just-created marks are drawn from.
+ *
+ * Held for `refreshForCamera`, which leaves out the vertices on the far side
+ * again as the camera moves, the way it does the wire.
+ */
+interface Dots {
+  points: PointBuffers;
+  /** The faces round each vertex, for the lift; see `buildPointFaces`. */
+  faces: Float32Array;
+  /** Whether the dots themselves are drawn, which is vertex mode alone. */
+  drawn: boolean;
+  /** The just-created vertices to mark, or null for none. */
+  recent: ReadonlySet<number> | null;
+}
+
+/**
+ * A point geometry of the vertices `keep` passes, carrying what the dot shader
+ * reads: the faces round each one for its lift, and a colour from its
+ * selection when `coloured`.
+ */
+function dotGeometry(
+  dots: Dots,
+  keep: (index: number) => boolean,
+  coloured: boolean,
+): THREE.BufferGeometry {
+  const { points, faces } = dots;
+  let count = 0;
+  for (let i = 0; i < points.vertIds.length; i++) if (keep(i)) count++;
+
+  const positions = new Float32Array(count * 3);
+  const pointFaces = new Float32Array(count * 4);
+  const colors = new Float32Array(coloured ? count * 3 : 0);
+  let n = 0;
+  for (let i = 0; i < points.vertIds.length; i++) {
+    if (!keep(i)) continue;
+    for (let k = 0; k < 3; k++) positions[n * 3 + k] = points.positions[i * 3 + k];
+    for (let k = 0; k < 4; k++) pointFaces[n * 4 + k] = faces[i * 4 + k];
+    if (coloured) {
+      const isSelected = points.selection[i] > 0.5;
+      colors[n * 3] = isSelected ? 0.9 : 0.05;
+      colors[n * 3 + 1] = isSelected ? 0.2 : 0.05;
+      colors[n * 3 + 2] = isSelected ? 0.16 : 0.05;
+    }
+    n++;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('pointFaces', new THREE.BufferAttribute(pointFaces, 4));
+  if (coloured) geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  return geometry;
 }
 
 export interface ObjectViewState {
@@ -236,6 +294,9 @@ export class ObjectView {
   /** The shape the modifier stack made, which is what the preview wire draws. */
   private previewMesh: BMesh | null = null;
 
+  /** What the dots are drawn from, while any are; see `drawDots`. */
+  private dots: Dots | null = null;
+
   /** Triangle index to kernel face id, for raycast picking. */
   triangleFaceIds: Int32Array = new Int32Array(0);
   vertIds: Int32Array = new Int32Array(0);
@@ -304,6 +365,12 @@ export class ObjectView {
     // single point has no bounding sphere worth testing.
     const hover = new THREE.BufferGeometry();
     hover.setAttribute('position', new THREE.BufferAttribute(this.hoverPosition, 3));
+    // Lifted for the steepest face there is, so it always clears the dot it
+    // grows out of, whose lift is sized by its own faces and is never more.
+    hover.setAttribute(
+      'pointFaces',
+      new THREE.BufferAttribute(new Float32Array(UNKNOWN_POINT_FACES), 4),
+    );
     this.hoverPoint.geometry = hover;
     this.hoverPoint.frustumCulled = false;
     this.hoverPoint.visible = false;
@@ -394,8 +461,7 @@ export class ObjectView {
     this.updateWireframe(cage.edges, state, cageMesh, object);
     this.updatePreviewWire(buffers.edges, object, state);
     this.updateOutline(object, displayMesh, buffers.edges, state);
-    this.updatePoints(cage.points, state);
-    this.updateRecentPoints(cage.points, state);
+    this.updateDots(cage.points, cageMesh, object, state);
     this.updateNormals(displayMesh, state);
     // The point the object gizmo sits on, so the square says where the handles
     // will be before any tool that has them is picked up, and says where a
@@ -447,6 +513,14 @@ export class ObjectView {
     }
 
     this.solid.visible = state.settings.shading !== 'wireframe';
+    // What hides a vertex dot is what writes depth, so only a surface that does
+    // is drawn for the dots to be tested against. X-ray writes none, which is
+    // how a user asks to see through the model; a picture plane still does.
+    if (surfaceMaterials(this.solid).every((material) => material.depthWrite)) {
+      this.solid.layers.enable(OCCLUDER_LAYER);
+    } else {
+      this.solid.layers.disable(OCCLUDER_LAYER);
+    }
 
     this.backfaces.visible = state.settings.overlays.faceOrientation;
     if (this.backfaces.visible) {
@@ -693,6 +767,7 @@ export class ObjectView {
     if (this.marksSharp) {
       this.setLines(this.sharpEdges, this.frontSharp(cage, object, eye), true);
     }
+    this.drawDots(eye);
   }
 
   /** The mesh's edges minus the ones lying on its far side, in object space. */
@@ -756,55 +831,65 @@ export class ObjectView {
     this.outline.visible = positions.length > 0;
   }
 
-  private updatePoints(points: PointBuffers, state: ObjectViewState): void {
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(points.positions, 3));
-
-    const colors = new Float32Array(points.selection.length * 3);
-    for (let i = 0; i < points.selection.length; i++) {
-      const isSelected = points.selection[i] > 0.5;
-      colors[i * 3] = isSelected ? 0.9 : 0.05;
-      colors[i * 3 + 1] = isSelected ? 0.2 : 0.05;
-      colors[i * 3 + 2] = isSelected ? 0.16 : 0.05;
-    }
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-    this.replaceGeometry(this.points, geometry);
+  /**
+   * The vertex dots, and the marks on the vertices an operator just made.
+   *
+   * The marks are kept apart from the dots rather than recoloured inside them,
+   * because they have to show in edge and face mode too, where the dots are
+   * hidden.
+   */
+  private updateDots(
+    points: PointBuffers,
+    mesh: BMesh,
+    object: SceneObject,
+    state: ObjectViewState,
+  ): void {
+    const editing = state.mode === 'edit' && state.isActive;
     // Only vertex mode can act on vertices, so drawing them in edge/face mode
     // is noise sitting on top of the elements actually being selected.
-    this.points.visible = state.mode === 'edit' && state.isActive && state.selectMode === 'vertex';
+    const drawn = editing && state.selectMode === 'vertex';
+    const recent = editing && state.recentVerts?.size ? state.recentVerts : null;
+    this.dots =
+      drawn || recent
+        ? { points, faces: buildPointFaces(mesh, object.transform.scale), drawn, recent }
+        : null;
 
     // The hover mark belongs to the dots it grows out of, and goes away with
     // them. The viewport puts it back on the next pointer move or resync.
-    this.hoverable = this.points.visible;
+    this.hoverable = drawn;
     if (!this.hoverable) this.hoverPoint.visible = false;
+
+    this.drawDots(state.eye);
   }
 
   /**
-   * Marks the vertices an operator just made.
-   *
-   * Kept separate from `points` rather than recoloured inside it, because it
-   * has to show in edge and face mode too, where that object is hidden.
+   * Builds the dots and marks, leaving out the vertices on the far side while
+   * the wire is culled (see `frontVerts`).
    */
-  private updateRecentPoints(points: PointBuffers, state: ObjectViewState): void {
-    const recent = state.recentVerts;
-    this.recentPoints.visible = state.mode === 'edit' && state.isActive && !!recent?.size;
-    if (!this.recentPoints.visible || !recent) return;
+  private drawDots(eye: Vec3): void {
+    const dots = this.dots;
+    this.points.visible = dots?.drawn ?? false;
+    this.recentPoints.visible = false;
+    if (!dots) return;
 
-    const positions: number[] = [];
-    for (let i = 0; i < points.vertIds.length; i++) {
-      if (!recent.has(points.vertIds[i])) continue;
-      positions.push(
-        points.positions[i * 3],
-        points.positions[i * 3 + 1],
-        points.positions[i * 3 + 2],
-      );
+    const front = this.culled
+      ? frontVerts(this.culled.cage, inverseTransformPoint(this.culled.object.transform, eye))
+      : null;
+    const onNearSide = (index: number) => !front || front[index] === 1;
+
+    if (dots.drawn) {
+      this.replaceGeometry(this.points, dotGeometry(dots, onNearSide, true));
     }
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
-    this.replaceGeometry(this.recentPoints, geometry);
-    this.recentPoints.visible = positions.length > 0;
+    const { recent } = dots;
+    if (!recent) return;
+    const marks = dotGeometry(
+      dots,
+      (index) => recent.has(dots.points.vertIds[index]) && onNearSide(index),
+      false,
+    );
+    this.replaceGeometry(this.recentPoints, marks);
+    this.recentPoints.visible = marks.getAttribute('position').count > 0;
   }
 
   private updateNormals(displayMesh: BMesh, state: ObjectViewState): void {
@@ -842,6 +927,14 @@ export class ObjectView {
    */
   get surfaceTarget(): THREE.Mesh {
     return this.solid;
+  }
+
+  /** Whether any vertex mark is on screen, which is when the viewport tests them. */
+  get showsDots(): boolean {
+    return (
+      this.group.visible &&
+      (this.points.visible || this.hoverPoint.visible || this.recentPoints.visible)
+    );
   }
 
   dispose(): void {

@@ -135,9 +135,10 @@ drew as a second line beside the near one, and the back face won a band of
 pixels along the contour and shaded it.
 
 **Why the fill still keeps its constant offset.** The marks not drawn as quads
-(the vertex dots, the vertex-mode fade, the normals) still need their depth tie
-with the surface broken. They sit on the edge's own pixels rather than spreading
-across a quad, so the constant is all they need.
+(the vertex-mode fade, the normals) still need their depth tie with the surface
+broken. They sit on the edge's own pixels rather than spreading across a quad,
+so the constant is all they need. The vertex dots do spread, and get a lift of
+their own (see below).
 
 ### Edges on the far side are not drawn
 
@@ -193,6 +194,76 @@ without moving a vertex, does not rebuild them.
 
 Picking is unaffected. It works from the full edge buffer, so an edge round the
 back can still be clicked.
+
+### Vertex dots
+
+**The problem.** A dot is a square drawn at the one depth of its vertex, while
+the faces round the vertex change depth across it. The fill's constant offset
+settles the tie only at the centre. The half of the square over a face leaning
+towards the camera lost the depth test, and a dot on an edge came out as a dash.
+
+**The solution.** `liftPoints` pulls each dot towards the camera, the way
+`liftWire` pulls a line, by what the surface round it gains in depth across
+half the dot. Every point geometry carries a `pointFaces` attribute, built by
+`buildPointFaces`: an axis the vertex's faces lean about, and how far the
+furthest of them leans from it. No face round the vertex can be turned further
+from the view than the axis plus that spread, so the shader sizes the lift for
+that angle, clamped to the wire's range: from a face at 45 degrees to one at
+83.
+
+The lift used to be the 83 degree one on every dot, twelve pixels of depth at
+a dot's size. Zoomed out, a thin part is shallower than that, and the vertices
+behind its faces came up through them as a scatter of squares along every
+contour.
+
+- **Scale.** The spread is measured with the object's scale applied, since a
+  non-uniform scale turns face normals apart. Rotation keeps every angle and is
+  left to the shader's normal matrix. That matrix divides the scale back out of
+  whatever it is handed, which is why the axis is stored stretched by it.
+- **No faces.** A vertex with no face is left at zero, which reads as nothing
+  to clear. The hover mark has no faces of its own and takes
+  `UNKNOWN_POINT_FACES`, the steepest lift, so it always clears the dot it
+  grows out of.
+
+**Dots on the far side are not drawn.** `frontVerts` drops every vertex whose
+edges are all on the far side, read from the same tables and under the same
+conditions as `frontEdgeLines`, and `refreshForCamera` runs it again as the
+camera moves. The marks on just-created vertices go through it too.
+
+**Dots behind anything else are not drawn either.** Sized by its own faces or
+not, a lift is pixels of depth, and zoomed out far enough a pixel is deeper than
+whatever stands in front. The cull above knows nothing of other objects, nor of
+an open mesh. The case that showed it: a thin part modelled eight millimetres
+behind the face of another object, whose rim dots came up through that face.
+So whether a dot is drawn at all is settled at its vertex, against the
+surfaces as they stand in that frame.
+
+- **The pass.** While any dot is on screen, `Viewport.renderDotOcclusion` draws
+  the surfaces that write depth, the ones `ObjectView` puts on
+  `OCCLUDER_LAYER`, into a float target at CSS resolution with
+  `createDotOcclusionMaterial`. Each pixel holds its surface's depth (1 / w
+  under perspective, the depth buffer's own value under an orthographic
+  camera) and how fast that changes across the screen.
+- **The test.** The dot shader reads the four pixels round its vertex and
+  carries each one's surface to the vertex's exact spot along that slope. Both
+  depths run straight across the screen over a face, so the carry is exact: a
+  vertex meets the faces it sits on to the last rounding error, at any zoom,
+  and needs no margin of pixels. The dot is dropped when all four surfaces
+  stand in front of it by more than `DOT_OCCLUSION_MARGIN`, a share of the
+  distance small enough for rounding alone. One pixel with nothing in front is
+  enough to draw it, since a vertex that close to an edge is on it.
+- **What counts.** X-ray writes no depth and hides nothing. A picture plane is
+  opaque in every shading and hides what is behind it in every one, as it does
+  in the frame itself.
+- **The fallback.** `DOT_OCCLUSION` is switched on only while the viewport
+  draws its own frame, and only on a GPU that can draw into a float target.
+  Anywhere else, snapshots included, the dots are left to the depth test and
+  their lift.
+- **The lift stays.** It is what keeps the square whole once the dot is drawn.
+
+The pass costs a second draw of every opaque surface, which is why it waits for
+a dot to be on screen. Picking does not read it: a click can still take a
+vertex hidden behind another object.
 
 ### The selection outline
 
@@ -304,6 +375,16 @@ down.
 An orthographic camera has no perspective divide, so the orbit radius drives
 the frustum height instead of the eye distance. Otherwise zooming would do
 nothing.
+
+Its depth range is fitted every frame by `fitOrthographicDepth`, round the
+scene's bounds, the grid and the 3D cursor, with a hundred view heights to
+spare. An orthographic depth buffer spreads its steps evenly from near to far,
+and those planes used to sit a fixed `clipEnd` either side of the camera. Zoomed
+in on a part a few millimetres thick, one step was wider than a pixel, and the
+fill's offset of four steps sank it deeper than the part. Edges and dots behind
+a face showed through it, in ortho alone: the perspective near plane follows
+the zoom in. The fit never reaches past the old fixed range, so nothing that
+drew before is clipped.
 
 Focal length maps to field of view through a 35mm-equivalent sensor height,
 matching Blender's readout:
