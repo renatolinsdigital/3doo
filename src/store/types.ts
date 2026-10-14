@@ -435,7 +435,11 @@ export interface LastOperator {
 
 export interface ModalTransform {
   kind: 'move' | 'rotate' | 'scale' | 'slide' | 'bevel' | 'inset' | 'extrude' | 'knife';
-  /** Which kind of element a slide is moving. Absent for the other transforms. */
+  /**
+   * Which kind of element a slide is moving, or `edge` for an extrude of edges,
+   * which follows the pointer freely rather than a region normal. Absent for
+   * the other transforms.
+   */
   element?: 'vertex' | 'edge';
   axis: 'x' | 'y' | 'z' | null;
   /** Axis excluded rather than constrained to, from Shift + axis. */
@@ -444,7 +448,8 @@ export interface ModalTransform {
   typed: string;
   /**
    * A bevel, an inset or an extrude carries its one distance in x, as a rotation
-   * does its angle, and a knife cut how many points it has.
+   * does its angle, and a knife cut how many points it has. An extrude of edges
+   * carries its whole world travel instead.
    */
   value: Vec3;
 }

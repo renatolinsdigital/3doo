@@ -157,6 +157,52 @@ describe('extrude', () => {
     expect(isClosed(cube)).toBe(true);
     expect(cube.validate()).toEqual([]);
   });
+
+  describe('of edges', () => {
+    /** Selects the top edge along the front of the cube, the one a lid hinges on. */
+    const selectFrontTopEdge = (mesh: BMesh): void => {
+      mesh.deselectAll();
+      for (const vert of mesh.verts.values()) vert.selected = vert.co.y > 0 && vert.co.z > 0;
+      mesh.flushSelection('vertex');
+    };
+
+    it('walls the edge out to the translation it is given', () => {
+      selectFrontTopEdge(cube);
+
+      execOperator({ mesh: cube, selectMode: 'edge', cursor: vec3() }, 'extrude', {
+        translation: { x: 0, y: 1, z: 1 },
+      });
+
+      const moved = cube.selectedVerts();
+      expect(moved).toHaveLength(2);
+      for (const vert of moved) {
+        expect(vert.co.y).toBeCloseTo(2);
+        expect(vert.co.z).toBeCloseTo(2);
+      }
+      expect(cube.faces.size).toBe(7);
+      expect(cube.validate()).toEqual([]);
+    });
+
+    it('leaves only the new edge selected, so the next extrude carries on from it', () => {
+      selectFrontTopEdge(cube);
+      const context = { mesh: cube, selectMode: 'edge' as const, cursor: vec3() };
+
+      execOperator(context, 'extrude', { translation: { x: 0, y: 0, z: 1 } });
+      execOperator(context, 'extrude', { translation: { x: 0, y: 0, z: 1 } });
+
+      expect(cube.selectedEdges()).toHaveLength(1);
+      expect(cube.faces.size).toBe(8);
+      for (const vert of cube.selectedVerts()) expect(vert.co.z).toBeCloseTo(3);
+    });
+
+    it('still walls along Y by the offset when no translation is given', () => {
+      selectFrontTopEdge(cube);
+
+      execOperator({ mesh: cube, selectMode: 'edge', cursor: vec3() }, 'extrude', { offset: 0.5 });
+
+      for (const vert of cube.selectedVerts()) expect(vert.co.y).toBeCloseTo(1.5);
+    });
+  });
 });
 
 describe('inset', () => {

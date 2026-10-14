@@ -455,6 +455,20 @@ describe('editor store', () => {
     expect(activeObject().mesh.faces.size).toBe(6);
   });
 
+  it('starts an extrude of edges as a free move that takes an axis', () => {
+    store().addPrimitive('cube');
+    store().setMode('edit');
+    store().setSelectMode('edge');
+    const mesh = activeObject().mesh;
+    for (const vert of mesh.verts.values()) vert.selected = vert.co.y > 0 && vert.co.z > 0;
+    mesh.flushSelection('vertex');
+
+    store().beginOffset('extrude');
+
+    expect(store().modal).toMatchObject({ kind: 'extrude', element: 'edge', axis: null });
+    expect(store().status).toMatch(/X\/Y\/Z to constrain/);
+  });
+
   it('turns an extrude away with nothing selected, and says so', () => {
     store().addPrimitive('cube');
     store().setMode('edit');

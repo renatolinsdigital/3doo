@@ -39,7 +39,7 @@ object mode only. The rest work in both.
 
 | Key | Action |
 | --- | --- |
-| `E` | Extrude: drag the distance along the region normal (*edit*) |
+| `E` | Extrude: drag faces along their normal, or edges anywhere (X/Y/Z to pin an axis) (*edit*) |
 | `I` | Inset: drag the thickness in toward the selection (*edit*) |
 | `Ctrl+B` | Bevel: drag the width out from the selection (*edit*) |
 | `Ctrl+R` | Loop cut (*edit*) |

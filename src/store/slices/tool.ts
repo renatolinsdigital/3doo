@@ -21,7 +21,9 @@ import type {
  * Only a move, a turn and a scale have an axis to pin, which is what X, Y and Z
  * offer mid-drag. A slide is already running along one, the edge under it, and
  * the three pointer-driven operators are one distance each with nothing to pin
- * it to: what they need saying instead is which way that distance opens. A
+ * it to: what they need saying instead is which way that distance opens. An
+ * extrude of edges is the exception, moving freely like a move and taking the
+ * move's hint, since edges have no normal to run along. A
  * knife cut is clicked out point by point, so a click adds to it rather than
  * ending it, and Enter is what makes the cut.
  */
@@ -267,7 +269,10 @@ export const createToolSlice: StateCreator<
       return;
     }
 
-    get().beginModal(kind);
+    // Edges have no region normal to run along, so an extrude of them follows
+    // the pointer freely, the way a move does, and takes an axis the same way.
+    const freeEdges = kind === 'extrude' && object.mesh.selectedFaces().length === 0;
+    get().beginModal(kind, freeEdges ? 'edge' : undefined);
   },
 
   beginModal: (kind, element) => {
@@ -278,6 +283,7 @@ export const createToolSlice: StateCreator<
     const orbiting = (kind === 'rotate' || kind === 'scale') && get().pivot === 'cursor';
     const about = orbiting ? ' about the 3D cursor' : '';
     const ending = kind === 'knife' ? 'Esc to cancel' : 'click or Enter to confirm, Esc to cancel';
+    const hint = kind === 'extrude' && element === 'edge' ? MODAL_HINTS.move : MODAL_HINTS[kind];
 
     set({
       modal: {
@@ -289,7 +295,7 @@ export const createToolSlice: StateCreator<
         // A scale of nothing is 1, and the status bar reads this out live.
         value: kind === 'scale' ? { x: 1, y: 1, z: 1 } : { x: 0, y: 0, z: 0 },
       },
-      status: `${kind.toUpperCase()}${about}: ${MODAL_HINTS[kind]}, ${ending}`,
+      status: `${kind.toUpperCase()}${about}: ${hint}, ${ending}`,
     });
   },
 

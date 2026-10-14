@@ -22,6 +22,14 @@ function modalLabel(modal: ModalTransform): string {
   // one angle, not three, and the axis is already spelled out beside it.
   if (modal.kind === 'rotate') return `${kind}${axis} ${modal.value.x.toFixed(1)}°`;
 
+  // Extruded edges travel freely, so they say where they have gone: the one
+  // distance along a pinned axis, or all three without one.
+  if (modal.kind === 'extrude' && modal.element === 'edge') {
+    if (modal.axis) return `${kind}${axis} ${modal.value[modal.axis].toFixed(3)}`;
+    const { x, y, z } = modal.value;
+    return `${kind} ${x.toFixed(3)}, ${y.toFixed(3)}, ${z.toFixed(3)}`;
+  }
+
   // A bevel, an inset or an extrude is one distance dragged against the model,
   // and it rides in x for the same reason.
   if (modal.kind === 'bevel' || modal.kind === 'inset' || modal.kind === 'extrude') {

@@ -277,7 +277,17 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     }
 
     if (edges.length > 0) {
-      extrudeEdges(mesh, edges, vec3(0, offset, 0));
+      const translation =
+        params.translation === undefined
+          ? vec3(0, offset, 0)
+          : readVector(params, 'translation', vec3(0, 0, 0));
+      const result = extrudeEdges(mesh, edges, translation);
+      // The new edges are what the next extrude or move works on, so a second
+      // E carries the strip on rather than walling the first edges again.
+      mesh.deselectAll();
+      for (const vert of result.newVerts) vert.selected = true;
+      mesh.flushSelection('vertex');
+      mesh.flushSelection(selectMode);
       return { status: `Extruded ${edges.length} edge(s)` };
     }
 

@@ -60,6 +60,7 @@ import type {
   CursorSnapKind,
   CursorSnapTargets,
   ModalCommand,
+  ModalTransform,
   SceneObject,
   SelectIntent,
   ViewLostReason,
@@ -379,10 +380,11 @@ const OFFSET_LABELS: Record<OffsetDrag['kind'], string> = {
 };
 
 /** The one parameter each of them spends its distance on. */
-function offsetParams(kind: OffsetDrag['kind'], amount: number): Record<string, number> {
-  if (kind === 'bevel') return { width: amount };
-  if (kind === 'inset') return { thickness: amount };
-  return { offset: amount };
+function offsetParams(drag: OffsetDrag): Record<string, unknown> {
+  if (drag.free) return { translation: drag.free.local };
+  if (drag.kind === 'bevel') return { width: drag.amount };
+  if (drag.kind === 'inset') return { thickness: drag.amount };
+  return { offset: drag.amount };
 }
 
 /**
@@ -421,6 +423,27 @@ export function axisAmount(
   const along = screenAxis ? travel.dot(screenAxis) : -travel.y;
   const amount = along * unitsPerPixel;
   return Number.isFinite(amount) ? amount : 0;
+}
+
+/**
+ * How far along a line the point nearest a ray sits, measured from `origin`.
+ *
+ * What extruded edges pinned to an axis read: the pointer's ray is the line of
+ * sight, and the closest the axis comes to it is where the edges are dragged
+ * to. Unlike pixels times a scale, this keeps up with an axis running off into
+ * the distance, where a pixel covers more of it. Both directions are unit
+ * vectors. Null when the two run parallel and every point is as near as the next.
+ */
+export function nearestAlongLine(
+  ray: THREE.Ray,
+  origin: THREE.Vector3,
+  direction: THREE.Vector3,
+): number | null {
+  const between = origin.clone().sub(ray.origin);
+  const cosine = direction.dot(ray.direction);
+  const spread = 1 - cosine * cosine;
+  if (spread < 1e-6) return null;
+  return (cosine * ray.direction.dot(between) - direction.dot(between)) / spread;
 }
 
 /**
@@ -507,10 +530,29 @@ interface OffsetDrag {
   axis: THREE.Vector3 | null;
   /** The line on screen the travel is read along: that axis, or an inset's way in. */
   screenAxis: THREE.Vector2 | null;
-  /** The distance the last preview ran with. */
+  /** Set for an extrude of edges, which goes wherever the pointer takes it. */
+  free: FreeTravel | null;
+  /** The distance the last preview ran with: the length of the travel, for edges. */
   amount: number;
   /** What that preview reported, which is what the status bar says at the end. */
   status: string | null;
+}
+
+/**
+ * Where extruded edges have been dragged to.
+ *
+ * Edges have no region normal to run along, so they follow the pointer across
+ * the view the way the move handle's centre does, until X, Y or Z pins them to
+ * that world axis.
+ */
+interface FreeTravel {
+  axis: Axis | null;
+  /** The travel in world space, which is what the axis keys and the status bar mean. */
+  world: THREE.Vector3;
+  /** The same travel in the object's own space, which is what the operator takes. */
+  local: Vec3;
+  /** World to object space, as it stood when the drag began. */
+  inverse: THREE.Matrix4;
 }
 
 /** A slide running off the bare pointer: what moves, how far, and how to put it back. */
@@ -1347,7 +1389,7 @@ export class Viewport {
             modal?.kind === 'inset' ||
             modal?.kind === 'extrude'
           ) {
-            this.beginOffsetDrag(modal.kind);
+            this.beginOffsetDrag(modal.kind, modal.element);
           }
           // Cleared from somewhere else (a mode change, a reset) while a
           // modal transform is still live: put everything back.
@@ -2544,10 +2586,14 @@ export class Viewport {
     if (key === 'escape') return this.finishModal(true);
     if (key === 'enter') return this.finishModal(false);
 
-    // Only a scale or a turn has an axis to pin: a slide is already running
-    // along one, the edge under it, and a bevel or an inset is one distance.
-    // The keys are swallowed all the same, so a stray X mid-slide cannot reach
-    // the delete operator behind it.
+    // Extruded edges travel freely, so they take an axis the way a move does.
+    const free = this.offsetDrag?.free;
+    if (free) return this.pinFreeTravel(free, key as Axis);
+
+    // Otherwise only a scale or a turn has an axis to pin: a slide is already
+    // running along one, the edge under it, and a bevel, an inset or a face
+    // extrude is one distance. The keys are swallowed all the same, so a stray
+    // X mid-slide cannot reach the delete operator behind it.
     if (kind !== 'scale' && kind !== 'rotate') return;
 
     // Pressing the same axis again lifts the constraint, as it does in Blender.
@@ -2696,9 +2742,10 @@ export class Viewport {
    * the line drawn from the selection out to the pointer. An inset opens the
    * other way, as the pointer is pushed in toward the face it cuts into. An
    * extrude runs along one direction of its own, the region normal, so it gets
-   * that axis drawn through the geometry instead.
+   * that axis drawn through the geometry instead. Edges have no normal, so an
+   * extrude of them travels freely until an axis is pinned.
    */
-  private beginOffsetDrag(kind: OffsetDrag['kind']): void {
+  private beginOffsetDrag(kind: OffsetDrag['kind'], element?: ModalTransform['element']): void {
     if (this.offsetDrag || this.scaleDrag || this.rotateDrag || this.slideDrag) return;
 
     const state = useEditorStore.getState();
@@ -2722,7 +2769,16 @@ export class Viewport {
     state.patchActiveObject({ primitive: null }, { touchGeometry: false });
 
     const original = cloneMesh(object.mesh);
-    const axis = kind === 'extrude' ? this.extrudeAxis(original, view.group.matrix) : null;
+    const free: FreeTravel | null =
+      kind === 'extrude' && element === 'edge'
+        ? {
+            axis: null,
+            world: new THREE.Vector3(),
+            local: vec3(0, 0, 0),
+            inverse: view.group.matrix.clone().invert(),
+          }
+        : null;
+    const axis = kind === 'extrude' && !free ? this.extrudeAxis(original, view.group.matrix) : null;
 
     this.offsetDrag = {
       kind,
@@ -2736,11 +2792,13 @@ export class Viewport {
       unitsPerPixel: this.worldPerPixel(pivot) / Math.max(scale, 1e-6),
       axis,
       screenAxis: axis ? this.projectDirection(pivot, axis) : null,
+      free,
       amount: 0,
       status: null,
     };
 
-    this.modalLine.visible = true;
+    // Free edges have no line to follow until an axis is pinned for them.
+    this.modalLine.visible = !free;
     // With the line up the handles say nothing it does not, and they sit over
     // the very geometry being cut. `updateGizmo` brings them back at the end.
     this.standDownGizmo();
@@ -2778,11 +2836,77 @@ export class Viewport {
       return;
     }
 
+    if (drag.free) {
+      this.applyFreeTravel(drag, drag.free);
+      return;
+    }
+
     const amount = this.offsetDragAmount(drag);
     if (Math.abs(amount - drag.amount) < 1e-5) return;
 
     drag.amount = amount;
     this.previewOffset(drag);
+  }
+
+  /** Takes extruded edges out to wherever the pointer has carried them. */
+  private applyFreeTravel(drag: OffsetDrag, free: FreeTravel): void {
+    const world = this.freeTravel(drag, free.axis);
+    const snap = this.snapping();
+    if (snap) {
+      world.set(
+        snapTo(world.x, snap.translate),
+        snapTo(world.y, snap.translate),
+        snapTo(world.z, snap.translate),
+      );
+    }
+    if (world.distanceTo(free.world) < 1e-6) return;
+
+    free.world.copy(world);
+    const start = drag.pivot.clone().applyMatrix4(free.inverse);
+    const local = drag.pivot.clone().add(world).applyMatrix4(free.inverse).sub(start);
+    free.local = vec3(local.x, local.y, local.z);
+    drag.amount = world.length();
+    this.previewOffset(drag);
+  }
+
+  /**
+   * The world travel the pointer has made since the drag was seeded.
+   *
+   * Free, it is the pointer's own travel across the view, taken at the depth of
+   * the selection so the edges stay under it. Pinned, it is how far along the
+   * axis the pointer's line of sight has come. An axis pointing straight at the
+   * camera has no line of sight to read, and pulling up is pulling out there.
+   */
+  private freeTravel(drag: OffsetDrag, axis: Axis | null): THREE.Vector3 {
+    if (!axis) {
+      return this.pixelsAtDepthOf(this.pointerPixels, drag.pivot).sub(
+        this.pixelsAtDepthOf(drag.from, drag.pivot),
+      );
+    }
+
+    const unit = axisVector(axis);
+    const direction = new THREE.Vector3(unit.x, unit.y, unit.z);
+    const along = (pixels: THREE.Vector2): number | null => {
+      aimRay(this.raycaster, this.ndcPosition(pixels), this.camera);
+      return nearestAlongLine(this.raycaster.ray, drag.pivot, direction);
+    };
+
+    const now = along(this.pointerPixels);
+    const start = along(drag.from);
+    const travel = this.pointerPixels.clone().sub(drag.from);
+    const distance =
+      this.projectDirection(drag.pivot, direction) && now !== null && start !== null
+        ? now - start
+        : axisAmount(travel, null, this.worldPerPixel(drag.pivot));
+    return direction.multiplyScalar(distance);
+  }
+
+  /** Pins extruded edges to one world axis, or frees them again when it is pressed twice. */
+  private pinFreeTravel(free: FreeTravel, axis: Axis): void {
+    free.axis = free.axis === axis ? null : axis;
+    useEditorStore.getState().updateModal({ axis: free.axis });
+    this.modalLine.visible = free.axis !== null;
+    this.applyOffsetDrag();
   }
 
   /** The distance the pointer is asking for, by the reading its operator takes. */
@@ -2823,7 +2947,7 @@ export class Viewport {
           cursor: state.cursor,
         },
         drag.kind,
-        offsetParams(drag.kind, drag.amount),
+        offsetParams(drag),
       );
       drag.status = result.status;
     } else {
@@ -2831,7 +2955,10 @@ export class Viewport {
     }
 
     state.patchActiveObject({ mesh });
-    state.updateModal({ value: vec3(drag.amount, 0, 0) });
+    const world = drag.free?.world;
+    state.updateModal({
+      value: world ? vec3(world.x, world.y, world.z) : vec3(drag.amount, 0, 0),
+    });
   }
 
   private finishOffsetDrag(cancelled: boolean): void {
@@ -2850,7 +2977,7 @@ export class Viewport {
       state.patchActiveObject({ mesh: drag.original });
       state.discardHistory();
     } else {
-      state.noteOperator(drag.kind, offsetParams(drag.kind, drag.amount), OFFSET_LABELS[drag.kind]);
+      state.noteOperator(drag.kind, offsetParams(drag), OFFSET_LABELS[drag.kind]);
     }
 
     // Cleared before the store is told, so the modal subscription sees nothing
@@ -2866,13 +2993,11 @@ export class Viewport {
    * The direction an extrude pulls the selection along, in world space.
    *
    * A region of faces travels along the normal they average to. Edges have no
-   * region to average, and the operator walls them into quads along the
-   * object's own Y, so that is what the guide line has to show for them.
+   * region to average, and travel freely instead.
    */
   private extrudeAxis(mesh: BMesh, matrix: THREE.Matrix4): THREE.Vector3 {
-    const faces = mesh.selectedFaces();
-    if (faces.length > 0) mesh.computeNormals();
-    const normal = faces.length > 0 ? averageNormal(faces) : vec3(0, 1, 0);
+    mesh.computeNormals();
+    const normal = averageNormal(mesh.selectedFaces());
     return new THREE.Vector3(normal.x, normal.y, normal.z).transformDirection(matrix);
   }
 
@@ -2890,12 +3015,12 @@ export class Viewport {
     return offset.length() < 10 ? null : offset.normalize();
   }
 
-  /** The pointer unprojected at a point's own depth, so a line to it lands under it. */
-  private pointerAtDepthOf(point: THREE.Vector3): THREE.Vector3 {
+  /** Canvas pixels unprojected at a point's own depth, so a line to them lands under them. */
+  private pixelsAtDepthOf(pixels: THREE.Vector2, point: THREE.Vector3): THREE.Vector3 {
     const depth = point.clone().project(this.camera).z;
     return new THREE.Vector3(
-      (this.pointerPixels.x / Math.max(this.canvas.clientWidth, 1)) * 2 - 1,
-      -(this.pointerPixels.y / Math.max(this.canvas.clientHeight, 1)) * 2 + 1,
+      (pixels.x / Math.max(this.canvas.clientWidth, 1)) * 2 - 1,
+      -(pixels.y / Math.max(this.canvas.clientHeight, 1)) * 2 + 1,
       depth,
     ).unproject(this.camera);
   }
@@ -2921,10 +3046,12 @@ export class Viewport {
     const drag = this.scaleDrag ?? this.rotateDrag ?? this.offsetDrag;
     if (!drag || !this.modalLine.visible) return;
 
-    const axis = this.offsetDrag?.axis;
+    const pinned = this.offsetDrag?.free?.axis;
+    const unit = pinned ? axisVector(pinned) : null;
+    const axis = unit ? new THREE.Vector3(unit.x, unit.y, unit.z) : this.offsetDrag?.axis;
     const [from, to] = axis
       ? this.axisLineEnds(drag.pivot, axis)
-      : [drag.pivot, this.pointerAtDepthOf(drag.pivot)];
+      : [drag.pivot, this.pixelsAtDepthOf(this.pointerPixels, drag.pivot)];
 
     const positions = this.modalLine.geometry.getAttribute('position') as THREE.BufferAttribute;
     positions.setXYZ(0, from.x, from.y, from.z);
@@ -2932,6 +3059,8 @@ export class Viewport {
     positions.needsUpdate = true;
 
     const material = this.modalLine.material as THREE.LineDashedMaterial;
+    // A pinned axis is drawn in its own colour, the one the corner widget lights.
+    material.color.setHex(pinned ? AXIS_COLORS[pinned] : VIEWPORT_COLORS.bone);
     // Guarded: a zero dash size divides by zero in the dash shader, and the
     // line vanishes the moment the pointer sits on the pivot.
     const length = Math.max(from.distanceTo(to), 1e-4);

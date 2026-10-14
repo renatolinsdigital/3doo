@@ -183,7 +183,7 @@ const b = undefinedThing + a;`);
 
     expect(outcome.line).toBe(3);
     expect(outcome.message).toBe(
-      'mesh.extrude has no option "ofset". Did you mean "offset"? It takes offset, individual, alongNormals.',
+      'mesh.extrude has no option "ofset". Did you mean "offset"? It takes offset, translation, individual, alongNormals.',
     );
   });
 

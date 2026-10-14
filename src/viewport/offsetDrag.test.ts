@@ -8,6 +8,7 @@ import {
   guideAmount,
   inwardAmount,
   inwardDirection,
+  nearestAlongLine,
   startsOffsetHold,
 } from './Viewport';
 
@@ -58,6 +59,31 @@ describe('axisAmount', () => {
   it('answers nothing rather than a distance no operator could use', () => {
     expect(axisAmount(at(100, 0), along, Number.NaN)).toBe(0);
     expect(axisAmount(at(Number.POSITIVE_INFINITY, 0), along, 0.01)).toBe(0);
+  });
+});
+
+describe('nearestAlongLine', () => {
+  const xAxis = new THREE.Vector3(1, 0, 0);
+  const origin = new THREE.Vector3(0, 0, 0);
+
+  it('lands under a line of sight that crosses the axis', () => {
+    const ray = new THREE.Ray(new THREE.Vector3(3, 0, 10), new THREE.Vector3(0, 0, -1));
+
+    expect(nearestAlongLine(ray, origin, xAxis)).toBeCloseTo(3);
+  });
+
+  it('keeps up with an axis running off into the distance', () => {
+    // Looking down from above and out along the axis: the ray meets it at x = 8,
+    // far further than the pixels the pointer moved would say.
+    const ray = new THREE.Ray(new THREE.Vector3(0, 4, 0), new THREE.Vector3(8, -4, 0).normalize());
+
+    expect(nearestAlongLine(ray, origin, xAxis)).toBeCloseTo(8);
+  });
+
+  it('answers nothing when the axis points along the line of sight', () => {
+    const ray = new THREE.Ray(new THREE.Vector3(-5, 0, 0), xAxis.clone());
+
+    expect(nearestAlongLine(ray, origin, xAxis)).toBeNull();
   });
 });
 

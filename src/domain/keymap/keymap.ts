@@ -56,7 +56,7 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
     id: 'extrude',
     key: 'e',
     mode: 'edit',
-    label: 'Extrude: drag the distance along the region normal',
+    label: 'Extrude: drag faces along their normal, or edges anywhere (X/Y/Z to pin an axis)',
     group: 'Modelling',
   },
   {

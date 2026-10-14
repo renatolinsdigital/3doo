@@ -132,6 +132,12 @@ export const OPERATOR_SPECS: readonly OperatorSpec[] = [
     params: [
       { name: 'offset', value: number(), description: 'How far, in metres. Default 1.' },
       {
+        name: 'translation',
+        value: { kind: 'vector' },
+        description:
+          'Where extruded edges go, in metres, as [x, y, z]. Default offset along Y. Faces ignore it.',
+      },
+      {
         name: 'individual',
         value: boolean,
         description: 'Extrude each face on its own rather than as one region. Default false.',

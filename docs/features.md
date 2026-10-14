@@ -48,9 +48,16 @@ Each operation reads the pointer differently:
 
 | Key | The distance is | To make it smaller |
 | --- | --- | --- |
-| `E` | Travel along the region normal. The guide is drawn along it, and only travel along it counts | Pull back. Past the start, the region sinks into the surface |
+| `E` on faces | Travel along the region normal. The guide is drawn along it, and only travel along it counts | Pull back. Past the start, the region sinks into the surface |
+| `E` on edges | Where the pointer has taken the new edges, in any direction, the way a move goes. <kbd>X</kbd>, <kbd>Y</kbd> or <kbd>Z</kbd> pins them to that world axis, drawn in its colour, and the same key again frees them | Bring the pointer back |
 | `I` | Travel in toward the selection, along the line from where the pointer started. Sweeping past the middle keeps widening the ring | Pull back the way you came. It stops at zero |
 | `Ctrl+B` | The length the guide line has gained, measured from the selection out to the pointer, in any direction | Bring the pointer back in. It stops at zero |
+
+Edges have no region normal to run along, which is why they move freely, as
+Blender's edge extrude does. A pinned axis is read where the pointer's line of
+sight passes closest to it rather than as pixels times a scale, so the edges
+keep up with an axis running off into the distance. After an edge extrude only
+the new edges are selected, so <kbd>E</kbd> again carries the strip on.
 
 Every pointer move re-runs the operation on the mesh as it stood at the
 keypress. A wider bevel is the original edges bevelled again, not the last

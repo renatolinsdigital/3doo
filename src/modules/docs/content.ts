@@ -659,7 +659,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'Extrude (E)',
-            'Along the dashed line drawn through the selection. Only travel along that line counts, so the pointer can wander off it. Pull back past the start to sink the region into the surface instead of raising it.',
+            'Faces: along the dashed line drawn through the selection. Only travel along that line counts, so the pointer can wander off it. Pull back past the start to sink the region into the surface instead of raising it. Edges: anywhere, as a move does. Press X, Y or Z to keep the new edges on that axis, and the same key again to free them. The new edges stay selected, so E again carries the strip on.',
           ],
           [
             'Inset (I)',
