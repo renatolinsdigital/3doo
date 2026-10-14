@@ -174,7 +174,7 @@ const MAX_SCALE_RATIO = 100;
  * Its handles are sized in screen space, so this is the whole of it: arrows,
  * rings, plane squares and their pickers all scale together.
  */
-const GIZMO_SIZE = 2 / 3;
+const GIZMO_SIZE = 8 / 15;
 
 /**
  * The gizmo for a finger. A fingertip covers a desktop handle whole, and on a
