@@ -264,6 +264,29 @@ describe('dot occlusion material', () => {
     draw(new THREE.Mesh());
     expect(material.uniforms.ownsDots.value).toBe(false);
   });
+
+  it('marks which object each pixel is, for the wire to tell its own surface from another', () => {
+    const material = createDotOcclusionMaterial();
+    const tagged = new THREE.Mesh();
+    tagged.userData.surfaceTag = 7;
+    const draw = (object: THREE.Object3D) =>
+      material.onBeforeRender(
+        {} as THREE.WebGLRenderer,
+        new THREE.Scene(),
+        new THREE.Camera(),
+        new THREE.BufferGeometry(),
+        object,
+        new THREE.Group(),
+      );
+
+    draw(tagged);
+    expect(material.uniforms.surfaceTag.value).toBe(7);
+    expect(material.fragmentShader).toContain('uint( surfaceTag ) << 21');
+
+    // Zero is no view's tag, so a surface without one is never a wire's own.
+    draw(new THREE.Mesh());
+    expect(material.uniforms.surfaceTag.value).toBe(0);
+  });
 });
 
 describe('selection outline material', () => {
@@ -356,6 +379,30 @@ describe('wireframe material', () => {
     // vertex-mode fade and the normals, which run along the same edges.
     expect(createWireMaterial(false).depthWrite).toBe(false);
   });
+
+  it.each([
+    ['plain wire', () => createWireMaterial(false)],
+    ['selected edges', () => createWireMaterial(true)],
+    ['modifier preview', createPreviewWireMaterial],
+  ])("tests the %s against other objects' surfaces where it lies before the lift", (_, create) => {
+    // The lift is owed to the wire's own surface. Zoomed out, it carried the
+    // edges of a part a few millimetres inside another across the outer one.
+    const wire = create();
+
+    expect(wire.uniforms.dotOcclusionActive).toBe(DOT_OCCLUSION.dotOcclusionActive);
+    expect(wire.uniforms.dotOcclusionMap).toBe(DOT_OCCLUSION.dotOcclusionMap);
+    expect(wire.uniforms.surfaceTag.value).toBe(0);
+
+    const saved = wire.vertexShader.indexOf('vec4 wireStart = start;');
+    expect(saved).toBeGreaterThan(0);
+    expect(saved).toBeLessThan(wire.vertexShader.indexOf('start.xyz *= 1.0 - startLift'));
+    expect(wire.vertexShader).toContain('vWireStart = wireOnMap( projectionMatrix * wireStart );');
+
+    expect(wire.fragmentShader).toContain(
+      'if ( surface.a >> 21 == uint( surfaceTag ) ) return false;',
+    );
+    expect(wire.fragmentShader).toContain('if ( wireOccluded() ) discard;');
+  });
 });
 
 describe('selected face overlay', () => {
@@ -373,5 +420,23 @@ describe('selected face overlay', () => {
     expect(overlay.polygonOffset).toBe(true);
     expect(overlay.polygonOffsetFactor).toBeLessThanOrEqual(-1);
     expect(surface('solid').polygonOffsetUnits).toBeGreaterThan(0);
+  });
+
+  it("tests the wash against other objects' surfaces, its offset left out", () => {
+    // The offset's slope term washed another object red where one stood just
+    // in front of the faces picked.
+    const material = createSelectionOverlayMaterial();
+    const shader = {
+      uniforms: THREE.UniformsUtils.clone(THREE.ShaderLib.basic.uniforms),
+      vertexShader: THREE.ShaderLib.basic.vertexShader,
+      fragmentShader: THREE.ShaderLib.basic.fragmentShader,
+    } as unknown as THREE.WebGLProgramParametersWithUniforms;
+
+    material.onBeforeCompile(shader, {} as THREE.WebGLRenderer);
+
+    expect(shader.uniforms.dotOcclusionActive).toBe(DOT_OCCLUSION.dotOcclusionActive);
+    expect(shader.uniforms.surfaceTag).toBe(material.userData.surfaceTag);
+    expect(shader.vertexShader).toContain('vMarkClip = gl_Position;');
+    expect(shader.fragmentShader).toContain('if ( markOccluded(');
   });
 });

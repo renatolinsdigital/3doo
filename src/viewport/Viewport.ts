@@ -4454,20 +4454,20 @@ export class Viewport {
   };
 
   /**
-   * Draws the surfaces for the vertex dots to be tested against in this frame,
-   * and says whether it did (see `DOT_OCCLUSION`).
+   * Draws the surfaces for the vertex dots, the wire and the face wash to be
+   * tested against in this frame, and says whether it did (see `DOT_OCCLUSION`).
    *
-   * Only while a dot is on screen, since it draws every surface a second
-   * time. Without it the dots fall back on the depth test and their lift.
+   * Only while one of them is on screen, since it draws every surface a second
+   * time. Without it they fall back on the depth test and their lift.
    *
    * The surfaces on `OCCLUDER_LAYER` are the ones writing depth in the frame
    * proper, drawn here with a material of the test's own. Its side follows the
    * culling preference, as theirs does.
    */
   private renderDotOcclusion(): boolean {
-    let dots = false;
-    for (const view of this.views.values()) dots ||= view.showsDots;
-    if (!dots) return false;
+    let marks = false;
+    for (const view of this.views.values()) marks ||= view.showsDots || view.showsMarks;
+    if (!marks) return false;
 
     const width = Math.max(1, this.canvas.clientWidth);
     const height = Math.max(1, this.canvas.clientHeight);

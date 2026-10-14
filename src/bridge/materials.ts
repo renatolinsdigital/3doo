@@ -151,6 +151,9 @@ const WIRE_SIDES_GLSL = /* glsl */ `
 const WIRE_LIFT_ANCHOR = 'vec4 end = modelViewMatrix * vec4( instanceEnd, 1.0 );';
 
 const WIRE_LIFT_GLSL = /* glsl */ `
+			vec4 wireStart = start;
+			vec4 wireEnd = end;
+
 			// A pixel's width in view units: per unit of depth under perspective,
 			// outright under an orthographic camera, which is what lets one
 			// expression serve both.
@@ -205,11 +208,30 @@ const WIRE_LIFT_GLSL = /* glsl */ `
  * from nothing, so the side edges of a cylinder came through its cap as ticks
  * along the far rim wherever the far-side cull was not running. Lifted by what
  * its own faces need, a far-side edge's tick shrinks below a pixel.
+ *
+ * The lift is only owed to the wire's own surface, though, and it carried the
+ * wire through any other object as well: a part modelled a few millimetres
+ * inside another drew its edges across the outer one's faces once zoomed out
+ * far enough for the gap to be a few pixels of depth. So in the viewport's own
+ * frame, wherever another object's surface is the one drawn, the wire is
+ * tested against it where the wire really lies, before the lift (see
+ * `MARK_OCCLUSION_GLSL`). Each line material carries its object's
+ * `surfaceTag` for that, and the occlusion pass records whose surface each
+ * pixel is.
  */
 function liftWire<T extends LineMaterial>(material: T): T {
   material.vertexShader = material.vertexShader
-    .replace(WIRE_SIDES_ANCHOR, WIRE_SIDES_ANCHOR + WIRE_SIDES_GLSL)
-    .replace(WIRE_LIFT_ANCHOR, WIRE_LIFT_ANCHOR + WIRE_LIFT_GLSL);
+    .replace(WIRE_SIDES_ANCHOR, WIRE_SIDES_ANCHOR + WIRE_SIDES_GLSL + WIRE_TRUE_DECLARATIONS)
+    .replace(WIRE_LIFT_ANCHOR, WIRE_LIFT_ANCHOR + WIRE_LIFT_GLSL)
+    .replace(WIRE_TRUE_ANCHOR, WIRE_TRUE_ANCHOR + WIRE_TRUE_GLSL);
+  material.fragmentShader = material.fragmentShader
+    .replace(
+      MARK_OCCLUSION_DECLARATIONS_ANCHOR,
+      MARK_OCCLUSION_DECLARATIONS_ANCHOR + WIRE_OCCLUSION_FRAGMENT,
+    )
+    .replace(MARK_OCCLUSION_ANCHOR, MARK_OCCLUSION_ANCHOR + WIRE_OCCLUSION_TEST);
+  material.uniforms.surfaceTag = { value: 0 };
+  Object.assign(material.uniforms, DOT_OCCLUSION);
   return material;
 }
 
@@ -223,7 +245,7 @@ export const OCCLUDER_LAYER = 1;
  * The surfaces every vertex dot is tested against, as the viewport drew them
  * for this frame with `createDotOcclusionMaterial`.
  *
- * Shared by every point material, the uniforms being these very objects: there
+ * Shared by every point and wire material, the uniforms being these very objects: there
  * is one viewport, and one picture of its surfaces a frame. `active` is on only
  * while that viewport draws its own frame. Anywhere else, a snapshot included,
  * the dots are left to the depth test and their lift, as they were before this
@@ -260,6 +282,16 @@ const DRAWN_BIT = 1 << 19;
 /** Set where the face drawn is the dots' own object's (see `createDotOcclusionMaterial`). */
 const OWN_BIT = 1 << 20;
 
+/** Where the drawn face's object tag starts, in the word holding the bits above. */
+const TAG_SHIFT = 21;
+
+/**
+ * How many objects the pass can tell apart, which is what the bits above
+ * `OWN_BIT` hold. Two objects sharing a tag only lose each other's test (see
+ * `liftWire`), so tags are handed out round the range rather than run out.
+ */
+export const SURFACE_TAG_COUNT = 1 << (32 - TAG_SHIFT);
+
 const DOT_OCCLUSION_VERTEX = /* glsl */ `
 attribute float triangleCorner;
 attribute vec3 farCornerA;
@@ -288,6 +320,7 @@ void main() {
 
 const DOT_OCCLUSION_FRAGMENT = /* glsl */ `
 uniform bool ownsDots;
+uniform int surfaceTag;
 uniform vec2 size;
 
 varying vec3 vCornerWeights;
@@ -405,7 +438,7 @@ void main() {
 		floatBitsToUint( depth ),
 		packHalf2x16( isOrthographic ? slope : slope / depth ),
 		packed.x | packed.y << 16,
-		packed.z | ${DRAWN_BIT}u | ( ownsDots ? ${OWN_BIT}u : 0u )
+		packed.z | ${DRAWN_BIT}u | ( ownsDots ? ${OWN_BIT}u : 0u ) | uint( surfaceTag ) << ${TAG_SHIFT}
 	);
 
 }
@@ -447,12 +480,20 @@ void main() {
  * ones round a vertex, so the test asks less of them: only whether they are in
  * front of it as far as their own edge.
  *
+ * And which object the face is, as the tag its solid carries in
+ * `userData.surfaceTag`, for the wire to tell its own surface from another's
+ * (see `liftWire`).
+ *
  * No depth offset: the test wants the faces where they are.
  */
 export function createDotOcclusionMaterial(): THREE.ShaderMaterial {
   const material = new THREE.ShaderMaterial({
     glslVersion: THREE.GLSL3,
-    uniforms: { ownsDots: { value: false }, size: { value: new THREE.Vector2(1, 1) } },
+    uniforms: {
+      ownsDots: { value: false },
+      surfaceTag: { value: 0 },
+      size: { value: new THREE.Vector2(1, 1) },
+    },
     vertexShader: DOT_OCCLUSION_VERTEX,
     fragmentShader: DOT_OCCLUSION_FRAGMENT,
   });
@@ -460,6 +501,7 @@ export function createDotOcclusionMaterial(): THREE.ShaderMaterial {
   // per object as each is drawn.
   material.onBeforeRender = (_renderer, _scene, _camera, _geometry, object) => {
     material.uniforms.ownsDots.value = object.userData.ownsDots === true;
+    material.uniforms.surfaceTag.value = (object.userData.surfaceTag as number | undefined) ?? 0;
     material.uniformsNeedUpdate = true;
   };
   return material;
@@ -503,6 +545,143 @@ const RASTER_SNAP = 1 / 16;
  * could put it inside.
  */
 const EDGE_SLACK = 1 / 48;
+
+const WIRE_TRUE_DECLARATIONS = /* glsl */ `
+		uniform vec2 dotOcclusionSize;
+
+		varying vec3 vWireStart;
+		varying vec3 vWireEnd;
+		varying vec3 vWireAt;
+
+		// Where a point lands on the occlusion map, in its pixels, and its depth
+		// in the units the map holds a surface's in.
+		vec3 wireOnMap( vec4 clip ) {
+
+			bool perspective = projectionMatrix[ 2 ][ 3 ] == - 1.0;
+			return vec3(
+				( clip.xy / clip.w * 0.5 + 0.5 ) * dotOcclusionSize,
+				perspective ? 1.0 / clip.w : clip.z / clip.w * 0.5 + 0.5
+			);
+
+		}
+`;
+
+/** Where the wire's own place is handed on to the fragment shader. */
+const WIRE_TRUE_ANCHOR = 'gl_Position = clip;';
+
+const WIRE_TRUE_GLSL = /* glsl */ `
+
+			// The ends as they stood before the lift, trimmed to the near plane
+			// the way the line itself is.
+			if ( perspective ) {
+
+				if ( wireStart.z < 0.0 && wireEnd.z >= 0.0 ) {
+
+					trimSegment( wireStart, wireEnd );
+
+				} else if ( wireEnd.z < 0.0 && wireStart.z >= 0.0 ) {
+
+					trimSegment( wireEnd, wireStart );
+
+				}
+
+			}
+
+			vWireStart = wireOnMap( projectionMatrix * wireStart );
+			vWireEnd = wireOnMap( projectionMatrix * wireEnd );
+			// Divided out in the fragment, which leaves the fragment's own place on
+			// the screen: the lift moves nothing across it.
+			vWireAt = clip.xyw;
+`;
+
+/** Where the test's declarations go in a mark's fragment shader. */
+const MARK_OCCLUSION_DECLARATIONS_ANCHOR = '#include <clipping_planes_pars_fragment>';
+
+const MARK_OCCLUSION_GLSL = /* glsl */ `
+		uniform bool dotOcclusionActive;
+		uniform highp usampler2D dotOcclusionMap;
+		uniform vec2 dotOcclusionSize;
+		uniform int surfaceTag;
+
+		// Whether another object's surface stands in front of a mark on this
+		// one, \`at\` a spot on the occlusion map and \`own\` deep, in the units
+		// the map holds a depth in. The mark's own surface is left to the depth
+		// test and the mark's lift, which is what the lift is for.
+		bool markOccluded( vec2 at, float own ) {
+
+			if ( ! dotOcclusionActive ) return false;
+
+			ivec2 texel = clamp( ivec2( floor( at ) ), ivec2( 0 ), ivec2( dotOcclusionSize ) - 1 );
+			uvec4 surface = texelFetch( dotOcclusionMap, texel, 0 );
+			if ( ( surface.a & ${DRAWN_BIT}u ) == 0u ) return false;
+			if ( surface.a >> ${TAG_SHIFT} == uint( surfaceTag ) ) return false;
+
+			// Carried from the pixel's centre to the spot, as for a dot.
+			float depth = uintBitsToFloat( surface.r );
+			vec2 slope = unpackHalf2x16( surface.g ) * ( isOrthographic ? 1.0 : depth );
+			float there = depth + dot( slope, at - ( vec2( texel ) + 0.5 ) );
+			float slack = ${RASTER_SNAP.toFixed(4)} * length( slope );
+			float ahead = isOrthographic ? own - ( there + slack ) : ( there - slack ) / own - 1.0;
+			return ahead > ( isOrthographic
+				? ${DOT_OCCLUSION_MARGIN.orthographic.toExponential()}
+				: ${DOT_OCCLUSION_MARGIN.perspective.toExponential()} );
+
+		}
+`;
+
+const WIRE_OCCLUSION_FRAGMENT = /* glsl */ `
+		${MARK_OCCLUSION_GLSL}
+
+		varying vec3 vWireStart;
+		varying vec3 vWireEnd;
+		varying vec3 vWireAt;
+
+		// The test at this fragment, for the wire where it really lies.
+		bool wireOccluded() {
+
+			vec2 at = ( vWireAt.xy / vWireAt.z * 0.5 + 0.5 ) * dotOcclusionSize;
+
+			// Both kinds of depth the map holds run straight across the screen
+			// along a line, so the wire's own is a blend of its ends'.
+			vec2 along = vWireEnd.xy - vWireStart.xy;
+			float t = clamp( dot( at - vWireStart.xy, along ) / max( dot( along, along ), 1e-12 ), 0.0, 1.0 );
+			return markOccluded( at, mix( vWireStart.z, vWireEnd.z, t ) );
+
+		}
+`;
+
+/** Where the test runs, first thing in the fragment's `main`. */
+const MARK_OCCLUSION_ANCHOR = '#include <clipping_planes_fragment>';
+
+const WIRE_OCCLUSION_TEST = /* glsl */ `
+
+			if ( wireOccluded() ) discard;
+`;
+
+const WASH_CLIP_DECLARATION = /* glsl */ `
+varying vec4 vMarkClip;
+`;
+
+/** Where the wash hands its own place on to the fragment shader. */
+const WASH_CLIP_ANCHOR = '#include <project_vertex>';
+
+const WASH_CLIP_GLSL = /* glsl */ `
+	vMarkClip = gl_Position;
+`;
+
+const WASH_OCCLUSION_FRAGMENT = /* glsl */ `
+${MARK_OCCLUSION_GLSL}
+${WASH_CLIP_DECLARATION}
+`;
+
+// Every part of the clip position divides out to what the screen sees, the
+// polygon offset left out, which only reaches the depth buffer.
+const WASH_OCCLUSION_TEST = /* glsl */ `
+	if ( markOccluded(
+		( vMarkClip.xy / vMarkClip.w * 0.5 + 0.5 ) * dotOcclusionSize,
+		isOrthographic ? vMarkClip.z / vMarkClip.w * 0.5 + 0.5 : 1.0 / vMarkClip.w
+	) ) discard;
+`;
 
 const POINT_LIFT_DECLARATIONS = /* glsl */ `
 uniform float pointHalfSize;
@@ -1067,9 +1246,15 @@ export function createOriginMaterial(): THREE.PointsMaterial {
  *
  * Writes no depth: it is a wash over the surface, not a surface, and the
  * selected edges and vertex dots drawn after it have to come through.
+ *
+ * The offset's slope term is pixels of depth on a face seen edge-on, and it
+ * lifted the wash through another object standing that close in front: a part
+ * inside another, picked whole, washed the outer one's faces red. So it is
+ * tested against the other objects' surfaces where it really lies, as the wire
+ * is (see `liftWire`), its object's tag in `userData.surfaceTag`.
  */
 export function createSelectionOverlayMaterial(): THREE.Material {
-  return new THREE.MeshBasicMaterial({
+  const material = new THREE.MeshBasicMaterial({
     color: VIEWPORT_COLORS.red,
     side: THREE.DoubleSide,
     transparent: true,
@@ -1080,6 +1265,21 @@ export function createSelectionOverlayMaterial(): THREE.Material {
     polygonOffsetFactor: -2,
     polygonOffsetUnits: -2,
   });
+  const surfaceTag = { value: 0 };
+  material.userData.surfaceTag = surfaceTag;
+  material.onBeforeCompile = (shader) => {
+    Object.assign(shader.uniforms, DOT_OCCLUSION, { surfaceTag });
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>' + WASH_CLIP_DECLARATION)
+      .replace(WASH_CLIP_ANCHOR, WASH_CLIP_ANCHOR + WASH_CLIP_GLSL);
+    shader.fragmentShader = shader.fragmentShader
+      .replace(
+        MARK_OCCLUSION_DECLARATIONS_ANCHOR,
+        MARK_OCCLUSION_DECLARATIONS_ANCHOR + WASH_OCCLUSION_FRAGMENT,
+      )
+      .replace(MARK_OCCLUSION_ANCHOR, MARK_OCCLUSION_ANCHOR + WASH_OCCLUSION_TEST);
+  };
+  return material;
 }
 
 export function createNormalsMaterial(): THREE.LineBasicMaterial {

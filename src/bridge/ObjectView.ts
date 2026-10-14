@@ -10,6 +10,7 @@ import type { SceneObject, SelectMode, ShadingMode, ViewportSettings } from '@st
 import {
   OCCLUDER_LAYER,
   POINT_MARK_SIZES,
+  SURFACE_TAG_COUNT,
   VIEWPORT_COLORS,
   createFaceOrientationMaterial,
   createHoverPointMaterial,
@@ -72,6 +73,14 @@ const TOUCH_WIRE_WIDTH_PX = 1.75;
 
 /** How much bigger the point marks are drawn for a finger than for a mouse. */
 const TOUCH_POINT_SCALE = 2.25;
+
+/** The last tag a view was given. Zero is left for surfaces that are no view's. */
+let lastSurfaceTag = 0;
+
+function nextSurfaceTag(): number {
+  lastSurfaceTag = (lastSurfaceTag % (SURFACE_TAG_COUNT - 1)) + 1;
+  return lastSurfaceTag;
+}
 
 /**
  * A held cull table and what it was built from.
@@ -339,6 +348,15 @@ export class ObjectView {
       color: DEFAULT_PREFERENCES.selectionLineColor,
       width: DEFAULT_PREFERENCES.selectionLineWidth,
     });
+
+    // Says which surface is this object's own to the lines lying on it, so
+    // their lift clears that one and no other (see `liftWire`).
+    const tag = nextSurfaceTag();
+    this.solid.userData.surfaceTag = tag;
+    for (const line of this.liftedLines()) {
+      (line.material as LineMaterial).uniforms.surfaceTag.value = tag;
+    }
+    (this.selectedFaces.material as THREE.Material).userData.surfaceTag.value = tag;
 
     // Under everything, the plain wireframe included: it is the faintest thing
     // the viewport draws and the cage has to read over it.
@@ -740,17 +758,11 @@ export class ObjectView {
    * `touch` draws the wire and the point marks for a finger instead.
    */
   setResolution(width: number, height: number, pixelRatio: number, touch = false): void {
-    for (const line of [
-      this.outline,
-      this.wire,
-      this.sharpEdges,
-      this.selectedEdges,
-      this.previewWire,
-    ]) {
+    for (const line of [this.outline, ...this.liftedLines()]) {
       (line.material as LineMaterial).resolution.set(width, height);
     }
     const wireWidth = touch ? TOUCH_WIRE_WIDTH_PX : WIRE_WIDTH_DEVICE_PX / Math.max(1, pixelRatio);
-    for (const line of [this.wire, this.sharpEdges, this.selectedEdges, this.previewWire]) {
+    for (const line of this.liftedLines()) {
       (line.material as LineMaterial).linewidth = wireWidth;
     }
 
@@ -958,6 +970,19 @@ export class ObjectView {
       this.group.visible &&
       (this.points.visible || this.hoverPoint.visible || this.recentPoints.visible)
     );
+  }
+
+  /** Whether any wire or face wash is on screen, tested against the same surfaces. */
+  get showsMarks(): boolean {
+    return (
+      this.group.visible &&
+      (this.selectedFaces.visible || this.liftedLines().some((line) => line.visible))
+    );
+  }
+
+  /** The lines drawn with `liftWire`: the wire and everything drawn along its edges. */
+  private liftedLines(): LineSegments2[] {
+    return [this.wire, this.sharpEdges, this.selectedEdges, this.previewWire];
   }
 
   dispose(): void {

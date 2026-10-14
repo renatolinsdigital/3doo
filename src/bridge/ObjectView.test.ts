@@ -604,6 +604,48 @@ describe('ObjectView vertex dots', () => {
     });
     expect(view.showsDots).toBe(true);
   });
+
+  it('tags its surface and the marks lying on it alike, and apart from other views', () => {
+    // How the wire tells its own surface, which its lift is for, from another
+    // object's, which the lift used to carry it through.
+    const { object } = scene();
+    const view = new ObjectView(object.id);
+    const other = new ObjectView('other');
+    const tag = (view.group.getObjectByName(`${object.id}:solid`) as THREE.Mesh).userData
+      .surfaceTag as number;
+
+    expect(tag).toBeGreaterThan(0);
+    expect((other.group.getObjectByName('other:solid') as THREE.Mesh).userData.surfaceTag).not.toBe(
+      tag,
+    );
+
+    const lines = view.group.children.filter((child) => child instanceof LineSegments2);
+    const outline = view.group.getObjectByName(`${object.id}:outline`);
+    for (const line of lines) {
+      if (line === outline) continue;
+      expect((line.material as LineMaterial).uniforms.surfaceTag.value).toBe(tag);
+    }
+    const wash = view.group.children.find(
+      (child): child is THREE.Mesh =>
+        child instanceof THREE.Mesh &&
+        (child.material as THREE.Material).userData.surfaceTag !== undefined,
+    );
+    expect((wash?.material as THREE.Material).userData.surfaceTag.value).toBe(tag);
+  });
+
+  it('says when it has a wire on screen, which is tested against the same surfaces', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), { ...editState(settings, 'solid'), mode: 'object' });
+    expect(view.showsMarks).toBe(false);
+
+    view.update(object, evaluatedMesh(object), {
+      ...editState(settings, 'solidWire'),
+      mode: 'object',
+    });
+    expect(view.showsMarks).toBe(true);
+  });
 });
 
 describe('ObjectView under a modifier', () => {
