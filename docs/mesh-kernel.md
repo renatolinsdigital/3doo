@@ -254,31 +254,27 @@ Connect Vertex Path. The order is the click order (`selectSeq`) when every
 vertex has a distinct stamp; otherwise `connectionOrder` chains them from the
 vertex farthest from their centroid, each to the nearest one left.
 
-Each pair is joined *across the surface*, never with a bare edge through a face:
-a bare edge divides nothing, so the result would look cut while still shading
-and extruding as one surface. The path is found by `planePath`, a shortest-path
-walk over where a plane through both vertices meets the mesh. The plane contains
-the segment between them and is stood up along the summed normals of the faces
-round both ends, so on a flat or gently curved surface it is the straight line
-the user means. The walk's nodes are vertices on the plane and the points where
-it crosses edges, its steps are straight pieces inside one face (checked with
-`knifeSegmentFace`, which also rejects pieces that leave a concave face), and
-the first path to reach the far vertex is the shortest.
+Each pair is joined along the *straight line* between them. `linePath` walks
+from face to face along that line, always forward: its nodes are vertices on the
+line (within `ON_LINE` of its length) and the points where it crosses edges, and
+its steps are straight pieces inside one face (checked with `knifeSegmentFace`,
+which also rejects pieces that leave a concave face). Two corners of one face
+reach each other in a single step whenever the line between them stays inside
+it, even when the face is not flat.
 
-A plane can meet a winding surface such as a torus in pieces that never join, so
-when the averaged plane fails the planes stood up along each face round either
-end are tried, then the axes. If none reaches, the pair is split at the vertex
-halfway along the fewest edges between them and each half is cut the same way.
-Halving ends at two neighbours, so only vertices on separate islands are ever
-refused, and then nothing changes and the status names the pair.
+When the walk cannot reach the far vertex, the line leaves the surface: through
+the air, through the inside of a solid, or out of a concave face. The pair then
+gets a plain edge and no face is touched. An earlier version followed the
+surface instead, walking a plane round a solid like Blender's Connect Vertex
+Path, but that cut faces well away from the line the user drew between the two
+vertices.
 
 Every path is found on the mesh as it stands and handed to `knifeCut` as one
 run per pair, so the knife does the cutting: each crossed edge is split (both
 faces beside it gain the vertex, so no T-junction is left), every face is divided
 along the path, and paths that cross inside one face meet at a shared vertex. A
 crossing within `EDGE_END` of an edge's end is taken as that end vertex rather
-than leaving a sliver beside it. A vertex with no faces at all can only get a
-plain edge.
+than leaving a sliver beside it.
 
 ### Delete and dissolve (`delete.ts`, `dissolve.ts`)
 

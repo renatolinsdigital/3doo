@@ -1427,17 +1427,11 @@ describe('connect verts', () => {
     }
   }
 
-  function connected(mesh: BMesh, verts: readonly Vert[]) {
-    const result = connectVertPath(mesh, verts);
-    if (!result.connected) throw new Error(`Gap after vertex ${result.gap}`);
-    return result;
-  }
-
   it('splits a face into two along the new edge', () => {
     const plane = createPlane(2);
     const [a, , c] = plane.faceVerts([...plane.faces.values()][0]);
 
-    const result = connected(plane, [a, c]);
+    const result = connectVertPath(plane, [a, c]);
 
     expect(result.splits).toBe(1);
     // One quad becomes two triangles sharing the new edge.
@@ -1452,7 +1446,7 @@ describe('connect verts', () => {
     const original = [...plane.faces.values()][0].normal;
     const [a, , c] = plane.faceVerts([...plane.faces.values()][0]);
 
-    connected(plane, [a, c]);
+    connectVertPath(plane, [a, c]);
 
     for (const face of plane.faces.values()) {
       const alignment =
@@ -1466,7 +1460,7 @@ describe('connect verts', () => {
     const a = vertAt(grid, vec3(-2, 0, -2));
     const b = vertAt(grid, vec3(2, 0, 0));
 
-    const result = connected(grid, [a, b]);
+    const result = connectVertPath(grid, [a, b]);
 
     // Two edges crossed part way, and the grid vertex at (0, -1) passed through.
     expect(result.verts).toHaveLength(2);
@@ -1484,7 +1478,7 @@ describe('connect verts', () => {
     const passed = vertAt(grid, vec3(0, 0, -1));
     const before = grid.verts.size;
 
-    const result = connected(grid, [a, b]);
+    const result = connectVertPath(grid, [a, b]);
 
     expect(linked(result.edges, a, passed)).toBe(true);
     expect(linked(result.edges, passed, b)).toBe(true);
@@ -1497,7 +1491,7 @@ describe('connect verts', () => {
     const b = vertAt(grid, vec3(2, 0, 0));
     const before = { verts: grid.verts.size, edges: grid.edges.size, faces: grid.faces.size };
 
-    const result = connected(grid, [a, b]);
+    const result = connectVertPath(grid, [a, b]);
 
     expect(result.edges).toHaveLength(4);
     expect(linked(result.edges, a, b)).toBe(true);
@@ -1506,37 +1500,36 @@ describe('connect verts', () => {
     );
   });
 
-  it('wraps round a closed solid, leaving it closed', () => {
+  it('joins corners through a solid with a plain edge, cutting nothing', () => {
     const cube = createBox(2);
     const a = vertAt(cube, vec3(-1, 1, -1));
     const b = vertAt(cube, vec3(1, -1, 1));
 
-    const result = connected(cube, [a, b]);
+    const result = connectVertPath(cube, [a, b]);
 
-    expect(result.splits).toBeGreaterThan(0);
-    expect(linked(result.edges, a, b)).toBe(true);
-    expect(isClosed(cube)).toBe(true);
-    expect(cube.verts.size - cube.edges.size + cube.faces.size).toBe(2);
-    expectCleanCut(cube, result.edges);
+    expect(result.splits).toBe(0);
+    expect(cube.faces.size).toBe(6);
+    expect(cube.findEdge(a, b)?.loops).toEqual([]);
+    expect(cube.validate()).toEqual([]);
   });
 
-  it('crosses a cube edge to join midpoints on opposite sides', () => {
-    const cube = createBox(2);
-    const along = (y: number, z: number) =>
-      [...cube.edges.values()].find((edge) =>
-        [edge.v0, edge.v1].every((vert) => vert.co.y === y && vert.co.z === z),
-      ) as Edge;
-    const [near, far] = subdivideEdges(cube, [along(1, 1), along(-1, -1)]);
+  it('adds a plain edge where the line leaves a concave face', () => {
+    const mesh = new BMesh();
+    const corners = [
+      vec3(0, 0, 0),
+      vec3(0, 0, 2),
+      vec3(1, 0, 2),
+      vec3(1, 0, 1),
+      vec3(2, 0, 1),
+      vec3(2, 0, 0),
+    ].map((co) => mesh.addVert(co));
+    mesh.addFace(corners);
 
-    const result = connected(cube, [near, far]);
+    const result = connectVertPath(mesh, [corners[2], corners[4]]);
 
-    // Over the top and down the back, or down the front and under: either way
-    // one cube edge is crossed and the two faces it joins are divided.
-    expect(result.verts).toHaveLength(1);
-    expect(result.splits).toBe(2);
-    expect(linked(result.edges, near, far)).toBe(true);
-    expect(isClosed(cube)).toBe(true);
-    expectCleanCut(cube, result.edges);
+    expect(result.splits).toBe(0);
+    expect(mesh.faces.size).toBe(1);
+    expect(mesh.findEdge(corners[2], corners[4])?.loops).toEqual([]);
   });
 
   it('joins a whole sequence, one vertex to the next', () => {
@@ -1554,7 +1547,7 @@ describe('connect verts', () => {
     expectCleanCut(grid, selected);
   });
 
-  it('refuses a sequence with a gap and changes nothing', () => {
+  it('cuts the faces in reach and joins separate pieces with a plain edge', () => {
     const mesh = new BMesh();
     const island = (x: number) =>
       mesh.addFace([
@@ -1566,15 +1559,14 @@ describe('connect verts', () => {
     const [a, , c] = mesh.faceVerts(island(0));
     const [, far] = mesh.faceVerts(island(3));
     for (const vert of [a, c, far]) mesh.selectVert(vert);
-    const before = { verts: mesh.verts.size, edges: mesh.edges.size, faces: mesh.faces.size };
 
     const result = execOperator({ mesh, selectMode: 'vertex', cursor: vec3() }, 'connect');
 
-    expect(result.refused).toBe(true);
-    expect(result.status).toMatch(/^Vertices 2 and 3 in the sequence share no surface/);
-    expect({ verts: mesh.verts.size, edges: mesh.edges.size, faces: mesh.faces.size }).toEqual(
-      before,
-    );
+    expect(result.refused).toBeUndefined();
+    expect(result.status).toMatch(/^Connected 3 vertices, cutting 1 face/);
+    expect(mesh.faces.size).toBe(3);
+    expect(mesh.findEdge(c, far)?.loops).toEqual([]);
+    expect(mesh.validate()).toEqual([]);
   });
 
   it('adds a bare edge between vertices with no face at all', () => {
@@ -1582,7 +1574,7 @@ describe('connect verts', () => {
     const a = mesh.addVert(vec3(0, 0, 0));
     const b = mesh.addVert(vec3(1, 0, 0));
 
-    const result = connected(mesh, [a, b]);
+    const result = connectVertPath(mesh, [a, b]);
 
     expect(result.splits).toBe(0);
     expect(mesh.findEdge(a, b)).not.toBeNull();
@@ -1606,7 +1598,7 @@ describe('connect verts', () => {
     const top = faceAt(cube, vec3(0, 1, 0));
     const [a, , c] = cube.faceVerts(top);
 
-    connected(cube, [a, c]);
+    connectVertPath(cube, [a, c]);
 
     expect(cube.faces.size).toBe(7);
     expect(cube.validate()).toEqual([]);

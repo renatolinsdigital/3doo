@@ -593,12 +593,6 @@ export const OPERATORS: Record<string, OperatorHandler> = {
 
     const before = mesh.edges.size;
     const result = connectVertPath(mesh, verts);
-    if (!result.connected) {
-      return {
-        status: `Vertices ${result.gap + 1} and ${result.gap + 2} in the sequence share no surface to cut across, so nothing was connected`,
-        refused: true,
-      };
-    }
     if (mesh.edges.size === before) {
       return { status: 'Those vertices are already connected', refused: true };
     }
