@@ -6,6 +6,7 @@ import {
   type Face,
   type Vert,
   createBox,
+  createCylinder,
   createPlane,
   cross,
   execOperator,
@@ -451,6 +452,104 @@ describe('a knife cut, click to mesh', () => {
       }
       expect(plane.validate()).toEqual([]);
     }
+  });
+
+  it('divides the faces behind a line clicked edge to edge in a see-through view', () => {
+    // Off to one side, the back face is drawn shifted against the front one:
+    // its right edge lands a few pixels past the click on the front's.
+    const aside = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+    aside.position.set(2.5, 0, 10);
+    aside.lookAt(2.5, 0, 0);
+    aside.updateMatrixWorld(true);
+
+    for (const camera of [front(), perspective(), aside]) {
+      const box = createBox(2);
+      const onEdge = (x: number): Landed => {
+        const edge = box.findEdge(vertAt(box, x, -1, 1), vertAt(box, x, 1, 1));
+        if (!edge) throw new Error(`no edge at ${x}`);
+        const co = vec3(x, 0, 1);
+        return { at: co, mark: { point: { kind: 'edge', edge: edge.id, t: 0.5 }, co } };
+      };
+
+      cut(box, draw(box, viewFrom(camera, false), [onEdge(-1), onEdge(1)]));
+
+      expect(box.faces.size).toBe(10);
+      expect(box.verts.size - box.edges.size + box.faces.size).toBe(2);
+      for (const edge of box.edges.values()) expect(edge.loops).toHaveLength(2);
+      expect(box.validate()).toEqual([]);
+    }
+  });
+
+  it('bends the cut behind at the same point either side of a click inside a face', () => {
+    // A slab looked down on at a slant, cut by a line bent at two clicks inside
+    // its top. Corners of the bottom fall within a pixel of the line, which
+    // tilts the slices the two lines either side of a click make of it.
+    const slab = createCylinder(1.5, 0.4, 9, true);
+    const camera = new THREE.OrthographicCamera(-2.5, 2.5, 2.5, -2.5, 0.1, 100);
+    camera.position.set(-3, 8, 4);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld(true);
+    camera.updateProjectionMatrix();
+    const view = knifeViewOf(camera, new THREE.Matrix4(), { width: 400, height: 400 }, false);
+
+    const top = [...slab.faces.values()].find((face) => face.normal.y > 0.99);
+    if (!top) throw new Error('no top');
+    const click = (x: number, y: number, onTop: boolean): KnifeAnchor => {
+      const { origin, direction } = view.sight(new THREE.Vector2(x, y));
+      const along = (0.2 - origin.y) / direction.y;
+      const co = vec3(origin.x + direction.x * along, 0.2, origin.z + direction.z * along);
+      return { at: co, mark: onTop ? { point: { kind: 'face', face: top.id, co }, co } : null };
+    };
+
+    cut(
+      slab,
+      draw(slab, view, [
+        click(20, 120, false),
+        click(180, 160, true),
+        click(210, 260, true),
+        click(390, 300, false),
+      ]),
+    );
+
+    const caps = (sign: number) =>
+      [...slab.faces.values()].filter((face) => face.normal.y * sign > 0.99).length;
+    expect(caps(1)).toBe(2);
+    expect(caps(-1)).toBe(2);
+    expect([...slab.edges.values()].filter((edge) => edge.loops.length === 0)).toHaveLength(0);
+    expect(slab.validate()).toEqual([]);
+  });
+
+  it('still stops behind a click inside a face, as it does in front', () => {
+    const box = createBox(2);
+
+    cut(box, draw(box, viewFrom(front(), false), [offMesh(-3), inFront(box, 0, 0)]));
+
+    // The line runs in from the left and stops in the middle, front and back.
+    expect(box.faces.size).toBe(7);
+    expect([...box.edges.values()].filter((edge) => edge.loops.length === 0)).toHaveLength(2);
+  });
+
+  it('carries a line clicked edge to edge right through a box seen from above', () => {
+    const box = createBox(2);
+    const onEdge = (y: number): Landed => {
+      const edge = box.findEdge(vertAt(box, -1, y, 1), vertAt(box, 1, y, 1));
+      if (!edge) throw new Error(`no edge at ${y}`);
+      const co = vec3(0, y, 1);
+      return { at: co, mark: { point: { kind: 'edge', edge: edge.id, t: 0.5 }, co } };
+    };
+    // Looking down on the box, the back face is drawn well inside the front
+    // one: the clicks' lines of sight pass through the middle of it.
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100);
+    camera.position.set(0, 4, 8);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld(true);
+
+    cut(box, draw(box, viewFrom(camera, false), [onEdge(1), onEdge(-1)]));
+
+    expect(box.faces.size).toBe(10);
+    expect(box.verts.size - box.edges.size + box.faces.size).toBe(2);
+    for (const edge of box.edges.values()) expect(edge.loops).toHaveLength(2);
+    expect(box.validate()).toEqual([]);
   });
 
   it('crosses an earlier line of the same cut and divides the face four ways', () => {

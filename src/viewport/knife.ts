@@ -7,6 +7,7 @@ import {
   type Loop,
   type Vec3,
   type Vert,
+  addScaled,
   basisFromNormal,
   cross,
   dot,
@@ -225,8 +226,10 @@ function byReach(first: Candidate, second: Candidate): number {
  *
  * Every face is sliced on its own, so a see-through view cuts every layer the
  * line passes over without any of them getting in each other's way: a line
- * across a box seen square on goes all the way round it. Otherwise a piece is
- * kept only where the camera can see it.
+ * across a box seen square on goes all the way round it, and a click on an
+ * edge there carries on to the border of each face behind, so the faces behind
+ * divide wherever the face in front does. Otherwise a piece is kept only where
+ * the camera can see it.
  *
  * `marks` are the points of the cut so far. A line crossing an edge within a
  * pixel of one goes through it, so a cut closing round a model meets itself.
@@ -271,12 +274,18 @@ export function knifeSections(
     return distance;
   };
 
+  // The clicks are known points too: a piece reaching one ends on it, which is
+  // how a piece running on from a click is told apart.
+  const known = [
+    ...marks,
+    ...[from.mark, to.mark].filter((mark): mark is KnifeMark => mark !== null),
+  ];
   const vertMarks = new Map<number, KnifeMark>();
   const edgeMarks = new Map<number, KnifeMark>();
   const vertMark = (vert: Vert): KnifeMark => {
     let mark = vertMarks.get(vert.id);
     if (!mark) {
-      mark = marks.find((known) => known.point.kind === 'vert' && known.point.vert === vert.id) ?? {
+      mark = known.find((other) => other.point.kind === 'vert' && other.point.vert === vert.id) ?? {
         point: { kind: 'vert', vert: vert.id },
         co: vert.co,
       };
@@ -292,12 +301,12 @@ export function knifeSections(
     if (!mark) {
       const co = lerp(loop.vert.co, loop.next.vert.co, t);
       const pixel = view.project(co);
-      mark = marks.find(
-        (known) =>
-          known.point.kind === 'edge' &&
-          known.point.edge === edge.id &&
+      mark = known.find(
+        (other) =>
+          other.point.kind === 'edge' &&
+          other.point.edge === edge.id &&
           pixel !== null &&
-          near(view, known.co, pixel),
+          near(view, other.co, pixel),
       ) ?? { point: { kind: 'edge', edge: edge.id, t: edge.v0 === loop.vert ? t : 1 - t }, co };
       edgeMarks.set(edge.id, mark);
     }
@@ -337,45 +346,36 @@ export function knifeSections(
     return pixel ? param(pixel) : NaN;
   };
 
-  const clip = (slice: Slice<KnifeMark>, anchor: KnifeAnchor, pixel: THREE.Vector2): KnifeMark => {
+  /**
+   * Whether a click carries on to the border of the faces behind it rather
+   * than stopping where its line of sight passes them. Only a see-through view
+   * cuts those faces at all, and only a click on an edge or a corner divides the
+   * face it is on: carried through as a point inside a face behind, it would
+   * leave a loose line there, under a cut that looks finished.
+   */
+  const carries = (anchor: KnifeAnchor): boolean => !view.occlude && onBorder(mesh, anchor.mark);
+
+  const clip = (
+    slice: Slice<KnifeMark>,
+    anchor: KnifeAnchor,
+    pixel: THREE.Vector2,
+    beyond: KnifeMark,
+  ): KnifeMark => {
     // A click inside the face is where its piece ends. Anywhere else the piece
     // stops where the click's line of sight passes it, which in a see-through
     // view is the click carried through to the faces behind it.
     if (anchor.mark && knifePointFaces(mesh, anchor.mark.point).includes(slice.face)) {
       return anchor.mark;
     }
-    const co = lerp(
-      slice.from.co,
-      slice.to.co,
-      closestAlong(view.sight(pixel), slice.from.co, slice.to.co),
-    );
+    if (carries(anchor)) return beyond;
+    const co =
+      throughFace(mesh, slice.face, view.sight(pixel)) ??
+      lerp(slice.from.co, slice.to.co, closestAlong(view.sight(pixel), slice.from.co, slice.to.co));
     return { point: { kind: 'face', face: slice.face.id, co }, co };
   };
 
   const sections: KnifeSection[] = [];
-  for (const slice of slices) {
-    const first = view.project(slice.from.co);
-    const second = view.project(slice.to.co);
-    if (!first || !second) continue;
-
-    const forward = param(first) <= param(second);
-    let start = forward ? slice.from : slice.to;
-    let end = forward ? slice.to : slice.from;
-    const sStart = Math.min(param(first), param(second));
-    const sEnd = Math.max(param(first), param(second));
-    if (sEnd <= margin || sStart >= 1 - margin) continue;
-
-    if (sStart < -margin) start = clip(slice, from, a);
-    if (sEnd > 1 + margin) end = clip(slice, to, b);
-    if (start === end || lengthSq(sub(start.co, end.co)) === 0) continue;
-
-    if (
-      view.occlude &&
-      hiddenBehind(slices, normal, view, lerp(start.co, end.co, 0.5), [slice.face])
-    ) {
-      continue;
-    }
-
+  const place = (slice: Slice<KnifeMark>, start: KnifeMark, end: KnifeMark) => {
     const low = Math.min(at(start), at(end));
     const high = Math.max(at(start), at(end));
     const through = mesh
@@ -389,8 +389,60 @@ export function knifeSections(
     for (let i = 0; i + 1 < chain.length; i++) {
       sections.push({ from: chain[i], to: chain[i + 1], face: slice.face.id });
     }
+  };
+
+  /** Slices wholly past a click, each with the click it lies past. */
+  const past: { slice: Slice<KnifeMark>; anchor: KnifeAnchor }[] = [];
+  for (const slice of slices) {
+    const first = view.project(slice.from.co);
+    const second = view.project(slice.to.co);
+    if (!first || !second) continue;
+
+    const forward = param(first) <= param(second);
+    let start = forward ? slice.from : slice.to;
+    let end = forward ? slice.to : slice.from;
+    const sStart = Math.min(param(first), param(second));
+    const sEnd = Math.max(param(first), param(second));
+    if (sEnd <= margin || sStart >= 1 - margin) {
+      past.push({ slice, anchor: sEnd <= margin ? from : to });
+      continue;
+    }
+
+    if (sStart < -margin) start = clip(slice, from, a, start);
+    if (sEnd > 1 + margin) end = clip(slice, to, b, end);
+    if (start === end || lengthSq(sub(start.co, end.co)) === 0) continue;
+
+    if (
+      view.occlude &&
+      hiddenBehind(slices, normal, view, lerp(start.co, end.co, 0.5), [slice.face])
+    ) {
+      continue;
+    }
+    place(slice, start, end);
+  }
+
+  // A face running from a click straight to where a piece behind it ends, such
+  // as the side of a slab, closes the cut round: drawn past the click, it was
+  // left out, and the cut behind would end on an edge the front never reaches.
+  const ends = new Set(sections.flatMap((section) => [section.from, section.to]));
+  for (const { slice, anchor } of past) {
+    if (!carries(anchor)) continue;
+    const [click, far] =
+      slice.from === anchor.mark ? [slice.from, slice.to] : [slice.to, slice.from];
+    if (click === anchor.mark && ends.has(far)) place(slice, click, far);
   }
   return sections;
+}
+
+/** Whether a point lies on the border of a face: a corner or an edge of one, not a loose one. */
+function onBorder(mesh: BMesh, mark: KnifeMark | null): boolean {
+  const point = mark?.point;
+  if (point?.kind === 'vert') {
+    const vert = mesh.verts.get(point.vert);
+    return vert !== undefined && mesh.vertFaces(vert).length > 0;
+  }
+  if (point?.kind === 'edge') return (mesh.edges.get(point.edge)?.loops.length ?? 0) > 0;
+  return false;
 }
 
 /** Every point of the cut so far, each once: its clicks on the mesh and where its pieces end. */
@@ -514,6 +566,29 @@ function closestAlong(sight: { origin: Vec3; direction: Vec3 }, from: Vec3, to: 
   // Seen end on: all of it is under the pointer at once.
   if (Math.abs(denominator) <= 1e-12 * a * c) return 0.5;
   return THREE.MathUtils.clamp((a * e - b * d) / denominator, 0, 1);
+}
+
+/**
+ * Where a line of sight passes through a face's plane, or null when it runs
+ * along the plane.
+ *
+ * A click inside a face is carried through to the faces behind it by both the
+ * line to it and the line on from it, and the two must land on the very same
+ * point or the cut behind falls apart there. Read off the slice each line makes
+ * instead, it would not: a corner taken onto either line tilts its slice a
+ * hair, and the two points come out a few thousandths apart.
+ */
+function throughFace(
+  mesh: BMesh,
+  face: Face,
+  sight: { origin: Vec3; direction: Vec3 },
+): Vec3 | null {
+  const normal = face.normal;
+  const facing = dot(sight.direction, normal);
+  if (Math.abs(facing) <= 1e-6 * Math.sqrt(lengthSq(sight.direction))) return null;
+  const corner = mesh.faceVerts(face)[0].co;
+  const along = dot(sub(corner, sight.origin), normal) / facing;
+  return addScaled(sight.origin, sight.direction, along);
 }
 
 /** Whether a point is drawn within a pixel of a spot on the canvas. */
