@@ -304,6 +304,19 @@ select mode onto the operator's `mode` param (vertex → `verts`, edge →
 The operators still take every mode they support, and
 `exec('delete', { mode: 'onlyFaces' })` remains available to scripts.
 
+#### Delete loose
+
+`deleteLoose` keeps one piece of the mesh and deletes the rest. Pieces are
+found by flood filling over edges (`selectLinked`), so a stray vertex, a wire
+edge and a face floating on its own are each a piece. The one kept has the
+most vertices, edges and faces counted together, not the most vertices: a
+long chain of wire edges has more vertices than a cube and is still the
+debris. A tie keeps the piece found first, which is the one built first.
+
+It ignores the selection, unlike Blender's Delete Loose, which removes
+geometry with no face attached. Here a whole floating box goes too, since the
+question asked is which piece is the model.
+
 #### Dissolving faces
 
 Dissolving faces merges each connected region into one n-gon. A single selected

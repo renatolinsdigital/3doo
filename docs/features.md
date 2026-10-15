@@ -10,7 +10,7 @@ drive them, see [keymap.md](keymap.md).
 | Primitives | Cube, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule, torus, with live parameters |
 | Object mode | Transform gizmo, duplicate, linked duplicate, merge, separate, cut in half across X, Y or Z, union / difference / intersect booleans, apply transform, delete, outliner with rename / visibility / lock and Ctrl+G groups that rename, select, join, ungroup or delete as one |
 | Selection | Vertex, edge and face modes; click and Shift+click, box / circle / lasso region select, Alt+click edge and face loops, grow / shrink / invert |
-| Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, knife, subdivide (Catmull-Clark), vertex and edge slide, relax, circle, space, merge, merge by distance, connect, delete, dissolve, fill, bridge, triangulate, tris-to-quads, make planar |
+| Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, knife, subdivide (Catmull-Clark), vertex and edge slide, relax, circle, space, merge, merge by distance, connect, delete, dissolve, fill, bridge, triangulate, tris-to-quads, make planar, delete loose |
 | Normals | Recalculate outside, flip, shade smooth / flat, mark / clear sharp edges (drawn in cyan, carried through subdivide, loop cut, merge and the modifiers), face-orientation overlay |
 | Modifiers | Mirror, array, solidify, bend (around X, Y and Z at once, up to a full ring, moving only the vertices already there), twist (about X, Y and Z at once, up to four full turns), lattice (a cage of points round the mesh, kept as an object of its own and shaped in edit mode, smooth or linear), weld, loop subdivide, subdivision surface (Catmull-Clark or simple, up to 6 levels, edit cage drawn around the result), quad reloop (every face turned to quads without moving a vertex: triangles paired, flat regions merged and cut again, loops run through the mesh to even out odd faces), remesh. All non-destructive, reorderable, with Apply |
 | Remesh | A modifier with three methods: voxel quad shell (signed distance field, surface nets, crease and corner constraints), blocks straight off the lattice, and quadric error decimation |
@@ -236,6 +236,7 @@ its hint says what to select instead:
 | Inset | Faces |
 | Make Planar | A quad among the selected faces |
 | Merge by Distance, Triangulate, Tris to Quads | Nothing. They fall back to the whole mesh |
+| Delete Loose | Nothing. It always works on the whole mesh, and says so when the mesh is one piece |
 
 ### Cut in half
 

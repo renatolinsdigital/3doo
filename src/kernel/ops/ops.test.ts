@@ -35,7 +35,7 @@ import {
 import { bevelEdges } from './bevel';
 import { booleanMesh } from './boolean';
 import { connectVertPath, connectionOrder } from './connect';
-import { deleteGeometry } from './delete';
+import { deleteGeometry, deleteLoose } from './delete';
 import {
   dissolveEdges,
   dissolveFaces,
@@ -1644,6 +1644,55 @@ describe('delete and dissolve', () => {
     expect(cube.verts.size).toBe(7);
     expect(cube.faces.size).toBe(3);
     expect(cube.validate()).toEqual([]);
+  });
+
+  describe('delete loose', () => {
+    it('keeps the main piece and deletes a stray vertex, a wire edge and a floating face', () => {
+      const cube = createBox(2);
+      cube.addVert(vec3(9, 9, 9));
+      cube.addEdge(cube.addVert(vec3(5, 0, 0)), cube.addVert(vec3(6, 0, 0)));
+      cube.addFace([vec3(0, 5, 0), vec3(1, 5, 0), vec3(0, 6, 0)].map((co) => cube.addVert(co)));
+
+      const result = deleteLoose(cube);
+
+      expect(result).toEqual({ pieces: 3, verts: 6, edges: 4, faces: 1 });
+      expect(cube.verts.size).toBe(8);
+      expect(cube.edges.size).toBe(12);
+      expect(cube.faces.size).toBe(6);
+      expect(cube.validate()).toEqual([]);
+    });
+
+    it('weighs a piece by all its elements, not its vertices alone', () => {
+      const mesh = new BMesh();
+      const line = Array.from({ length: 10 }, (_, x) => mesh.addVert(vec3(x, 9, 0)));
+      for (let i = 1; i < line.length; i++) mesh.addEdge(line[i - 1], line[i]);
+      const box = createBox(2);
+      const copies = new Map<number, Vert>();
+      for (const vert of box.verts.values()) copies.set(vert.id, mesh.addVert({ ...vert.co }));
+      for (const face of box.faces.values()) {
+        mesh.addFace(box.faceVerts(face).map((vert) => copies.get(vert.id) as Vert));
+      }
+
+      deleteLoose(mesh);
+
+      // Ten vertices and nine edges make nineteen; the box's 8, 12 and 6 make 26.
+      expect(mesh.verts.size).toBe(8);
+      expect(mesh.faces.size).toBe(6);
+      expect(line.some((vert) => mesh.verts.has(vert.id))).toBe(false);
+    });
+
+    it('refuses a mesh that is all one piece, leaving it alone', () => {
+      const cube = createBox(2);
+
+      const result = execOperator(
+        { mesh: cube, selectMode: 'vertex', cursor: vec3() },
+        'deleteLoose',
+      );
+
+      expect(result).toMatchObject({ refused: true });
+      expect(cube.verts.size).toBe(8);
+      expect(cube.faces.size).toBe(6);
+    });
   });
 
   it('dissolves an edge into a single n-gon', () => {

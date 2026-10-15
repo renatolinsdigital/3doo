@@ -349,6 +349,13 @@ export const OPERATOR_SPECS: readonly OperatorSpec[] = [
     ],
   },
   {
+    name: 'deleteLoose',
+    group: 'cleanup',
+    summary:
+      'Deletes every piece of the mesh not joined to the main one, the piece with the most vertices, edges and faces. Ignores the selection.',
+    params: [],
+  },
+  {
     name: 'triangulate',
     group: 'cleanup',
     summary: 'Splits the selected faces, or every face, into triangles.',

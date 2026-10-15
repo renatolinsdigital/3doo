@@ -16,6 +16,7 @@ import {
   connectVertPath,
   connectionOrder,
   deleteGeometry,
+  deleteLoose,
   dissolveEdges,
   dissolveFaces,
   dissolveVerts,
@@ -518,6 +519,16 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     const removed = before - (mesh.verts.size + mesh.edges.size + mesh.faces.size);
 
     return { status: removed > 0 ? `Deleted ${mode}` : 'Nothing selected to delete' };
+  },
+
+  deleteLoose: ({ mesh }) => {
+    const removed = deleteLoose(mesh);
+    if (removed.pieces === 0) {
+      return { status: 'The mesh is all one piece, so nothing is loose', refused: true };
+    }
+    return {
+      status: `Deleted ${removed.pieces} loose piece(s): ${removed.verts} vertex(es), ${removed.edges} edge(s) and ${removed.faces} face(s)`,
+    };
   },
 
   dissolve: ({ mesh }, params) => {

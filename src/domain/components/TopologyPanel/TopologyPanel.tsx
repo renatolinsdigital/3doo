@@ -84,6 +84,8 @@ export function TopologyPanel() {
   // the button is disabled to match, and its hint says what to select instead.
   // Triangulate, tris-to-quads and merge-by-distance are absent on purpose:
   // each falls back to the whole mesh, so none of them is ever unavailable.
+  // Delete loose stays on too: telling whether the mesh is in one piece means
+  // walking all of it, which is not worth doing on every edit. It says so.
   const selection = useActiveSelectionCounts();
   // Counts cannot answer these two: geometry that never touches is still
   // geometry, and no loop runs through it.
@@ -242,6 +244,11 @@ export function TopologyPanel() {
           label="TRIS TO QUADS"
           hint="Merge adjacent, near-coplanar triangle pairs back into quads (Alt+J)"
           onClick={() => exec('trisToQuads', {}, 'Tris to quads')}
+        />
+        <Button
+          label="DELETE LOOSE"
+          hint="Delete every vertex, edge and face not joined to the main mesh, the piece with the most geometry in it. Works on the whole mesh, whatever is selected"
+          onClick={() => exec('deleteLoose', {}, 'Delete loose')}
         />
         <Button
           label="MAKE PLANAR"

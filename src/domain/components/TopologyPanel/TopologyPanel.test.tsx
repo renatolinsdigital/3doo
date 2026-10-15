@@ -59,6 +59,24 @@ describe('TopologyPanel', () => {
     for (const name of ['MERGE BY DISTANCE…', 'TRIANGULATE', 'TRIS TO QUADS']) {
       expect(button(name)).not.toHaveAttribute('aria-disabled');
     }
+    // Whether anything is loose takes a walk over the whole mesh to find out,
+    // so the operator answers that rather than the button.
+    expect(button('DELETE LOOSE')).not.toHaveAttribute('aria-disabled');
+  });
+
+  it('deletes geometry loose from the main mesh, as one undo step', async () => {
+    render(<TopologyPanel />);
+    act(() => {
+      activeMesh().addVert({ x: 9, y: 9, z: 9 });
+      useEditorStore.getState().touchMesh();
+    });
+    const steps = useEditorStore.getState().historyUndo.length;
+
+    await userEvent.click(button('DELETE LOOSE'));
+
+    expect(activeMesh().verts.size).toBe(8);
+    expect(activeMesh().faces.size).toBe(6);
+    expect(useEditorStore.getState().historyUndo).toHaveLength(steps + 1);
   });
 
   it('enables them again once there is something to act on', () => {

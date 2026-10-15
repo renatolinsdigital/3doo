@@ -647,6 +647,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Make planar',
             'In the CLEAN UP row of the TOPOLOGY panel. Flattens the selected quads, moving their corners as little as it takes. Quads that share corners are settled together, so a whole patch comes out flat in one click. Corners shared with faces outside the selection move too, which can bend those faces a little. Triangles are always flat and n-gons are left alone. Turn on NON-PLANAR under OVERLAYS to see which quads are bent: they are tinted amber. On a large patch bent every which way, one click may leave some still bent, and the status bar says how many. Click again to carry on.',
           ],
+          [
+            'Delete loose',
+            'In the CLEAN UP row of the TOPOLOGY panel. Keeps the main mesh, the piece with the most vertices, edges and faces joined together, and deletes everything not joined to it: stray vertices, loose edges and floating pieces. It works on the whole mesh, whatever is selected. Of two pieces the same size, the one made first stays. When the mesh is all one piece there is nothing to delete, and the status bar says so.',
+          ],
         ],
       },
       {
