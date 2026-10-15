@@ -2532,6 +2532,7 @@ export const createSceneSlice: StateCreator<
           selectMode,
           cursor,
           objectScale: object.transform.scale,
+          activeMaterial: object.activeMaterial,
         },
         name,
         params,

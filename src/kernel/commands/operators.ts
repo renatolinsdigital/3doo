@@ -69,6 +69,8 @@ export interface OperatorContext {
    * stands between a coordinate in it and a size out in the world.
    */
   objectScale?: Vec3;
+  /** The material slot highlighted in the panel, worn by faces an operator fills in. */
+  activeMaterial?: number;
 }
 
 export type OperatorParams = Record<string, unknown>;
@@ -610,7 +612,7 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     };
   },
 
-  fill: ({ mesh, selectMode }, params) => {
+  fill: ({ mesh, selectMode, activeMaterial = 0 }, params) => {
     const edges = mesh.selectedEdges();
     if (edges.length < 3) return { status: 'Select a boundary loop to fill' };
     if (readBoolean(params, 'bridge', false)) {
@@ -627,6 +629,7 @@ export const OPERATORS: Record<string, OperatorHandler> = {
         refused: true,
       };
     }
+    for (const face of created) face.materialIndex = activeMaterial;
     const replaced = before + created.length - mesh.faces.size;
     return {
       status:

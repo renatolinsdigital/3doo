@@ -2081,6 +2081,19 @@ describe('fill and bridge', () => {
     expect(cube.faces.size).toBe(6);
   });
 
+  it('gives the filled face the active material slot', () => {
+    const cube = createBox(2);
+    const top = faceAt(cube, vec3(0, 1, 0));
+    deleteGeometry(cube, { verts: [], edges: [], faces: [top] }, 'onlyFaces');
+    cube.selectAll();
+    const context = { mesh: cube, selectMode: 'face' as const, cursor: vec3(), activeMaterial: 2 };
+
+    execOperator(context, 'fill');
+
+    expect(faceAt(cube, vec3(0, 1, 0)).materialIndex).toBe(2);
+    expect(faceAt(cube, vec3(0, -1, 0)).materialIndex).toBe(0);
+  });
+
   it('bridges two open loops with a band of quads', () => {
     const lower = createPlane(2);
     const upper = createPlane(2);
