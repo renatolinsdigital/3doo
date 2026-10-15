@@ -1,6 +1,7 @@
 import type { StateCreator } from 'zustand';
 
 import {
+  type Axis,
   type BMesh,
   type BooleanOp,
   type ImportedObject,
@@ -37,6 +38,7 @@ import {
   createImagePlane,
   createPrimitive,
   createTransform,
+  cutMeshInHalf,
   deserializeProject,
   equals,
   evaluateModifiers,
@@ -783,6 +785,8 @@ export interface SceneSlice {
   separateLooseParts: () => void;
   /** Moves the selected faces of the object in edit mode into an object of their own. */
   separateSelection: () => void;
+  /** Cuts the active object in two across its own axis, halfway along its bounds. */
+  cutInHalf: (axis: Axis) => void;
   /** Deletes the selection, or the objects named: the outliner's row menu names one. */
   deleteSelected: (ids?: readonly string[]) => void;
   /** Bakes the selection's transforms, or those of the objects named. */
@@ -1905,6 +1909,73 @@ export const createSceneSlice: StateCreator<
       selectedObjectIds: [object.id, separated.id],
       meshVersion: state.meshVersion + 1,
       status: `Separated ${selected} face(s) into ${separated.name}`,
+    }));
+  },
+
+  /**
+   * Cuts the active object in two across one of its own axes, halfway between
+   * the ends of its bounds, and makes an object of each half.
+   *
+   * Its own axes rather than the world's, so a turned object still comes apart
+   * into two equal halves of itself. The object keeps the negative half and
+   * the positive one becomes an object of its own. Both keep the material
+   * slots and modifier stack, as separated parts do, and get their origins on
+   * their own middles, so nothing moves on screen. The halves are new meshes,
+   * so a linked copy of the object keeps its whole shape.
+   */
+  cutInHalf: (axis) => {
+    const object = activeObject(get());
+    if (!object) {
+      set({ status: 'Select an object to cut in half' });
+      return;
+    }
+    if (object.locked) {
+      get().noteLockedAttempt(object.id);
+      return;
+    }
+
+    const label = axis.toUpperCase();
+    const halves = object.lattice ? null : cutMeshInHalf(object.mesh, axis);
+    if (!halves) {
+      const refusal = object.lattice
+        ? CAGE_REFUSAL
+        : `${object.name} is flat on ${label}, so there is nothing to cut in half`;
+      set({ status: refusal });
+      get().pushToast('warning', refusal);
+      return;
+    }
+
+    get().recordHistory(`Cut in half on ${label}`);
+
+    const [negative, positive] = halves;
+    const other = recenterOrigin({
+      ...object,
+      id: nextObjectId(),
+      name: `${object.name}.+${label}`,
+      mesh: positive,
+      transform: structuredClone(object.transform),
+      materials: structuredClone(object.materials),
+      modifiers: structuredClone(object.modifiers),
+      primitive: null,
+    });
+
+    set((state) => ({
+      objects: state.objects.flatMap((candidate) =>
+        candidate.id === object.id
+          ? [
+              recenterOrigin({
+                ...candidate,
+                name: `${object.name}.-${label}`,
+                mesh: negative,
+                primitive: null,
+              }),
+              other,
+            ]
+          : [candidate],
+      ),
+      selectedObjectIds: [object.id, other.id],
+      meshVersion: state.meshVersion + 1,
+      status: `Cut ${object.name} in half on ${label}`,
     }));
   },
 

@@ -8,6 +8,7 @@ export * from './knife';
 export * from './chains';
 export * from './relax';
 export * from './planar';
+export * from './bisect';
 export * from './circle';
 export * from './space';
 export * from './slide';

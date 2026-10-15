@@ -13,6 +13,7 @@ import {
   type StraightView,
   type Vec3,
   type Vert,
+  AXES,
   PRIMITIVE_FIELDS,
   VIEW_PLANES,
   composeMatrix,
@@ -1234,6 +1235,16 @@ export class ObjectHandle {
       (object) => object.id === this.id || !before.has(object.id),
     );
     return parts.map((object) => this.handles.object(object.id));
+  }
+
+  cutInHalf(axis: unknown): [ObjectHandle, ObjectHandle] {
+    const along = readEnum(axis, AXES, 'object.cutInHalf: axis');
+    unlocked(this.object);
+    const before = new Set(store().objects.map((object) => object.id));
+    onObject(this.id, () => store().cutInHalf(along));
+    const added = store().objects.find((object) => !before.has(object.id));
+    if (!added) throw new Error(`object.cutInHalf: ${store().status}.`);
+    return [this.handles.object(this.id), this.handles.object(added.id)];
   }
 
   toString(): string {

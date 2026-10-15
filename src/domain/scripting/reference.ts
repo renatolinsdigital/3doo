@@ -1059,6 +1059,13 @@ export const API_ENTRIES: readonly ApiEntry[] = [
       kind: 'function',
       summary: 'Splits its loose parts into objects of their own and returns every part.',
     },
+    {
+      name: 'cutInHalf',
+      kind: 'function',
+      args: 'axis',
+      summary:
+        'Cuts it in two across its own x, y or z axis, halfway along its bounds, splitting every face the middle crosses. Returns [negative, positive]: it keeps the negative half, and both are left open where they were cut.',
+    },
   ]),
   ...entries('mesh', [
     {

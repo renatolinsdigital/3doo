@@ -420,6 +420,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'P splits the loose parts of a mesh into an object each. To split off faces that are still attached, use SEPARATE SELECTED in edit mode.',
           ],
           [
+            'Cut in half',
+            'The X, Y and Z buttons under CUT IN HALF in the OBJECT panel cut the active object in two across its own axis, halfway along its bounds. Every face the middle runs through is split there, and each half becomes an object of its own, open where it was cut: select the border and press F to close it. The object keeps the negative half, and a linked copy keeps its whole shape.',
+          ],
+          [
             'Apply transform',
             'Ctrl+A bakes rotation and scale into the vertices, leaving the transform clean.',
           ],
@@ -472,8 +476,8 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Moves to the 3D cursor, for every selected object. Use it to give a set of parts one shared point to turn about. It is in the viewport right-click menu.',
           ],
           [
-            'MERGE, SEPARATE, the booleans',
-            'Moves to the middle of the result, as ORIGIN TO GEOMETRY would. The geometry these hand back has no relation to the old origin: a merge spans everything that came in, a separated part is one piece of the old whole, and a cut can remove the corner the origin sat in. Nothing moves on screen; the LOCATION numbers change to say where the shape now is.',
+            'MERGE, SEPARATE, CUT IN HALF, the booleans',
+            'Moves to the middle of the result, as ORIGIN TO GEOMETRY would. The geometry these hand back has no relation to the old origin: a merge spans everything that came in, a separated part or a half is one piece of the old whole, and a cut can remove the corner the origin sat in. Nothing moves on screen; the LOCATION numbers change to say where the shape now is.',
           ],
           [
             'DUPLICATE, LINKED DUPLICATE',

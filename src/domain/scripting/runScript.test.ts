@@ -235,6 +235,27 @@ box.edit((mesh) => {
     expect(outcome.message).toBe('mesh.bevel needs at least one edge selected first.');
   });
 
+  it('cuts an object in half and hands back both halves', async () => {
+    const outcome = await run(`
+      const box = scene.add('cube', { name: 'BOX' });
+      const [low, high] = box.cutInHalf('Z');
+      high.position = [0, 0, 1];
+      return [low.name, high.name];
+    `);
+
+    expect(outcome.message).toBe('["BOX.-Z","BOX.+Z"]');
+    expect(store().objects.map((object) => object.mesh.faces.size)).toEqual([5, 5]);
+    expect(store().objects[1].transform.position).toEqual({ x: 0, y: 0, z: 1 });
+  });
+
+  it('says why a flat object will not cut in half', async () => {
+    const outcome = await fail(`scene.add('plane').cutInHalf('y');`);
+
+    expect(outcome.message).toBe(
+      'object.cutInHalf: PLANE is flat on Y, so there is nothing to cut in half.',
+    );
+  });
+
   it('deforms every vertex the function returns a point for', async () => {
     await run(`
       scene.add('cube').edit((mesh) => {

@@ -1,3 +1,4 @@
+import { AXES } from '@kernel/index';
 import { Button, FieldRow, Panel } from '@shared/components';
 import { useEditorStore } from '@store/index';
 
@@ -6,6 +7,7 @@ export function ObjectPanel() {
   const duplicateSelected = useEditorStore((state) => state.duplicateSelected);
   const mergeSelected = useEditorStore((state) => state.mergeSelected);
   const separateLooseParts = useEditorStore((state) => state.separateLooseParts);
+  const cutInHalf = useEditorStore((state) => state.cutInHalf);
   const applyTransform = useEditorStore((state) => state.applyTransformToSelected);
   const exec = useEditorStore((state) => state.exec);
 
@@ -42,6 +44,17 @@ export function ObjectPanel() {
           hint="Make winding consistent and point normals outward (Shift+N)"
           onClick={() => exec('recalculateNormals', { outside: true }, 'Recalculate normals')}
         />
+      </FieldRow>
+      <FieldRow legend="CUT IN HALF" columns={3}>
+        {AXES.map((axis) => (
+          <Button
+            key={axis}
+            label={axis.toUpperCase()}
+            aria-label={`CUT IN HALF ON ${axis.toUpperCase()}`}
+            hint={`Cut the active object in two across its own ${axis.toUpperCase()} axis, halfway along it. Every face crossing the middle is split there, and each half becomes an object of its own, open where it was cut`}
+            onClick={() => cutInHalf(axis)}
+          />
+        ))}
       </FieldRow>
     </Panel>
   );

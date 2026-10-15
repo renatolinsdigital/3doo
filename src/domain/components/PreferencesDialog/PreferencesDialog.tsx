@@ -83,7 +83,7 @@ const PANEL_SWITCHES: readonly { id: PanelId; label: string; hint: string }[] = 
   {
     id: 'object',
     label: 'OBJECT',
-    hint: 'Duplicate, merge, separate, apply transform and recalculate normals, on the left in object mode',
+    hint: 'Duplicate, merge, separate, apply transform, recalculate normals and cut in half, on the left in object mode',
   },
   {
     id: 'boolean',

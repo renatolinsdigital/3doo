@@ -8,7 +8,7 @@ drive them, see [keymap.md](keymap.md).
 | Area | Included |
 | --- | --- |
 | Primitives | Cube, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule, torus, with live parameters |
-| Object mode | Transform gizmo, duplicate, linked duplicate, merge, separate, union / difference / intersect booleans, apply transform, delete, outliner with rename / visibility / lock and Ctrl+G groups that rename, select, join, ungroup or delete as one |
+| Object mode | Transform gizmo, duplicate, linked duplicate, merge, separate, cut in half across X, Y or Z, union / difference / intersect booleans, apply transform, delete, outliner with rename / visibility / lock and Ctrl+G groups that rename, select, join, ungroup or delete as one |
 | Selection | Vertex, edge and face modes; click and Shift+click, box / circle / lasso region select, Alt+click edge and face loops, grow / shrink / invert |
 | Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, knife, subdivide (Catmull-Clark), vertex and edge slide, relax, circle, space, merge, merge by distance, connect, delete, dissolve, fill, bridge, triangulate, tris-to-quads, make planar |
 | Normals | Recalculate outside, flip, shade smooth / flat, mark / clear sharp edges (drawn in cyan, carried through subdivide, loop cut, merge and the modifiers), face-orientation overlay |
@@ -237,6 +237,33 @@ its hint says what to select instead:
 | Make Planar | A quad among the selected faces |
 | Merge by Distance, Triangulate, Tris to Quads | Nothing. They fall back to the whole mesh |
 
+### Cut in half
+
+The X, Y and Z buttons under **CUT IN HALF** in the OBJECT panel cut the
+active object in two, and each half becomes an object of its own:
+
+- **The cut runs halfway along the object's bounds**, on the plane square to
+  the axis picked, not through its origin. An origin left off centre by an
+  edit-mode move still gets two equal halves.
+- **It follows the object's own axes**, the way the Mirror modifier does, so a
+  turned object comes apart into two halves of itself rather than along a
+  slant through it.
+- **It works face by face.** Every face the middle runs through is split along
+  it, and every other face goes whole to the side it lies on. A face that
+  bends back on itself, such as a U, splits into a piece for each stretch the
+  middle crosses. Where a loop already lies on the middle, as round a sphere's
+  equator, the cut follows it and splits nothing. UVs, smoothing, materials
+  and sharp edges carry across, as they do through a knife cut.
+- **Nothing is closed over.** A solid comes apart into two open shells. Select
+  the border and press <kbd>F</kbd> to cap one.
+- **The object keeps the negative half**, renamed with `.-X`, `.-Y` or `.-Z`,
+  and the other half is a new object named with the plus sign. Both keep the
+  material slots and modifier stack, both are selected, and each has its
+  origin on its own middle, so nothing moves on screen.
+- **A linked copy keeps its whole shape.** The halves are new meshes, so the
+  object simply stops sharing. A locked object, a lattice cage and an object
+  flat on the axis picked are refused, and the status bar says why.
+
 ### Object origins
 
 Every object has an origin: the point its vertex coordinates are measured
@@ -253,7 +280,7 @@ What moves the origin:
 | Object-mode move | Moves with the mesh |
 | Edit-mode move | Stays put. The geometry moves away from it |
 | Origin to geometry | Moves to the middle of the mesh |
-| Merge, Separate, the three booleans | Moves to the middle of the result, as Origin to geometry would |
+| Merge, Separate, Cut in half, the three booleans | Moves to the middle of the result, as Origin to geometry would |
 | Duplicate, Linked duplicate, Apply transform, Recalculate normals | Stays put |
 
 **Origin to geometry** is the <kbd>⊙</kbd> button at the foot of the tool rail.
@@ -262,10 +289,10 @@ screen, because the vertices give up exactly what the origin gains. It needs a
 single-user mesh: linked copies share their vertices, so moving one copy's
 origin would drag every other copy off its own.
 
-Merge, Separate and the booleans re-centre because the geometry they hand back
-has no relation to the old origin: a merge spans everything that came in, a
-separated part is one piece of the whole, and a cut can remove the corner the
-origin sat in. The operations that leave it alone have good reason to: a copy
+Merge, Separate, Cut in half and the booleans re-centre because the geometry
+they hand back has no relation to the old origin: a merge spans everything that
+came in, a separated part or a half is one piece of the whole, and a cut can
+remove the corner the origin sat in. The operations that leave it alone have good reason to: a copy
 should behave like its source, and the other two do not move the geometry
 relative to its origin.
 

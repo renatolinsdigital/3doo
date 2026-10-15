@@ -51,6 +51,7 @@ import { insetFaces } from './inset';
 import { canLoopCut, loopCut } from './loopcut';
 import { relaxVerts } from './relax';
 import { isNonPlanarQuad, makeQuadsPlanar, quadBend } from './planar';
+import { bisectMesh, cutMeshInHalf } from './bisect';
 import { circleVerts } from './circle';
 import { spaceVerts } from './space';
 import { countMergeByDistance, mergeByDistance, mergeVerts } from './merge';
@@ -2976,5 +2977,145 @@ describe('make planar', () => {
       expect(quadBend(grid.facePoints(picked))).toBeLessThan(1e-6);
       expect(others.some((face) => isNonPlanarQuad(grid.facePoints(face)))).toBe(true);
     });
+  });
+});
+
+describe('cut in half', () => {
+  /** A flat face in the XZ plane through these [x, z] corners, in order. */
+  function outline(points: readonly [number, number][]): BMesh {
+    const mesh = new BMesh();
+    mesh.addFace(points.map(([x, z]) => mesh.addVert(vec3(x, 0, z))));
+    mesh.computeNormals();
+    return mesh;
+  }
+
+  function totalArea(mesh: BMesh): number {
+    return [...mesh.faces.values()].reduce((sum, face) => sum + mesh.faceArea(face), 0);
+  }
+
+  function cornerCounts(mesh: BMesh): number[] {
+    return [...mesh.faces.values()].map((face) => mesh.faceLoopCount(face)).sort();
+  }
+
+  function cut(mesh: BMesh, axis: 'x' | 'y' | 'z'): [BMesh, BMesh] {
+    const halves = cutMeshInHalf(mesh, axis);
+    if (!halves) throw new Error('Nothing was cut');
+    return halves;
+  }
+
+  it('splits the faces across the middle and leaves each half open there', () => {
+    const [negative, positive] = cut(createBox(1), 'x');
+
+    for (const [half, low, high] of [
+      [negative, -0.5, 0],
+      [positive, 0, 0.5],
+    ] as const) {
+      expect(half.validate()).toEqual([]);
+      expect(half.faces.size).toBe(5);
+      expect(half.verts.size).toBe(8);
+      expect(half.boundingBox().min.x).toBeCloseTo(low);
+      expect(half.boundingBox().max.x).toBeCloseTo(high);
+      expect(totalArea(half)).toBeCloseTo(3);
+      // The four edges round the cut border one face each: nothing closes it.
+      expect([...half.edges.values()].filter((edge) => edge.loops.length === 1)).toHaveLength(4);
+    }
+  });
+
+  it('cuts at the middle of the bounds, wherever the origin is', () => {
+    const box = createBox(1);
+    for (const vert of box.verts.values()) vert.co.y += 3;
+
+    const [negative, positive] = cut(box, 'y');
+
+    expect(negative.boundingBox().max.y).toBeCloseTo(3);
+    expect(positive.boundingBox().min.y).toBeCloseTo(3);
+  });
+
+  it('leaves the mesh it was given whole', () => {
+    const box = createBox(1);
+
+    cut(box, 'z');
+
+    expect(box.faces.size).toBe(6);
+    expect(box.verts.size).toBe(8);
+  });
+
+  it('runs along a loop already on the middle rather than slicing beside it', () => {
+    const sphere = createUVSphere(0.5, 24, 12);
+
+    const [negative, positive] = cut(sphere, 'x');
+
+    // A meridian lies on x = 0 give or take a float, so not one face is split.
+    expect(negative.faces.size + positive.faces.size).toBe(sphere.faces.size);
+    expect(negative.faces.size).toBe(positive.faces.size);
+    expect(totalArea(negative) + totalArea(positive)).toBeCloseTo(totalArea(sphere));
+  });
+
+  it('cuts a face that bends back on itself into a piece for every stretch inside it', () => {
+    // A U opening towards +z: the middle crosses both prongs.
+    const u = outline([
+      [0, 0],
+      [3, 0],
+      [3, 3],
+      [2, 3],
+      [2, 1],
+      [1, 1],
+      [1, 3],
+      [0, 3],
+    ]);
+
+    const [negative, positive] = cut(u, 'z');
+
+    expect(cornerCounts(negative)).toEqual([8]);
+    expect(cornerCounts(positive)).toEqual([4, 4]);
+    expect(totalArea(negative) + totalArea(positive)).toBeCloseTo(totalArea(u));
+  });
+
+  it('parts the pieces at a corner the middle only touches', () => {
+    // A notch whose point rests on z = 1: the cut runs through it, and the
+    // half above comes away as two faces rather than one pinched at the point.
+    const notched = outline([
+      [0, 0],
+      [4, 0],
+      [4, 2],
+      [3, 2],
+      [2, 1],
+      [1, 2],
+      [0, 2],
+    ]);
+
+    const [negative, positive] = cut(notched, 'z');
+
+    expect(cornerCounts(negative)).toEqual([5]);
+    expect(cornerCounts(positive)).toEqual([4, 4]);
+    expect(positive.validate()).toEqual([]);
+  });
+
+  it('carries the picture across the cut', () => {
+    const [negative] = cut(createImagePlane(2, 1), 'x');
+
+    const us = [...negative.faces.values()].flatMap((face) =>
+      negative.faceLoops(face).map((loop) => loop.uv.u),
+    );
+    expect(Math.min(...us)).toBeCloseTo(0);
+    expect(Math.max(...us)).toBeCloseTo(0.5);
+  });
+
+  it('finds nothing to cut across a flat mesh', () => {
+    expect(cutMeshInHalf(createPlane(1), 'y')).toBeNull();
+    expect(cutMeshInHalf(new BMesh(), 'x')).toBeNull();
+  });
+
+  it('bisects in place along any plane, leaving each face on one side', () => {
+    const box = createBox(1);
+    const normal = normalize(vec3(1, 1, 0));
+
+    bisectMesh(box, normal, 0.1);
+
+    expect(box.validate()).toEqual([]);
+    for (const face of box.faces.values()) {
+      const heights = box.faceVerts(face).map((vert) => dot(vert.co, normal) - 0.1);
+      expect(Math.min(...heights) > -1e-9 || Math.max(...heights) < 1e-9).toBe(true);
+    }
   });
 });

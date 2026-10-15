@@ -222,33 +222,49 @@ export function splitLooseParts(mesh: BMesh): BMesh[] {
  * left it.
  */
 export function splitSelectedFaces(mesh: BMesh): [rest: BMesh, selected: BMesh] {
+  const [rest, selected] = splitFaces(mesh, (face) => face.selected);
+  rest.deselectAll();
+  return [rest, selected];
+}
+
+/**
+ * Splits the faces `pick` chooses off a mesh: the first mesh holds the rest,
+ * the second the faces chosen. A vertex on the border between them goes into
+ * both, so the two come apart there. Wire edges and loose vertices stay with
+ * the rest, and each side keeps the selection it holds.
+ */
+export function splitFaces(
+  mesh: BMesh,
+  pick: (face: Face) => boolean,
+): [rest: BMesh, chosen: BMesh] {
   const data = serializeMesh(mesh);
-  const chosen = new Set(data.selection.faces);
-  const selectedFaces: number[] = [];
+  // `serializeMesh` writes the faces in the order the mesh holds them.
+  const picked = new Set<number>();
+  [...mesh.faces.values()].forEach((face, faceIndex) => {
+    if (pick(face)) picked.add(faceIndex);
+  });
+  const chosenFaces: number[] = [];
   const restFaces: number[] = [];
   data.faces.forEach((_, faceIndex) =>
-    (chosen.has(faceIndex) ? selectedFaces : restFaces).push(faceIndex),
+    (picked.has(faceIndex) ? chosenFaces : restFaces).push(faceIndex),
   );
 
-  const selectedVerts = new Set(selectedFaces.flatMap((faceIndex) => data.faces[faceIndex]));
+  const chosenVerts = new Set(chosenFaces.flatMap((faceIndex) => data.faces[faceIndex]));
   const restVerts = new Set(restFaces.flatMap((faceIndex) => data.faces[faceIndex]));
   for (const [a, b] of data.wireEdges) restVerts.add(a).add(b);
 
   const vertices = Array.from({ length: data.positions.length / 3 }, (_, index) => index);
-  const rest = meshPart(
-    data,
-    vertices.filter((index) => restVerts.has(index) || !selectedVerts.has(index)),
-    restFaces,
-    true,
-  );
-  rest.deselectAll();
-
   return [
-    rest,
     meshPart(
       data,
-      vertices.filter((index) => selectedVerts.has(index)),
-      selectedFaces,
+      vertices.filter((index) => restVerts.has(index) || !chosenVerts.has(index)),
+      restFaces,
+      true,
+    ),
+    meshPart(
+      data,
+      vertices.filter((index) => chosenVerts.has(index)),
+      chosenFaces,
       false,
     ),
   ];

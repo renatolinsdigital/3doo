@@ -1056,6 +1056,88 @@ describe('editor store', () => {
     expect(store().status).toMatch(status);
   });
 
+  it('cuts the active object in half into two objects that stay where it was', () => {
+    store().addPrimitive('cube');
+    const original = activeObject();
+    store().setObjectTransform(original.id, { position: { x: 2, y: 0, z: 0 } });
+
+    store().cutInHalf('x');
+
+    expect(store().objects).toHaveLength(2);
+    const [negative, positive] = store().objects;
+    expect(negative.id).toBe(original.id);
+    expect(negative.name).toBe(`${original.name}.-X`);
+    expect(positive.name).toBe(`${original.name}.+X`);
+    for (const half of [negative, positive]) {
+      expect(half.mesh.faces.size).toBe(5);
+      expect(half.primitive).toBeNull();
+    }
+    // Each origin sits on the middle of its own half, which has not moved on
+    // screen: the halves still meet at x = 2.
+    expect(negative.transform.position.x).toBeCloseTo(1.75);
+    expect(positive.transform.position.x).toBeCloseTo(2.25);
+    expect(negative.mesh.boundingBox().max.x).toBeCloseTo(0.25);
+    expect(positive.mesh.boundingBox().min.x).toBeCloseTo(-0.25);
+    expect(store().selectedObjectIds).toEqual([negative.id, positive.id]);
+    expect(store().activeObjectId).toBe(original.id);
+
+    store().undo();
+
+    expect(store().objects).toHaveLength(1);
+    expect(activeObject().mesh.faces.size).toBe(6);
+  });
+
+  it('cuts across its own axis when the object is turned', () => {
+    store().addPrimitive('cube');
+    const original = activeObject();
+    store().setObjectTransform(original.id, {
+      rotation: { x: 0, y: 0, z: Math.PI / 2 },
+      scale: { x: 4, y: 1, z: 1 },
+    });
+
+    store().cutInHalf('x');
+
+    for (const half of store().objects) {
+      const box = half.mesh.boundingBox();
+      expect(box.max.x - box.min.x).toBeCloseTo(0.5);
+      expect(box.max.y - box.min.y).toBeCloseTo(1);
+    }
+  });
+
+  it('leaves a linked copy whole', () => {
+    store().addPrimitive('cube');
+    store().setActiveObject(activeObject().id);
+    store().duplicateSelected(true);
+    const copy = activeObject();
+
+    store().cutInHalf('y');
+
+    expect(store().objects).toHaveLength(3);
+    const linked = store().objects.find((object) => object.mesh === copy.mesh);
+    expect(linked?.mesh.faces.size).toBe(6);
+  });
+
+  it('says so rather than cutting a mesh that is flat on the axis', () => {
+    store().addPrimitive('plane');
+    const before = store().canUndo;
+
+    store().cutInHalf('y');
+
+    expect(store().objects).toHaveLength(1);
+    expect(store().status).toMatch(/flat on Y/);
+    expect(store().canUndo).toBe(before);
+  });
+
+  it('leaves a locked object alone', () => {
+    store().addPrimitive('cube');
+    store().toggleObjectLock(activeObject().id);
+
+    store().cutInHalf('z');
+
+    expect(store().objects).toHaveLength(1);
+    expect(activeObject().mesh.faces.size).toBe(6);
+  });
+
   it('leaves objects outside the merge unchanged when they share the mesh', () => {
     store().addPrimitive('cube');
     const original = activeObject().id;
