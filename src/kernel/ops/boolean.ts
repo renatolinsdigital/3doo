@@ -74,7 +74,7 @@ const CSG_SHARE = 0.88;
 const REBUILD_SHARE = 0.07;
 
 /** The largest side of the box the polygons fill; the model's own scale. */
-function extentOf(polys: readonly Poly[]): number {
+function extentOf(polys: readonly { points: readonly Vec3[] }[]): number {
   let min = { x: Infinity, y: Infinity, z: Infinity };
   let max = { x: -Infinity, y: -Infinity, z: -Infinity };
 
@@ -311,7 +311,12 @@ function build(root: Node, polys: readonly Poly[], epsilon: number): void {
     const front: Poly[] = [];
     const back: Poly[] = [];
     for (const poly of batch) {
-      splitPoly(node.plane, poly, node.polys, node.polys, front, back, epsilon);
+      // A polygon is always in its own plane, whatever its points say. One that
+      // is not quite flat has a corner past the tolerance, and sorted by the
+      // test its piece on that side carries the same plane down into a child
+      // that picks that plane again: the build never ends.
+      if (poly.plane === node.plane) node.polys.push(poly);
+      else splitPoly(node.plane, poly, node.polys, node.polys, front, back, epsilon);
     }
 
     if (front.length > 0) {
@@ -1751,23 +1756,29 @@ export function* booleanMeshStaged(
   toTarget: (point: Vec3) => Vec3,
   toolSlot: (face: Face) => number = (face) => face.materialIndex,
 ): Generator<number, BMesh> {
+  // One scale for the whole operation, taken from both solids together: a
+  // small tool cutting a large target has to be measured against the pair,
+  // not against whichever of them happens to be under the tolerance first.
+  // Taken before the faces are read, so a face called flat there is flat by
+  // the same measure the tree sorts it with.
+  const scale = extentOf([
+    { points: [...target.verts.values()].map((vert) => vert.co) },
+    { points: [...tool.verts.values()].map((vert) => toTarget(vert.co)) },
+  ]);
+  const epsilon = PLANE_EPSILON * scale;
+
   const areaOf = new Map<number, number>();
   const warped: number[][] = [];
-  const a = meshToPolys(target, (point) => point, undefined, 0, areaOf, warped);
+  const a = meshToPolys(target, (point) => point, undefined, 0, areaOf, warped, epsilon);
   // Past every id the target used, so a face of one operand is never mistaken
   // for a face of the other. Not its face count: a warped face takes an id per
   // triangle.
   const base = a.reduce((last, poly) => Math.max(last, poly.source), 0);
-  const b = meshToPolys(tool, toTarget, toolSlot, base, areaOf, warped);
-
-  // One scale for the whole operation, taken from both solids together: a
-  // small tool cutting a large target has to be measured against the pair,
-  // not against whichever of them happens to be under the tolerance first.
-  const scale = extentOf([...a, ...b]);
+  const b = meshToPolys(tool, toTarget, toolSlot, base, areaOf, warped, epsilon);
 
   // The CSG carries most of the cost, so its own stages are passed straight
   // through; rebuilding the mesh and resolving it share what is left.
-  const steps = csgStaged(op, a, b, PLANE_EPSILON * scale, {
+  const steps = csgStaged(op, a, b, epsilon, {
     a: isSolid(target),
     b: isSolid(tool),
   });

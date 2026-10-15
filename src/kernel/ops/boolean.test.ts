@@ -254,6 +254,22 @@ describe('mesh booleans', () => {
     }
   });
 
+  it('finishes on a small model with a face a hair off flat', () => {
+    // One corner of the top lifted by 8 µm leaves the quad 2 µm off its own
+    // plane: inside a fixed 5 µm tolerance, outside 5 µm per metre of a 30 cm
+    // pair. Read as flat by one and as straddling by the other, its piece on
+    // the high side was sorted against the same plane forever.
+    const target = createBox(0.2);
+    const corner = [...target.verts.values()].find(
+      (vert) => vert.co.x > 0 && vert.co.y > 0 && vert.co.z > 0,
+    ) as Vert;
+    corner.co = add(corner.co, vec3(0, 8e-6, 0));
+
+    const result = booleanMesh('union', target, createBox(0.2), offsetBy(vec3(0.1, 0, 0)));
+
+    expect(volume(result)).toBeCloseTo(0.012, 5);
+  });
+
   it('keeps a face the cut never reached as the quad it came in as', () => {
     const result = booleanMesh('difference', createBox(2), createBox(2), offsetBy(vec3(1, 0, 0)));
 
