@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type Edge,
   type Vert,
+  add,
   createBox,
   createCircle,
   createPlane,
@@ -14,6 +15,7 @@ import {
   UNKNOWN_POINT_FACES,
   buildEdgeCull,
   buildMeshBuffers,
+  buildNonPlanarTriangles,
   buildPointFaces,
   buildSilhouetteEdges,
   frontEdgeLines,
@@ -25,6 +27,35 @@ import {
 function edgeCount(positions: Float32Array): number {
   return positions.length / 6;
 }
+
+describe('non-planar triangles', () => {
+  /** Each triangle in a position buffer, its corners written out, for comparing. */
+  function triangles(positions: Float32Array): string[] {
+    const found: string[] = [];
+    for (let at = 0; at < positions.length; at += 9) {
+      found.push([...positions.subarray(at, at + 9)].map((n) => n.toFixed(5)).join(','));
+    }
+    return found;
+  }
+
+  it('holds nothing for a mesh of flat quads', () => {
+    expect(buildNonPlanarTriangles(createBox(1))).toHaveLength(0);
+  });
+
+  it('holds the bent quads, split exactly as the solid splits them', () => {
+    const box = createBox(1);
+    const [corner] = [...box.verts.values()];
+    corner.co = add(corner.co, vec3(0.1, 0.2, 0.05));
+    box.computeNormals();
+
+    const wash = triangles(buildNonPlanarTriangles(box));
+    const solid = new Set(triangles(buildMeshBuffers(box).solid.positions));
+
+    // The three quads round the corner, two triangles each.
+    expect(wash).toHaveLength(6);
+    for (const triangle of wash) expect(solid.has(triangle)).toBe(true);
+  });
+});
 
 describe('silhouette edges', () => {
   it('traces the four edges of a cube seen face on', () => {

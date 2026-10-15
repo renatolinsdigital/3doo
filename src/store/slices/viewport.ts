@@ -104,6 +104,7 @@ export const createViewportSlice: StateCreator<
     axes: true,
     normals: false,
     faceOrientation: false,
+    nonPlanar: false,
     statistics: true,
     cursor: true,
     origins: true,

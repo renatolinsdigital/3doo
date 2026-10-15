@@ -34,6 +34,7 @@ import {
   limitedDissolve,
   canLoopCut,
   loopCut,
+  makeQuadsPlanar,
   markSharp,
   medianPoint,
   mergeByDistance,
@@ -703,6 +704,37 @@ export const OPERATORS: Record<string, OperatorHandler> = {
       readNumber(params, 'angle', 40),
     );
     return { status: `Merged ${created.length} quads` };
+  },
+
+  makePlanar: ({ mesh }) => {
+    const faces = mesh.selectedFaces();
+    if (faces.length === 0) return { status: 'Select the quads to make planar', refused: true };
+
+    const result = makeQuadsPlanar(mesh, faces);
+    if (result.quads === 0) {
+      return {
+        status: 'None of the selected faces is a quad, and only quads are made planar',
+        refused: true,
+      };
+    }
+    if (!result.moved) {
+      return {
+        status:
+          result.bentAfter > 0
+            ? 'Those quads are folded over on themselves, with no plane to flatten onto'
+            : 'The selected quads are planar already',
+        refused: true,
+      };
+    }
+
+    const skipped = faces.length - result.quads;
+    const others = skipped > 0 ? `, leaving ${skipped} face(s) that are not quads` : '';
+    if (result.bentAfter > 0) {
+      return {
+        status: `Made ${result.quads - result.bentAfter} of ${result.quads} quad(s) planar${others}. ${result.bentAfter} still bend: run it again to carry on`,
+      };
+    }
+    return { status: `Made ${result.quads} quad(s) planar${others}` };
   },
 
   translate: ({ mesh }, params) => {

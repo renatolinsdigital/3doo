@@ -639,6 +639,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Triangulate (Alt+T) / tris to quads (Alt+J)',
             'Converts the whole mesh one way or the other. Tris to quads merges adjacent, near-coplanar triangle pairs back into quads.',
           ],
+          [
+            'Make planar',
+            'In the CLEAN UP row of the TOPOLOGY panel. Flattens the selected quads, moving their corners as little as it takes. Quads that share corners are settled together, so a whole patch comes out flat in one click. Corners shared with faces outside the selection move too, which can bend those faces a little. Triangles are always flat and n-gons are left alone. Turn on NON-PLANAR under OVERLAYS to see which quads are bent: they are tinted amber. On a large patch bent every which way, one click may leave some still bent, and the status bar says how many. Click again to carry on.',
+          ],
         ],
       },
       {
@@ -1010,7 +1014,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'Pick the shading from the SHADING menu in the top bar, or cycle through the modes with Shift+Z. The grid adapts its spacing as you zoom. The OVERLAYS menu beside it turns the grid, axes, cursor, normals, face orientation and statistics on and off independently.',
+        text: 'Pick the shading from the SHADING menu in the top bar, or cycle through the modes with Shift+Z. The grid adapts its spacing as you zoom. The OVERLAYS menu beside it turns the grid, axes, cursor, normals, face orientation, non-planar quads and statistics on and off independently. NON-PLANAR tints amber every quad bent more than a tenth of a degree out of flat, which is where shading creases and where another program may split the quad along the other diagonal.',
       },
     ],
   },

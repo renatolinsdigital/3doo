@@ -625,12 +625,16 @@ describe('ObjectView vertex dots', () => {
       if (line === outline) continue;
       expect((line.material as LineMaterial).uniforms.surfaceTag.value).toBe(tag);
     }
-    const wash = view.group.children.find(
+    // The selection's and the non-planar overlay's.
+    const washes = view.group.children.filter(
       (child): child is THREE.Mesh =>
         child instanceof THREE.Mesh &&
         (child.material as THREE.Material).userData.surfaceTag !== undefined,
     );
-    expect((wash?.material as THREE.Material).userData.surfaceTag.value).toBe(tag);
+    expect(washes).toHaveLength(2);
+    for (const wash of washes) {
+      expect((wash.material as THREE.Material).userData.surfaceTag.value).toBe(tag);
+    }
   });
 
   it('says when it has a wire on screen, which is tested against the same surfaces', () => {
@@ -1004,6 +1008,79 @@ describe('ObjectView sharp edges', () => {
     view.update(object, evaluatedMesh(object), state({ ...settings, shading: 'xray' }, 'edit'));
 
     expect(segmentCount(sharpOf(view, object.id))).toBe(12);
+  });
+});
+
+describe('ObjectView non-planar overlay', () => {
+  function washOf(view: ObjectView, id: string): THREE.Mesh {
+    return view.group.getObjectByName(`${id}:nonPlanar`) as THREE.Mesh;
+  }
+
+  function state(settings: ViewportSettings, nonPlanar: boolean) {
+    return {
+      mode: 'object' as const,
+      selectMode: 'face' as const,
+      isActive: true,
+      isSelected: true,
+      eye: vec3(0, 0, 10),
+      selectionLine: SELECTION_LINE,
+      meshVersion: 1,
+      settings: {
+        ...settings,
+        shading: 'solid' as const,
+        overlays: { ...settings.overlays, nonPlanar },
+      },
+    };
+  }
+
+  /** The cube with one corner pulled out of all three faces that meet there. */
+  function bentCube(): { object: SceneObject; settings: ViewportSettings } {
+    const { object, settings } = scene();
+    const [corner] = [...object.mesh.verts.values()];
+    corner.co = add(corner.co, vec3(0.2, 0.3, 0.1));
+    object.mesh.computeNormals();
+    return { object, settings };
+  }
+
+  it('washes the bent quads and nothing else', () => {
+    const { object, settings } = bentCube();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), state(settings, true));
+
+    const wash = washOf(view, object.id);
+    expect(wash.visible).toBe(true);
+    // Three quads, two triangles each, three corners a triangle.
+    expect(wash.geometry.getAttribute('position').count).toBe(18);
+  });
+
+  it('shows nothing on a mesh whose quads are all flat', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), state(settings, true));
+
+    expect(washOf(view, object.id).visible).toBe(false);
+  });
+
+  it('goes away with the overlay', () => {
+    const { object, settings } = bentCube();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), state(settings, false));
+
+    expect(washOf(view, object.id).visible).toBe(false);
+  });
+
+  it('counts as a mark, so the occlusion pass runs for it under plain solid shading', () => {
+    const { object, settings } = bentCube();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), state(settings, false));
+    expect(view.showsMarks).toBe(false);
+
+    view.update(object, evaluatedMesh(object), state(settings, true));
+    expect(view.showsMarks).toBe(true);
   });
 });
 

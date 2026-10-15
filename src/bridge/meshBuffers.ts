@@ -4,6 +4,7 @@ import {
   type Face,
   type Loop,
   type Vec3,
+  isNonPlanarQuad,
   triangulatePolygon,
 } from '@kernel/index';
 
@@ -977,6 +978,30 @@ export function buildPointFaces(mesh: BMesh, scale: Vec3): Float32Array {
   }
 
   return faces;
+}
+
+/**
+ * The quads bent out of flat (see `isNonPlanarQuad`), as triangles, for the
+ * non-planar overlay.
+ *
+ * Split along the same diagonal `buildSolid` splits them on, so the wash lies
+ * on the very triangles it marks instead of creasing across them on its own.
+ */
+export function buildNonPlanarTriangles(mesh: BMesh): Float32Array {
+  const positions: number[] = [];
+
+  for (const face of mesh.faces.values()) {
+    if (mesh.faceLoopCount(face) !== 4) continue;
+    const points = mesh.facePoints(face);
+    if (!isNonPlanarQuad(points)) continue;
+
+    for (const index of triangulatePolygon(points, face.normal)) {
+      const co = points[index];
+      positions.push(co.x, co.y, co.z);
+    }
+  }
+
+  return new Float32Array(positions);
 }
 
 /** Line segments showing each face normal, for the normals overlay. */

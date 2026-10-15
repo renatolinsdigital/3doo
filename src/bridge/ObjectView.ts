@@ -14,6 +14,7 @@ import {
   VIEWPORT_COLORS,
   createFaceOrientationMaterial,
   createHoverPointMaterial,
+  createNonPlanarMaterial,
   createNormalsMaterial,
   createOriginMaterial,
   createOutlineMaterial,
@@ -37,6 +38,7 @@ import {
   UNKNOWN_POINT_FACES,
   buildEdgeCull,
   buildMeshBuffers,
+  buildNonPlanarTriangles,
   buildNormalLines,
   buildPointFaces,
   buildSilhouetteEdges,
@@ -258,6 +260,7 @@ export class ObjectView {
   private readonly previewWire = new LineSegments2();
   private readonly vertexHighlight = new THREE.LineSegments();
   private readonly selectedFaces = new THREE.Mesh();
+  private readonly nonPlanar = new THREE.Mesh();
   private readonly sharpEdges = new LineSegments2();
   private readonly selectedEdges = new LineSegments2();
   private readonly points = new THREE.Points();
@@ -324,6 +327,7 @@ export class ObjectView {
     this.outline.name = `${objectId}:outline`;
     this.origin.name = `${objectId}:origin`;
     this.sharpEdges.name = `${objectId}:sharp`;
+    this.nonPlanar.name = `${objectId}:nonPlanar`;
 
     // Never drawn: the modifier result is what the user looks at, and this is
     // only here for the ray to hit. Three raycasts a mesh it is handed whether
@@ -339,6 +343,7 @@ export class ObjectView {
     this.sharpEdges.material = createSharpWireMaterial();
     this.selectedEdges.material = createWireMaterial(true);
     this.selectedFaces.material = createSelectionOverlayMaterial();
+    this.nonPlanar.material = createNonPlanarMaterial();
     this.points.material = createPointMaterial();
     this.hoverPoint.material = createHoverPointMaterial();
     this.recentPoints.material = createRecentPointMaterial();
@@ -356,13 +361,19 @@ export class ObjectView {
     for (const line of this.liftedLines()) {
       (line.material as LineMaterial).uniforms.surfaceTag.value = tag;
     }
-    (this.selectedFaces.material as THREE.Material).userData.surfaceTag.value = tag;
+    for (const wash of [this.selectedFaces, this.nonPlanar]) {
+      (wash.material as THREE.Material).userData.surfaceTag.value = tag;
+    }
 
     // Under everything, the plain wireframe included: it is the faintest thing
     // the viewport draws and the cage has to read over it.
     this.previewWire.renderOrder = -1;
     this.outline.renderOrder = 1;
     this.selectedFaces.renderOrder = 2;
+    // Over the selection wash, so a bent quad reads as bent whether it is
+    // picked or not. Like that wash it tints the plain wire, and every line
+    // and dot after it is drawn over it.
+    this.nonPlanar.renderOrder = 2.5;
     // Under every mark of the selection, so a sharp edge that is picked, or
     // has a picked end, reads as picked first.
     this.sharpEdges.renderOrder = 3;
@@ -408,6 +419,7 @@ export class ObjectView {
       this.wire,
       this.vertexHighlight,
       this.selectedFaces,
+      this.nonPlanar,
       this.sharpEdges,
       this.selectedEdges,
       this.points,
@@ -490,6 +502,7 @@ export class ObjectView {
     this.updateOutline(object, displayMesh, buffers.edges, state);
     this.updateDots(cage.points, cageMesh, object, state);
     this.updateNormals(displayMesh, state);
+    this.updateNonPlanar(cageMesh, object, state);
     // The point the object gizmo sits on, so the square says where the handles
     // will be before any tool that has them is picked up, and says where a
     // rotation will turn about once one is. Selected objects only, as Blender's
@@ -936,6 +949,24 @@ export class ObjectView {
     this.replaceGeometry(this.normals, geometry);
   }
 
+  /**
+   * Washes the quads bent out of flat, while the overlay is on.
+   *
+   * Read off the mesh a pick lands on, which in edit mode is the one being
+   * edited: that is the mesh MAKE PLANAR flattens, so the wash marks what the
+   * button would act on. A lattice is a cage with no surface to bend.
+   */
+  private updateNonPlanar(mesh: BMesh, object: SceneObject, state: ObjectViewState): void {
+    this.nonPlanar.visible = false;
+    if (!state.settings.overlays.nonPlanar || object.lattice !== null) return;
+
+    const triangles = buildNonPlanarTriangles(mesh);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(triangles, 3));
+    this.replaceGeometry(this.nonPlanar, geometry);
+    this.nonPlanar.visible = triangles.length > 0;
+  }
+
   private replaceGeometry(target: THREE.Object3D, geometry: THREE.BufferGeometry): void {
     const holder = target as THREE.Object3D & { geometry?: THREE.BufferGeometry };
     holder.geometry?.dispose();
@@ -976,7 +1007,9 @@ export class ObjectView {
   get showsMarks(): boolean {
     return (
       this.group.visible &&
-      (this.selectedFaces.visible || this.liftedLines().some((line) => line.visible))
+      (this.selectedFaces.visible ||
+        this.nonPlanar.visible ||
+        this.liftedLines().some((line) => line.visible))
     );
   }
 

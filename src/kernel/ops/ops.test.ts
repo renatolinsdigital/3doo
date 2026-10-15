@@ -50,6 +50,7 @@ import { bridgeEdgeLoops, fillHole } from './fill';
 import { insetFaces } from './inset';
 import { canLoopCut, loopCut } from './loopcut';
 import { relaxVerts } from './relax';
+import { isNonPlanarQuad, makeQuadsPlanar, quadBend } from './planar';
 import { circleVerts } from './circle';
 import { spaceVerts } from './space';
 import { countMergeByDistance, mergeByDistance, mergeVerts } from './merge';
@@ -2795,5 +2796,185 @@ describe('selection walks', () => {
 
     expect(linked).toHaveLength(8);
     expect(linked).not.toContain(island);
+  });
+});
+
+describe('make planar', () => {
+  /** A one-quad plane with its first corner lifted out of flat. */
+  function bentQuad(lift: number): BMesh {
+    const mesh = createGrid(1, 1);
+    [...mesh.verts.values()][0].co.y += lift;
+    mesh.computeNormals();
+    return mesh;
+  }
+
+  /** The same pseudo-random run of numbers in -0.5 to 0.5 every time, so a failure replays. */
+  function noise(): () => number {
+    let seed = 7;
+    return () => (seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5;
+  }
+
+  function worstBend(mesh: BMesh): number {
+    let worst = 0;
+    for (const face of mesh.faces.values()) {
+      if (mesh.faceLoopCount(face) === 4) worst = Math.max(worst, quadBend(mesh.facePoints(face)));
+    }
+    return worst;
+  }
+
+  function positions(mesh: BMesh): Vec3[] {
+    return [...mesh.verts.values()].map((vert) => ({ ...vert.co }));
+  }
+
+  it('reads a flat quad as unbent, concave or not', () => {
+    const square = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(1, 0, 1), vec3(0, 0, 1)];
+    // Dented at its third corner: the diagonal from the first corner runs
+    // outside the face, and its two triangles fold back over each other.
+    const dart = [vec3(0, 0, 0), vec3(1, 0, 0), vec3(0.3, 0, 0.3), vec3(0, 0, 1)];
+
+    expect(quadBend(square)).toBeCloseTo(0, 12);
+    expect(quadBend(dart)).toBeCloseTo(0, 12);
+  });
+
+  it('measures the crease the same at any size', () => {
+    const twisted = [vec3(0, 0.02, 0), vec3(1, -0.02, 0), vec3(1, 0.02, 1), vec3(0, -0.02, 1)];
+    const bend = quadBend(twisted);
+
+    expect(bend).toBeGreaterThan(degToRad(1));
+    for (const scale of [0.001, 1000]) {
+      const scaled = twisted.map((point) =>
+        vec3(point.x * scale, point.y * scale, point.z * scale),
+      );
+      expect(quadBend(scaled)).toBeCloseTo(bend, 9);
+    }
+  });
+
+  it('tells a real bend from the rounding a saved file leaves', () => {
+    // A flat quad on a tilted plane, every coordinate cut to six decimals.
+    const round = (n: number) => Math.round(n * 1e6) / 1e6;
+    const onPlane = (x: number, z: number) => vec3(round(x), round(0.37 * x + 0.81 * z), round(z));
+    const rounded = [onPlane(0, 0), onPlane(0.05, 0), onPlane(0.05, 0.05), onPlane(0, 0.05)];
+    const bent = bentQuad(0.05);
+
+    expect(isNonPlanarQuad(rounded)).toBe(false);
+    expect(isNonPlanarQuad(bent.facePoints([...bent.faces.values()][0]))).toBe(true);
+  });
+
+  it('reads a quad with a corner on the line between its neighbours as flat', () => {
+    // A triangle with a vertex part way along one side, on a tilted plane, so
+    // the corner is off the line only by rounding.
+    const at = (x: number, z: number) => vec3(x, 0.37 * x + 0.81 * z, z);
+    const third = 1 / 3;
+    const corners = [at(0, 0), at(third, third), at(1, 1), at(0, 1)];
+
+    expect(quadBend(corners)).toBeLessThan(1e-9);
+  });
+
+  it('flattens a lone quad in one go, each corner moving the same short way', () => {
+    const mesh = bentQuad(0.1);
+    const before = positions(mesh);
+
+    const result = makeQuadsPlanar(mesh, [...mesh.faces.values()]);
+
+    expect(result).toEqual({ quads: 1, bentBefore: 1, bentAfter: 0, moved: true });
+    expect(worstBend(mesh)).toBeLessThan(1e-6);
+    // Pulling the lifted corner straight back down would move it the whole
+    // 0.1; sharing the gap out between all four moves each a quarter of that.
+    const moves = positions(mesh).map((co, i) => distance(co, before[i]));
+    for (const move of moves) expect(move).toBeCloseTo(moves[0], 9);
+    expect(moves[0]).toBeLessThan(0.03);
+  });
+
+  it('settles a whole patch of quads sharing corners in one call', () => {
+    const mesh = createGrid(2, 8);
+    const random = noise();
+    for (const vert of mesh.verts.values()) vert.co.y += random() * 0.02;
+    mesh.computeNormals();
+
+    const result = makeQuadsPlanar(mesh, [...mesh.faces.values()]);
+
+    expect(result.bentBefore).toBeGreaterThan(50);
+    expect(result.bentAfter).toBe(0);
+    expect(worstBend(mesh)).toBeLessThan(1e-5);
+  });
+
+  it('unfolds a quad bent past a right angle, rather than folding it shut', () => {
+    // A coarse smoothed cube leaves a quad at each corner folded about 105°.
+    // Driven to share a plane the shortest way, those closed up into bowties.
+    const cube = createBox(2);
+    subdivideFaces(cube, [...cube.faces.values()], { cuts: 3, smooth: 1 });
+    expect(worstBend(cube)).toBeGreaterThan(degToRad(90));
+
+    const result = makeQuadsPlanar(cube, [...cube.faces.values()]);
+
+    expect(result.bentAfter).toBe(0);
+    expect(worstBend(cube)).toBeLessThan(1e-4);
+  });
+
+  it('leaves triangles and n-gons alone', () => {
+    const cone = createCone(0.5, 1, 8, true);
+    [...cone.verts.values()][0].co.y += 0.2;
+    const before = positions(cone);
+
+    const result = makeQuadsPlanar(cone, [...cone.faces.values()]);
+
+    expect(result.quads).toBe(0);
+    expect(result.moved).toBe(false);
+    expect(positions(cone)).toEqual(before);
+  });
+
+  it('moves nothing when the quads are flat already', () => {
+    const grid = createGrid(2, 4);
+    const before = positions(grid);
+
+    const result = makeQuadsPlanar(grid, [...grid.faces.values()]);
+
+    expect(result).toEqual({ quads: 16, bentBefore: 0, bentAfter: 0, moved: false });
+    expect(positions(grid)).toEqual(before);
+  });
+
+  describe('the operator', () => {
+    const run = (mesh: BMesh) =>
+      execOperator({ mesh, selectMode: 'face', cursor: vec3() }, 'makePlanar');
+
+    it('refuses with nothing selected', () => {
+      expect(run(bentQuad(0.1))).toMatchObject({ refused: true });
+    });
+
+    it('refuses a selection with no quad in it', () => {
+      const cone = createCone(0.5, 1, 8, true);
+      cone.selectAll();
+
+      expect(run(cone)).toMatchObject({
+        status: 'None of the selected faces is a quad, and only quads are made planar',
+        refused: true,
+      });
+    });
+
+    it('refuses quads that are flat already', () => {
+      const grid = createGrid(2, 2);
+      grid.selectAll();
+
+      expect(run(grid)).toMatchObject({
+        status: 'The selected quads are planar already',
+        refused: true,
+      });
+    });
+
+    it('flattens the selected quads and leaves the rest', () => {
+      const grid = createGrid(2, 2);
+      const random = noise();
+      for (const vert of grid.verts.values()) vert.co.y += random() * 0.1;
+      grid.computeNormals();
+      const [picked, ...others] = [...grid.faces.values()];
+      picked.selected = true;
+      grid.flushSelection('face');
+
+      const result = run(grid);
+
+      expect(result.status).toBe('Made 1 quad(s) planar');
+      expect(quadBend(grid.facePoints(picked))).toBeLessThan(1e-6);
+      expect(others.some((face) => isNonPlanarQuad(grid.facePoints(face)))).toBe(true);
+    });
   });
 });

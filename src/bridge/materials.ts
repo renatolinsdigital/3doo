@@ -1254,11 +1254,26 @@ export function createOriginMaterial(): THREE.PointsMaterial {
  * is (see `liftWire`), its object's tag in `userData.surfaceTag`.
  */
 export function createSelectionOverlayMaterial(): THREE.Material {
+  return createWashMaterial(VIEWPORT_COLORS.red, 0.45);
+}
+
+/**
+ * The amber wash over the quads bent out of flat, for the non-planar overlay.
+ *
+ * Drawn the way the selection's red one is, and for the same reasons: it lies
+ * on faces of the same surface and has to stay behind whatever is in front of
+ * them, while the edges and dots drawn over it come through.
+ */
+export function createNonPlanarMaterial(): THREE.Material {
+  return createWashMaterial(VIEWPORT_COLORS.amber, 0.55);
+}
+
+function createWashMaterial(color: number, opacity: number): THREE.Material {
   const material = new THREE.MeshBasicMaterial({
-    color: VIEWPORT_COLORS.red,
+    color,
     side: THREE.DoubleSide,
     transparent: true,
-    opacity: 0.45,
+    opacity,
     depthTest: true,
     depthWrite: false,
     polygonOffset: true,

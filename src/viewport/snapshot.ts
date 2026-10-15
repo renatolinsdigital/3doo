@@ -323,7 +323,13 @@ export async function renderSnapshots(
 
   const settings: ViewportSettings = {
     shading: options.shading === 'silhouette' ? 'solid' : options.shading,
-    overlays: { ...state.overlays, origins: false, normals: false, faceOrientation: false },
+    overlays: {
+      ...state.overlays,
+      origins: false,
+      normals: false,
+      faceOrientation: false,
+      nonPlanar: false,
+    },
     backfaceCulling: state.backfaceCulling,
     orthographic: options.projection === 'orthographic',
     focalLength: state.focalLength,

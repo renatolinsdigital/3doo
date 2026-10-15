@@ -470,6 +470,51 @@ face across its ends, the way Blender's F makes a face from a chain. Bridge alig
 directions, picking the one with the least total distance. Without that, bridging
 two rings built in opposite directions folds the band over itself.
 
+### Make planar (`planar.ts`)
+
+`quadBend` measures how far a quad bends as the crease between its two
+triangles, along whichever diagonal leaves the smaller one. The other
+diagonal of a concave quad runs outside the face, and its triangles fold back
+over each other, so it is never the one that counts. A triangle thinner than
+`SLIVER` has no reliable normal and counts as flat. `isNonPlanarQuad` holds
+that against `PLANAR_TOLERANCE_DEGREES`, and the viewport's non-planar overlay
+reads the same test.
+
+`makeQuadsPlanar` flattens the quads among the faces it is given and leaves
+triangles and n-gons alone. Blender's Make Planar Faces projects each face
+onto its own plane, averages the positions a shared vertex is pulled to, and
+repeats. That flattens a lone quad in one pass, but it settles neighbours only
+by passing the correction back and forth between them, so a patch of quads
+sharing corners takes thousands of passes. A noisy 8 by 8 grid was still bent
+after 200.
+
+So every quad is settled at once. A flat quad's diagonals cross; a bent one's
+pass each other with a gap along their common normal. Moving the first and
+third corners one way along that normal and the second and fourth the other
+closes it, which gives one linear equation a quad in the corner movements.
+Each solve finds the smallest movement of every corner that meets all of them
+at once, by conjugate gradients on the quads' rows (the matrix is never
+built). The normals tilt as the corners move, so a few solves are repeated
+until the largest gap is under `FLAT` of the quad's size.
+
+Two things were found the hard way:
+
+- **The twist has to be the gap, not the volume.** The volume of the
+  tetrahedron the four corners make is the obvious coplanarity test, but it is
+  zero for a quad folded shut as well as a flat one. A quad bent past 90°, as a
+  coarse smoothed cube has at its corners, was driven shut into a bowtie. The
+  gap is zero only when the diagonals cross.
+- **Each step is checked before it is kept.** A step that would leave the
+  gaps larger, or turn a quad over, is halved and tried again, up to
+  `MAX_HALVINGS` times.
+
+`WORK_BUDGET` caps one call at about a second. A 10,000-quad grid bent every
+which way is mostly flat after one call, and a second carries on from there.
+Gently bent patches of that size finish in one.
+
+Corners shared with faces outside the selection move too, as in Blender, so
+flattening a quad can bend an unselected neighbour.
+
 ### Selection walks (`select.ts`)
 
 `selectEdgeLoop` continues through a valence-4 vertex along the one edge sharing

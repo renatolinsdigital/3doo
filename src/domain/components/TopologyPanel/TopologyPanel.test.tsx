@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { type Vert, distance, dot } from '@kernel/index';
+import { type Vert, distance, dot, quadBend } from '@kernel/index';
 import { useEditorStore } from '@store/index';
 
 import { TopologyPanel } from './TopologyPanel';
@@ -50,6 +50,7 @@ describe('TopologyPanel', () => {
       'SEPARATE SELECTED',
       'VERTEX SLIDE',
       'EDGE SLIDE',
+      'MAKE PLANAR',
     ]) {
       expect(button(name)).toHaveAttribute('aria-disabled', 'true');
     }
@@ -68,11 +69,43 @@ describe('TopologyPanel', () => {
       useEditorStore.getState().touchMesh();
     });
 
-    for (const name of ['FILL', 'BRIDGE', 'MERGE', 'GROW', 'SHRINK', 'CONNECT']) {
+    for (const name of ['FILL', 'BRIDGE', 'MERGE', 'GROW', 'SHRINK', 'CONNECT', 'MAKE PLANAR']) {
       expect(button(name)).not.toHaveAttribute('aria-disabled');
     }
     // Separating every face would leave the object empty.
     expect(button('SEPARATE SELECTED')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('flattens the selected quads, as one undo step', async () => {
+    render(<TopologyPanel />);
+    const mesh = activeMesh();
+    const [corner] = [...mesh.verts.values()];
+    act(() => {
+      corner.co = { x: corner.co.x + 0.2, y: corner.co.y + 0.3, z: corner.co.z + 0.1 };
+      mesh.computeNormals();
+      mesh.selectAll();
+      useEditorStore.getState().touchMesh();
+    });
+    const steps = useEditorStore.getState().historyUndo.length;
+
+    await userEvent.click(button('MAKE PLANAR'));
+
+    for (const face of activeMesh().faces.values()) {
+      expect(quadBend(activeMesh().facePoints(face))).toBeLessThan(1e-6);
+    }
+    expect(useEditorStore.getState().historyUndo).toHaveLength(steps + 1);
+  });
+
+  it('stays off for a selection with no quad in it', () => {
+    render(<TopologyPanel />);
+
+    act(() => {
+      useEditorStore.getState().exec('triangulate', {}, 'Triangulate');
+      activeMesh().selectAll();
+      useEditorStore.getState().touchMesh();
+    });
+
+    expect(button('MAKE PLANAR')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('separates the selected faces into a new object', async () => {

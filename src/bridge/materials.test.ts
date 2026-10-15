@@ -6,8 +6,10 @@ import type { ShadingMode } from '@store/types';
 
 import {
   DOT_OCCLUSION,
+  VIEWPORT_COLORS,
   createDotOcclusionMaterial,
   createHoverPointMaterial,
+  createNonPlanarMaterial,
   createOutlineMaterial,
   createPointMaterial,
   createPreviewWireMaterial,
@@ -438,5 +440,24 @@ describe('selected face overlay', () => {
     expect(shader.uniforms.surfaceTag).toBe(material.userData.surfaceTag);
     expect(shader.vertexShader).toContain('vMarkClip = gl_Position;');
     expect(shader.fragmentShader).toContain('if ( markOccluded(');
+  });
+});
+
+describe('non-planar overlay', () => {
+  it('is an amber wash drawn the way the selection one is', () => {
+    const wash = createNonPlanarMaterial() as THREE.MeshBasicMaterial;
+    const selection = createSelectionOverlayMaterial() as THREE.MeshBasicMaterial;
+
+    expect(wash.color.getHex()).toBe(VIEWPORT_COLORS.amber);
+    for (const key of [
+      'depthTest',
+      'depthWrite',
+      'transparent',
+      'polygonOffsetFactor',
+      'polygonOffsetUnits',
+    ] as const) {
+      expect(wash[key]).toBe(selection[key]);
+    }
+    expect(wash.userData.surfaceTag).toEqual({ value: 0 });
   });
 });

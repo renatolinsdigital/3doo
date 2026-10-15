@@ -367,6 +367,14 @@ export const OPERATOR_SPECS: readonly OperatorSpec[] = [
     ],
   },
   {
+    name: 'makePlanar',
+    group: 'cleanup',
+    needs: { of: 'faces' },
+    summary:
+      'Flattens the selected quads, moving their corners as little as it can. Triangles and n-gons in the selection are left alone. Corners shared with faces outside the selection move too.',
+    params: [],
+  },
+  {
     name: 'connect',
     group: 'topology',
     needs: { of: 'verts', count: 2 },

@@ -106,6 +106,11 @@ const OVERLAY_OPTIONS: readonly { key: keyof OverlaySettings; label: string; hin
     hint: 'Backfaces tinted red, so inverted normals are obvious',
   },
   {
+    key: 'nonPlanar',
+    label: 'NON-PLANAR',
+    hint: 'Quads bent out of flat tinted amber, so a twist that would crease the shading or split differently on export shows up. MAKE PLANAR in the TOPOLOGY panel flattens the selected ones',
+  },
+  {
     key: 'statistics',
     label: 'STATISTICS',
     hint: 'Vertex, edge, face and triangle counts in the status bar',

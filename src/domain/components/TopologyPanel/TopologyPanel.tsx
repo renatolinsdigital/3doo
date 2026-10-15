@@ -16,6 +16,7 @@ import {
   useEdgeLoopAvailable,
   useEditorStore,
   useFaceLoopAvailable,
+  useSelectedQuadAvailable,
 } from '@store/index';
 
 import './TopologyPanel.scss';
@@ -88,6 +89,7 @@ export function TopologyPanel() {
   // geometry, and no loop runs through it.
   const faceLoopAvailable = useFaceLoopAvailable();
   const edgeLoopAvailable = useEdgeLoopAvailable();
+  const quadSelected = useSelectedQuadAvailable();
 
   const [mergeMode, setMergeMode] = useState<(typeof MERGE_MODES)[number]['value']>('center');
 
@@ -240,6 +242,18 @@ export function TopologyPanel() {
           label="TRIS TO QUADS"
           hint="Merge adjacent, near-coplanar triangle pairs back into quads (Alt+J)"
           onClick={() => exec('trisToQuads', {}, 'Tris to quads')}
+        />
+        <Button
+          label="MAKE PLANAR"
+          disabled={!quadSelected}
+          hint={
+            quadSelected
+              ? 'Flatten the selected quads, moving their corners as little as it takes. Corners they share with other faces move too. NON-PLANAR under OVERLAYS shows which quads are bent'
+              : selection.faces > 0
+                ? 'Only quads are made planar, and none of the selected faces is one'
+                : 'Select the quads to flatten. NON-PLANAR under OVERLAYS shows which ones are bent'
+          }
+          onClick={() => exec('makePlanar', {}, 'Make planar')}
         />
       </FieldRow>
 

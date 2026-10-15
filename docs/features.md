@@ -10,13 +10,13 @@ drive them, see [keymap.md](keymap.md).
 | Primitives | Cube, plane, circle, grid, UV sphere, ico sphere, cylinder, cone, capsule, torus, with live parameters |
 | Object mode | Transform gizmo, duplicate, linked duplicate, merge, separate, union / difference / intersect booleans, apply transform, delete, outliner with rename / visibility / lock and Ctrl+G groups that rename, select, join, ungroup or delete as one |
 | Selection | Vertex, edge and face modes; click and Shift+click, box / circle / lasso region select, Alt+click edge and face loops, grow / shrink / invert |
-| Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, knife, subdivide (Catmull-Clark), vertex and edge slide, relax, circle, space, merge, merge by distance, connect, delete, dissolve, fill, bridge, triangulate, tris-to-quads |
+| Modelling | Extrude (region and individual), inset, bevel with segments, loop cut, knife, subdivide (Catmull-Clark), vertex and edge slide, relax, circle, space, merge, merge by distance, connect, delete, dissolve, fill, bridge, triangulate, tris-to-quads, make planar |
 | Normals | Recalculate outside, flip, shade smooth / flat, mark / clear sharp edges (drawn in cyan, carried through subdivide, loop cut, merge and the modifiers), face-orientation overlay |
 | Modifiers | Mirror, array, solidify, bend (around X, Y and Z at once, up to a full ring, moving only the vertices already there), twist (about X, Y and Z at once, up to four full turns), lattice (a cage of points round the mesh, kept as an object of its own and shaped in edit mode, smooth or linear), weld, loop subdivide, subdivision surface (Catmull-Clark or simple, up to 6 levels, edit cage drawn around the result), quad reloop (every face turned to quads without moving a vertex: triangles paired, flat regions merged and cut again, loops run through the mesh to even out odd faces), remesh. All non-destructive, reorderable, with Apply |
 | Remesh | A modifier with three methods: voxel quad shell (signed distance field, surface nets, crease and corner constraints), blocks straight off the lattice, and quadric error decimation |
 | 3D cursor | Right-click to place it on a point, vertex, edge or face; snap it to the selection or the selection to it; use it as the transform pivot, as a mirror plane or as the centre of a bend or a twist |
 | Proportional editing | Six falloff curves, with a viewport ring showing how far the falloff reaches. Scroll to resize it mid-transform, or Ctrl+scroll any time |
-| Viewport | Orbit / pan / zoom, solid / wireframe / x-ray / matcap, adaptive grid, normals overlay |
+| Viewport | Orbit / pan / zoom, solid / wireframe / x-ray / matcap, adaptive grid, normals overlay, non-planar quads overlay |
 | Touch | Pinch to zoom, two-finger slide to pan, two-finger twist to turn, drag the axis widget to orbit, long press for the right-click menus. Panels become drawers on narrow screens, and a quick bar holds undo, redo, ADD, delete and the knife's CUT / UNDO POINT / CANCEL |
 | Files | Save and load `.3doo` projects (JSON, with imported images inside), OBJ and FBX import (binary or ASCII, FBX 7 onwards, landing the right way up and the right size), PNG / JPG / BMP import as a plane at the origin |
 | Autosave | Off until turned on. Writes numbered `.3doo` copies into a `3doo-auto-saves` folder you choose, every 30 seconds to 15 minutes, and only when the scene has changed. The browser keeps no copy of the project. Needs a browser with a folder picker (Chrome, Edge) |
@@ -234,6 +234,7 @@ its hint says what to select instead:
 | Bridge | Four edges |
 | Bevel, Loop Cut | Edges |
 | Inset | Faces |
+| Make Planar | A quad among the selected faces |
 | Merge by Distance, Triangulate, Tris to Quads | Nothing. They fall back to the whole mesh |
 
 ### Object origins

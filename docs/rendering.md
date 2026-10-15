@@ -371,6 +371,17 @@ the design asks for.
 Anywhere red shows, you are seeing the inside of the surface, which is exactly
 the problem to catch before exporting.
 
+**Non-planar** washes amber every quad bent more than
+`PLANAR_TOLERANCE_DEGREES` (0.1°) out of flat, built by
+`buildNonPlanarTriangles`. It shares its material with the red selection wash
+(`createWashMaterial`): depth-tested, writing no depth, lifted by polygon offset
+and tested against other objects' surfaces in the occlusion pass, so it counts
+towards `showsMarks`. Each quad is split along the diagonal `buildSolid` uses,
+so the wash lies on the drawn triangles exactly. It reads the same mesh a pick
+does: the edited mesh for the object in edit mode, which is the one Make
+Planar flattens, and the modifier result everywhere else. It draws over the
+selection wash, so a bent quad reads as bent whether it is picked or not.
+
 ## Picking
 
 Each element type needs its own strategy:

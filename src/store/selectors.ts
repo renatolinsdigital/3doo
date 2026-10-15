@@ -98,6 +98,18 @@ export function useEdgeLoopAvailable(): boolean {
 }
 
 /**
+ * Whether any selected face is a quad, the only kind making planar flattens.
+ *
+ * Counts cannot answer it: a selection of triangles is still a selection of
+ * faces, and the operator would refuse every one.
+ */
+export function useSelectedQuadAvailable(): boolean {
+  return useEditModeMesh((mesh) =>
+    mesh.selectedFaces().some((face) => mesh.faceLoopCount(face) === 4),
+  );
+}
+
+/**
  * Whether the edge a loop cut would start from has a quad ring to run along.
  *
  * The operator cuts across `selectedEdges()[0]`, so that is the edge asked
