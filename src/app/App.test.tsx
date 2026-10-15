@@ -1139,6 +1139,29 @@ describe('App shell', () => {
     );
   });
 
+  it('sets the orbit speed with and without a selection from preferences', async () => {
+    render(<App />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'PREFS' }));
+    const dialog = screen.getByRole('dialog', { name: 'PREFERENCES' });
+    await userEvent.click(within(dialog).getByRole('button', { name: 'VIEWPORT' }));
+    fireEvent.change(within(dialog).getByRole('slider', { name: 'ORBIT, SELECTION' }), {
+      target: { value: '80' },
+    });
+    fireEvent.change(within(dialog).getByRole('slider', { name: 'ORBIT, NO SELECTION' }), {
+      target: { value: '35' },
+    });
+
+    expect(useEditorStore.getState().orbitSpeedSelected).toBe(80);
+    expect(useEditorStore.getState().orbitSpeedUnselected).toBe(35);
+    act(() =>
+      useEditorStore.getState().setPreferences({
+        orbitSpeedSelected: DEFAULT_PREFERENCES.orbitSpeedSelected,
+        orbitSpeedUnselected: DEFAULT_PREFERENCES.orbitSpeedUnselected,
+      }),
+    );
+  });
+
   describe('autosave in preferences', () => {
     afterEach(() => {
       Reflect.deleteProperty(window, 'showDirectoryPicker');

@@ -29,6 +29,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
   gridScale: 1,
   gridSubdivisions: 10,
   lockVerticalOrbit: false,
+  orbitSpeedSelected: 100,
+  orbitSpeedUnselected: 60,
   wheelZoom: 'pointer',
   wheelZoomStep: 5,
   snapEnabled: false,
@@ -54,6 +56,14 @@ export const MAX_GRID_SCALE = 1000;
 /** One is no subdivision at all (every line heavy) and the cap keeps the mesh sane. */
 export const MIN_GRID_SUBDIVISIONS = 1;
 export const MAX_GRID_SUBDIVISIONS = 100;
+
+/**
+ * Percent of the standard orbit speed. At a tenth a drag across a wide screen
+ * turns the view about a sixth of the way round; at double, half that drag
+ * spins it round more than once.
+ */
+export const MIN_ORBIT_SPEED = 10;
+export const MAX_ORBIT_SPEED = 200;
 
 /**
  * Percent of the way in one wheel notch closes. At one it takes seventy notches
@@ -192,6 +202,23 @@ export function coercePreferences(raw: unknown): Preferences {
       source.lockVerticalOrbit,
       DEFAULT_PREFERENCES.lockVerticalOrbit,
     ),
+    // Rounded: the sliders move in whole percent and have to show the value back.
+    orbitSpeedSelected: Math.round(
+      coerceNumber(
+        source.orbitSpeedSelected,
+        MIN_ORBIT_SPEED,
+        MAX_ORBIT_SPEED,
+        DEFAULT_PREFERENCES.orbitSpeedSelected,
+      ),
+    ),
+    orbitSpeedUnselected: Math.round(
+      coerceNumber(
+        source.orbitSpeedUnselected,
+        MIN_ORBIT_SPEED,
+        MAX_ORBIT_SPEED,
+        DEFAULT_PREFERENCES.orbitSpeedUnselected,
+      ),
+    ),
     wheelZoom: source.wheelZoom === 'centred' ? 'centred' : DEFAULT_PREFERENCES.wheelZoom,
     // Rounded: the slider moves in whole percent and has to show the value back.
     wheelZoomStep: Math.round(
@@ -298,6 +325,8 @@ export const createPreferencesSlice: StateCreator<
         selectionLineColor,
         viewportBackground,
         lockVerticalOrbit,
+        orbitSpeedSelected,
+        orbitSpeedUnselected,
         wheelZoom,
         wheelZoomStep,
         gridScale,
@@ -320,6 +349,8 @@ export const createPreferencesSlice: StateCreator<
         selectionLineColor,
         viewportBackground,
         lockVerticalOrbit,
+        orbitSpeedSelected,
+        orbitSpeedUnselected,
         wheelZoom,
         wheelZoomStep,
         gridScale,

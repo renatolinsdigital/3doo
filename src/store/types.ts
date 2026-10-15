@@ -289,6 +289,20 @@ export interface Preferences {
    */
   lockVerticalOrbit: boolean;
   /**
+   * How fast an orbit drag turns the view while something is selected, in
+   * percent of the standard speed.
+   */
+  orbitSpeedSelected: number;
+  /**
+   * How fast an orbit drag turns the view while nothing is selected, in percent
+   * of the standard speed.
+   *
+   * Slower than with a selection by default. With nothing picked out there is
+   * no object the eye is following round, and the whole scene swinging at full
+   * speed reads as the view being thrown rather than turned.
+   */
+  orbitSpeedUnselected: number;
+  /**
    * Where a turn of the wheel zooms.
    *
    * 'pointer' by default: the zoom stays mostly centred and drifts toward what

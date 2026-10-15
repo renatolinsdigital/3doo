@@ -112,6 +112,12 @@ export const WHEEL_POINTER_LEAN = 0.3;
  */
 export const WHEEL_NOTCH = 100;
 
+/**
+ * How far a drag turns the orbit at 100% on the ORBIT sliders in PREFS, in
+ * radians per pixel: about 29 degrees for every hundred pixels.
+ */
+export const ORBIT_SPEED = 0.005;
+
 /** Slow off the mark and slow into the stop, quick through the middle. */
 function ease(t: number): number {
   return t * t * (3 - 2 * t);
@@ -277,7 +283,7 @@ export class CameraController {
   private lastPosition = new THREE.Vector2();
   private moved = false;
 
-  orbitSpeed = 0.005;
+  orbitSpeed = ORBIT_SPEED;
   panSpeed = 0.0018;
   /** The share of the way in one wheel notch closes, 0 to 1. */
   zoomStep = 0.05;

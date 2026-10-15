@@ -14,12 +14,14 @@ import {
   MAX_GRID_SCALE,
   MAX_GRID_SUBDIVISIONS,
   MAX_HISTORY_SIZE,
+  MAX_ORBIT_SPEED,
   MAX_SELECTION_LINE_WIDTH,
   MAX_SNAP_STEP,
   MAX_WHEEL_ZOOM_STEP,
   MIN_GRID_SCALE,
   MIN_GRID_SUBDIVISIONS,
   MIN_HISTORY_SIZE,
+  MIN_ORBIT_SPEED,
   MIN_SELECTION_LINE_WIDTH,
   MIN_SNAP_STEP,
   MIN_WHEEL_ZOOM_STEP,
@@ -134,6 +136,8 @@ export function PreferencesDialog() {
   const selectionLineColor = useEditorStore((state) => state.selectionLineColor);
   const viewportBackground = useEditorStore((state) => state.viewportBackground);
   const lockVerticalOrbit = useEditorStore((state) => state.lockVerticalOrbit);
+  const orbitSpeedSelected = useEditorStore((state) => state.orbitSpeedSelected);
+  const orbitSpeedUnselected = useEditorStore((state) => state.orbitSpeedUnselected);
   const wheelZoom = useEditorStore((state) => state.wheelZoom);
   const wheelZoomStep = useEditorStore((state) => state.wheelZoomStep);
   const gridScale = useEditorStore((state) => state.gridScale);
@@ -264,6 +268,24 @@ export function PreferencesDialog() {
           checked={lockVerticalOrbit}
           hint="Stop the orbit at straight up and straight down instead of rolling over"
           onChange={(locked) => setPreferences({ lockVerticalOrbit: locked })}
+        />
+        <Slider
+          label="ORBIT, SELECTION"
+          value={orbitSpeedSelected}
+          min={MIN_ORBIT_SPEED}
+          max={MAX_ORBIT_SPEED}
+          suffix="%"
+          hint="How fast a middle-drag turns the view while something is selected. 100% is the standard speed; lower turns it slower and steadier"
+          onChange={(speed) => setPreferences({ orbitSpeedSelected: speed })}
+        />
+        <Slider
+          label="ORBIT, NO SELECTION"
+          value={orbitSpeedUnselected}
+          min={MIN_ORBIT_SPEED}
+          max={MAX_ORBIT_SPEED}
+          suffix="%"
+          hint="How fast a middle-drag turns the view while nothing is selected. Slower than with a selection out of the box, so the whole scene does not swing round too far"
+          onChange={(speed) => setPreferences({ orbitSpeedUnselected: speed })}
         />
         <Select<WheelZoom>
           label="WHEEL ZOOM"

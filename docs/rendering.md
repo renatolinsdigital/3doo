@@ -440,6 +440,14 @@ The camera orbits a target point in spherical coordinates. The polar angle is
 clamped just short of the poles to avoid the gimbal flip at straight up or
 down.
 
+A drag turns the orbit by `orbitSpeed` radians per pixel. `ORBIT_SPEED`
+(0.005, about 29 degrees per hundred pixels) is 100% on the two ORBIT sliders
+in PREFS, and the viewport sets `orbitSpeed` from whichever of
+`orbitSpeedSelected` and `orbitSpeedUnselected` applies, switching as the
+object selection empties or fills. Nothing selected defaults to 60%: with no
+object for the eye to follow round, the whole scene swinging at full speed is
+hard to keep track of. The axis widget's drag goes through the same speed.
+
 An orthographic camera has no perspective divide, so the orbit radius drives
 the frustum height instead of the eye distance. Otherwise zooming would do
 nothing.

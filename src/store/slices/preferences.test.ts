@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   DEFAULT_PREFERENCES,
+  MAX_ORBIT_SPEED,
   MAX_WHEEL_ZOOM_STEP,
+  MIN_ORBIT_SPEED,
   MIN_WHEEL_ZOOM_STEP,
   autosaveIntervalLabel,
   coercePreferences,
@@ -170,6 +172,23 @@ describe('coercePreferences', () => {
     expect(coercePreferences({ wheelZoomStep: 'fast' }).wheelZoomStep).toBe(
       DEFAULT_PREFERENCES.wheelZoomStep,
     );
+  });
+
+  it('orbits slower with nothing selected than with a selection by default', () => {
+    expect(DEFAULT_PREFERENCES.orbitSpeedSelected).toBe(100);
+    expect(DEFAULT_PREFERENCES.orbitSpeedUnselected).toBeLessThan(
+      DEFAULT_PREFERENCES.orbitSpeedSelected,
+    );
+  });
+
+  it('keeps both orbit speeds a whole percent inside their range', () => {
+    for (const key of ['orbitSpeedSelected', 'orbitSpeedUnselected'] as const) {
+      expect(coercePreferences({ [key]: 45 })[key]).toBe(45);
+      expect(coercePreferences({ [key]: 72.4 })[key]).toBe(72);
+      expect(coercePreferences({ [key]: 0 })[key]).toBe(MIN_ORBIT_SPEED);
+      expect(coercePreferences({ [key]: 900 })[key]).toBe(MAX_ORBIT_SPEED);
+      expect(coercePreferences({ [key]: 'slow' })[key]).toBe(DEFAULT_PREFERENCES[key]);
+    }
   });
 
   it('names every interval, thirty seconds to fifteen minutes', () => {

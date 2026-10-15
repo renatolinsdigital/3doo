@@ -66,7 +66,7 @@ import type {
   ViewLostReason,
 } from '@store/types';
 
-import { CameraController, VIEW_TWEEN_MS, viewLostReason } from './CameraController';
+import { CameraController, ORBIT_SPEED, VIEW_TWEEN_MS, viewLostReason } from './CameraController';
 import { type EditMove, EditMoveDrag } from './editMove';
 import { type SnapAmounts, ViewportGrid, snapAmounts, snapTo } from './grid';
 import {
@@ -1351,6 +1351,19 @@ export class Viewport {
           this.controls.lockVerticalOrbit = locked;
         },
         { fireImmediately: true },
+      ),
+      store.subscribe(
+        (state) =>
+          [
+            state.selectedObjectIds.length > 0,
+            state.orbitSpeedSelected,
+            state.orbitSpeedUnselected,
+          ] as const,
+        ([selected, withSelection, withoutSelection]) => {
+          this.controls.orbitSpeed =
+            (ORBIT_SPEED * (selected ? withSelection : withoutSelection)) / 100;
+        },
+        { equalityFn: shallowArrayEqual, fireImmediately: true },
       ),
       store.subscribe(
         (state) => state.wheelZoom,
