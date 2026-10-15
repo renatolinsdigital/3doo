@@ -1,16 +1,20 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
-import type { ObjectView } from '@bridge/index';
-import { type BMesh, type Vert, createBox } from '@kernel/index';
+import { type ObjectView, buildMeshBuffers } from '@bridge/index';
+import { BMesh, type Vert, createBox } from '@kernel/index';
 
 import {
   type FacingElements,
+  type SurfaceDepth,
   aimRay,
   circleRegion,
   facingElements,
   pickElement,
   pickInRegion,
+  pickRect,
+  rectangleRegion,
+  surfaceDepth,
 } from './picking';
 
 const SIZE = { width: 200, height: 200 };
@@ -244,5 +248,228 @@ describe('aiming through a zoomed-in orthographic camera', () => {
     aimRay(raycaster, centre, zoomedIn());
 
     expect(raycaster.intersectObjects(squares)[0]?.object.name).toBe('front');
+  });
+});
+
+describe('holding a pick behind the surfaces drawn over it', () => {
+  /** World (x, y) lands at pixel (100 + 50x, 100 - 50y). */
+  function close(): THREE.Camera {
+    const camera = new THREE.OrthographicCamera(-2, 2, 2, -2, 0.1, 100);
+    camera.position.set(0, 0, 10);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld(true);
+    camera.updateProjectionMatrix();
+    return camera;
+  }
+
+  function near(): THREE.Camera {
+    const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
+    camera.position.set(0, 0, 10);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld(true);
+    return camera;
+  }
+
+  function pixelOf(camera: THREE.Camera, x: number, y: number, z: number): THREE.Vector2 {
+    const ndc = new THREE.Vector3(x, y, z).project(camera);
+    return new THREE.Vector2(((ndc.x + 1) / 2) * SIZE.width, ((1 - ndc.y) / 2) * SIZE.height);
+  }
+
+  /** The mesh as the viewport draws it, which is also what it picks faces from. */
+  function solidOf(mesh: BMesh): THREE.Mesh {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(buildMeshBuffers(mesh).solid.positions, 3),
+    );
+    const solid = new THREE.Mesh(geometry);
+    solid.updateMatrixWorld(true);
+    return solid;
+  }
+
+  function fullView(mesh: BMesh): ObjectView {
+    return Object.assign(viewOf(mesh, [...mesh.verts.values()]), {
+      pickTarget: solidOf(mesh),
+      triangleFaceIds: buildMeshBuffers(mesh).solid.triangleFaceIds,
+    });
+  }
+
+  /** A square facing the camera, three units out, over the right of the cube. */
+  function panel(width = 1, height = 1): THREE.Mesh {
+    const plane = new THREE.Mesh(new THREE.PlaneGeometry(width, height));
+    plane.position.set(1, 0, 3);
+    plane.updateMatrixWorld(true);
+    return plane;
+  }
+
+  function edgeAlong(mesh: BMesh, x: number, z: number): number {
+    const found = [...mesh.edges.values()].find(
+      (edge) =>
+        Math.sign(edge.v0.co.x) === x &&
+        Math.sign(edge.v1.co.x) === x &&
+        Math.sign(edge.v0.co.z) === z &&
+        Math.sign(edge.v1.co.z) === z,
+    );
+    if (!found) throw new Error(`no edge along ${x},${z}`);
+    return found.id;
+  }
+
+  for (const [name, camera] of [
+    ['an orthographic', close()],
+    ['a perspective', near()],
+  ] as const) {
+    it(`leaves an edge behind another object unpicked under ${name} camera`, () => {
+      const mesh = createBox(2);
+      const view = fullView(mesh);
+      const pointer = pixelOf(camera, 1, 0, 1);
+      const facing = facingOf(mesh, view.group.matrix, camera);
+      const pick = (depth: SurfaceDepth | null) =>
+        pickElement(
+          view,
+          mesh,
+          'edge',
+          pointer,
+          camera,
+          SIZE,
+          new THREE.Raycaster(),
+          facing,
+          depth,
+        );
+
+      expect(pick(null)?.elementId).toBe(edgeAlong(mesh, 1, 1));
+      const depth = surfaceDepth([panel(), solidOf(mesh)], camera, SIZE, pickRect(pointer), false);
+      expect(pick(depth)).toBeNull();
+    });
+  }
+
+  it('leaves a vertex behind another object unpicked', () => {
+    const camera = close();
+    const mesh = createBox(2);
+    const view = fullView(mesh);
+    const pointer = pixelOf(camera, 1, 1, 1);
+    const depth = surfaceDepth(
+      [panel(1, 3), solidOf(mesh)],
+      camera,
+      SIZE,
+      pickRect(pointer),
+      false,
+    );
+
+    const pick = pickElement(
+      view,
+      mesh,
+      'vertex',
+      pointer,
+      camera,
+      SIZE,
+      new THREE.Raycaster(),
+      facingOf(mesh, view.group.matrix, camera),
+      depth,
+    );
+    expect(pick).toBeNull();
+  });
+
+  it('still picks an edge along a valley, which every pixel round it is nearer than', () => {
+    const mesh = new BMesh();
+    const left = [mesh.addVert({ x: -1, y: -1, z: 1 }), mesh.addVert({ x: -1, y: 1, z: 1 })];
+    const valley = [mesh.addVert({ x: 0, y: -1, z: 0 }), mesh.addVert({ x: 0, y: 1, z: 0 })];
+    const right = [mesh.addVert({ x: 1, y: -1, z: 1 }), mesh.addVert({ x: 1, y: 1, z: 1 })];
+    mesh.addFace([left[0], valley[0], valley[1], left[1]]);
+    mesh.addFace([valley[0], right[0], right[1], valley[1]]);
+    const floor = [...mesh.edges.values()].find((edge) => edge.v0.co.x === 0 && edge.v1.co.x === 0);
+
+    for (const camera of [close(), near()]) {
+      // Off the pixel centres, so no centre lies on the valley itself.
+      const pointer = pixelOf(camera, 0, 0.1, 0).add(new THREE.Vector2(0.3, 0.2));
+      const depth = surfaceDepth([solidOf(mesh)], camera, SIZE, pickRect(pointer), false);
+      const pick = pickElement(
+        fullView(mesh),
+        mesh,
+        'edge',
+        pointer,
+        camera,
+        SIZE,
+        new THREE.Raycaster(),
+        null,
+        depth,
+      );
+      expect(pick?.elementId).toBe(floor?.id);
+    }
+  });
+
+  it('leaves a region drag the part of an edge that shows, and nothing of one that does not', () => {
+    const camera = close();
+    const mesh = createBox(2);
+    const view = fullView(mesh);
+    const facing = facingOf(mesh, view.group.matrix, camera);
+    const rect = { minX: 20, minY: 20, maxX: 180, maxY: 180 };
+    const depth = surfaceDepth([panel(1, 3), solidOf(mesh)], camera, SIZE, rect, false);
+
+    const hits = pickInRegion(
+      view,
+      'edge',
+      rectangleRegion(rect),
+      camera,
+      SIZE,
+      mesh,
+      facing,
+      depth,
+    );
+
+    // The panel covers the whole right edge, and the right half of the top
+    // and bottom ones, which still show on the left.
+    expect(hits).toHaveLength(3);
+    expect(hits).not.toContain(edgeAlong(mesh, 1, 1));
+  });
+
+  it('takes a face partly in view, and leaves one wholly covered', () => {
+    const camera = close();
+    const mesh = createBox(2);
+    const view = fullView(mesh);
+    const facing = facingOf(mesh, view.group.matrix, camera);
+    const rect = { minX: 20, minY: 20, maxX: 180, maxY: 180 };
+    const region = rectangleRegion(rect);
+    const pick = (cover: THREE.Mesh) =>
+      pickInRegion(
+        view,
+        'face',
+        region,
+        camera,
+        SIZE,
+        mesh,
+        facing,
+        surfaceDepth([cover, solidOf(mesh)], camera, SIZE, rect, false),
+      );
+
+    expect(pick(panel(1, 3))).toHaveLength(1);
+    const wall = new THREE.Mesh(new THREE.PlaneGeometry(3, 3));
+    wall.position.set(0, 0, 3);
+    wall.updateMatrixWorld(true);
+    expect(pick(wall)).toHaveLength(0);
+  });
+
+  it('lets the back of a surface hide only when back faces are drawn', () => {
+    const camera = close();
+    const mesh = createBox(2);
+    const view = fullView(mesh);
+    const pointer = pixelOf(camera, 1, 0, 1);
+    const turned = panel();
+    turned.rotation.y = Math.PI;
+    turned.updateMatrixWorld(true);
+    const pick = (cull: boolean) =>
+      pickElement(
+        view,
+        mesh,
+        'edge',
+        pointer,
+        camera,
+        SIZE,
+        new THREE.Raycaster(),
+        null,
+        surfaceDepth([turned], camera, SIZE, pickRect(pointer), cull),
+      );
+
+    expect(pick(false)).toBeNull();
+    expect(pick(true)).not.toBeNull();
   });
 });

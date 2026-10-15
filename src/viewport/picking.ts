@@ -139,6 +139,268 @@ export function facingElements(
 }
 
 /**
+ * A point as `SurfaceDepth` compares it: where it lands on the canvas, and how
+ * near the camera it is. Nearness is 1 / depth under perspective and the view
+ * z under an orthographic camera, both of which run straight across the
+ * screen over a triangle and along a line, and both of which grow towards the
+ * camera.
+ */
+export interface Placed {
+  screen: THREE.Vector2;
+  near: number;
+}
+
+/**
+ * The surfaces drawn over a patch of the canvas, for asking whether a point is
+ * hidden behind them.
+ *
+ * `facingElements` only knows which side of the model a face is on. A front
+ * face hidden behind another part of the model, or behind another object, or
+ * seen through a hole in an open mesh, passed it, and a click in solid shading
+ * took an edge the surface was drawn over.
+ */
+export interface SurfaceDepth {
+  place(world: THREE.Vector3): Placed | null;
+  /** Whether a surface stands in front of a point `near` deep at `screen`. */
+  hides(screen: THREE.Vector2, near: number): boolean;
+}
+
+/**
+ * How much nearer than a point a surface has to be to hide it: a share of the
+ * depth under perspective, and of the view's height under an orthographic
+ * camera. The surface is evaluated exactly where the point lands, so this only
+ * has to absorb the float32 the drawn geometry is stored in.
+ */
+const HIDDEN_MARGIN = 1e-4;
+
+interface ProjectedVerts {
+  geometry: THREE.BufferGeometry;
+  version: number;
+  matrix: THREE.Matrix4;
+  /** Screen x, screen y and nearness per vertex; x is NaN where it cannot be placed. */
+  data: Float64Array;
+}
+
+/**
+ * Projected vertices by mesh. Hovering asks for the surfaces on every pointer
+ * move, and with the camera still the projection does not change between them.
+ */
+const projectedVerts = new WeakMap<THREE.Mesh, ProjectedVerts>();
+
+function placeInto(
+  out: Float64Array,
+  at: number,
+  point: THREE.Vector3,
+  toView: THREE.Matrix4,
+  camera: THREE.Camera,
+  size: { width: number; height: number },
+): void {
+  point.applyMatrix4(toView);
+  const perspective = camera instanceof THREE.PerspectiveCamera;
+  if (perspective && -point.z <= camera.near) {
+    out[at] = NaN;
+    return;
+  }
+  const near = perspective ? -1 / point.z : point.z;
+  point.applyMatrix4(camera.projectionMatrix);
+  out[at] = ((point.x + 1) / 2) * size.width;
+  out[at + 1] = ((1 - point.y) / 2) * size.height;
+  out[at + 2] = near;
+}
+
+function projectMesh(
+  mesh: THREE.Mesh,
+  camera: THREE.Camera,
+  size: { width: number; height: number },
+): Float64Array {
+  const geometry = mesh.geometry;
+  const position = geometry.getAttribute('position') as THREE.BufferAttribute;
+  const toView = new THREE.Matrix4().multiplyMatrices(camera.matrixWorldInverse, mesh.matrixWorld);
+  const key = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, toView);
+
+  const cached = projectedVerts.get(mesh);
+  if (
+    cached &&
+    cached.geometry === geometry &&
+    cached.version === position.version &&
+    cached.matrix.equals(key) &&
+    cached.data.length === position.count * 3
+  ) {
+    return cached.data;
+  }
+
+  const data = new Float64Array(position.count * 3);
+  const point = new THREE.Vector3();
+  for (let i = 0; i < position.count; i++) {
+    placeInto(data, i * 3, point.fromBufferAttribute(position, i), toView, camera, size);
+  }
+  projectedVerts.set(mesh, { geometry, version: position.version, matrix: key, data });
+  return data;
+}
+
+/**
+ * Draws `occluders` over `rect` of the canvas, keeping the nearest triangle at
+ * each pixel, the way the viewport's own depth test does.
+ *
+ * Each pixel keeps the triangle rather than a depth, and `hides` carries that
+ * triangle's plane from the pixel's centre to the very spot it is asked about.
+ * A depth read off a pixel centre is up to half a pixel from the point, and on
+ * a face seen at a slant that is a long way in depth: a valley between two
+ * faces is deeper than every pixel centre round it, and read that way the edge
+ * along it was hidden by its own faces.
+ *
+ * A point is hidden only when all four pixels round it say so, which leaves a
+ * point just past the outline of something in front of it pickable.
+ *
+ * `cullBackFaces` follows the viewport's preference: with it off, the inside of
+ * a surface seen through a hole hides what is behind it, as it does on screen.
+ */
+export function surfaceDepth(
+  occluders: readonly THREE.Mesh[],
+  camera: THREE.Camera,
+  size: { width: number; height: number },
+  rect: BoxSelectRect,
+  cullBackFaces: boolean,
+): SurfaceDepth {
+  const left = Math.floor(rect.minX) - 2;
+  const top = Math.floor(rect.minY) - 2;
+  const width = Math.max(0, Math.ceil(rect.maxX) + 2 - left);
+  const height = Math.max(0, Math.ceil(rect.maxY) + 2 - top);
+
+  const owner = new Int32Array(width * height).fill(-1);
+  const nearest = new Float64Array(width * height);
+  // a, b, c per triangle: its nearness is a * x + b * y + c across the screen.
+  const planes: number[] = [];
+
+  for (const mesh of occluders) {
+    const placed = projectMesh(mesh, camera, size);
+    const index = mesh.geometry.getIndex();
+    const count = index ? index.count : placed.length / 3;
+    // A mirrored object turns its triangles over on screen.
+    const mirrored = mesh.matrixWorld.determinant() < 0;
+
+    for (let t = 0; t + 2 < count; t += 3) {
+      const i0 = (index ? index.getX(t) : t) * 3;
+      const i1 = (index ? index.getX(t + 1) : t + 1) * 3;
+      const i2 = (index ? index.getX(t + 2) : t + 2) * 3;
+      const x0 = placed[i0];
+      const x1 = placed[i1];
+      const x2 = placed[i2];
+      // Through the near plane: left out, which errs towards picking.
+      if (Number.isNaN(x0) || Number.isNaN(x1) || Number.isNaN(x2)) continue;
+      const y0 = placed[i0 + 1];
+      const y1 = placed[i1 + 1];
+      const y2 = placed[i2 + 1];
+
+      const fromX = Math.max(0, Math.ceil(Math.min(x0, x1, x2) - left - 0.5));
+      const toX = Math.min(width - 1, Math.floor(Math.max(x0, x1, x2) - left - 0.5));
+      const fromY = Math.max(0, Math.ceil(Math.min(y0, y1, y2) - top - 0.5));
+      const toY = Math.min(height - 1, Math.floor(Math.max(y0, y1, y2) - top - 0.5));
+      if (fromX > toX || fromY > toY) continue;
+
+      const area = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0);
+      if (Math.abs(area) < 1e-12) continue;
+      // Screen y runs down, so a front face winds clockwise here.
+      if (cullBackFaces && area > 0 !== mirrored) continue;
+
+      const n0 = placed[i0 + 2];
+      const dn1 = placed[i1 + 2] - n0;
+      const dn2 = placed[i2 + 2] - n0;
+      const a = (dn1 * (y2 - y0) - dn2 * (y1 - y0)) / area;
+      const b = ((x1 - x0) * dn2 - (x2 - x0) * dn1) / area;
+      const c = n0 - a * x0 - b * y0;
+      const triangle = planes.length / 3;
+      let kept = false;
+
+      for (let py = fromY; py <= toY; py++) {
+        const sy = top + py + 0.5;
+        for (let px = fromX; px <= toX; px++) {
+          const sx = left + px + 0.5;
+          const w0 = (x2 - x1) * (sy - y1) - (y2 - y1) * (sx - x1);
+          const w1 = (x0 - x2) * (sy - y2) - (y0 - y2) * (sx - x2);
+          const w2 = (x1 - x0) * (sy - y0) - (y1 - y0) * (sx - x0);
+          const inside = area > 0 ? w0 >= 0 && w1 >= 0 && w2 >= 0 : w0 <= 0 && w1 <= 0 && w2 <= 0;
+          if (!inside) continue;
+
+          const near = a * sx + b * sy + c;
+          const pixel = py * width + px;
+          if (owner[pixel] >= 0 && nearest[pixel] >= near) continue;
+          owner[pixel] = triangle;
+          nearest[pixel] = near;
+          kept = true;
+        }
+      }
+      if (kept) planes.push(a, b, c);
+    }
+  }
+
+  const perspective = camera instanceof THREE.PerspectiveCamera;
+  const orthographic = camera instanceof THREE.OrthographicCamera ? camera : null;
+  const viewHeight = orthographic
+    ? (orthographic.top - orthographic.bottom) / orthographic.zoom
+    : 0;
+
+  return {
+    place(world) {
+      const out = new Float64Array(3);
+      const toView = camera.matrixWorldInverse;
+      placeInto(out, 0, world.clone(), toView, camera, size);
+      if (Number.isNaN(out[0])) return null;
+      return { screen: new THREE.Vector2(out[0], out[1]), near: out[2] };
+    },
+
+    hides(screen, near) {
+      const slack = perspective ? near * HIDDEN_MARGIN : viewHeight * HIDDEN_MARGIN;
+      const fromX = Math.floor(screen.x - left - 0.5);
+      const fromY = Math.floor(screen.y - top - 0.5);
+      for (let py = fromY; py <= fromY + 1; py++) {
+        for (let px = fromX; px <= fromX + 1; px++) {
+          if (px < 0 || py < 0 || px >= width || py >= height) return false;
+          const triangle = owner[py * width + px];
+          if (triangle < 0) return false;
+          const surface =
+            planes[triangle * 3] * screen.x +
+            planes[triangle * 3 + 1] * screen.y +
+            planes[triangle * 3 + 2];
+          if (surface <= near + slack) return false;
+        }
+      }
+      return true;
+    },
+  };
+}
+
+/** The canvas around `pointer` a click there can reach an element in. */
+export function pickRect(pointer: THREE.Vector2): BoxSelectRect {
+  return {
+    minX: pointer.x - PICK_RADIUS_PIXELS,
+    minY: pointer.y - PICK_RADIUS_PIXELS,
+    maxX: pointer.x + PICK_RADIUS_PIXELS,
+    maxY: pointer.y + PICK_RADIUS_PIXELS,
+  };
+}
+
+/**
+ * How far in from either end of an edge, as a share of it, the edge is asked
+ * about. Its ends are vertices, which another edge running across the front
+ * can share: asked at the vertex, an edge that runs off it round the back of
+ * the model answered for the front one.
+ */
+function edgeEndShare(a: Placed, b: Placed): number {
+  const length = a.screen.distanceTo(b.screen);
+  return length > 0 ? Math.min(0.5, EDGE_END_PIXELS / length) : 0.5;
+}
+
+const EDGE_END_PIXELS = 2;
+
+/** Whether the point `t` of the way along a placed edge is drawn. */
+function edgeShowsAt(depth: SurfaceDepth, a: Placed, b: Placed, t: number): boolean {
+  const end = edgeEndShare(a, b);
+  const at = THREE.MathUtils.clamp(t, end, 1 - end);
+  return !depth.hides(a.screen.clone().lerp(b.screen, at), a.near + (b.near - a.near) * at);
+}
+
+/**
  * Aims `raycaster` through `ndc` from where the camera's picture begins.
  *
  * three starts an orthographic ray at the camera's own position, but the
@@ -220,6 +482,8 @@ function projectEdge(
  *
  * `facing` narrows the candidates to what the camera can see; null picks
  * through the model, which is what x-ray and wireframe shading are for.
+ * `depth` holds them behind the surfaces drawn round the pointer (see
+ * `surfaceDepth`), and is null for the same two shadings.
  */
 export function pickElement(
   view: ObjectView,
@@ -230,7 +494,13 @@ export function pickElement(
   size: { width: number; height: number },
   raycaster: THREE.Raycaster,
   facing: FacingElements | null,
+  depth: SurfaceDepth | null = null,
 ): PickResult | null {
+  const toWorld = (positions: Float32Array, at: number) =>
+    new THREE.Vector3(positions[at], positions[at + 1], positions[at + 2]).applyMatrix4(
+      view.group.matrix,
+    );
+
   if (mode === 'vertex') {
     let best: PickResult | null = null;
     let bestDistance = PICK_RADIUS_PIXELS;
@@ -242,10 +512,13 @@ export function pickElement(
       if (!screen) continue;
 
       const distance = screen.distanceTo(pointer);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = { kind: 'vertex', elementId: view.vertIds[i] };
+      if (distance >= bestDistance) continue;
+      if (depth) {
+        const placed = depth.place(toWorld(view.vertPositions, i * 3));
+        if (!placed || depth.hides(placed.screen, placed.near)) continue;
       }
+      bestDistance = distance;
+      best = { kind: 'vertex', elementId: view.vertIds[i] };
     }
     return best;
   }
@@ -261,10 +534,18 @@ export function pickElement(
       if (!ends) continue;
 
       const distance = distanceToSegment(pointer, ends[0], ends[1]);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = { kind: 'edge', elementId: view.edgeIds[i] };
+      if (distance >= bestDistance) continue;
+      if (depth) {
+        // Asked where the pointer is nearest it: an edge half behind the model
+        // is only there to click on the half that shows.
+        const a = depth.place(toWorld(view.edgePositions, i * 6));
+        const b = depth.place(toWorld(view.edgePositions, i * 6 + 3));
+        if (!a || !b || !edgeShowsAt(depth, a, b, segmentShare(pointer, ends[0], ends[1]))) {
+          continue;
+        }
       }
+      bestDistance = distance;
+      best = { kind: 'edge', elementId: view.edgeIds[i] };
     }
     return best;
   }
@@ -272,6 +553,11 @@ export function pickElement(
   const hits = raycaster.intersectObject(view.pickTarget, false);
   const hit = hits[0];
   if (!hit || hit.faceIndex == null) return null;
+  if (depth) {
+    // The ray only meets this object, and another one can stand in front of it.
+    const placed = depth.place(hit.point);
+    if (!placed || depth.hides(placed.screen, placed.near)) return null;
+  }
 
   const faceId = view.triangleFaceIds[hit.faceIndex];
   if (faceId === undefined || !mesh.faces.has(faceId)) return null;
@@ -282,13 +568,16 @@ export function pickElement(
   return { kind: 'face', elementId: faceId, point: { x: local.x, y: local.y, z: local.z } };
 }
 
-function distanceToSegment(point: THREE.Vector2, a: THREE.Vector2, b: THREE.Vector2): number {
+/** How far along the segment from `a` to `b` the point on it nearest `point` is, from 0 to 1. */
+function segmentShare(point: THREE.Vector2, a: THREE.Vector2, b: THREE.Vector2): number {
   const segment = b.clone().sub(a);
   const lengthSq = segment.lengthSq();
-  if (lengthSq < 1e-6) return point.distanceTo(a);
+  if (lengthSq < 1e-6) return 0;
+  return THREE.MathUtils.clamp(point.clone().sub(a).dot(segment) / lengthSq, 0, 1);
+}
 
-  const t = THREE.MathUtils.clamp(point.clone().sub(a).dot(segment) / lengthSq, 0, 1);
-  return point.distanceTo(a.clone().addScaledVector(segment, t));
+function distanceToSegment(point: THREE.Vector2, a: THREE.Vector2, b: THREE.Vector2): number {
+  return point.distanceTo(a.clone().lerp(b, segmentShare(point, a, b)));
 }
 
 export interface BoxSelectRect {
@@ -589,6 +878,9 @@ function anyEdgeCrosses(
  * model the way x-ray shading draws it, and anything else takes only what the
  * camera can see. A drag over a dense sphere otherwise takes the far side of it
  * along with the near one.
+ *
+ * `depth` holds the sweep behind the surfaces drawn over it, as it does a
+ * click: an element counts only where some part of it shows.
  */
 export function pickInRegion(
   view: ObjectView,
@@ -598,8 +890,11 @@ export function pickInRegion(
   size: { width: number; height: number },
   mesh: BMesh,
   facing: FacingElements | null,
+  depth: SurfaceDepth | null = null,
 ): number[] {
   const matrix = view.group.matrix;
+  const place = (point: Vec3) =>
+    depth?.place(new THREE.Vector3(point.x, point.y, point.z).applyMatrix4(matrix)) ?? null;
   const toScreen = (point: Vec3) =>
     project(new THREE.Vector3(point.x, point.y, point.z), matrix, camera, size.width, size.height);
 
@@ -609,7 +904,17 @@ export function pickInRegion(
       if (facing && !facing.verts.has(view.vertIds[i])) continue;
 
       const screen = projectVert(view, i, camera, size);
-      if (screen && region.contains(screen)) hits.push(view.vertIds[i]);
+      if (!screen || !region.contains(screen)) continue;
+      if (depth) {
+        const at = i * 3;
+        const placed = place({
+          x: view.vertPositions[at],
+          y: view.vertPositions[at + 1],
+          z: view.vertPositions[at + 2],
+        });
+        if (!placed || depth.hides(placed.screen, placed.near)) continue;
+      }
+      hits.push(view.vertIds[i]);
     }
     return hits;
   }
@@ -625,7 +930,10 @@ export function pickInRegion(
 
       // `crosses` asks both halves of the question at once: an end held inside
       // the region, or a region cutting across the middle holding neither end.
-      if (region.crosses(a, b)) hits.push(edge.id);
+      if (!region.crosses(a, b)) continue;
+      if (depth && !edgeShowsInRegion(depth, region, place(edge.v0.co), place(edge.v1.co)))
+        continue;
+      hits.push(edge.id);
     }
     return hits;
   }
@@ -664,5 +972,57 @@ export function pickInRegion(
 
     if (touched) hits.push(face.id);
   }
-  return hits;
+  return depth ? facesShowing(view, depth, hits) : hits;
+}
+
+/**
+ * Whether any part of an edge inside the region shows, asked every couple of
+ * pixels along it. A region too thin to hold one of those asks the whole edge.
+ */
+function edgeShowsInRegion(
+  depth: SurfaceDepth,
+  region: Region,
+  a: Placed | null,
+  b: Placed | null,
+): boolean {
+  if (!a || !b) return false;
+  const steps = THREE.MathUtils.clamp(
+    Math.ceil(a.screen.distanceTo(b.screen) / EDGE_END_PIXELS),
+    1,
+    256,
+  );
+  const shares = Array.from({ length: steps }, (_, k) => (k + 0.5) / steps);
+  const inside = shares.filter((t) => region.contains(a.screen.clone().lerp(b.screen, t)));
+  return (inside.length > 0 ? inside : shares).some((t) => edgeShowsAt(depth, a, b, t));
+}
+
+/**
+ * The faces of `faceIds` any part of which shows, asked of the triangles the
+ * view picks from: the middle of each, and halfway from there to each corner.
+ * Those are the triangles drawn, so the points lie on the surface even where
+ * the face does not lie flat.
+ */
+function facesShowing(view: ObjectView, depth: SurfaceDepth, faceIds: number[]): number[] {
+  const geometry = view.pickTarget.geometry;
+  const position = geometry.getAttribute('position');
+  const index = geometry.getIndex();
+  const corner = (k: number) =>
+    new THREE.Vector3().fromBufferAttribute(position, index ? index.getX(k) : k);
+
+  const asked = new Set(faceIds);
+  const showing = new Set<number>();
+  for (let t = 0; t < view.triangleFaceIds.length; t++) {
+    const faceId = view.triangleFaceIds[t];
+    if (!asked.has(faceId) || showing.has(faceId)) continue;
+
+    const corners = [corner(t * 3), corner(t * 3 + 1), corner(t * 3 + 2)];
+    const middle = corners[0].clone().add(corners[1]).add(corners[2]).divideScalar(3);
+    const samples = [middle, ...corners.map((point) => point.lerp(middle, 0.5))];
+    const shows = samples.some((sample) => {
+      const placed = depth.place(sample.applyMatrix4(view.group.matrix));
+      return placed !== null && !depth.hides(placed.screen, placed.near);
+    });
+    if (shows) showing.add(faceId);
+  }
+  return faceIds.filter((faceId) => showing.has(faceId));
 }

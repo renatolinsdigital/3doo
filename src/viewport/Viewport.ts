@@ -82,10 +82,12 @@ import {
 } from './knife';
 import { type MarqueeLayer, createMarqueeLayer, drawMarquee, hideMarquee } from './marquee';
 import {
+  type BoxSelectRect,
   type FacingElements,
   type Marquee,
   type PickResult,
   type Region,
+  type SurfaceDepth,
   aimRay,
   facingElements,
   marqueeBounds,
@@ -93,7 +95,9 @@ import {
   pickElement,
   pickInRegion,
   pickObjectsInRegion,
+  pickRect,
   regionForShape,
+  surfaceDepth,
 } from './picking';
 import { pinnedAxes, publishViewAxes, resetViewAxes, subscribeViewAxesOrbit } from './viewAxes';
 
@@ -3493,6 +3497,7 @@ export class Viewport {
       this.canvasSize(),
       this.raycaster,
       this.pickable(object.mesh, view),
+      this.surfacesOver(pickRect(pointer)),
     );
   }
 
@@ -3767,6 +3772,7 @@ export class Viewport {
     );
 
     let nearestHit = Infinity;
+    let depth: SurfaceDepth | null | undefined;
     for (const object of ordered) {
       if (!object.visible) continue;
       const view = this.views.get(object.id);
@@ -3794,6 +3800,7 @@ export class Viewport {
       // and once the nearer objects have supplied both there is none at all.
       if (!targets.vertex || !targets.edge) {
         const facing = this.pickable(mesh, view);
+        if (depth === undefined) depth = this.surfacesOver(pickRect(pointer));
 
         if (!targets.vertex) {
           const pick = pickElement(
@@ -3805,6 +3812,7 @@ export class Viewport {
             size,
             this.raycaster,
             facing,
+            depth,
           );
           const vert = pick ? mesh.verts.get(pick.elementId) : undefined;
           if (vert) targets.vertex = toWorld(vert.co);
@@ -3820,6 +3828,7 @@ export class Viewport {
             size,
             this.raycaster,
             facing,
+            depth,
           );
           const edge = pick ? mesh.edges.get(pick.elementId) : undefined;
           if (edge) targets.edge = toWorld(mesh.edgeCenter(edge));
@@ -3949,6 +3958,26 @@ export class Viewport {
   }
 
   /**
+   * The surfaces drawn over `rect`, for a pick there to stay behind, or null
+   * where it reaches through them, as x-ray and wireframe do.
+   *
+   * The surfaces are the ones the vertex dots are tested against: those on
+   * `OCCLUDER_LAYER`, culled the way that pass culls them.
+   */
+  private surfacesOver(rect: BoxSelectRect): SurfaceDepth | null {
+    const { shading, backfaceCulling } = useEditorStore.getState();
+    if (shading === 'xray' || shading === 'wireframe') return null;
+
+    const occluders: THREE.Mesh[] = [];
+    this.scene.traverseVisible((object) => {
+      if (object instanceof THREE.Mesh && object.layers.isEnabled(OCCLUDER_LAYER)) {
+        occluders.push(object);
+      }
+    });
+    return surfaceDepth(occluders, this.camera, this.canvasSize(), rect, backfaceCulling);
+  }
+
+  /**
    * Marks the vertex a click would take, and nothing when there is none.
    *
    * Two vertices left in the same place (a slide run onto its neighbour with
@@ -3985,6 +4014,7 @@ export class Viewport {
         this.canvasSize(),
         this.raycaster,
         this.pickable(object.mesh, view),
+        this.surfacesOver(pickRect(this.pointerPixels)),
       );
       // Read back out of the view's own buffers rather than off the mesh: the
       // mark has to land on the dot it is marking, whichever buffer that dot
@@ -4132,7 +4162,9 @@ export class Viewport {
     if (state.mode !== 'edit' || !object || !view) return;
 
     const size = this.canvasSize();
+    const bounds = marqueeBounds(marquee);
     const facing = this.pickable(object.mesh, view);
+    const depth = this.surfacesOver(bounds);
     const hits = pickInRegion(
       view,
       state.selectMode,
@@ -4141,10 +4173,10 @@ export class Viewport {
       size,
       object.mesh,
       facing,
+      depth,
     );
 
     if (state.selectMode === 'face') {
-      const bounds = marqueeBounds(marquee);
       const centre = new THREE.Vector2(
         (bounds.minX + bounds.maxX) / 2,
         (bounds.minY + bounds.maxY) / 2,
@@ -4160,6 +4192,7 @@ export class Viewport {
           size,
           this.raycaster,
           facing,
+          depth,
         );
         if (pick && !hits.includes(pick.elementId)) hits.push(pick.elementId);
       }
