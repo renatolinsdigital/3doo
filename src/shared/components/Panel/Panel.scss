@@ -43,9 +43,12 @@
     cursor: pointer;
   }
 
+  // Martian Mono has no ▾ or ▸: a fallback font draws the arrow, but on
+  // Martian Mono's line box, which sits it a pixel below the title's middle.
   &__caret {
     font-size: var(--text-md);
     line-height: 1;
+    translate: 0 -0.1em;
   }
 
   &__actions {

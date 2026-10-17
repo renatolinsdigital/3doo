@@ -141,7 +141,7 @@ $max-width: 1600px;
   }
 
   &__title {
-    font-family: var(--font-display);
+    font-family: var(--font-headline);
     font-size: clamp(36px, 6.4vw, 96px);
     line-height: 0.95;
     letter-spacing: 0.01em;

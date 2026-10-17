@@ -193,6 +193,7 @@
   &__title {
     @include display-text;
 
+    font-family: var(--font-headline);
     font-size: clamp(20px, 2.6vw, 28px);
     color: var(--void);
   }

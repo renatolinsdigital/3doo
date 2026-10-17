@@ -57,15 +57,22 @@ Components consume these rather than repeating border and shadow declarations:
 @include brutal-press;       // translate to meet the shadow on :active
 @include brutal-focus;       // 3px cyan outline on :focus-visible
 @include label-text;         // uppercase mono, wide tracking
-@include display-text;       // Archivo Black, wide tracking
+@include display-text;       // Saira 900, wide tracking
 @include panel-header;       // oxblood bar with a hard divider
 @include active-indicator;   // filled bar on the leading edge
 ```
 
 ## Typography
 
-- **Archivo Black** for panel headers and display text.
-- **JetBrains Mono** for labels, values and every numeric field.
+- **Saira** (900) for display text: the brand plate, dialog titles, toasts.
+- **Saira Stencil One** for headings set large: the home headline and the
+  docs page titles. Below about 20px its cuts close up and it reads as plain
+  Saira, so it stays off small text.
+- **Martian Mono** for labels, values, every numeric field and running text.
+  It is loaded at width 75 only, which matches the 0.6em character width the
+  `ch` sizes were laid out against; at its default width it runs 17% wider.
+  Its bold is the 600 cut: `font-weight: 700` renders at 600, which keeps the
+  9px uppercase labels open.
 
 One weight per role, wide tracking on headers, tabular numerals on values so
 digits do not jitter as they change.

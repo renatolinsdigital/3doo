@@ -902,7 +902,7 @@ export function launcherPage(launch: Launch): string {
 <link rel="icon" href="data:image/svg+xml,${encodeURIComponent(LOGO)}">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=JetBrains+Mono:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Martian+Mono:wdth,wght@75,400;75,600&family=Saira:wght@900&display=swap">
 <style>
   :root {
     --void: #0b0b0b;
@@ -918,8 +918,8 @@ export function launcherPage(launch: Launch): string {
     --border-thin: 2px;
     --shadow: 4px;
     --gutter: 32px;
-    --display: 'Archivo Black', 'Arial Black', sans-serif;
-    --mono: 'JetBrains Mono', Consolas, 'Courier New', monospace;
+    --display: 'Saira', 'Arial Black', sans-serif;
+    --mono: 'Martian Mono', Consolas, 'Courier New', monospace;
   }
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {

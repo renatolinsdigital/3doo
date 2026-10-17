@@ -59,9 +59,19 @@
   --space-5: 16px;
   --space-6: 24px;
 
-  // Typography
-  --font-display: 'Archivo Black', 'Arial Black', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Consolas', 'Courier New', monospace;
+  // Typography. The faces are loaded in `index.html` (and again for the MCP
+  // page in `mcp/tools.ts`) in the fewest cuts that do the job, and the browser
+  // falls back to the nearest one. Martian Mono comes at width 75 only: that
+  // is the 0.6em character width every `ch` size here was laid out against,
+  // and its default width runs 17% wider. Its bold is the 600 cut, so every
+  // `font-weight: 700` lands a step lighter: the 700 cut clogged the 9px
+  // labels. Saira comes at 900 only, so a heading lands on the heavy face
+  // whatever weight it asks for. The stencil is for headings set large: below
+  // about 20px its cuts close up on a standard screen and it reads as plain
+  // Saira.
+  --font-display: 'Saira', 'Arial Black', sans-serif;
+  --font-headline: 'Saira Stencil One', 'Saira', 'Arial Black', sans-serif;
+  --font-mono: 'Martian Mono', 'Consolas', 'Courier New', monospace;
 
   // Four rungs, by role rather than by place: `xs` is every uppercase label and
   // micro caption, `sm` every value and every line of running copy in the

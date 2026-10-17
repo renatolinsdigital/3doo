@@ -29,9 +29,11 @@
     cursor: pointer;
   }
 
+  // Same fallback arrow as the panel caret, lifted for the same reason.
   &__caret {
     font-size: var(--text-md);
     line-height: 1;
+    translate: 0 -0.1em;
   }
 
   &__body {
