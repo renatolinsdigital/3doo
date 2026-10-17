@@ -136,6 +136,7 @@ Sass. No Tailwind, no CSS-in-JS, no component library.
 | [mcp.md](docs/mcp.md) | The MCP server for AI assistants: tools, payloads, the page API, snapshots and scene links |
 | [mcp-package.md](docs/mcp-package.md) | Publishing the `3doo-mcp` npm package: building, bumping, releasing and keeping it in step with the app |
 | [testing.md](docs/testing.md) | What is tested and how to add to it |
+| [ai-memory.md](docs/ai-memory.md) | How an AI assistant finds its way round the project without reading all of it |
 
 The user manual is not in this folder. It is the in-app Docs module, written in
 [content.ts](src/modules/docs/content.ts).
