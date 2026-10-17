@@ -29,6 +29,26 @@ expect(cube.validate()).toEqual([]);
 The browser validates integration and interaction; the kernel tests validate
 geometric correctness.
 
+## Every bug fix gets a regression test
+
+A fix lands together with a test that fails without it and passes with it.
+Write the test first and watch it fail, so it is known to catch the bug. Put
+it in the suite that already covers the module, at the lowest layer that
+shows the problem, and leave a comment above the assertion saying what used
+to happen:
+
+```ts
+// Typing into one axis used to write the other two back at the two decimal
+// places they were displayed with, quietly coarsening a turn nobody touched.
+expect(useEditorStore.getState().objects[0].transform.rotation.y).toBe(y);
+```
+
+A bug only visible through WebGL is still usually decided by a depth offset,
+a shader chunk or a piece of drag arithmetic that a test can reach:
+`bridge/materials.test.ts` tests shader source this way. The full rule,
+including the rare case where no test can reach the bug, is in
+`.claude/rules/regression-tests.md`.
+
 ## What a topology test asserts
 
 Good operation tests check four things, not just one:
