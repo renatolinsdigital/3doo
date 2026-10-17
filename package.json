@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:kernel": "vitest run src/kernel",
+    "test:gpu": "vitest run --config gpu/vitest.config.ts",
     "coverage": "vitest run --coverage",
     "lint": "eslint .",
     "format": "prettier --write \"src/**/*.{ts,tsx,scss}\"",

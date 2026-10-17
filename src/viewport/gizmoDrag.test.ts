@@ -7,10 +7,10 @@ import { aimGizmoRays, gizmoScaleRatio } from './Viewport';
 /**
  * Guards the TransformControls behaviour the viewport's drag handling rests on.
  *
- * The viewport cannot be instantiated here (it needs a WebGL context), but
- * TransformControls can, and every assumption behind `updateGizmo`'s dragging
- * guard and `handleLostPointerCapture` lives in this class. If a three upgrade
- * changes one of them, these fail and the drag code needs revisiting.
+ * Every assumption behind `updateGizmo`'s dragging guard, `standDownGizmo` and
+ * `handleLostPointerCapture` lives in this class. If a three upgrade changes
+ * one of them, these fail and the drag code needs revisiting. The viewport's
+ * own handling on top of it is driven in `Viewport.test.ts`.
  */
 
 interface DragApi {
@@ -45,7 +45,7 @@ function createDrag(mode: 'translate' | 'rotate' | 'scale' = 'translate') {
   controls.axis = 'X';
   helper.updateMatrixWorld(true);
 
-  return { controls, api: controls as unknown as DragApi, proxy, element };
+  return { controls, api: controls as unknown as DragApi, proxy, element, helper };
 }
 
 describe('TransformControls drag contract', () => {
@@ -136,6 +136,27 @@ describe('TransformControls drag contract', () => {
     // leaves the gizmo dragging forever. `Viewport.handleLostPointerCapture`
     // exists purely to clear it.
     expect(api.dragging).toBe(true);
+  });
+
+  it('takes a press on a handle it is not drawing, until it is disabled', () => {
+    const { controls, api, element, helper } = createDrag();
+    const press = () =>
+      element.dispatchEvent(
+        new PointerEvent('pointerdown', { clientX: 50, clientY: 50, button: 0, pointerId: 1 }),
+      );
+
+    // Why `Viewport.standDownGizmo` disables the controls as well as hiding
+    // them: three picks handles whether or not they are drawn, so a scale's
+    // hidden handles still took a drag from under its own line.
+    api.axis = null;
+    helper.visible = false;
+    press();
+    expect(api.dragging).toBe(true);
+
+    api.pointerUp({ x: 0, y: 0, button: 0 });
+    controls.enabled = false;
+    press();
+    expect(api.dragging).toBe(false);
   });
 
   it('finishes the drag when the flag is cleared from outside', () => {

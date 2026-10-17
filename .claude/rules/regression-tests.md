@@ -53,14 +53,21 @@ visual tweaks (a colour, a margin) are not bugs for this rule.
 
 ## Bugs that need a GPU
 
-The `Viewport` class needs a WebGL context and has no tests, but most of
-what goes wrong on screen is decided somewhere a test can reach. A dot or
-an edge leaking through a face comes from a depth offset or a shader
-chunk, and `src/bridge/materials.test.ts` checks both by compiling the
-material and reading its shader source. Pull the decision that went wrong
-into a function the `bridge` or `viewport` suite can call, and test that.
+Two places can reach what used to need a person looking at the screen:
 
-If nothing reachable from Vitest decides the bug, say so out loud: tell
-the user which bug has no regression test, why no test can catch it, and
-how the fix was checked instead (for example the headless Chrome GPU
-repro). Never skip the test silently.
+- **Wiring inside the viewport** (a subscription, a resync, the gizmo, the
+  camera): `src/viewport/Viewport.test.ts` builds the real `Viewport` in
+  jsdom on a stand-in renderer. Add the test there.
+- **What ends up on screen**: a dot or a wire drawn through a surface, or
+  one left off. Add a scene or a pose to `gpu/leaks.test.ts` and run
+  `npm run test:gpu`, which looks at real frames on the machine's GPU. It
+  is not part of `npm test`, so say in the reply that it was run and what
+  it said.
+
+Red first holds here too: put the bug back and watch the GPU check fail
+before trusting a scene to guard it. Its limits are listed in
+`docs/testing.md`; a leak within them still needs saying out loud.
+
+If neither reaches the bug, tell the user which bug has no regression
+test, why no test can catch it, and how the fix was checked instead.
+Never skip the test silently.

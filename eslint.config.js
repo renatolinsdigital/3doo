@@ -31,4 +31,10 @@ export default tseslint.config(
     files: ['mcp/**/*.ts'],
     languageOptions: { globals: globals.node },
   },
+  {
+    // The GPU check drives the browser from Node; only gpu/page.ts runs in it.
+    files: ['gpu/**/*.ts'],
+    ignores: ['gpu/page.ts'],
+    languageOptions: { globals: globals.node },
+  },
 );
