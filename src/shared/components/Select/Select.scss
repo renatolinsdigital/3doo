@@ -21,11 +21,11 @@
     width: 100%;
     min-width: 0;
     padding: var(--space-1) var(--space-3);
-    background: var(--bone);
+    background: var(--surface);
     // Set explicitly: inside a panel header the inherited colour is bone, which
     // would leave the text invisible on its own background.
-    color: var(--void);
-    border: var(--border-thin) solid var(--void);
+    color: var(--ink);
+    border: var(--border-thin) solid var(--ink);
     text-transform: uppercase;
     cursor: pointer;
 

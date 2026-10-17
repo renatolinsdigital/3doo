@@ -5,9 +5,9 @@
   z-index: var(--z-toast);
   max-width: 208px;
   padding: var(--space-1) var(--space-3);
-  background: var(--void);
-  color: var(--bone);
-  border: var(--border-thin) solid var(--bone);
+  background: var(--ink);
+  color: var(--surface);
+  border: var(--border-thin) solid var(--surface);
   line-height: 1.35;
   pointer-events: none;
 

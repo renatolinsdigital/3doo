@@ -4,12 +4,12 @@
 // Every corner in this design system is hard: there is no border-radius mixin
 // on purpose.
 
-@mixin brutal-border($width: var(--border-width), $color: var(--void)) {
+@mixin brutal-border($width: var(--border-width), $color: var(--ink)) {
   border: $width solid $color;
   border-radius: 0;
 }
 
-@mixin brutal-shadow($offset: var(--shadow-offset), $color: var(--void)) {
+@mixin brutal-shadow($offset: var(--shadow-offset), $color: var(--ink)) {
   box-shadow: $offset $offset 0 $color;
 }
 
@@ -18,7 +18,7 @@
 @mixin brutal-press($offset: var(--shadow-offset)) {
   &:active:not(:disabled):not([aria-disabled='true']) {
     transform: translate($offset, $offset);
-    box-shadow: 0 0 0 var(--void);
+    box-shadow: 0 0 0 var(--ink);
   }
 }
 
@@ -97,7 +97,8 @@
 
   padding: var(--space-3);
   background: var(--amber);
-  border: var(--border-thin) solid var(--void);
+  color: var(--void);
+  border: var(--border-thin) solid var(--ink);
   font-family: var(--font-display);
   font-size: var(--text-lg);
 }
@@ -119,8 +120,8 @@
   display: flex;
   align-items: center;
   padding: var(--space-1) var(--space-3);
-  background: var(--bone-shade);
-  border: var(--border-thin) solid var(--void);
+  background: var(--surface-shade);
+  border: var(--border-thin) solid var(--ink);
   border-right: none;
   user-select: none;
 }
@@ -158,7 +159,7 @@
   padding: var(--space-2) var(--space-3);
   background: var(--oxblood);
   color: var(--bone);
-  border-bottom: var(--border-width) solid var(--void);
+  border-bottom: var(--border-width) solid var(--ink);
 }
 
 /// Active tools are signalled through a filled indicator bar as well as colour,
@@ -178,7 +179,7 @@
 
 @mixin scrollbar {
   scrollbar-width: thin;
-  scrollbar-color: var(--rust) var(--bone-shade);
+  scrollbar-color: var(--rust) var(--surface-shade);
 
   &::-webkit-scrollbar {
     width: 8px;
@@ -186,12 +187,12 @@
   }
 
   &::-webkit-scrollbar-track {
-    background: var(--bone-shade);
+    background: var(--surface-shade);
   }
 
   &::-webkit-scrollbar-thumb {
     background: var(--rust);
-    border: var(--border-thin) solid var(--void);
+    border: var(--border-thin) solid var(--ink);
   }
 }
 

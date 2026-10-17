@@ -17,8 +17,8 @@ and honest, never a puzzle.
 
 | Token | Value | Use |
 | --- | --- | --- |
-| `--void` | `#0B0B0B` | Borders, text on light, panel outlines |
-| `--bone` | `#F4F1EA` | Panel backgrounds, primary text on dark |
+| `--void` | `#0B0B0B` | The light theme's `--ink`; text on amber and cyan |
+| `--bone` | `#F4F1EA` | The light theme's `--surface`; text on red, oxblood and the dark strips |
 | `--red` | `#E5342A` | Primary actions, active tool, selection |
 | `--oxblood` | `#7B1113` | Pressed states, headers, status strip |
 | `--rust` | `#B8452F` | Secondary accents, hover |
@@ -30,6 +30,35 @@ and honest, never a puzzle.
 Tokens are **CSS custom properties**, not Sass variables, because the viewport
 reads the same palette at runtime (`VIEWPORT_COLORS` in `src/bridge/materials.ts`
 mirrors them for Three.js). Sass provides organisation and mixins on top.
+
+## Roles and dark mode
+
+Components paint the chrome with **role tokens**, not with bone and void
+directly:
+
+| Token | Light | Dark | Use |
+| --- | --- | --- | --- |
+| `--surface` | `--bone` | `#2A2724` | Face of a panel, bar, field or menu |
+| `--surface-dim` | `--bone-dim` | `#35312E` | Hover, a field set back from its bar |
+| `--surface-shade` | `--bone-shade` | `#433E3A` | Pressed, current, the field label cell |
+| `--ink` | `--void` | `#EBE6DC` | Text, frames, rules, shadows, inverted chips |
+| `--ink-muted` | `#57534C` | `#AEA79A` | Hints and secondary text |
+
+Dark mode is `data-theme="dark"` on the root element, set from the
+`theme` preference by the app shell and switched by the moon (`ThemeToggle`)
+in the bar of every module. It swaps the roles and nothing else: the chrome
+becomes its own negative, so a frame or an offset shadow keeps its weight
+instead of sinking into a dark panel. `color-scheme: dark` comes with it for native scrollbars and pickers.
+
+Name the palette directly only for what must look the same in both themes:
+
+- an accent fill and the text on it (`--bone` on red, `--void` on amber),
+- the oxblood strips: panel headers and the status bar,
+- the code editor, the MCP code samples and the brand plate,
+- the viewport and its overlays, which sit on the ash stage.
+
+Text on amber or cyan has to say `color: var(--void)` even where it would
+otherwise inherit, because the inherited ink turns light in dark mode.
 
 ## Structure
 

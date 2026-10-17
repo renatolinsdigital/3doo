@@ -357,7 +357,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Top bar',
-            'Left: FILE, PREFS and the project name. Middle: the object/edit mode switch; the snap, proportional, auto merge, orthographic and smooth-shading flags; the pivot picker; the SHADING and OVERLAYS menus. Right: the script editor, the MCP server guide (connecting an AI assistant), the history list, the two framing buttons and the shortcut list. On a narrow screen the bar is one row that scrolls sideways: swipe it to reach the rest.',
+            'Left: FILE, PREFS and the project name. Middle: the object/edit mode switch; the snap, proportional, auto merge, orthographic and smooth-shading flags; the pivot picker; the SHADING and OVERLAYS menus. Right: the script editor, the MCP server guide (connecting an AI assistant), the history list, the two framing buttons, the dark mode switch and the shortcut list. On a narrow screen the bar is one row that scrolls sideways: swipe it to reach the rest.',
           ],
           [
             'Tool rail, far left',
@@ -1155,6 +1155,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       {
         kind: 'prose',
         text: "PREFS in the top bar holds the settings that belong to you rather than to a scene: hint tooltips, the colours, how fast the view orbits with and without a selection, whether a vertical orbit stops at the poles, whether the wheel zooms toward the pointer or into the middle of the view, the grid's scale, autosave, and the thickness of the outline around selected objects. They are stored on this device and kept out of project files, so opening a scene someone sent you never changes your viewport.",
+      },
+      {
+        kind: 'prose',
+        text: 'The moon near the right end of the top bar switches to dark mode: panels, bars, menus and dialogs turn dark with light text and frames, here, in the docs and on the home page alike. The docs and the home page have the same moon at the right end of their own bars, so you can switch from wherever you are. The sun that takes its place switches back. The viewport looks the same either way, since its background is a colour of its own under COLORS. Dark mode is kept with your other preferences, so it is still on next time, and RESET puts it back to light.',
       },
       {
         kind: 'prose',

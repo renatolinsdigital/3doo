@@ -22,6 +22,7 @@ const DEFAULT_PANELS: PanelVisibility = {
 
 export const DEFAULT_PREFERENCES: Preferences = {
   tooltipsEnabled: true,
+  theme: 'light',
   panels: { ...DEFAULT_PANELS },
   selectionLineWidth: 2,
   selectionLineColor: '#e5342a',
@@ -170,6 +171,7 @@ export function coercePreferences(raw: unknown): Preferences {
 
   return {
     tooltipsEnabled: coerceBoolean(source.tooltipsEnabled, DEFAULT_PREFERENCES.tooltipsEnabled),
+    theme: source.theme === 'dark' ? 'dark' : DEFAULT_PREFERENCES.theme,
     panels: coercePanels(source.panels),
     selectionLineWidth: coerceNumber(
       source.selectionLineWidth,
@@ -322,6 +324,7 @@ export const createPreferencesSlice: StateCreator<
     currentPreferences: () => {
       const {
         tooltipsEnabled,
+        theme,
         panels,
         selectionLineWidth,
         selectionLineColor,
@@ -346,6 +349,7 @@ export const createPreferencesSlice: StateCreator<
       } = get();
       return {
         tooltipsEnabled,
+        theme,
         panels,
         selectionLineWidth,
         selectionLineColor,

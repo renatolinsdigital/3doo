@@ -14,21 +14,21 @@
   width: 100%;
   min-height: var(--control-height);
   padding: var(--space-1);
-  background: var(--bone);
-  color: var(--void);
+  background: var(--surface);
+  color: var(--ink);
 
   &:hover:not(:disabled):not([aria-disabled='true']) {
-    background: var(--bone-dim);
+    background: var(--surface-dim);
   }
 
   &:active:not(:disabled) {
-    background: var(--bone-shade);
+    background: var(--surface-shade);
   }
 
   // Active tools read through three channels: fill, the inset bar, and the
   // shortcut hint flipping to bone.
   &--active {
-    @include active-indicator(var(--void));
+    @include active-indicator(var(--ink));
 
     background: var(--red);
     color: var(--bone);

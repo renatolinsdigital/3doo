@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ModuleSwitcher } from '@app/ModuleSwitcher/ModuleSwitcher';
 import { navigate } from '@app/router';
-import { SiteFooter } from '@domain/components';
+import { SiteFooter, ThemeToggle } from '@domain/components';
 import { Button, TextField } from '@shared/components';
 
 import { type DocsBlock, type DocsResult, DOCS_SECTIONS, searchDocs, searchTerms } from './content';
@@ -90,7 +90,10 @@ export function DocsModule() {
     <div className="docs">
       <header className="docs__bar">
         <ModuleSwitcher />
-        <Button label="OPEN MODELING" variant="primary" onClick={() => navigate('/modeling')} />
+        <div className="docs__bar-end">
+          <ThemeToggle />
+          <Button label="OPEN MODELING" variant="primary" onClick={() => navigate('/modeling')} />
+        </div>
       </header>
 
       <div className="docs__body">

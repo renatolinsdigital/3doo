@@ -38,6 +38,9 @@ export type SnapMode = 'grid' | 'custom';
 /** Where the wheel zooms: dead into the middle of the view, or leaning toward the pointer. */
 export type WheelZoom = 'centred' | 'pointer';
 
+/** The chrome on bone, or its dark negative. The viewport is the same in both. */
+export type Theme = 'light' | 'dark';
+
 /**
  * What a rotation or a scale turns about.
  *
@@ -266,6 +269,8 @@ export interface ViewportSettings {
  */
 export interface Preferences {
   tooltipsEnabled: boolean;
+  /** Set on the page's root element as `data-theme`, where `theme.scss` picks it up. */
+  theme: Theme;
   /**
    * Which panels, the tool rail and the status bar are on screen.
    *

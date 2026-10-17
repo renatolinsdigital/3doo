@@ -2,8 +2,8 @@
 
 .segmented {
   display: flex;
-  border: var(--border-thin) solid var(--void);
-  background: var(--bone);
+  border: var(--border-thin) solid var(--ink);
+  background: var(--surface);
 
   // A lone flag has nothing to share its width with, so it takes only the room
   // its label needs instead of stretching like a segment of a set. Flex only
@@ -41,8 +41,8 @@
     min-width: 0;
     min-height: var(--control-sm);
     padding: var(--space-1) var(--space-3);
-    color: var(--void);
-    border-right: var(--border-thin) solid var(--void);
+    color: var(--ink);
+    border-right: var(--border-thin) solid var(--ink);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -52,7 +52,7 @@
     }
 
     &:hover:not(:disabled):not([aria-disabled='true']) {
-      background: var(--bone-dim);
+      background: var(--surface-dim);
     }
 
     &[aria-disabled='true'] {
@@ -64,7 +64,7 @@
     &--active {
       background: var(--red);
       color: var(--bone);
-      box-shadow: inset 0 calc(-1 * var(--border-width)) 0 var(--void);
+      box-shadow: inset 0 calc(-1 * var(--border-width)) 0 var(--ink);
 
       &:hover:not(:disabled):not([aria-disabled='true']) {
         background: var(--rust);

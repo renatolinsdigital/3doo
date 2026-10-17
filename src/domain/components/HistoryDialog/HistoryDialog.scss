@@ -18,8 +18,8 @@
     width: 100%;
     min-height: var(--field-height);
     padding: var(--space-1) var(--space-3);
-    background: var(--bone-dim);
-    border: var(--border-thin) solid var(--void);
+    background: var(--surface-dim);
+    border: var(--border-thin) solid var(--ink);
     cursor: pointer;
 
     &:hover {
@@ -58,9 +58,9 @@
     @include label-text;
 
     padding: var(--space-1) var(--space-3);
-    color: var(--bone);
-    background: var(--void);
-    border: var(--border-thin) solid var(--void);
+    color: var(--surface);
+    background: var(--ink);
+    border: var(--border-thin) solid var(--ink);
   }
 
   &__empty,

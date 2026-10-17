@@ -28,8 +28,8 @@
   justify-content: space-between;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
-  background: var(--bone);
-  border-bottom: var(--border-width) solid var(--void);
+  background: var(--surface);
+  border-bottom: var(--border-width) solid var(--ink);
 
   &__brand {
     display: flex;
@@ -40,7 +40,7 @@
 
   &__project-input {
     // The bar is bone itself, so the field has to sit a shade back from it.
-    --text-field-surface: var(--bone-dim);
+    --text-field-surface: var(--surface-dim);
 
     width: 18ch;
     max-width: 100%;
@@ -130,7 +130,7 @@
     }
 
     &[aria-expanded='true'] {
-      background: var(--bone-shade);
+      background: var(--surface-shade);
     }
   }
 

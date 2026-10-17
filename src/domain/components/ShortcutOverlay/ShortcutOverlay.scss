@@ -9,7 +9,7 @@
     @include label-text;
 
     padding-bottom: var(--space-2);
-    border-bottom: var(--border-width) solid var(--void);
+    border-bottom: var(--border-width) solid var(--ink);
   }
 
   &__list {
@@ -23,7 +23,7 @@
     grid-template-columns: 140px 1fr;
     gap: var(--space-3);
     padding: var(--space-2) 0;
-    border-bottom: 1px solid var(--bone-shade);
+    border-bottom: 1px solid var(--surface-shade);
   }
 
   &__keys {
@@ -45,15 +45,15 @@
     @include label-text;
 
     padding: 0 var(--space-2);
-    background: var(--bone-shade);
-    border: 1px solid var(--void);
+    background: var(--surface-shade);
+    border: 1px solid var(--ink);
   }
 
   &__credit {
     @include mono-value;
 
     padding-top: var(--space-4);
-    border-top: var(--border-width) solid var(--void);
+    border-top: var(--border-width) solid var(--ink);
     color: var(--ink-muted);
     text-align: center;
 

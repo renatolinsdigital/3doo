@@ -10,7 +10,7 @@
   flex-direction: column;
   min-width: 168px;
   padding: 0 0 var(--space-1);
-  background: var(--bone);
+  background: var(--surface);
 }
 
 .context-menu__title {
@@ -25,13 +25,13 @@
   align-items: center;
   min-height: var(--control-sm);
   padding: var(--space-1) var(--space-3);
-  color: var(--void);
+  color: var(--ink);
   text-align: left;
 
   // The choice in force, shaded like a selected row in the outliner. Hover
   // still wins: it is a heavier selector, and the entry is still clickable.
   &--current {
-    background: var(--bone-shade);
+    background: var(--surface-shade);
   }
 
   &:hover:not([aria-disabled='true']) {
@@ -56,8 +56,8 @@
   height: var(--box-size);
   font-size: var(--text-md);
   line-height: 1;
-  background: var(--bone);
-  border: var(--border-thin) solid var(--void);
+  background: var(--surface);
+  border: var(--border-thin) solid var(--ink);
 }
 
 .context-menu__item--check {
@@ -70,14 +70,14 @@
 
   // The hovered row fills red, which a checked box would disappear into.
   &:hover:not([aria-disabled='true']) .context-menu__box {
-    background: var(--bone);
-    color: var(--void);
+    background: var(--surface);
+    color: var(--ink);
   }
 }
 
 .context-menu__rule {
   height: var(--border-thin);
   margin: var(--space-1) 0;
-  background: var(--void);
+  background: var(--ink);
   border: none;
 }

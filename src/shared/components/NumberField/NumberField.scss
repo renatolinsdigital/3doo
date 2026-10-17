@@ -26,8 +26,8 @@
   &__input-wrap {
     display: flex;
     align-items: center;
-    border: var(--border-thin) solid var(--void);
-    background: var(--bone);
+    border: var(--border-thin) solid var(--ink);
+    background: var(--surface);
   }
 
   &__input {
@@ -37,7 +37,7 @@
     min-width: 0;
     padding: var(--space-1) var(--space-3);
     background: transparent;
-    color: var(--void);
+    color: var(--ink);
     border: none;
 
     &:disabled {

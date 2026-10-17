@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { API_ENTRIES } from '@domain/scripting/reference';
+import { useEditorStore } from '@store/index';
 
 import { App } from './App';
 import { moduleForPath } from './modules';
@@ -31,6 +32,7 @@ describe('module routing', () => {
 
   beforeEach(() => {
     go('/');
+    useEditorStore.setState({ theme: 'light' });
   });
 
   it('lands on home at the root', () => {
@@ -90,6 +92,22 @@ describe('module routing', () => {
 
     expect(screen.queryByRole('menu', { name: 'Modules' })).not.toBeInTheDocument();
     expect(window.location.pathname).toBe('/');
+  });
+
+  it('switches dark mode from the home page and the docs, and keeps it between them', async () => {
+    // The switch used to be in the editor's top bar alone, so a page that is
+    // only read, never edited, could not be turned dark from where it was.
+    const home = render(<App />);
+    await userEvent.click(screen.getByRole('button', { name: 'DARK MODE' }));
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+    home.unmount();
+
+    go('/docs');
+    render(<App />);
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+
+    await userEvent.click(screen.getByRole('button', { name: 'LIGHT MODE' }));
+    expect(document.documentElement).toHaveAttribute('data-theme', 'light');
   });
 
   it('falls back to home for a path no module claims', () => {

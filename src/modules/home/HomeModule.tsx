@@ -1,6 +1,6 @@
 import { ModuleSwitcher } from '@app/ModuleSwitcher/ModuleSwitcher';
 import { navigate } from '@app/router';
-import { SiteFooter } from '@domain/components';
+import { SiteFooter, ThemeToggle } from '@domain/components';
 import { Button } from '@shared/components';
 
 import { version } from '../../../package.json';
@@ -89,6 +89,7 @@ export function HomeModule() {
         <ModuleSwitcher />
         <div className="home__bar-end">
           <span className="home__version">v {version}</span>
+          <ThemeToggle />
           <Button label="START MODELING" variant="primary" onClick={openModeling} />
         </div>
       </header>

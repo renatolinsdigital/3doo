@@ -1,4 +1,6 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect } from 'react';
+
+import { useEditorStore } from '@store/index';
 
 import { moduleForPath } from './modules';
 import { usePathname } from './router';
@@ -24,10 +26,17 @@ const ModelingModule = lazy(() =>
  */
 export function App() {
   const active = moduleForPath(usePathname());
+  const theme = useEditorStore((state) => state.theme);
 
   useEffect(() => {
     document.title = `${active.brand}: ${active.summary}`;
   }, [active]);
+
+  // Here rather than in a module, so the docs and the home page wear it too.
+  // Before paint, so a dark preference never shows a frame of bone first.
+  useLayoutEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 
   return (
     <Suspense fallback={null}>

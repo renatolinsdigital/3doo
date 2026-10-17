@@ -1,0 +1,13 @@
+// A square of its own beside the bar's other buttons, where the rail would
+// stretch an icon button across its column. The glyph takes the same box as
+// the top bar's icons, so it lines up with them in the editor.
+.theme-toggle {
+  width: auto;
+  min-width: var(--control-height);
+
+  &__glyph {
+    display: block;
+    width: var(--box-size);
+    height: var(--box-size);
+  }
+}

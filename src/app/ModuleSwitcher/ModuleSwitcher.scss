@@ -39,7 +39,7 @@
     display: flex;
     flex-direction: column;
     min-width: min(224px, calc(100vw - var(--space-5)));
-    background: var(--bone);
+    background: var(--surface);
   }
 
   &__item {
@@ -49,7 +49,7 @@
     padding: var(--space-2) var(--space-3);
     text-align: left;
     cursor: pointer;
-    border-bottom: var(--border-thin) solid var(--void);
+    border-bottom: var(--border-thin) solid var(--ink);
 
     &:last-child {
       border-bottom: none;
@@ -57,7 +57,7 @@
 
     &:hover,
     &:focus-visible {
-      background: var(--bone-dim);
+      background: var(--surface-dim);
       outline: none;
     }
 
@@ -66,14 +66,14 @@
     &[aria-current] {
       @include active-indicator(var(--red));
 
-      background: var(--bone-dim);
+      background: var(--surface-dim);
     }
   }
 
   &__item-label {
     @include label-text;
 
-    color: var(--void);
+    color: var(--ink);
   }
 
   &__item-summary {

@@ -13,14 +13,20 @@
     justify-content: space-between;
     gap: var(--space-3);
     padding: var(--space-2) var(--space-3);
-    background: var(--bone);
-    border-bottom: var(--border-width) solid var(--void);
+    background: var(--surface);
+    border-bottom: var(--border-width) solid var(--ink);
 
     .button,
     .button:active:not(:disabled):not([aria-disabled='true']) {
       box-shadow: none;
       transform: none;
     }
+  }
+
+  &__bar-end {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
   }
 
   // Capped and centred rather than stretched across the display. Running copy
@@ -55,7 +61,7 @@
     flex-direction: column;
     min-height: 0;
     overflow-y: auto;
-    background: var(--bone);
+    background: var(--surface);
   }
 
   // Title and search field ride together: the field is no use scrolled off the
@@ -64,7 +70,7 @@
     position: sticky;
     top: 0;
     z-index: 1;
-    background: var(--bone);
+    background: var(--surface);
   }
 
   &__nav-title {
@@ -76,7 +82,7 @@
     align-items: center;
     gap: var(--space-2);
     padding: var(--space-2);
-    border-bottom: var(--border-width) solid var(--void);
+    border-bottom: var(--border-width) solid var(--ink);
   }
 
   &__search-field {
@@ -98,8 +104,8 @@
     height: var(--control-sm);
     font-size: var(--text-sm);
     line-height: 1;
-    color: var(--void);
-    border: var(--border-thin) solid var(--void);
+    color: var(--ink);
+    border: var(--border-thin) solid var(--ink);
 
     &:hover {
       color: var(--bone);
@@ -114,7 +120,7 @@
     padding: var(--space-2) var(--space-3);
     text-align: left;
     cursor: pointer;
-    border-bottom: var(--border-thin) solid var(--void);
+    border-bottom: var(--border-thin) solid var(--ink);
 
     &:last-child {
       border-bottom: none;
@@ -122,7 +128,7 @@
 
     &:hover,
     &:focus-visible {
-      background: var(--bone-dim);
+      background: var(--surface-dim);
       outline: none;
     }
 
@@ -131,7 +137,7 @@
     &[aria-current] {
       @include active-indicator(var(--red));
 
-      background: var(--bone-dim);
+      background: var(--surface-dim);
     }
   }
 
@@ -142,7 +148,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2);
-    color: var(--void);
+    color: var(--ink);
   }
 
   &__nav-count {
@@ -173,7 +179,7 @@
     min-height: 0;
     padding: var(--space-5);
     overflow-y: auto;
-    background: var(--bone);
+    background: var(--surface);
   }
 
   &__article {
@@ -195,7 +201,7 @@
 
     font-family: var(--font-headline);
     font-size: clamp(20px, 2.6vw, 28px);
-    color: var(--void);
+    color: var(--ink);
   }
 
   &__blurb {
@@ -203,7 +209,7 @@
 
     padding-bottom: var(--space-3);
     color: var(--ink-muted);
-    border-bottom: var(--border-width) solid var(--void);
+    border-bottom: var(--border-width) solid var(--ink);
   }
 
   // Running documentation rather than chrome: the one place that reads as a
@@ -217,7 +223,7 @@
     max-width: 96ch;
     font-size: var(--text-md);
     line-height: 1.7;
-    color: var(--void);
+    color: var(--ink);
   }
 
   &__note {
@@ -228,7 +234,7 @@
     font-size: var(--text-md);
     line-height: 1.7;
     color: var(--ink-muted);
-    border: var(--border-thin) dashed var(--void);
+    border: var(--border-thin) dashed var(--ink);
   }
 
   &__steps {
@@ -254,7 +260,7 @@
   &__result {
     display: flex;
     flex-direction: column;
-    border: var(--border-thin) solid var(--void);
+    border: var(--border-thin) solid var(--ink);
   }
 
   &__result-head {
@@ -293,21 +299,21 @@
   &__table {
     width: 100%;
     border-collapse: collapse;
-    border: var(--border-thin) solid var(--void);
+    border: var(--border-thin) solid var(--ink);
 
     th,
     td {
       padding: var(--space-3);
       text-align: left;
       vertical-align: top;
-      border-bottom: var(--border-thin) solid var(--void);
+      border-bottom: var(--border-thin) solid var(--ink);
     }
 
     thead th {
       @include label-text;
 
-      color: var(--bone);
-      background: var(--void);
+      color: var(--surface);
+      background: var(--ink);
     }
 
     tbody th {
@@ -316,8 +322,8 @@
       width: 24%;
       min-width: 128px;
       font-weight: 700;
-      color: var(--void);
-      background: var(--bone-dim);
+      color: var(--ink);
+      background: var(--surface-dim);
     }
 
     tbody td {
@@ -338,12 +344,13 @@
     tbody tr.docs__row--target th {
       @include active-indicator(var(--red));
 
+      color: var(--void);
       background: var(--amber);
     }
 
     tbody tr.docs__row--target td {
-      color: var(--void);
-      background: color-mix(in srgb, var(--amber) 22%, var(--bone));
+      color: var(--ink);
+      background: color-mix(in srgb, var(--amber) 22%, var(--surface));
     }
   }
 

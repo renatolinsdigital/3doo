@@ -91,6 +91,16 @@ describe('preference storage', () => {
     expect(reloaded.getState().autosaveEnabled).toBe(true);
   });
 
+  it('remembers dark mode across a reload', async () => {
+    const store = await freshStore();
+
+    store.getState().setPreferences({ theme: 'dark' });
+    vi.resetModules();
+
+    const reloaded = await freshStore();
+    expect(reloaded.getState().theme).toBe('dark');
+  });
+
   it('puts everything back on reset', async () => {
     const store = await freshStore();
     store.getState().setPreferences({ selectionLineWidth: 7, selectionLineColor: '#000000' });
@@ -155,6 +165,12 @@ describe('coercePreferences', () => {
     expect(coercePreferences({ autosaveInterval: 'often' }).autosaveInterval).toBe(
       DEFAULT_PREFERENCES.autosaveInterval,
     );
+  });
+
+  it('stays light unless told to go dark', () => {
+    expect(DEFAULT_PREFERENCES.theme).toBe('light');
+    expect(coercePreferences({ theme: 'dark' }).theme).toBe('dark');
+    expect(coercePreferences({ theme: 'midnight' }).theme).toBe('light');
   });
 
   it('follows the pointer with the wheel unless told to zoom centred', () => {

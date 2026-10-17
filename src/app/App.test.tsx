@@ -37,6 +37,7 @@ describe('App shell', () => {
     useEditorStore.getState().resetScene();
     useEditorStore.setState({
       tooltipsEnabled: true,
+      theme: DEFAULT_PREFERENCES.theme,
       hint: null,
       panels: DEFAULT_PREFERENCES.panels,
       // A toast left up by one test is a second role="status" in the next one.
@@ -941,6 +942,21 @@ describe('App shell', () => {
     expect(useEditorStore.getState().frameRequest).toMatchObject({ target: 'all' });
   });
 
+  it('switches the page to dark mode from the top bar, and back', async () => {
+    render(<App />);
+    expect(document.documentElement).toHaveAttribute('data-theme', 'light');
+
+    await userEvent.click(screen.getByRole('button', { name: 'DARK MODE' }));
+
+    expect(useEditorStore.getState().theme).toBe('dark');
+    expect(document.documentElement).toHaveAttribute('data-theme', 'dark');
+
+    // Named for what the next click does, so it reads LIGHT MODE while dark.
+    await userEvent.click(screen.getByRole('button', { name: 'LIGHT MODE' }));
+
+    expect(document.documentElement).toHaveAttribute('data-theme', 'light');
+  });
+
   it('picks a shading mode from the top bar menu', async () => {
     render(<App />);
 
@@ -1020,12 +1036,14 @@ describe('App shell', () => {
 
   it('draws every top bar icon at one size, whatever it is a picture of', () => {
     render(<App />);
-    const glyphs = [...document.querySelectorAll('.top-bar .top-bar__glyph')];
+    const glyphs = [...document.querySelectorAll('.top-bar svg')];
 
-    // Snap, proportional, auto merge, ortho, smooth, script, MCP, history and
-    // the two frame buttons. They were Unicode glyphs, and the crosshair on
-    // FRAME SEL came out at about half the height of the ruled square on SNAP.
-    expect(glyphs).toHaveLength(10);
+    // Snap, proportional, auto merge, ortho, smooth, script, MCP, history, the
+    // two frame buttons and dark mode, which brings its own glyph since it is
+    // in every module's bar, not this one alone. They were Unicode glyphs, and
+    // the crosshair on FRAME SEL came out at about half the height of the ruled
+    // square on SNAP.
+    expect(glyphs).toHaveLength(11);
     for (const glyph of glyphs) {
       expect(glyph.tagName.toLowerCase()).toBe('svg');
       // One box, and drawings that fill it, so no font gets a say in the size.

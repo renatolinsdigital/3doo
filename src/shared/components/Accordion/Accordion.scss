@@ -11,7 +11,7 @@
     @include label-text;
 
     color: var(--ink-muted);
-    border-bottom: var(--border-thin) solid var(--void);
+    border-bottom: var(--border-thin) solid var(--ink);
   }
 
   &__toggle {

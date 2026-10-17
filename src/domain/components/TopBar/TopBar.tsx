@@ -31,6 +31,7 @@ import type {
 
 import { replacingLosesNothing, useProjectFiles } from '../../hooks/useProjectFiles';
 import { canWriteBack, saveTarget } from '../../services/download';
+import { ThemeToggle } from '../ThemeToggle/ThemeToggle';
 
 import './TopBar.scss';
 
@@ -417,6 +418,7 @@ export function TopBar({ brand }: TopBarProps) {
           hint={VIEW_LOST_HINTS[viewLost ?? 'here']}
           onClick={frameAll}
         />
+        <ThemeToggle />
         <Button
           label="?"
           variant="ghost"

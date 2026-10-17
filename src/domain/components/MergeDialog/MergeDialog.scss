@@ -6,7 +6,8 @@
 
     padding: var(--space-3);
     background: var(--amber);
-    border: var(--border-thin) solid var(--void);
+    color: var(--void);
+    border: var(--border-thin) solid var(--ink);
 
     strong {
       font-family: var(--font-display);

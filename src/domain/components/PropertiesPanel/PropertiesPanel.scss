@@ -21,7 +21,7 @@
   &__material {
     display: grid;
     grid-template-columns: 1fr var(--field-height);
-    border: var(--border-thin) solid var(--void);
+    border: var(--border-thin) solid var(--ink);
   }
 
   &__material-slot {
@@ -31,12 +31,12 @@
     min-height: var(--field-height);
     padding: var(--space-1) var(--space-3);
     text-align: left;
-    background: var(--bone);
+    background: var(--surface);
 
     &--active {
       background: var(--red);
       color: var(--bone);
-      box-shadow: inset 3px 0 0 var(--void);
+      box-shadow: inset 3px 0 0 var(--ink);
     }
   }
 
@@ -44,9 +44,9 @@
     width: 100%;
     height: 100%;
     padding: 2px;
-    background: var(--bone);
+    background: var(--surface);
     border: none;
-    border-left: var(--border-thin) solid var(--void);
+    border-left: var(--border-thin) solid var(--ink);
     cursor: pointer;
   }
 

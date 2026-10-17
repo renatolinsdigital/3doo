@@ -21,8 +21,8 @@
     gap: var(--space-1);
     min-width: 0;
     padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
-    background: var(--bone);
-    border: var(--border-thin) solid var(--void);
+    background: var(--surface);
+    border: var(--border-thin) solid var(--ink);
 
     // Scoped under the row so it outranks the button's own sizing whatever
     // order the stylesheets load in. A full-height button, and the press that

@@ -37,8 +37,8 @@ $max-width: 1600px;
     justify-content: space-between;
     gap: var(--space-3);
     padding: var(--space-2) var(--space-3);
-    background: var(--bone);
-    border-bottom: var(--border-width) solid var(--void);
+    background: var(--surface);
+    border-bottom: var(--border-width) solid var(--ink);
 
     .button,
     .button:active:not(:disabled):not([aria-disabled='true']) {
@@ -113,10 +113,10 @@ $max-width: 1600px;
     align-items: flex-start;
     gap: var(--space-6);
     padding: 40px 40px 48px;
-    background-color: var(--bone);
+    background-color: var(--surface);
     background-image:
-      linear-gradient(var(--bone-dim) 1px, transparent 1px),
-      linear-gradient(90deg, var(--bone-dim) 1px, transparent 1px);
+      linear-gradient(var(--surface-dim) 1px, transparent 1px),
+      linear-gradient(90deg, var(--surface-dim) 1px, transparent 1px);
     background-size: $hero-grid $hero-grid;
   }
 
@@ -130,13 +130,13 @@ $max-width: 1600px;
 
     padding: var(--space-3) var(--space-4);
     font-size: 11px;
-    color: var(--void);
-    background: var(--bone);
-    border: var(--border-thin) solid var(--void);
+    color: var(--ink);
+    background: var(--surface);
+    border: var(--border-thin) solid var(--ink);
 
     &--solid {
-      color: var(--bone);
-      background: var(--void);
+      color: var(--surface);
+      background: var(--ink);
     }
   }
 
@@ -145,7 +145,7 @@ $max-width: 1600px;
     font-size: clamp(36px, 6.4vw, 96px);
     line-height: 0.95;
     letter-spacing: 0.01em;
-    color: var(--void);
+    color: var(--ink);
   }
 
   &__title-dot {
@@ -159,7 +159,7 @@ $max-width: 1600px;
     flex-direction: column;
     gap: var(--space-6);
     padding: 28px;
-    background: var(--bone);
+    background: var(--surface);
   }
 
   &__lede {
@@ -167,7 +167,7 @@ $max-width: 1600px;
 
     font-size: 17px;
     line-height: 1.7;
-    color: var(--void);
+    color: var(--ink);
   }
 
   &__actions {
@@ -189,7 +189,7 @@ $max-width: 1600px;
     font-family: var(--font-mono);
     font-size: 11px;
     letter-spacing: 0.12em;
-    border-top: var(--border-thin) solid var(--void);
+    border-top: var(--border-thin) solid var(--ink);
 
     &:first-child {
       border-top-width: var(--border-width);
@@ -202,7 +202,7 @@ $max-width: 1600px;
     dd {
       font-weight: 700;
       text-align: right;
-      color: var(--void);
+      color: var(--ink);
     }
   }
 
@@ -326,7 +326,7 @@ $max-width: 1600px;
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: var(--border-width);
-    background: var(--void);
+    background: var(--ink);
   }
 
   &__stat {
@@ -334,7 +334,7 @@ $max-width: 1600px;
     flex-direction: column;
     gap: var(--space-4);
     padding: var(--space-6);
-    background: var(--bone);
+    background: var(--surface);
 
     dt {
       font-family: var(--font-mono);
@@ -347,7 +347,7 @@ $max-width: 1600px;
       font-family: var(--font-display);
       font-size: 22px;
       letter-spacing: 0.02em;
-      color: var(--void);
+      color: var(--ink);
     }
 
     .home__stat-note {
@@ -405,7 +405,7 @@ $max-width: 1600px;
     flex-direction: column;
     gap: var(--space-5);
     padding: var(--space-6);
-    background: var(--bone);
+    background: var(--surface);
   }
 
   &__card-head {
@@ -427,8 +427,8 @@ $max-width: 1600px;
 
     padding: var(--space-2) var(--space-3);
     font-size: 10px;
-    color: var(--void);
-    border: var(--border-thin) solid var(--void);
+    color: var(--ink);
+    border: var(--border-thin) solid var(--ink);
   }
 
   &__card-title {
@@ -436,8 +436,8 @@ $max-width: 1600px;
 
     padding-bottom: var(--space-4);
     font-size: 13px;
-    color: var(--void);
-    border-bottom: var(--border-width) solid var(--void);
+    color: var(--ink);
+    border-bottom: var(--border-width) solid var(--ink);
   }
 
   &__card-body {
@@ -461,8 +461,8 @@ $max-width: 1600px;
 
     padding: var(--space-2) var(--space-3);
     font-size: 10px;
-    color: var(--bone);
-    background: var(--void);
+    color: var(--surface);
+    background: var(--ink);
   }
 
   &__closer {
@@ -529,6 +529,12 @@ $max-width: 1600px;
   }
 
   @include mobile {
+    // The dark mode switch leaves no room for it on a phone, and the bar
+    // wrapped START MODELING onto two lines to make some.
+    &__version {
+      display: none;
+    }
+
     &__main {
       gap: $gutter-mobile;
       padding: $gutter-mobile;

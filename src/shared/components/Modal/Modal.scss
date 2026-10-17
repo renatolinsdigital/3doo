@@ -18,7 +18,7 @@
     flex-direction: column;
     width: min(496px, 100%);
     max-height: min(80vh, 720px);
-    background: var(--bone);
+    background: var(--surface);
     animation: modal-in 120ms ease-out;
   }
 
@@ -53,7 +53,7 @@
     justify-content: flex-end;
     gap: var(--space-2);
     padding: var(--space-3) var(--space-4);
-    border-top: var(--border-width) solid var(--void);
-    background: var(--bone-dim);
+    border-top: var(--border-width) solid var(--ink);
+    background: var(--surface-dim);
   }
 }

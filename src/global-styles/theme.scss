@@ -18,6 +18,18 @@
   // Derived surfaces
   --bone-dim: #ddd8cd;
   --bone-shade: #c9c3b6;
+
+  // Roles: what the chrome is painted with. A surface is the face of a panel,
+  // a bar or a field, dimmed and shaded a step at a time for a hover, a field
+  // or a pressed state. Ink is everything drawn on it: text, frames, rules,
+  // shadows and the fill of an inverted chip. Dark mode swaps these and
+  // nothing else, so whatever has to look the same in both themes (an accent
+  // fill and the text on it, the oxblood strips, the code editor, the
+  // viewport's overlays) names the palette above instead.
+  --surface: var(--bone);
+  --surface-dim: var(--bone-dim);
+  --surface-shade: var(--bone-shade);
+  --ink: var(--void);
   --ink-muted: #57534c;
 
   // Structure
@@ -87,6 +99,23 @@
   --z-overlay: 100;
   --z-modal: 1000;
   --z-toast: 2000;
+}
+
+// Dark mode: the chrome as its own negative.
+//
+// The surfaces go dark and the ink goes light, so a frame or an offset shadow
+// keeps the weight it has on bone instead of sinking into the panel. Every
+// figure clears the contrast its light counterpart does: ink on a surface is
+// about 12:1, and the muted ink still holds 4.4:1 on the pressed shade.
+:root[data-theme='dark'] {
+  --surface: #2a2724;
+  --surface-dim: #35312e;
+  --surface-shade: #433e3a;
+  --ink: #ebe6dc;
+  --ink-muted: #aea79a;
+
+  // Scrollbars, the colour picker and the select's own list follow it.
+  color-scheme: dark;
 }
 
 // A finger is the main way in: phones and tablets.

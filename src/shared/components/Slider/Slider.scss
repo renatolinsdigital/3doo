@@ -21,8 +21,8 @@
     // panel is pushed out to fit the track.
     min-width: 0;
     padding: 0 var(--space-3);
-    border: var(--border-thin) solid var(--void);
-    background: var(--bone);
+    border: var(--border-thin) solid var(--ink);
+    background: var(--surface);
   }
 
   &__input {
@@ -34,7 +34,7 @@
     cursor: ew-resize;
 
     &:disabled {
-      accent-color: var(--bone-shade);
+      accent-color: var(--surface-shade);
       cursor: default;
       // See NumberField: a disabled control swallows the hover the row's hint
       // hangs off, and the hint is what says why it is unavailable.
@@ -50,7 +50,7 @@
     gap: var(--space-1);
     min-width: 4ch;
     justify-content: flex-end;
-    color: var(--void);
+    color: var(--ink);
   }
 
   &__suffix {

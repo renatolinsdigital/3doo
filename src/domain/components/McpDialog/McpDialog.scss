@@ -44,7 +44,7 @@
 
     padding-bottom: var(--space-1);
     color: var(--ink-muted);
-    border-bottom: var(--border-thin) solid var(--void);
+    border-bottom: var(--border-thin) solid var(--ink);
   }
 
   &__text,
@@ -58,7 +58,7 @@
   &__note {
     padding: var(--space-2) var(--space-3);
     border-left: var(--border-width) solid var(--red);
-    background: var(--bone-dim);
+    background: var(--surface-dim);
   }
 
   code {
@@ -69,7 +69,7 @@
   a {
     @include brutal-focus;
 
-    color: var(--void);
+    color: var(--ink);
     text-decoration-thickness: 2px;
 
     &:hover {
@@ -96,8 +96,8 @@
     @include brutal-border(var(--border-thin));
 
     padding: var(--space-2) var(--space-3);
-    background: var(--void);
-    color: var(--bone);
+    background: var(--ink);
+    color: var(--surface);
   }
 
   &__node-detail {
@@ -152,7 +152,7 @@
   &__tabs {
     display: flex;
     gap: var(--space-1);
-    border-bottom: var(--border-width) solid var(--void);
+    border-bottom: var(--border-width) solid var(--ink);
   }
 
   &__tab {
@@ -161,14 +161,14 @@
 
     padding: var(--space-2) var(--space-3);
     cursor: pointer;
-    color: var(--void);
-    background: var(--bone-dim);
-    border: var(--border-thin) solid var(--void);
+    color: var(--ink);
+    background: var(--surface-dim);
+    border: var(--border-thin) solid var(--ink);
     border-bottom: 0;
 
     &[aria-selected='true'] {
-      color: var(--bone);
-      background: var(--void);
+      color: var(--surface);
+      background: var(--ink);
     }
   }
 
@@ -198,13 +198,13 @@
     margin-right: auto;
     padding: 0 var(--space-3);
     white-space: nowrap;
-    color: var(--void);
+    color: var(--ink);
     text-decoration: none;
-    border: var(--border-thin) solid var(--void);
+    border: var(--border-thin) solid var(--ink);
 
     &:hover {
-      color: var(--bone);
-      background: var(--void);
+      color: var(--surface);
+      background: var(--ink);
     }
   }
 

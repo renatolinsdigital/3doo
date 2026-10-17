@@ -36,6 +36,14 @@ together with their docs entry.
 - Select narrowly at the call site; a selector that builds an object needs
   `useShallow`.
 
+## Theme
+
+Chrome paints with `--surface*` and `--ink*`, which dark mode swaps; the raw
+palette is for what holds still (accents, oxblood strips, code, viewport
+overlays). Text on amber or cyan needs `color: var(--void)` spelled out, or
+it inherits light ink in dark mode. Table: `docs/design-system.md`.
+`ThemeToggle` sits in every module's bar, so a new module mounts it too.
+
 ## Keymap
 
 Bindings live in `src/domain/keymap/keymap.ts`. A shifted punctuation key
