@@ -55,7 +55,8 @@ paths:
 
 Say the gizmo stutters during a drag.
 
-1. The map's task table says gizmo work starts in `Viewport.ts`, by section.
+1. The map's task table says gizmo work starts in `Viewport.ts`, by section,
+   so the assistant opens with `Rooms: viewport`.
 2. Its section markers (`// ---- gizmo`) give the line to start reading at,
    so the assistant reads a hundred lines round `updateGizmo`, not 5,500.
 3. Reading that file opens `room-viewport.md`, which says the gizmo must never
@@ -63,6 +64,19 @@ Say the gizmo stutters during a drag.
    the viewport without a GPU.
 4. The fix lands with a regression test that failed first. If something new
    was learned, it becomes one line in the room.
+
+## Saying which rooms it is in
+
+The assistant tells the person it works with which rooms a task enters, so
+it is plain what the work touches and which memory it leans on:
+
+- At the start of a task, the rooms it expects: `Rooms: viewport, store`.
+  A task outside every room says `Rooms: none`.
+- When a read opens a room it did not expect: `Entering room: bridge`.
+- In its last reply, the rooms it actually entered.
+
+The rule sits in the map, so it holds in every session. Like every rule it is
+guidance: nothing checks that the line was written.
 
 ## What goes in a room
 

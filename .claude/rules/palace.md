@@ -36,6 +36,18 @@ Open these first and follow the code from there; do not survey the tree.
 
 Every user-facing feature also gets its entry in `src/modules/docs/content.ts`.
 
+## Say which rooms you enter
+
+The user always knows which rooms a task is in. Say it in chat, every task:
+
+- **At the start**, one line naming the rooms the task will enter, picked
+  from the two tables above: `Rooms: kernel, store`. A task that touches no
+  room's area says `Rooms: none`.
+- **When a read opens a room** that line did not name (its text arrives
+  after the read), say so before the next step: `Entering room: viewport`.
+- **The final reply** names the rooms the task actually entered, so a room
+  that was planned but never opened, or one opened by surprise, shows.
+
 ## Reading the big files
 
 Never read these whole: grep the symbol, then read a hundred lines round it.
