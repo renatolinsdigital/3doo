@@ -8,3 +8,9 @@ coverage
 .eslintcache
 *.log
 mcp-package/dist
+
+# Prompt history written by .claude/hooks/prompt-history.mjs: local only.
+# The second line is the hook's write in progress, the third Word's lock file.
+/prompt_history.docx
+/prompt_history.docx.tmp
+/~$*.docx
