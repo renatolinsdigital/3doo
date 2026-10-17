@@ -1028,7 +1028,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'Pick the shading from the SHADING menu in the top bar, or cycle through the modes with Shift+Z. The grid adapts its spacing as you zoom. The OVERLAYS menu beside it turns the grid, axes, cursor, normals, face orientation, non-planar quads and statistics on and off independently. NON-PLANAR tints amber every quad bent more than a tenth of a degree out of flat, which is where shading creases and where another program may split the quad along the other diagonal.',
+        text: 'Pick the shading from the SHADING menu in the top bar, or cycle through the modes with Shift+Z. The grid adapts its spacing as you zoom, follows the view as you pan and fades out towards the horizon. The OVERLAYS menu beside it turns the grid, axes, cursor, normals, face orientation, non-planar quads and statistics on and off independently. NON-PLANAR tints amber every quad bent more than a tenth of a degree out of flat, which is where shading creases and where another program may split the quad along the other diagonal.',
       },
     ],
   },

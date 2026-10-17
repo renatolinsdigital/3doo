@@ -68,7 +68,7 @@ import type {
 
 import { CameraController, ORBIT_SPEED, VIEW_TWEEN_MS, viewLostReason } from './CameraController';
 import { type EditMove, EditMoveDrag } from './editMove';
-import { type SnapAmounts, ViewportGrid, snapAmounts, snapTo } from './grid';
+import { GRID_REACH, type SnapAmounts, ViewportGrid, snapAmounts, snapTo } from './grid';
 import {
   type KnifeAnchor,
   type KnifeStep,
@@ -4609,7 +4609,7 @@ export class Viewport {
     this.controls.update();
 
     const distance = this.controls.distance;
-    this.grid.update(distance);
+    this.grid.update(distance, this.controls.focusPoint);
     this.extendFarPlane(distance);
     this.tightenNearPlane(distance);
     if (this.camera === this.orthographicCamera) this.fitOrthographicDepth(distance);
@@ -4900,6 +4900,10 @@ export class Viewport {
    * rendering for the entire zoom range instead of vanishing partway through.
    * `clipEnd` still acts as a floor for users who raise it directly.
    *
+   * The room to spare is the grid's reach and the orbit on top: the plane runs
+   * out that far from the target before it has faded, and a far plane short of
+   * it would cut the fade off in a hard line across the ground.
+   *
    * The orthographic camera's far plane is `fitOrthographicDepth`'s to set,
    * inside the same limit.
    */
@@ -4912,7 +4916,7 @@ export class Viewport {
   }
 
   private farPlaneFor(distance: number): number {
-    return Math.max(useEditorStore.getState().clipEnd, distance * 2 + 200);
+    return Math.max(useEditorStore.getState().clipEnd, distance * (GRID_REACH + 2) + 200);
   }
 
   /**

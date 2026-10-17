@@ -11,31 +11,36 @@ import {
   snapTo,
 } from './grid';
 
-/** The three coplanar line objects that make up the ground plane. */
+/** The grid plane and the centre lines, the two coplanar objects that make up the ground. */
 function groundPlane(grid: ViewportGrid) {
   return grid.group.children as (THREE.Object3D & { material: THREE.Material })[];
 }
 
+/** What the grid plane's shader is drawing with. */
+function lines(grid: ViewportGrid) {
+  const ground = groundPlane(grid)[0] as THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
+  return ground.material.uniforms;
+}
+
 describe('ground plane depth behaviour', () => {
   it('writes no depth anywhere on the plane', () => {
-    // The fine grid, the coarse grid and the axes all sit at y = 0. Any one of
-    // them writing depth leaves the others testing against a value equal to
-    // their own to within float error, which is what flickered as the camera
-    // orbited: the X axis alternating between red and the Z axis's cyan.
+    // The grid and the axes both sit at y = 0. Either one writing depth leaves
+    // the other testing against a value equal to its own to within float
+    // error, which is what flickered as the camera orbited: the X axis
+    // alternating between red and the Z axis's cyan.
     for (const line of groundPlane(new ViewportGrid())) {
       expect(line.material.depthWrite).toBe(false);
-      // All three have to be in the same pass for render order to sequence
-      // them; an opaque one would draw before every transparent one whatever
-      // its order says.
+      // Both have to be in the same pass for render order to sequence them;
+      // an opaque one would draw before every transparent one whatever its
+      // order says.
       expect(line.material.transparent).toBe(true);
     }
   });
 
   it('sequences the plane by a fixed order the camera cannot change', () => {
-    const [fine, coarse, axes] = groundPlane(new ViewportGrid());
+    const [ground, axes] = groundPlane(new ViewportGrid());
 
-    expect(fine.renderOrder).toBeLessThan(coarse.renderOrder);
-    expect(coarse.renderOrder).toBeLessThan(axes.renderOrder);
+    expect(ground.renderOrder).toBeLessThan(axes.renderOrder);
 
     // Behind the selection overlays, which start at 0 and climb (see
     // `ObjectView`): the ground plane is background, whatever the distance
@@ -51,7 +56,7 @@ describe('ground plane depth behaviour', () => {
 
   it('carries a colour per endpoint of both centre lines', () => {
     const grid = new ViewportGrid();
-    const axes = grid.group.children[2] as THREE.LineSegments;
+    const axes = grid.group.children[1] as THREE.LineSegments;
 
     // Which hues those are is `axisColors.test.ts`, where they are checked
     // against the gizmo they have to match.
@@ -59,12 +64,6 @@ describe('ground plane depth behaviour', () => {
     expect(axes.geometry.getAttribute('position').count).toBe(4);
   });
 });
-
-/** The lines of one grid, as `GridHelper` lays them: one more than the cells. */
-function cells(line: THREE.Object3D): number {
-  const geometry = (line as THREE.LineSegments).geometry;
-  return geometry.getAttribute('position').count / 4 - 1;
-}
 
 /** How far the lines reach, corner to corner along X. */
 function extent(line: THREE.Object3D): number {
@@ -84,35 +83,53 @@ const SETTINGS: GridSettings = {
 };
 
 describe('grid divisions', () => {
-  it('starts at a square per unit with a heavy line every tenth', () => {
-    const [fine, coarse] = groundPlane(new ViewportGrid());
+  it('draws a square per unit with a heavy line every tenth at the zoom a unit suits', () => {
+    const grid = new ViewportGrid();
+    grid.setGrid(SETTINGS);
+    grid.update(15, { x: 0, z: 0 });
 
-    expect(cells(fine)).toBe(100);
-    expect(cells(coarse)).toBe(10);
-    expect(extent(fine)).toBe(100);
+    expect(lines(grid).spacing.value).toBe(1);
+    expect(lines(grid).subdivisions.value).toBe(10);
   });
 
-  it('holds the square count and lets the scale set how far the plane reaches', () => {
-    // Sizing by extent instead would thin the grid out to a handful of huge
-    // squares, or a wall of tiny ones, as the scale moved.
+  it('lets the scale set the size of a square and nothing else', () => {
+    // The scale used to set how far the plane reached as well, since it was
+    // always a hundred squares across: half the scale was half the plane, and
+    // the smallest scales left a patch round the origin with nothing past it.
     const grid = new ViewportGrid();
+    grid.setGrid(SETTINGS);
+    grid.update(15, { x: 0, z: 0 });
+    const reach = groundBox(grid).max.x;
+
     grid.setGrid({ ...SETTINGS, scale: 0.5 });
-    const [fine] = groundPlane(grid);
+    grid.update(15, { x: 0, z: 0 });
 
-    expect(cells(fine)).toBe(100);
-    expect(extent(fine)).toBe(50);
+    expect(lines(grid).spacing.value).toBe(0.5);
+    // Only the heavy square of slack the plane carries for following the
+    // camera changes with it.
+    expect(groundBox(grid).max.x).toBeCloseTo(reach - 5);
   });
 
-  it('lands every heavy line on a division, whatever the subdivision count', () => {
-    // 100 does not divide by 7, and a coarse grid that did not line up with the
-    // fine one would draw its heavy lines through the middle of squares.
+  it('keeps a heavy line under the centre lines, wherever the camera has gone', () => {
+    // The lines are measured from the plane's own middle, so that has to sit
+    // on a heavy line of the world's for theirs to land on the world's. Laid
+    // out by count, it used not to: three subdivisions made 33 heavy squares
+    // of a hundred, and with an odd count the middle fell between two lines,
+    // so the axes ran down the middle of a row of squares.
     const grid = new ViewportGrid();
-    grid.setGrid({ ...SETTINGS, subdivisions: 7 });
-    const [fine, coarse] = groundPlane(grid);
+    grid.setGrid({ ...SETTINGS, subdivisions: 3 });
 
-    expect(cells(fine) % cells(coarse)).toBe(0);
-    expect(cells(fine) / cells(coarse)).toBe(7);
-    expect(extent(fine)).toBe(extent(coarse));
+    for (const focus of [
+      { x: 0, z: 0 },
+      { x: 33.3, z: -12.9 },
+      { x: -1e4 + 0.2, z: 3e3 },
+    ]) {
+      grid.update(15, focus);
+      const { x, z } = groundPlane(grid)[0].position;
+
+      expect(Math.abs(x / 3 - Math.round(x / 3))).toBeLessThan(1e-9);
+      expect(Math.abs(z / 3 - Math.round(z / 3))).toBeLessThan(1e-9);
+    }
   });
 
   it('leaves the centre lines out of it: what they answer to is the zoom', () => {
@@ -120,10 +137,10 @@ describe('grid divisions', () => {
     // scale nor the subdivisions move them. `centre lines through a zoom` is
     // where the length they are actually drawn at comes from.
     const grid = new ViewportGrid();
-    const before = extent(groundPlane(grid)[2]);
+    const before = extent(groundPlane(grid)[1]);
     grid.setGrid({ ...SETTINGS, scale: 2, subdivisions: 5 });
 
-    expect(extent(groundPlane(grid)[2])).toBe(before);
+    expect(extent(groundPlane(grid)[1])).toBe(before);
   });
 
   it('paints each set from its own colour and opacity', () => {
@@ -135,17 +152,14 @@ describe('grid divisions', () => {
       majorColor: '#abcdef',
       majorOpacity: 0.9,
     });
-    const [fine, coarse] = groundPlane(grid);
+    const uniforms = lines(grid);
 
-    expect(fine.material.opacity).toBeCloseTo(0.1);
-    expect(coarse.material.opacity).toBeCloseTo(0.9);
-    // GridHelper bakes the colour into the geometry, so that is where it has to
-    // be read back from, in the working space THREE.Color converts it to.
-    const expected = new THREE.Color('#123456');
-    const colors = (fine as THREE.LineSegments).geometry.getAttribute('color');
-    expect(colors.getX(0)).toBeCloseTo(expected.r);
-    expect(colors.getY(0)).toBeCloseTo(expected.g);
-    expect(colors.getZ(0)).toBeCloseTo(expected.b);
+    expect(uniforms.opacity.value).toBeCloseTo(0.1);
+    expect(uniforms.majorOpacity.value).toBeCloseTo(0.9);
+    // In the working space THREE.Color converts to, as every other material
+    // in the scene gets its colours.
+    expect(uniforms.color.value.getHex()).toBe(new THREE.Color('#123456').getHex());
+    expect(uniforms.majorColor.value.getHex()).toBe(new THREE.Color('#abcdef').getHex());
   });
 
   it('leaves a hidden plane hidden when the settings change', () => {
@@ -204,28 +218,102 @@ describe('fine lines through a zoom', () => {
 
   it('writes the faded strength onto the material, and keeps it across a settings change', () => {
     const grid = new ViewportGrid();
-    const [fine, coarse] = groundPlane(grid);
 
     grid.setGrid(SETTINGS);
-    grid.update(60);
-    const faded = fine.material.opacity;
+    grid.update(60, { x: 0, z: 0 });
+    const faded = lines(grid).opacity.value;
     expect(faded).toBeLessThan(SETTINGS.opacity);
 
     // Preferences are applied from somewhere else entirely, and used to write
     // the raw opacity straight over whatever the zoom had settled on.
     grid.setGrid({ ...SETTINGS, majorOpacity: 0.5 });
-    expect(fine.material.opacity).toBeCloseTo(faded);
-    expect(coarse.material.opacity).toBe(0.5);
+    expect(lines(grid).opacity.value).toBeCloseTo(faded);
+    expect(lines(grid).majorOpacity.value).toBe(0.5);
   });
 
   it('leaves the heavy lines alone: they are the ones that carry the plane', () => {
     const grid = new ViewportGrid();
-    const [, coarse] = groundPlane(grid);
 
     grid.setGrid(SETTINGS);
-    grid.update(99);
+    grid.update(99, { x: 0, z: 0 });
 
-    expect(coarse.material.opacity).toBe(SETTINGS.majorOpacity);
+    expect(lines(grid).majorOpacity.value).toBe(SETTINGS.majorOpacity);
+  });
+});
+
+/** Where the ground plane itself is drawn, the centre lines left out. */
+function groundBox(grid: ViewportGrid): THREE.Box3 {
+  grid.group.updateMatrixWorld(true);
+  const box = new THREE.Box3();
+  for (const line of groundPlane(grid).slice(0, -1)) box.expandByObject(line);
+  return box;
+}
+
+describe('how far the plane reaches', () => {
+  it('runs on well past the view at the zoom the app opens at', () => {
+    // The plane used to be a hundred squares across at every zoom. The app
+    // opens about seven units out, where a square is a tenth of a unit, so the
+    // whole plane was ten units wide and its far corner sat in plain view at
+    // the top of the screen: the lines stopped dead and left a hole past it.
+    for (const distance of [0.05, 7, 15, 99, 2000]) {
+      const grid = new ViewportGrid();
+      grid.setGrid(SETTINGS);
+      grid.update(distance, { x: 0, z: 0 });
+      const box = groundBox(grid);
+
+      expect(box.min.x).toBeLessThanOrEqual(-8 * distance);
+      expect(box.max.x).toBeGreaterThanOrEqual(8 * distance);
+      expect(box.min.z).toBeLessThanOrEqual(-8 * distance);
+      expect(box.max.z).toBeGreaterThanOrEqual(8 * distance);
+    }
+  });
+
+  it('goes with the camera, so panning away never reaches its edge', () => {
+    const grid = new ViewportGrid();
+    grid.setGrid(SETTINGS);
+    grid.update(7, { x: 400, z: -250 });
+    const box = groundBox(grid);
+
+    expect(box.min.x).toBeLessThanOrEqual(400 - 8 * 7);
+    expect(box.max.x).toBeGreaterThanOrEqual(400 + 8 * 7);
+    expect(box.min.z).toBeLessThanOrEqual(-250 - 8 * 7);
+    expect(box.max.z).toBeGreaterThanOrEqual(-250 + 8 * 7);
+  });
+
+  it('reaches as far at a fine grid scale as at a coarse one', () => {
+    // A hundred squares at a scale of 0.01 was a patch a single unit across.
+    for (const scale of [0.001, 0.01, 1, 1000]) {
+      const grid = new ViewportGrid();
+      grid.setGrid({ ...SETTINGS, scale });
+      grid.update(7, { x: 0, z: 0 });
+
+      expect(groundBox(grid).max.x).toBeGreaterThanOrEqual(8 * 7);
+    }
+  });
+
+  it('has faded out before it ends, so its end is never a line of its own', () => {
+    // However far a plane runs, one that stops at full strength draws its
+    // edge across the ground, which is the same hole further off.
+    const grid = new ViewportGrid();
+    const ground = groundPlane(grid)[0];
+
+    for (const subdivisions of [1, 10, 100]) {
+      grid.setGrid({ ...SETTINGS, subdivisions });
+      for (const focus of [
+        { x: 0, z: 0 },
+        { x: 4.9, z: -4.9 },
+        { x: 4999, z: 251 },
+      ]) {
+        grid.update(7, focus);
+        const { fade, focus: offset } = lines(grid);
+        const off = Math.max(Math.abs(offset.value.x), Math.abs(offset.value.y));
+
+        expect(off + fade.value.y).toBeLessThanOrEqual(ground.scale.x);
+        // The middle it fades from is the camera's, wherever the plane sits.
+        expect(offset.value.x + ground.position.x).toBeCloseTo(focus.x);
+        expect(offset.value.y + ground.position.z).toBeCloseTo(focus.z);
+      }
+    }
   });
 });
 
@@ -237,10 +325,10 @@ function reach(line: THREE.Object3D): number {
 describe('centre lines through a zoom', () => {
   it('runs them well past the corner of the view, wherever the camera stands', () => {
     const grid = new ViewportGrid();
-    const [, , axes] = groundPlane(grid);
+    const [, axes] = groundPlane(grid);
 
     for (const distance of [0.0001, 0.01, 1, 100, 5000]) {
-      grid.update(distance);
+      grid.update(distance, { x: 0, z: 0 });
       expect(reach(axes)).toBeGreaterThanOrEqual(distance * 10);
     }
   });
@@ -254,21 +342,42 @@ describe('centre lines through a zoom', () => {
     // one. Below a millimetre the reach stops following the zoom down, so the
     // bound is read from the distances the zoom is actually taken at.
     const grid = new ViewportGrid();
-    const [, , axes] = groundPlane(grid);
+    const [, axes] = groundPlane(grid);
 
     for (const distance of [0.01, 0.5, 1, 100, 5000]) {
-      grid.update(distance);
+      grid.update(distance, { x: 0, z: 0 });
       expect(reach(axes) / distance).toBeLessThanOrEqual(50);
     }
+  });
+
+  it('fades them out where the plane fades, from the same middle', () => {
+    // Drawn at full strength to the end, they ran on past the faded plane and
+    // stopped dead wherever the far plane cut them, in plain view in a picture
+    // taken low across the ground.
+    const grid = new ViewportGrid();
+    const axes = groundPlane(grid)[1] as THREE.LineSegments<
+      THREE.BufferGeometry,
+      THREE.ShaderMaterial
+    >;
+
+    grid.update(7, { x: 12.3, z: -4.5 });
+    const { fade, focus } = axes.material.uniforms;
+
+    expect(fade.value.equals(lines(grid).fade.value)).toBe(true);
+    expect(focus.value.x).toBeCloseTo(12.3);
+    expect(focus.value.y).toBeCloseTo(-4.5);
+    // Gone well inside how far they run, so neither their end nor the far
+    // plane's cut is ever seen.
+    expect(fade.value.y).toBeLessThan(reach(axes) / 2);
   });
 
   it('keeps a line to see when the camera is sitting on its target', () => {
     // A restored pose can put the camera on the pivot, and a reach taken
     // straight from the distance would scale the lines away to a point.
     const grid = new ViewportGrid();
-    const [, , axes] = groundPlane(grid);
+    const [, axes] = groundPlane(grid);
 
-    grid.update(0);
+    grid.update(0, { x: 0, z: 0 });
 
     expect(reach(axes)).toBeGreaterThan(0);
   });

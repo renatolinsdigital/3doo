@@ -144,7 +144,7 @@ function isFlat(view: SnapshotView | SnapshotAngle, projection: SnapshotProjecti
 export function framedCamera(
   frame: SnapshotFrame,
   box: THREE.Box3,
-): { camera: THREE.OrthographicCamera; distance: number } {
+): { camera: THREE.OrthographicCamera; distance: number; focus: THREE.Vector3 } {
   const { up, toward } = VIEW_AXES[frame.view];
   const center = new THREE.Vector3(frame.center.x, frame.center.y, frame.center.z);
   const back = new THREE.Vector3(toward.x, toward.y, toward.z);
@@ -174,7 +174,7 @@ export function framedCamera(
   camera.up.set(up.x, up.y, up.z);
   camera.lookAt(center);
   camera.updateMatrixWorld();
-  return { camera, distance: halfHeight / 0.6 };
+  return { camera, distance: halfHeight / 0.6, focus: center };
 }
 
 /**
@@ -190,7 +190,11 @@ export function snapshotCamera(
   box: THREE.Box3,
   aspect: number,
   projection: SnapshotProjection,
-): { camera: THREE.PerspectiveCamera | THREE.OrthographicCamera; distance: number } {
+): {
+  camera: THREE.PerspectiveCamera | THREE.OrthographicCamera;
+  distance: number;
+  focus: THREE.Vector3;
+} {
   const framed = box.isEmpty()
     ? new THREE.Box3(new THREE.Vector3(-1, 0, -1), new THREE.Vector3(1, 1, 1))
     : box;
@@ -237,7 +241,7 @@ export function snapshotCamera(
     camera.updateMatrixWorld();
     // The orbit radius the editor would show this frame at, which is what the
     // grid sizes its cells by: an ortho frame is 0.6 of the radius high.
-    return { camera, distance: half / 0.6 };
+    return { camera, distance: half / 0.6, focus: center };
   }
 
   const fov = isAngle(view) && view.fov !== undefined ? view.fov : FOV;
@@ -259,7 +263,7 @@ export function snapshotCamera(
   camera.up.copy(up);
   camera.lookAt(center);
   camera.updateMatrixWorld();
-  return { camera, distance };
+  return { camera, distance, focus: center };
 }
 
 /** Waits for the pictures on image planes to decode, so they are in the shot. */
@@ -370,10 +374,10 @@ export async function renderSnapshots(
 
     const pictures: Snapshot[] = [];
     for (const shot of shots) {
-      const { camera, distance } = isFrame(shot)
+      const { camera, distance, focus } = isFrame(shot)
         ? framedCamera(shot, box)
         : snapshotCamera(shot, box, width / height, options.projection);
-      grid.update(distance);
+      grid.update(distance, focus);
       const eye = camera.position;
       for (const objectView of objectViews) {
         objectView.refreshForCamera({ x: eye.x, y: eye.y, z: eye.z });

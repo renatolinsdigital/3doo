@@ -42,6 +42,10 @@ by React. Depth: `docs/rendering.md` (camera, gizmo, picking).
   blanked the view), `tightenNearPlane` (distance / 10; a fixed 0.05 cut
   small parts away), `fitOrthographicDepth` (a fixed 4 km let thin parts
   leak).
+- The grid is one shader plane that follows the orbit target in whole heavy
+  squares and fades out by `GRID_REACH` camera distances; `farPlaneFor` must
+  stay beyond that or the fade ends in a hard line. A fixed-size grid showed
+  its far corner at the opening zoom.
 - The orthographic camera draws from a negative near plane, behind its own
   position: start rays there (`aimRay` in `picking.ts`).
 - Scale drags are measured on screen, since three's ratio flips across the

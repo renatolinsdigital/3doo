@@ -25,13 +25,24 @@ const DEFAULT_GRID: GridSettings = {
 };
 
 /**
- * Roughly how many fine cells the plane is drawn with, whatever the scale.
+ * Where the plane starts to give way, and where it has gone, in camera
+ * distances out from the point the camera orbits.
  *
- * The extent follows from it rather than the other way round: a grid is read as
- * so many squares around the origin, and pinning the count keeps the same
- * amount of it on screen when the scale changes.
+ * It has to run on towards the horizon: the camera mostly looks across the
+ * plane rather than down on it. It used to be a hundred squares across, which
+ * at the zoom the app opens at is ten units, and its far corner sat in plain
+ * view with every line stopping dead at it. Nothing can be drawn without end,
+ * so it fades out, and is drawn a little past where it has gone, so its end is
+ * never a line of its own.
  */
-const GRID_CELLS = 100;
+const FADE_START = 2;
+const FADE_END = 8;
+
+/**
+ * How far out the ground plane is drawn, in camera distances, for the far
+ * plane to stay beyond.
+ */
+export const GRID_REACH = FADE_END + 1;
 
 /**
  * How far into a decade the fine lines start giving way, as a fraction of it.
@@ -55,9 +66,9 @@ const MIN_EYE_DISTANCE = 0.001;
 /**
  * How far out the centre lines reach, in camera distances.
  *
- * They are not part of the quantised grid: all they have to do is leave the
- * frustum from wherever the camera is standing, which fifty distances does from
- * any angle. Going further is not free. A line thousands of view widths long is
+ * They are not part of the quantised grid: all they have to do is run on past
+ * where they fade out with the plane, which fifty distances does with room to
+ * spare. Going further is not free. A line thousands of view widths long is
  * clipped down to a sliver of itself before it is drawn, and the float the clip
  * is worked out in has too little precision left to say where that sliver
  * lands: held at a fixed length, as these were, each axis drifted a few pixels
@@ -132,41 +143,153 @@ export function snapTo(value: number, step: number): number {
 }
 
 /**
+ * The lines of the ground plane, worked out per pixel.
+ *
+ * `vGround` leaves the plane's own position out: the plane follows the camera
+ * and can stand far from the origin, where float32 has too little left to say
+ * where a line falls. It is always moved by whole heavy squares, so the lines
+ * measured from it land where the world's own would.
+ */
+const GROUND_VERTEX = /* glsl */ `
+  varying vec2 vGround;
+
+  void main() {
+    vGround = (modelMatrix * vec4(position, 0.0)).xz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+/**
+ * Lines closer together on screen than a few pixels stop reading as lines and
+ * come out as moire, so each set is let go as it closes up: the fine ones first,
+ * the heavy ones further off. Past that the whole plane fades with distance from
+ * the point the camera orbits.
+ */
+const GROUND_FRAGMENT = /* glsl */ `
+  uniform vec3 color;
+  uniform float opacity;
+  uniform vec3 majorColor;
+  uniform float majorOpacity;
+  uniform float spacing;
+  uniform float subdivisions;
+  uniform vec2 focus;
+  uniform vec2 fade;
+
+  varying vec2 vGround;
+
+  float lines(vec2 coord) {
+    vec2 width = max(fwidth(coord), vec2(1e-6));
+    vec2 gap = abs(fract(coord - 0.5) - 0.5) / width;
+    vec2 cover = (1.0 - min(gap, 1.0)) * (1.0 - smoothstep(0.1, 0.35, width));
+    return max(cover.x, cover.y);
+  }
+
+  void main() {
+    vec2 cell = vGround / spacing;
+    float major = lines(cell / subdivisions) * majorOpacity;
+    float minor = lines(cell) * opacity * (1.0 - major);
+    float alpha = major + minor;
+    if (alpha <= 0.0) discard;
+
+    float reach = 1.0 - smoothstep(fade.x, fade.y, distance(vGround, focus));
+    gl_FragColor = vec4((majorColor * major + color * minor) / alpha, alpha * reach);
+    #include <colorspace_fragment>
+  }
+`;
+
+/** The centre lines, faded out where the plane is, so they never end in view either. */
+const AXES_VERTEX = /* glsl */ `
+  varying vec3 vColor;
+  varying vec2 vGround;
+
+  void main() {
+    vColor = color;
+    vGround = (modelMatrix * vec4(position, 1.0)).xz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const AXES_FRAGMENT = /* glsl */ `
+  uniform vec2 focus;
+  uniform vec2 fade;
+
+  varying vec3 vColor;
+  varying vec2 vGround;
+
+  void main() {
+    gl_FragColor = vec4(vColor, 1.0 - smoothstep(fade.x, fade.y, distance(vGround, focus)));
+    #include <colorspace_fragment>
+  }
+`;
+
+/**
  * Adaptive ground grid.
  *
- * Two overlaid grids (a fine one that fades with distance and a coarse one for
- * the major divisions) read better than a single grid at every zoom level.
+ * Two overlaid sets of lines (a fine one that fades with distance and a coarse
+ * one for the major divisions) read better than a single grid at every zoom
+ * level. Both are drawn by one plane that follows the camera, so there is
+ * always ground under the view.
  */
 export class ViewportGrid {
   readonly group = new THREE.Group();
 
-  private readonly fine = new THREE.LineSegments();
-  private readonly coarse = new THREE.LineSegments();
-  private readonly axes = new THREE.LineSegments();
+  private readonly ground: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>;
+  private readonly axes: THREE.LineSegments<THREE.BufferGeometry, THREE.ShaderMaterial>;
+  /** Where the plane and the centre lines fade, one value shared by both. */
+  private readonly fadeRange = { value: new THREE.Vector2() };
 
-  /** What the line geometry was last built from; colour is baked into it too. */
-  private shape = '';
-
-  /** The opacities asked for. What the fine lines are actually drawn at is these times the fade. */
+  private scale = DEFAULT_GRID.scale;
+  private subdivisions = DEFAULT_GRID.subdivisions;
+  /** The opacity asked for. What the fine lines are actually drawn at is this times the fade. */
   private opacity = DEFAULT_GRID.opacity;
-  private majorOpacity = DEFAULT_GRID.majorOpacity;
   /** How much of the fine opacity the current zoom leaves standing. */
   private fade = 1;
 
   constructor(settings: GridSettings = DEFAULT_GRID) {
-    this.axes.material = new THREE.LineBasicMaterial({
-      vertexColors: true,
-      transparent: true,
-      depthWrite: false,
-    });
+    this.ground = new THREE.Mesh(
+      new THREE.PlaneGeometry(2, 2).rotateX(-Math.PI / 2),
+      new THREE.ShaderMaterial({
+        vertexShader: GROUND_VERTEX,
+        fragmentShader: GROUND_FRAGMENT,
+        uniforms: {
+          color: { value: new THREE.Color() },
+          opacity: { value: 1 },
+          majorColor: { value: new THREE.Color() },
+          majorOpacity: { value: 1 },
+          spacing: { value: 1 },
+          subdivisions: { value: 1 },
+          focus: { value: new THREE.Vector2() },
+          fade: this.fadeRange,
+        },
+        side: THREE.DoubleSide,
+        transparent: true,
+        depthWrite: false,
+      }),
+    );
+
+    this.axes = new THREE.LineSegments(
+      new THREE.BufferGeometry(),
+      new THREE.ShaderMaterial({
+        vertexShader: AXES_VERTEX,
+        fragmentShader: AXES_FRAGMENT,
+        uniforms: {
+          focus: { value: new THREE.Vector2() },
+          fade: this.fadeRange,
+        },
+        vertexColors: true,
+        transparent: true,
+        depthWrite: false,
+      }),
+    );
     this.buildAxes();
 
     this.setGrid(settings);
+    this.update(0, { x: 0, z: 0 });
 
     // Everything here is coplanar at y = 0, so depth cannot separate it and
-    // draw order has to. The axes used to be the one opaque object of the
-    // three: they rendered first and wrote depth, leaving the grids to
-    // depth-test against a value equal to their own to within float error. The
+    // draw order has to. The axes used to be the one opaque object on the
+    // plane: they rendered first and wrote depth, leaving the grid to
+    // depth-test against a value equal to its own to within float error. The
     // two axis lines did the same to each other where they converge on screen
     // at a grazing angle, which is what made the X axis flicker between red and
     // the Z axis's cyan as the camera orbited.
@@ -175,57 +298,62 @@ export class ViewportGrid {
     // every line passes or fails the test against the scene identically, and
     // the order below (fixed, not camera-dependent) is what decides. Negative
     // so the ground plane stays behind the selection overlays in `ObjectView`.
-    this.fine.renderOrder = -3;
-    this.coarse.renderOrder = -2;
+    this.ground.renderOrder = -2;
     this.axes.renderOrder = -1;
 
-    this.group.add(this.fine, this.coarse, this.axes);
+    this.group.add(this.ground, this.axes);
   }
 
-  /**
-   * Applies the user's grid preferences.
-   *
-   * Line positions *and* colours are baked into a `GridHelper`'s geometry, so
-   * either one changing means rebuilding it; opacity is plain material state
-   * and is written every time. The two objects are reused rather than replaced,
-   * which is what carries their visibility, scale and draw order across.
-   */
+  /** Applies the user's grid preferences. The size they mean is the next `update`'s to set. */
   setGrid(settings: GridSettings): void {
-    const majors = Math.max(1, Math.round(GRID_CELLS / settings.subdivisions));
-    const cells = majors * settings.subdivisions;
-    const extent = cells * settings.scale;
-
-    const shape = [extent, cells, majors, settings.color, settings.majorColor].join('|');
-    if (shape !== this.shape) {
-      this.shape = shape;
-      reshape(this.fine, extent, cells, settings.color);
-      reshape(this.coarse, extent, majors, settings.majorColor);
-    }
-
+    const { uniforms } = this.ground.material;
+    this.scale = settings.scale;
+    this.subdivisions = settings.subdivisions;
     this.opacity = settings.opacity;
-    this.majorOpacity = settings.majorOpacity;
+
+    uniforms.color.value.set(settings.color);
+    uniforms.majorColor.value.set(settings.majorColor);
+    uniforms.majorOpacity.value = settings.majorOpacity;
+    uniforms.subdivisions.value = settings.subdivisions;
     this.applyOpacity();
   }
 
-  /** The one writer of both materials' alpha, since two things set it. */
+  /** The one writer of the fine lines' alpha, since two things set it. */
   private applyOpacity(): void {
-    (this.fine.material as THREE.Material).opacity = this.opacity * this.fade;
-    (this.coarse.material as THREE.Material).opacity = this.majorOpacity;
+    this.ground.material.uniforms.opacity.value = this.opacity * this.fade;
   }
 
   setVisibility(grid: boolean, axes: boolean): void {
-    this.fine.visible = grid;
-    this.coarse.visible = grid;
+    this.ground.visible = grid;
     this.axes.visible = axes;
   }
 
-  /** Resizes the grid, and fades the fine lines, so both stay useful as the camera zooms. */
-  update(distance: number): void {
+  /**
+   * Resizes the grid, fades the fine lines, and brings the plane along under
+   * `focus` (the point the camera orbits), so all of it stays useful as the
+   * camera zooms and pans.
+   */
+  update(distance: number, focus: { x: number; z: number }): void {
+    const eye = Math.max(distance, MIN_EYE_DISTANCE);
     const { step, fade } = gridLevel(distance);
+    const spacing = step * this.scale;
+    const major = spacing * this.subdivisions;
+    const { uniforms } = this.ground.material;
 
-    this.fine.scale.setScalar(step);
-    this.coarse.scale.setScalar(step);
-    this.axes.scale.setScalar(Math.max(distance, MIN_EYE_DISTANCE) * AXIS_REACH);
+    // Whole heavy squares, so the lines measured from it stay where they are
+    // in the world. The plane is then up to half a square off centre, which is
+    // what the extra square on its reach is for.
+    const x = Math.round(focus.x / major) * major;
+    const z = Math.round(focus.z / major) * major;
+    const reach = eye * FADE_END + major;
+    this.ground.position.set(x, 0, z);
+    this.ground.scale.set(reach, 1, reach);
+
+    uniforms.spacing.value = spacing;
+    uniforms.focus.value.set(focus.x - x, focus.z - z);
+    this.fadeRange.value.set(eye * FADE_START, eye * FADE_END);
+    this.axes.material.uniforms.focus.value.set(focus.x, focus.z);
+    this.axes.scale.setScalar(eye * AXIS_REACH);
 
     if (fade === this.fade) return;
     this.fade = fade;
@@ -266,23 +394,4 @@ export class ViewportGrid {
       holder.material?.dispose();
     });
   }
-}
-
-/** Re-lays one set of grid lines at a new size, count or colour. */
-function reshape(
-  target: THREE.LineSegments,
-  extent: number,
-  divisions: number,
-  color: string,
-): void {
-  const built = new THREE.GridHelper(extent, divisions, color, color);
-
-  target.geometry.dispose();
-  (target.material as THREE.Material).dispose();
-  target.geometry = built.geometry;
-  target.material = built.material;
-
-  const material = target.material as THREE.Material;
-  material.transparent = true;
-  material.depthWrite = false;
 }

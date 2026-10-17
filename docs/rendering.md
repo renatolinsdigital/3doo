@@ -502,9 +502,21 @@ shapes, so the viewport works across the version range in `package.json`.
 
 ## The grid
 
-Two overlaid `GridHelper`s, a fine one and a coarse one for major divisions,
-are rescaled each frame to the nearest power of ten of the camera distance. A
-single grid is either too dense when zoomed out or too sparse when zoomed in.
+A fine set of lines and a coarse one for major divisions are stepped each frame
+to the nearest power of ten of the camera distance. A single grid is either too
+dense when zoomed out or too sparse when zoomed in.
+
+Both are drawn by one plane whose shader works the lines out per pixel, the way
+Blender's overlay grid does. It used to be two `GridHelper`s a hundred squares
+across, and at the zoom the app opens at that was ten units: the far corner sat
+in the view and every line stopped at it. The plane now follows the orbit
+target in whole heavy squares (so the lines stay put in the world and float32
+keeps its precision near the camera), fades out between 2 and 8 camera
+distances from the target, and lets each set of lines go as they close up to a
+few pixels apart, which is what keeps the horizon from turning to moire. The
+centre lines share the same fade, so they never run on past the plane and stop
+where the far plane cuts them. The far plane stays beyond `GRID_REACH` so it
+never cuts the fade off.
 
 ## Lifecycle
 

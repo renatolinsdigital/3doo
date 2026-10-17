@@ -58,7 +58,7 @@ function gizmoColors(): Map<string, string[]> {
 
 /** The vertex colour of the grid line starting at the given vertex. */
 function axisLineColor(grid: ViewportGrid, vertex: number): string {
-  const axes = grid.group.children[2] as THREE.LineSegments;
+  const axes = grid.group.children[1] as THREE.LineSegments;
   const colors = axes.geometry.getAttribute('color');
   return new THREE.Color(
     colors.getX(vertex),
