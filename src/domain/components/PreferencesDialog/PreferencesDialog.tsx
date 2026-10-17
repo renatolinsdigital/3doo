@@ -131,6 +131,7 @@ export function PreferencesDialog() {
   const open = useEditorStore((state) => state.dialog === 'preferences');
   const closeDialog = useEditorStore((state) => state.closeDialog);
   const tooltipsEnabled = useEditorStore((state) => state.tooltipsEnabled);
+  const theme = useEditorStore((state) => state.theme);
   const panels = useEditorStore((state) => state.panels);
   const selectionLineWidth = useEditorStore((state) => state.selectionLineWidth);
   const selectionLineColor = useEditorStore((state) => state.selectionLineColor);
@@ -235,6 +236,12 @@ export function PreferencesDialog() {
           checked={tooltipsEnabled}
           hint="A short description appears after hovering a control for a moment. Turn this off if the popups get in the way"
           onChange={(enabled) => setPreferences({ tooltipsEnabled: enabled })}
+        />
+        <Toggle
+          label="DARK MODE"
+          checked={theme === 'dark'}
+          hint="Dark panels and pages, with light text and frames. The same switch as the moon in the top bar; the viewport keeps its own BACKGROUND under COLORS"
+          onChange={(dark) => setPreferences({ theme: dark ? 'dark' : 'light' })}
         />
       </Accordion>
 
