@@ -66,6 +66,7 @@ const CAPABILITIES = [
       'LOOP SUBDIVIDE',
       'SUBDIVISION SURFACE',
       'QUADIFY',
+      'TRIANGULATE',
       'REMESH',
     ],
   },

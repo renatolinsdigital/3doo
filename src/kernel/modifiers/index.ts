@@ -5,7 +5,7 @@ import { mergeByDistance, weldVerts } from '../ops/merge';
 import { MESH_BUDGET } from '../ops/budget';
 import { carrySharp } from '../ops/normals';
 import { quadify } from '../ops/quadify';
-import { catmullClark, subdivideFaces } from '../ops/subdivide';
+import { catmullClark, subdivideFaces, triangulateFaces } from '../ops/subdivide';
 import { remeshMesh } from '../remesh';
 
 import { type LatticeCage, deformByLattice } from './lattice';
@@ -87,6 +87,8 @@ export function applyModifier(
       return applySubsurf(mesh, modifier);
     case 'quadify':
       return applyQuadify(mesh, modifier);
+    case 'triangulate':
+      return applyTriangulate(mesh);
     case 'remesh':
       return applyRemesh(mesh, modifier);
   }
@@ -558,6 +560,16 @@ function applySubsurf(mesh: BMesh, modifier: SubsurfModifier): BMesh {
 
 function applyQuadify(mesh: BMesh, modifier: QuadifyModifier): BMesh {
   quadify(mesh, modifier.angle);
+  return mesh;
+}
+
+function applyTriangulate(mesh: BMesh): BMesh {
+  // A face comes back as two triangles fewer than it has corners, so quads
+  // double. Like the subdivisions, a result past what a tab can hold is not run.
+  let triangles = 0;
+  for (const face of mesh.faces.values()) triangles += mesh.faceLoopCount(face) - 2;
+  if (triangles > MESH_BUDGET.faces) return mesh;
+  triangulateFaces(mesh, [...mesh.faces.values()]);
   return mesh;
 }
 

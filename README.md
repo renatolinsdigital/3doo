@@ -29,7 +29,8 @@ New to the code? Start with [docs/get-started.md](docs/get-started.md).
 - **Modifiers**: mirror, array, solidify, bend, twist, lattice (a cage of
   points to shape the mesh with, like Blender's), weld, loop subdivide,
   subdivision surface, quadify (every face turned to quads, loops run
-  through the mesh where it needs them) and remesh, all non-destructive and
+  through the mesh where it needs them), triangulate (every face split into
+  the triangles it is drawn with) and remesh, all non-destructive and
   reorderable.
 - **Objects**: transform gizmo, booleans, merge and separate, an outliner with
   groups, a 3D cursor and proportional editing.

@@ -290,7 +290,9 @@ export function scriptingApiBlocks(): DocsBlock[] {
     {
       kind: 'table',
       head: ['MODIFIER TYPE', 'SETTINGS'],
-      rows: MODIFIER_TYPES.map((type) => [`'${type}'`, fieldText(MODIFIER_FIELDS[type])] as const),
+      rows: MODIFIER_TYPES.map(
+        (type) => [`'${type}'`, fieldText(MODIFIER_FIELDS[type]) || 'Nothing to set.'] as const,
+      ),
     },
     {
       kind: 'prose',
@@ -852,6 +854,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           [
             'Quadify',
             'Turns every face that is not a quad into quads, keeping the shape exactly: no vertex moves, and the new ones sit on the edges and faces they split. Triangles that make a good quad together are joined, flat regions a boolean shattered into slivers are merged back into one face and cut into quads again, and a face left with an odd number of corners has a loop run through the mesh to pair it with the nearest other one. The loop runs straight through quads, the way a loop cut does. A triangle no neighbour suits, and a face a boolean bit a curve out of, are split into quads the way a subdivision splits them. JOIN ANGLE is the sharpest fold two triangles may meet at and still be joined. Quads it does not need are left alone, so a mesh that is already all quads comes out as it went in.',
+          ],
+          [
+            'Triangulate',
+            'Splits every face that is not a triangle into triangles, keeping the shape exactly: no vertex moves, none is added, and each face splits into the very triangles the viewport already drew it with, so even a face that is not flat keeps its shape. Materials, smooth shading, UVs and sharp edges carry over, and there is nothing to set. Every quad becomes two triangles, so a mesh of quads doubles its faces, and a result past what a browser tab can hold is left as it was. For a game-ready file alone, the TRIANGULATE option in the export dialog does the same without a modifier.',
           ],
           [
             'Remesh',

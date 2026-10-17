@@ -768,6 +768,7 @@ export const MODIFIER_FIELDS: Record<ModifierType, readonly FieldSpec[]> = {
       description: 'Sharpest fold two triangles may meet at and still join, 0 to 180.',
     },
   ],
+  triangulate: [],
   remesh: [
     {
       name: 'method',

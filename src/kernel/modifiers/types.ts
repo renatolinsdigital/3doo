@@ -13,6 +13,7 @@ export type ModifierType =
   | 'subdivide'
   | 'subsurf'
   | 'quadify'
+  | 'triangulate'
   | 'remesh';
 
 export interface ModifierBase {
@@ -142,6 +143,15 @@ export interface QuadifyModifier extends ModifierBase {
 }
 
 /**
+ * Splits every face that is not a triangle into the triangles the viewport
+ * already draws it as, so the shape stays exactly as it was. See
+ * `triangulateFaces`.
+ */
+export interface TriangulateModifier extends ModifierBase {
+  type: 'triangulate';
+}
+
+/**
  * Rebuilds the topology wholesale: the one modifier that throws away the
  * geometry it was given rather than adding to it.
  *
@@ -173,6 +183,7 @@ export type Modifier =
   | SubdivideModifier
   | SubsurfModifier
   | QuadifyModifier
+  | TriangulateModifier
   | RemeshModifier;
 
 let counter = 0;
@@ -288,6 +299,13 @@ export function createModifier(type: ModifierType): Modifier {
         name: 'QUADIFY',
         enabled: true,
         angle: 40,
+      };
+    case 'triangulate':
+      return {
+        id: nextId(type),
+        type,
+        name: 'TRIANGULATE',
+        enabled: true,
       };
     case 'remesh':
       return {

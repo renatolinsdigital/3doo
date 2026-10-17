@@ -147,9 +147,9 @@ files, autosave and `cloneMesh`.
 
 ### Modifiers are non-destructive
 
-Mirror, array, solidify, bend, twist, lattice, weld, subdivision, quadify
-and remesh run on a clone of the base mesh each time it changes. The mesh you
-edit is never touched until you press Apply.
+Mirror, array, solidify, bend, twist, lattice, weld, subdivision, quadify,
+triangulate and remesh run on a clone of the base mesh each time it changes.
+The mesh you edit is never touched until you press Apply.
 
 ### The viewport draws what the store holds
 

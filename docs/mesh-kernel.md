@@ -802,3 +802,20 @@ Quads no path reaches are never touched, so a mesh that is already all quads
 comes back as it was. UVs are interpolated onto the new corners, sharp marks
 carry onto both halves of a split edge, and a result that would pass
 `MESH_BUDGET` is not cut at all.
+
+### Triangulate
+
+The TRIANGULATE modifier runs `triangulateFaces` (`subdivide.ts`) over every
+face, the same function as the edit mode operator. Each face is split by
+`triangulatePolygon` with its own normal, which is the call `meshBuffers.ts`
+draws it with, so the triangles that come out are the triangles that were on
+screen: no vertex moves or is added, a concave face splits through its folded
+corner rather than across the dent, and a face that is not flat keeps the
+diagonal it was drawn with rather than folding the other way. The outline
+edges are kept, so their sharp marks stay, and each triangle keeps its face's
+material, shading and corner UVs. A face comes back as two triangles fewer
+than it has corners; a result past `MESH_BUDGET` is left as it was.
+
+Vertex normals are area-weighted per face, and splitting a face changes how
+much of it touches each corner, so a smooth curved surface can shade very
+slightly differently even though its shape is the same.

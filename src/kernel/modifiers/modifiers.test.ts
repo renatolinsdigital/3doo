@@ -7,15 +7,23 @@ import {
   createTransform,
   cross,
   degToRad,
+  dot,
   equals,
   length,
   sub,
   vec3,
 } from '../math';
-import { BMesh, cloneMesh } from '../mesh';
+import { BMesh, cloneMesh, triangulatePolygon } from '../mesh';
 import { booleanMesh } from '../ops/boolean';
 import { subdivideEdges, subdivideFaces, triangulateFaces } from '../ops/subdivide';
-import { createBox, createGrid, createPlane, createUVSphere } from '../primitives';
+import {
+  createBox,
+  createCylinder,
+  createGrid,
+  createIcoSphere,
+  createPlane,
+  createUVSphere,
+} from '../primitives';
 
 import {
   type LatticeCage,
@@ -1389,6 +1397,180 @@ describe('quadify modifier', () => {
         expect(loop.uv.v).toBeCloseTo(loop.vert.co.y);
       }
     }
+  });
+});
+
+describe('triangulate modifier', () => {
+  const triangulate = () => createModifier('triangulate');
+
+  const key = (point: Vec3) => `${point.x},${point.y},${point.z}`;
+
+  function allTriangles(mesh: BMesh): boolean {
+    return [...mesh.faces.values()].every((face) => mesh.faceLoopCount(face) === 3);
+  }
+
+  /** Every triangle the viewport draws, its corners started at the lowest so winding counts. */
+  function drawnTriangles(mesh: BMesh): string[] {
+    const triangles: string[] = [];
+    for (const face of mesh.faces.values()) {
+      const points = mesh.facePoints(face);
+      const indices = triangulatePolygon(points, face.normal);
+      for (let i = 0; i < indices.length; i += 3) {
+        const corners = indices.slice(i, i + 3).map((index) => key(points[index]));
+        const start = corners.indexOf([...corners].sort()[0]);
+        triangles.push([...corners.slice(start), ...corners.slice(0, start)].join(' '));
+      }
+    }
+    return triangles.sort();
+  }
+
+  /** The volume a closed mesh holds, as drawn. */
+  function volume(mesh: BMesh): number {
+    let sum = 0;
+    for (const face of mesh.faces.values()) {
+      const points = mesh.facePoints(face);
+      const indices = triangulatePolygon(points, face.normal);
+      for (let i = 0; i < indices.length; i += 3) {
+        sum += dot(points[indices[i]], cross(points[indices[i + 1]], points[indices[i + 2]])) / 6;
+      }
+    }
+    return sum;
+  }
+
+  /** The area of every face, measured on its own outline rather than as drawn. */
+  function area(mesh: BMesh): number {
+    let sum = 0;
+    for (const face of mesh.faces.values()) sum += mesh.faceArea(face);
+    return sum;
+  }
+
+  function positions(mesh: BMesh): string[] {
+    return [...mesh.verts.values()].map((vert) => key(vert.co)).sort();
+  }
+
+  const shapes = () => ({
+    cube: createBox(2),
+    cylinder: createCylinder(0.5, 1, 24),
+    sphere: createUVSphere(1, 24, 12),
+    'stepped union': booleanMesh('union', createBox(2), createBox(2), (point) =>
+      add(point, vec3(1, 0.5, 0.5)),
+    ),
+    'bitten box': booleanMesh('difference', createBox(2), createUVSphere(1, 24, 12), (point) =>
+      add(point, vec3(1, 1, 1)),
+    ),
+  });
+
+  it('arrives named TRIANGULATE, with nothing to set', () => {
+    expect(Object.keys(triangulate()).sort()).toEqual(['enabled', 'id', 'name', 'type']);
+    expect(triangulate().name).toBe('TRIANGULATE');
+  });
+
+  it('splits a cube into twelve triangles', () => {
+    const result = evaluateModifiers(createBox(2), [triangulate()]);
+
+    expect(result.faces.size).toBe(12);
+    expect(result.edges.size).toBe(18);
+    expect(result.verts.size).toBe(8);
+    expect(allTriangles(result)).toBe(true);
+    expect(result.validate()).toEqual([]);
+    expect(result.verts.size - result.edges.size + result.faces.size).toBe(2);
+  });
+
+  it('turns an n-gon into one triangle per corner past the second', () => {
+    const result = evaluateModifiers(createCylinder(0.5, 1, 24), [triangulate()]);
+
+    // The 24 sides come back as 48 triangles, and each 24-sided cap as 22.
+    expect(result.faces.size).toBe(48 + 22 * 2);
+    expect(allTriangles(result)).toBe(true);
+    expect(result.validate()).toEqual([]);
+  });
+
+  it('leaves nothing but triangles on any shape, without moving or adding a vertex', () => {
+    for (const [name, mesh] of Object.entries(shapes())) {
+      const result = evaluateModifiers(mesh, [triangulate()]);
+
+      expect(allTriangles(result), name).toBe(true);
+      expect(result.validate(), name).toEqual([]);
+      expect(positions(result), name).toEqual(positions(mesh));
+    }
+  });
+
+  it('keeps the volume and the area of every shape', () => {
+    for (const [name, mesh] of Object.entries(shapes())) {
+      const result = evaluateModifiers(mesh, [triangulate()]);
+
+      // The area is measured on the original outlines, so a triangle reaching
+      // over the dent of a concave face, as a boolean leaves them, shows here
+      // even where the viewport would draw it the same wrong way.
+      expect(volume(result), name).toBeCloseTo(volume(mesh), 9);
+      expect(area(result), name).toBeCloseTo(area(mesh), 9);
+    }
+  });
+
+  it('makes exactly the triangles the viewport already drew', () => {
+    for (const [name, mesh] of Object.entries(shapes())) {
+      const result = evaluateModifiers(mesh, [triangulate()]);
+
+      expect(drawnTriangles(result), name).toEqual(drawnTriangles(mesh));
+    }
+  });
+
+  it('splits a bent quad along the diagonal it was drawn with', () => {
+    const mesh = new BMesh();
+    mesh.addFace(
+      [vec3(0, 0, 0), vec3(2, 0, 0), vec3(3, 1, 0.5), vec3(0, 1, 0)].map((co) => mesh.addVert(co)),
+    );
+
+    const result = evaluateModifiers(mesh, [triangulate()]);
+
+    // A quad that is not flat makes a different surface for each diagonal.
+    // Splitting it along the one the viewport did not draw would fold it the
+    // other way, and the shape would change.
+    expect(result.faces.size).toBe(2);
+    expect(drawnTriangles(result)).toEqual(drawnTriangles(mesh));
+  });
+
+  it("keeps each face's material, shading, UVs and sharp edges on its triangles", () => {
+    const cube = createBox(2);
+    const [top] = [...cube.faces.values()].filter((face) => face.normal.y > 0.5);
+    top.materialIndex = 1;
+    top.smooth = true;
+    for (const loop of cube.faceLoops(top)) loop.uv = { u: loop.vert.co.x, v: loop.vert.co.z };
+    for (const edge of cube.faceEdges(top)) edge.sharp = true;
+
+    const result = evaluateModifiers(cube, [triangulate()]);
+
+    const upper = [...result.faces.values()].filter((face) => face.materialIndex === 1);
+    expect(upper).toHaveLength(2);
+    for (const face of upper) {
+      expect(face.normal.y).toBeCloseTo(1);
+      expect(face.smooth).toBe(true);
+      for (const loop of result.faceLoops(face)) {
+        expect(loop.uv).toEqual({ u: loop.vert.co.x, v: loop.vert.co.z });
+      }
+    }
+    // The top's four sides stay sharp. The diagonal across it is new, and smooth.
+    expect([...result.edges.values()].filter((edge) => edge.sharp)).toHaveLength(4);
+  });
+
+  it('leaves a mesh of triangles as it was', () => {
+    const ico = createIcoSphere(1, 2);
+    const result = evaluateModifiers(ico, [triangulate()]);
+
+    expect(result.faces.size).toBe(ico.faces.size);
+    expect(result.edges.size).toBe(ico.edges.size);
+    expect(drawnTriangles(result)).toEqual(drawnTriangles(ico));
+  });
+
+  it('leaves a mesh whose triangles would not fit in a tab as it was', () => {
+    const grid = createGrid(1, 360);
+    expect(grid.faces.size).toBe(129_600);
+
+    // Two triangles to a quad is 259,200 faces, past what a tab can hold, and
+    // the stack runs again on every edit.
+    const result = evaluateModifiers(grid, [triangulate()]);
+
+    expect(result.faces.size).toBe(129_600);
   });
 });
 
