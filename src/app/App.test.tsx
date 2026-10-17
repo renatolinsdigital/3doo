@@ -742,6 +742,34 @@ describe('App shell', () => {
     expect(screen.queryByRole('region', { name: 'OBJECT' })).not.toBeInTheDocument();
   });
 
+  it('gathers every colour preference under COLORS', async () => {
+    render(<App />);
+
+    await userEvent.click(screen.getByRole('button', { name: 'PREFS' }));
+    const dialog = screen.getByRole('dialog', { name: 'PREFERENCES' });
+    for (const section of within(dialog).getAllByRole('button', { expanded: false })) {
+      await userEvent.click(section);
+    }
+
+    // With every section open, no swatch is left outside COLORS: the
+    // background, both grid lines and the selection outline used to sit in
+    // three different sections, each found only by opening the right one.
+    const colors = within(dialog).getByRole('button', { name: 'COLORS' }).closest('section');
+    if (!colors) throw new Error('COLORS has no section');
+    const swatches = dialog.querySelectorAll<HTMLElement>('input[type="color"]');
+    expect(swatches).toHaveLength(4);
+    for (const swatch of swatches) expect(colors).toContainElement(swatch);
+
+    fireEvent.change(within(colors).getByLabelText('GRID SQUARES'), {
+      target: { value: '#123456' },
+    });
+    expect(useEditorStore.getState().gridColor).toBe('#123456');
+
+    act(() =>
+      useEditorStore.getState().setPreferences({ gridColor: DEFAULT_PREFERENCES.gridColor }),
+    );
+  });
+
   it('flips auto merge from the top bar, and only in edit mode', async () => {
     render(<App />);
     const addPanel = screen.getByRole('region', { name: 'PRIMITIVES' });

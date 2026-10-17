@@ -28,7 +28,8 @@ preferences. Depth: `docs/state-management.md`.
   stamp an added object took an opened file's id and one of them vanished.
 - Preferences sit flat on the store and every write goes through
   `coercePreferences`; storage access is wrapped, since private browsing
-  throws.
+  throws. Each write stores the whole set, defaults included, so a changed
+  default only reaches someone who never changed a preference, or presses RESET.
 
 ## Traps
 

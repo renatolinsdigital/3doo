@@ -25,7 +25,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   panels: { ...DEFAULT_PANELS },
   selectionLineWidth: 2,
   selectionLineColor: '#e5342a',
-  viewportBackground: '#1a1918',
+  // A quarter brighter than --ash, the backdrop behind the panels, which it
+  // used to match: the grid and dark models read better off a lifted ground.
+  viewportBackground: '#211f1e',
   gridScale: 1,
   gridSubdivisions: 10,
   lockVerticalOrbit: false,

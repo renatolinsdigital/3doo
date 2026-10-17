@@ -1148,7 +1148,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: "PREFS in the top bar holds the settings that belong to you rather than to a scene: hint tooltips, the viewport background, how fast the view orbits with and without a selection, whether a vertical orbit stops at the poles, whether the wheel zooms toward the pointer or into the middle of the view, the grid's scale, colour and opacity, autosave, and the thickness and colour of the outline around selected objects. They are stored on this device and kept out of project files, so opening a scene someone sent you never changes your viewport.",
+        text: "PREFS in the top bar holds the settings that belong to you rather than to a scene: hint tooltips, the colours, how fast the view orbits with and without a selection, whether a vertical orbit stops at the poles, whether the wheel zooms toward the pointer or into the middle of the view, the grid's scale, autosave, and the thickness of the outline around selected objects. They are stored on this device and kept out of project files, so opening a scene someone sent you never changes your viewport.",
+      },
+      {
+        kind: 'prose',
+        text: 'COLORS holds every colour you can change, in one place: the viewport background, the fine and heavy lines of the grid with how solid each is drawn, and the outline around selected objects.',
       },
       {
         kind: 'prose',

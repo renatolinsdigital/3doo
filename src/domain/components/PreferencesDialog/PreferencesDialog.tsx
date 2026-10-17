@@ -256,13 +256,54 @@ export function PreferencesDialog() {
         </p>
       </Accordion>
 
-      <Accordion title="VIEWPORT">
+      <Accordion title="COLORS">
         <ColorField
           label="BACKGROUND"
           value={viewportBackground}
-          hint="What the viewport clears to behind the scene. The grid, the axes and the overlays keep their own colours"
+          hint="What the viewport clears to behind the scene"
           onChange={(color) => setPreferences({ viewportBackground: color })}
         />
+        <ColorField
+          label="GRID SQUARES"
+          value={gridColor}
+          hint="The fine lines of the grid, the ones a square is drawn from"
+          onChange={(color) => setPreferences({ gridColor: color })}
+        />
+        <NumberField
+          label="SQUARE OPACITY"
+          value={gridOpacity}
+          min={0}
+          max={1}
+          step={0.05}
+          precision={2}
+          hint="How solid the fine lines are at their strongest: 0 hides them, 1 is a flat line. They ease off as a zoom closes them up"
+          onChange={(opacity) => setPreferences({ gridOpacity: opacity })}
+        />
+        <ColorField
+          label="GRID HEAVY LINES"
+          value={gridMajorColor}
+          hint="The heavy line of the grid, drawn every SUBDIVISIONS squares"
+          onChange={(color) => setPreferences({ gridMajorColor: color })}
+        />
+        <NumberField
+          label="HEAVY OPACITY"
+          value={gridMajorOpacity}
+          min={0}
+          max={1}
+          step={0.05}
+          precision={2}
+          hint="How solid the heavy lines are: 0 hides them, 1 is a flat line"
+          onChange={(opacity) => setPreferences({ gridMajorOpacity: opacity })}
+        />
+        <ColorField
+          label="SELECTION LINE"
+          value={selectionLineColor}
+          hint="The outline around selected objects in object mode. The active one wears this colour, the rest a darker mix"
+          onChange={(color) => setPreferences({ selectionLineColor: color })}
+        />
+      </Accordion>
+
+      <Accordion title="VIEWPORT">
         <Toggle
           label="LOCK VERTICAL ORBIT"
           checked={lockVerticalOrbit}
@@ -324,38 +365,6 @@ export function PreferencesDialog() {
           integer
           hint="How many squares fall between two heavy lines"
           onChange={(subdivisions) => setPreferences({ gridSubdivisions: subdivisions })}
-        />
-        <ColorField
-          label="SQUARE COLOR"
-          value={gridColor}
-          hint="Colour of the fine lines, the ones a square is drawn from"
-          onChange={(color) => setPreferences({ gridColor: color })}
-        />
-        <NumberField
-          label="SQUARE OPACITY"
-          value={gridOpacity}
-          min={0}
-          max={1}
-          step={0.05}
-          precision={2}
-          hint="How solid the fine lines are at their strongest: 0 hides them, 1 is a flat line. They ease off as a zoom closes them up"
-          onChange={(opacity) => setPreferences({ gridOpacity: opacity })}
-        />
-        <ColorField
-          label="HEAVY COLOR"
-          value={gridMajorColor}
-          hint="Colour of the heavy line drawn every few squares"
-          onChange={(color) => setPreferences({ gridMajorColor: color })}
-        />
-        <NumberField
-          label="HEAVY OPACITY"
-          value={gridMajorOpacity}
-          min={0}
-          max={1}
-          step={0.05}
-          precision={2}
-          hint="How solid the heavy lines are: 0 hides them, 1 is a flat line"
-          onChange={(opacity) => setPreferences({ gridMajorOpacity: opacity })}
         />
       </Accordion>
 
@@ -490,14 +499,8 @@ export function PreferencesDialog() {
           step={0.5}
           precision={1}
           suffix="px"
-          hint="Width of the outline drawn around selected objects in object mode"
+          hint="Width of the outline drawn around selected objects in object mode. Its colour is under COLORS"
           onChange={(width) => setPreferences({ selectionLineWidth: width })}
-        />
-        <ColorField
-          label="COLOR"
-          value={selectionLineColor}
-          hint="Colour of the outline around selected objects. The active one wears it, the rest a darker mix"
-          onChange={(color) => setPreferences({ selectionLineColor: color })}
         />
       </Accordion>
     </Modal>

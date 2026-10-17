@@ -22,7 +22,7 @@ and honest, never a puzzle.
 | `--red` | `#E5342A` | Primary actions, active tool, selection |
 | `--oxblood` | `#7B1113` | Pressed states, headers, status strip |
 | `--rust` | `#B8452F` | Secondary accents, hover |
-| `--ash` | `#1A1918` | Viewport background |
+| `--ash` | `#1A1918` | Backdrop behind the panels. The viewport defaults a shade lighter (`#211F1E`), a preference under COLORS |
 | `--grid` | `#3A2A28` | Viewport grid lines |
 | `--amber` | `#F2A03D` | Warnings, active axis, 3D cursor |
 | `--cyan` | `#3DE0D0` | Focus rings, gizmo axis contrast |
