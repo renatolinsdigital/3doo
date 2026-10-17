@@ -33,7 +33,7 @@ import type {
   BendModifier,
   LatticeModifier,
   MirrorModifier,
-  ReloopModifier,
+  QuadifyModifier,
   RemeshModifier,
   SolidifyModifier,
   SubdivideModifier,
@@ -1150,9 +1150,9 @@ describe('subdivision surface modifier', () => {
   });
 });
 
-describe('quad reloop modifier', () => {
-  function reloop(overrides: Partial<ReloopModifier> = {}): ReloopModifier {
-    return { ...(createModifier('reloop') as ReloopModifier), ...overrides };
+describe('quadify modifier', () => {
+  function quadify(overrides: Partial<QuadifyModifier> = {}): QuadifyModifier {
+    return { ...(createModifier('quadify') as QuadifyModifier), ...overrides };
   }
 
   const offsetBy = (offset: Vec3) => (point: Vec3) => add(point, offset);
@@ -1202,14 +1202,14 @@ describe('quad reloop modifier', () => {
   }
 
   it('starts out joining triangles folded up to 40°', () => {
-    const modifier = reloop();
-    expect(modifier.name).toBe('QUAD RELOOP');
+    const modifier = quadify();
+    expect(modifier.name).toBe('QUADIFY');
     expect(modifier.angle).toBe(40);
   });
 
   it('leaves a mesh that is already all quads as it was', () => {
     const cube = createBox(2);
-    const result = evaluateModifiers(cube, [reloop()]);
+    const result = evaluateModifiers(cube, [quadify()]);
 
     expect(result.faces.size).toBe(6);
     expect(result.verts.size).toBe(8);
@@ -1218,7 +1218,7 @@ describe('quad reloop modifier', () => {
 
   it('cuts the L-shaped faces of a stepped union into two quads each', () => {
     const union = booleanMesh('union', createBox(2), createBox(2), offsetBy(vec3(1, 0.5, 0.5)));
-    const result = evaluateModifiers(union, [reloop()]);
+    const result = evaluateModifiers(union, [quadify()]);
 
     // Six faces stand clear of the other box and stay as they were. Each of
     // the six L shapes splits across its inward corner, and nothing is added.
@@ -1237,7 +1237,7 @@ describe('quad reloop modifier', () => {
       createBox(2),
       turnedBy(vec3(0.7, 1.5, -0.4), 0.4),
     );
-    const result = evaluateModifiers(union, [reloop()]);
+    const result = evaluateModifiers(union, [quadify()]);
 
     // The only cut of that L keeps a corner two degrees off straight.
     expect(allQuads(result)).toBe(true);
@@ -1254,7 +1254,7 @@ describe('quad reloop modifier', () => {
       createBox(2),
       turnedBy(vec3(0.7, 1.5, -0.4), -0.4),
     );
-    const result = evaluateModifiers(union, [reloop()]);
+    const result = evaluateModifiers(union, [quadify()]);
 
     // The lower box's top is a band bent round two inward corners. Split
     // in the middle, its sides never cut; split where those corners look
@@ -1270,7 +1270,7 @@ describe('quad reloop modifier', () => {
     const cube = createBox(2);
     triangulateFaces(cube, [...cube.faces.values()]);
 
-    const result = evaluateModifiers(cube, [reloop()]);
+    const result = evaluateModifiers(cube, [quadify()]);
 
     expect(result.faces.size).toBe(6);
     expect(result.edges.size).toBe(12);
@@ -1278,7 +1278,7 @@ describe('quad reloop modifier', () => {
 
   it('joins the fans round the poles of a sphere as kites', () => {
     const sphere = createUVSphere(1, 24, 12);
-    const result = evaluateModifiers(sphere, [reloop()]);
+    const result = evaluateModifiers(sphere, [quadify()]);
 
     // 240 quads between the poles, and the 24 triangles round each pole
     // paired off as 12 kites: every one of them, not most.
@@ -1290,7 +1290,7 @@ describe('quad reloop modifier', () => {
     const mesh = new BMesh();
     mesh.addFace([vec3(0, 0, 0), vec3(1, 0, 0), vec3(0, 1, 0)].map((co) => mesh.addVert(co)));
 
-    const result = evaluateModifiers(mesh, [reloop()]);
+    const result = evaluateModifiers(mesh, [quadify()]);
 
     expect(result.faces.size).toBe(3);
     expect(allQuads(result)).toBe(true);
@@ -1302,7 +1302,7 @@ describe('quad reloop modifier', () => {
     const [edge] = cube.edges.values();
     subdivideEdges(cube, [edge]);
 
-    const result = evaluateModifiers(cube, [reloop()]);
+    const result = evaluateModifiers(cube, [quadify()]);
 
     // The faces either side of the split edge are squares with a point on
     // one side. Splitting the edge between them would leave two straight
@@ -1321,7 +1321,7 @@ describe('quad reloop modifier', () => {
       createUVSphere(1, 24, 12),
       offsetBy(vec3(1, 1, 1)),
     );
-    const result = evaluateModifiers(bitten, [reloop()]);
+    const result = evaluateModifiers(bitten, [quadify()]);
 
     expect(allQuads(result)).toBe(true);
     expect(closed(result)).toBe(true);
@@ -1341,8 +1341,8 @@ describe('quad reloop modifier', () => {
     mesh.addFace([a, b, c]);
     mesh.addFace([a, c, d]);
 
-    expect(evaluateModifiers(mesh, [reloop({ angle: 90 })]).faces.size).toBe(1);
-    expect(evaluateModifiers(mesh, [reloop({ angle: 40 })]).faces.size).toBe(6);
+    expect(evaluateModifiers(mesh, [quadify({ angle: 90 })]).faces.size).toBe(1);
+    expect(evaluateModifiers(mesh, [quadify({ angle: 40 })]).faces.size).toBe(6);
   });
 
   it('never joins two triangles across materials', () => {
@@ -1353,7 +1353,7 @@ describe('quad reloop modifier', () => {
     mesh.addFace([a, b, c], { materialIndex: 0 });
     mesh.addFace([a, c, d], { materialIndex: 1 });
 
-    const result = evaluateModifiers(mesh, [reloop()]);
+    const result = evaluateModifiers(mesh, [quadify()]);
     const slots = [...result.faces.values()].map((face) => face.materialIndex);
 
     expect(allQuads(result)).toBe(true);
@@ -1367,7 +1367,7 @@ describe('quad reloop modifier', () => {
     const [edge] = cube.edges.values();
     subdivideEdges(cube, [edge]);
 
-    const result = evaluateModifiers(cube, [reloop()]);
+    const result = evaluateModifiers(cube, [quadify()]);
 
     // Thirteen sharp edges go in, and the loop splits three of them. The lines
     // it draws across the faces are new, and smooth.
@@ -1381,7 +1381,7 @@ describe('quad reloop modifier', () => {
     );
     for (const loop of mesh.faceLoops(face)) loop.uv = { u: loop.vert.co.x, v: loop.vert.co.y };
 
-    const result = evaluateModifiers(mesh, [reloop()]);
+    const result = evaluateModifiers(mesh, [quadify()]);
 
     for (const quad of result.faces.values()) {
       for (const loop of result.faceLoops(quad)) {

@@ -50,7 +50,7 @@ Never read these whole: grep the symbol, then read a hundred lines round it.
 - `content.ts` (1,400): `DOCS_SECTIONS`, one entry per section, each with an
   `id`. The scripting tables are generated from `reference.ts`.
 - Over a thousand lines too: `boolean.ts`, `src/domain/scripting/api.ts`,
-  `reloop.ts`, `materials.ts`, `reference.ts`, `subdivide.ts`, `fbx.ts`,
+  `quadify.ts`, `materials.ts`, `reference.ts`, `subdivide.ts`, `fbx.ts`,
   `mcp/tools.ts`, `knife.ts`, `ObjectView.ts`, `picking.ts`, `meshBuffers.ts`.
 
 ## Shared by every room

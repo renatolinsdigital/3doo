@@ -4,7 +4,7 @@ import type { Edge, Face, Vert } from '../mesh/types';
 import { mergeByDistance, weldVerts } from '../ops/merge';
 import { MESH_BUDGET } from '../ops/budget';
 import { carrySharp } from '../ops/normals';
-import { quadReloop } from '../ops/reloop';
+import { quadify } from '../ops/quadify';
 import { catmullClark, subdivideFaces } from '../ops/subdivide';
 import { remeshMesh } from '../remesh';
 
@@ -15,7 +15,7 @@ import type {
   LatticeModifier,
   MirrorModifier,
   Modifier,
-  ReloopModifier,
+  QuadifyModifier,
   RemeshModifier,
   SolidifyModifier,
   SubdivideModifier,
@@ -85,8 +85,8 @@ export function applyModifier(
       return applySubdivide(mesh, modifier);
     case 'subsurf':
       return applySubsurf(mesh, modifier);
-    case 'reloop':
-      return applyReloop(mesh, modifier);
+    case 'quadify':
+      return applyQuadify(mesh, modifier);
     case 'remesh':
       return applyRemesh(mesh, modifier);
   }
@@ -556,8 +556,8 @@ function applySubsurf(mesh: BMesh, modifier: SubsurfModifier): BMesh {
   return result;
 }
 
-function applyReloop(mesh: BMesh, modifier: ReloopModifier): BMesh {
-  quadReloop(mesh, modifier.angle);
+function applyQuadify(mesh: BMesh, modifier: QuadifyModifier): BMesh {
+  quadify(mesh, modifier.angle);
   return mesh;
 }
 

@@ -28,7 +28,7 @@ New to the code? Start with [docs/get-started.md](docs/get-started.md).
   tris-to-quads.
 - **Modifiers**: mirror, array, solidify, bend, twist, lattice (a cage of
   points to shape the mesh with, like Blender's), weld, loop subdivide,
-  subdivision surface, quad reloop (every face turned to quads, loops run
+  subdivision surface, quadify (every face turned to quads, loops run
   through the mesh where it needs them) and remesh, all non-destructive and
   reorderable.
 - **Objects**: transform gizmo, booleans, merge and separate, an outliner with

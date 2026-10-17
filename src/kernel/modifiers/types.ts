@@ -12,7 +12,7 @@ export type ModifierType =
   | 'weld'
   | 'subdivide'
   | 'subsurf'
-  | 'reloop'
+  | 'quadify'
   | 'remesh';
 
 export interface ModifierBase {
@@ -133,10 +133,10 @@ export interface SubsurfModifier extends ModifierBase {
 /**
  * Rebuilds every face that is not a quad as quads, without moving a vertex:
  * triangles paired, flat regions merged and cut again, and loops run through
- * the mesh wherever an odd face needs one. See `quadReloop`.
+ * the mesh wherever an odd face needs one. See `quadify`.
  */
-export interface ReloopModifier extends ModifierBase {
-  type: 'reloop';
+export interface QuadifyModifier extends ModifierBase {
+  type: 'quadify';
   /** The sharpest fold, in degrees, two triangles may meet at and still be joined, 0 to 180. */
   angle: number;
 }
@@ -172,7 +172,7 @@ export type Modifier =
   | WeldModifier
   | SubdivideModifier
   | SubsurfModifier
-  | ReloopModifier
+  | QuadifyModifier
   | RemeshModifier;
 
 let counter = 0;
@@ -281,11 +281,11 @@ export function createModifier(type: ModifierType): Modifier {
         levels: 1,
         catmullClark: true,
       };
-    case 'reloop':
+    case 'quadify':
       return {
         id: nextId(type),
         type,
-        name: 'QUAD RELOOP',
+        name: 'QUADIFY',
         enabled: true,
         angle: 40,
       };

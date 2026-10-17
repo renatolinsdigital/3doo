@@ -761,7 +761,7 @@ export const MODIFIER_FIELDS: Record<ModifierType, readonly FieldSpec[]> = {
     },
     { name: 'catmullClark', value: boolean, description: 'Round toward a smooth surface.' },
   ],
-  reloop: [
+  quadify: [
     {
       name: 'angle',
       value: number(0, 180),

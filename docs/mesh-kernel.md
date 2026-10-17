@@ -743,9 +743,9 @@ A distance approaching the size of the mesh removes it altogether: every face
 falls below three distinct corners, and `weldVerts` drops those, leaving nothing
 for the surviving vertices to belong to.
 
-### Quad reloop (`reloop.ts`)
+### Quadify (`quadify.ts`)
 
-`quadReloop` turns every face that is not a quad into quads and moves no
+`quadify` turns every face that is not a quad into quads and moves no
 vertex: the new ones sit on the edges and faces they split. It is what Blender
 users reach for Tris to Quads, a few loop cuts and some knife work to do by
 hand after a boolean, run as one modifier. It works in four passes.

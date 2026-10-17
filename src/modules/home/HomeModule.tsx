@@ -65,7 +65,7 @@ const CAPABILITIES = [
       'WELD',
       'LOOP SUBDIVIDE',
       'SUBDIVISION SURFACE',
-      'QUAD RELOOP',
+      'QUADIFY',
       'REMESH',
     ],
   },

@@ -134,13 +134,13 @@ const BORDER_COST = 1.5;
  * `angleLimit` is the sharpest fold, in degrees, two triangles may meet at and
  * still be joined. Triangles past it are cut into quads each on their own.
  */
-export function quadReloop(mesh: BMesh, angleLimit = 40): void {
+export function quadify(mesh: BMesh, angleLimit = 40): void {
   const fold = Math.cos(degToRad(clamp(angleLimit, 0, 180)));
   joinTriangles(mesh, fold, WELL_SHAPED);
   mergeFlatRegions(mesh);
   joinTriangles(mesh, fold, JOINABLE);
 
-  const plan = planReloop(mesh);
+  const plan = planQuadify(mesh);
   // The joins and merges only ever removed faces. The cuts are what add them,
   // and a result past what a tab can hold is not worth the window.
   if (plannedFaces(mesh, plan) <= MESH_BUDGET.faces) cutIntoQuads(mesh, plan);
@@ -653,7 +653,7 @@ interface Plan {
  * where its sides are split, so a face the new paths leave alone is not cut
  * again.
  */
-function planReloop(mesh: BMesh): Plan {
+function planQuadify(mesh: BMesh): Plan {
   const hard = new Set<Face>();
   for (const face of mesh.faces.values()) {
     if (mesh.faceLoopCount(face) === 3) hard.add(face);
