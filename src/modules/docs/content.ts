@@ -1310,6 +1310,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Opens a page in your browser whose OPEN IN 3DOO button brings the model here, and says where that .html page is saved.',
           ],
           [
+            'Check the topology for a game engine',
+            'Counts the triangles, quads and n-gons of each part and lists anything an engine would object to, such as holes, faces turned the wrong way or stacked vertices, then fixes what it found.',
+          ],
+          [
             'Export it as OBJ for Unreal',
             'Writes the .obj and its .mtl, the right way up and the right size for Unreal, and says where they are.',
           ],

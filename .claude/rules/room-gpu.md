@@ -38,5 +38,10 @@ dot or edge lifted for the steepest face, the occlusion pass off, a fixed
 orthographic depth range. Not caught: dropping `markOccluded` alone, since in
 edit mode something else still hides the wire behind another object.
 
+`pictureWire` checks pictures rather than the viewport: the wire a snapshot
+draws over a cube. To put its bug back, null the occlusion map both in
+`materials.ts` and where the viewport resets it after a frame; the page's live
+viewport resets it every frame, so one place alone still passes.
+
 To add a scene: `build()` in `page.ts`, poses in `leaks.test.ts`, then put
 the bug back and watch it fail before relying on it.

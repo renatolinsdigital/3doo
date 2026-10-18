@@ -28,6 +28,10 @@ The most regressed area of the app: nine leak fixes in seven weeks,
 - Far-side edges are culled exactly (`frontEdgeLines`), except in x-ray and
   wireframe, for selected edges, and with the eye inside a closed mesh
   (winding number in `encloses`; the bounding box alone said inside too often).
+- Outside the viewport's frame `DOT_OCCLUSION` holds `NO_OCCLUSION_MAP`, never
+  null. The marks read the map through a `usampler2D`, and WebGL2 drops a draw
+  that meets three's float stand-in there, even with the test switched off:
+  null took every edge out of the MCP's pictures.
 
 ## Before and after a change here
 

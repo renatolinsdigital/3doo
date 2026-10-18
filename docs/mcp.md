@@ -91,7 +91,7 @@ visitor's browser gets, and the scene lives only in the headless tab.
    Either way the server reads JSON-RPC requests on stdin, answers on stdout
    and logs to stderr. MCP needs no network port: stdio is the whole transport.
 3. **The handshake.** Claude sends `initialize` and `tools/list`. The server
-   answers both from its own code, with its instructions and its list of ten
+   answers both from its own code, with its instructions and its list of eleven
    tools. No browser starts yet, so a session that never calls a tool never
    launches one.
 4. **The first tool call starts the browser.** `BrowserEngine`
@@ -275,7 +275,7 @@ and that address has to start with `http://` or `https://`.
 
 ## The tools
 
-Ten tools. Their descriptions in `mcp/tools.ts` are written for the model and
+Eleven tools. Their descriptions in `mcp/tools.ts` are written for the model and
 say when to use each one, so the model learns the workflow from the tool list.
 The server's `instructions`, sent with `initialize`, lay that workflow out in
 stages: read the quickstart, load any pictures the user gave, then build a
@@ -297,6 +297,7 @@ stage stays cheap.
 | `share_link` | `app_url`, `name`, `open` | The path of an `.html` page that carries the scene and opens it in the hosted editor, and a resource link to it |
 | `open_file` | `path` (required) | The scene summary after opening |
 | `get_scene` | none | The scene summary |
+| `inspect_mesh` | `objects` | Each object's counts as exported (triangles, quads, n-gons, poles), the totals, and every problem found, in words |
 
 A failure inside a tool, a bad argument included, comes back as an ordinary
 result with `isError: true` and the reason as text, which the model reads and
@@ -759,6 +760,7 @@ interface AutomationApi {
   loadReference(request: LoadReferenceRequest): Promise<LoadedReference>;  // summary, picture
   traceReference(request: TraceRequest): ReferenceTraceData;   // outline, profile, colours
   compareReference(request: CompareRequest): Promise<ComparisonData>;  // score, mismatches, picture
+  inspect(request?: InspectRequest): TopologyReport;    // counts and problems, per object and in total
 }
 ```
 

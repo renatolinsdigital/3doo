@@ -138,6 +138,26 @@ occlusion pass switched off, and the fixed orthographic depth range all fail
 it. Dropping only the test of the wire against other objects' surfaces does
 not: in edit mode the wire stays hidden behind another object without it.
 
+One more check looks at pictures rather than the viewport: `pictureWire` takes
+a cube the way the MCP's `render_views` does, in `solid` and in `solidWire`,
+and counts the pixels the wire changes. Pictures once came out with no edges
+at all, because the occlusion map was left null outside the viewport's frame;
+with that put back, the count drops to zero and the check fails. It measures
+over the surface because the wire is dark: against the dark background of a
+`wireframe` picture it barely changes a pixel either way.
+
+## AI end to end
+
+`npm run aie2e` has three AI agents build a game-ready axe in the editor and
+judge it, round by round, while the runner drives the editor's main functions
+by hand and measures everything it can by code. It is not part of `npm test`:
+it spends Claude usage, takes tens of minutes, and no two runs are the same.
+It answers whether an asset can be made to a professional bar, and what in
+3DOO got in the way. [how_aie2e_agents_work.md](how_aie2e_agents_work.md) has
+the whole of it. Its pure parts (gates, the issue ledger, the CLI flags, the
+prompts) are tested in `aie2e/*.test.ts`, which `npm test` runs, and
+`npm run aie2e -- --dry-run` checks the rest without an agent.
+
 ## Verifying a change by hand
 
 The kernel is where correctness lives, but some things are worth eyeballing:
@@ -157,6 +177,7 @@ The kernel is where correctness lives, but some things are worth eyeballing:
   but their individual edge cases are not covered.
 - The `Viewport` class runs in jsdom on a stand-in renderer, so its wiring is
   tested but nothing it draws is. What reaches the screen is checked only by
-  `npm run test:gpu`, and only for edit mode dots and wire.
+  `npm run test:gpu`, and only for edit mode dots and wire, and the wire in
+  pictures.
 - No Blender headless harness validating exported FBX fixtures.
 - No end-to-end browser test beyond the GPU check.

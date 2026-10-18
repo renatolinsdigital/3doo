@@ -102,6 +102,12 @@ export const MCP_TOOLS: readonly McpToolGuide[] = [
     does: 'Describes what is in the scene, without changing it.',
     returns: 'The scene, as run_script describes it.',
   },
+  {
+    name: 'inspect_mesh',
+    args: ['objects'],
+    does: 'Checks the topology of each mesh as it would be exported: how many triangles, quads and n-gons, and anything a game engine would object to, such as holes, faces turned the wrong way, stacked vertices or edges shared by three faces.',
+    returns: 'The counts for each object and for the scene, and every problem found, in words.',
+  },
 ];
 
 export interface McpSetting {

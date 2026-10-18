@@ -9,6 +9,7 @@ import {
   AUTOMATION_VERSION,
   type ReferenceSummaryData,
   type SceneSummary,
+  type TopologyData,
 } from '../src/app/automation/types';
 import { MCP_SETTINGS, MCP_TOOLS } from '../src/domain/mcp/guide';
 import { SCENE_HANDOVER, decodeScenePayload } from '../src/domain/services/sceneLink';
@@ -132,10 +133,44 @@ function fakeEngine() {
         base64: 'iVBORw0KGgo=',
       };
     },
+    inspect: async (request) => {
+      note('inspect', request);
+      const head = { ...CLEAN, name: 'HEAD' };
+      const handle = { ...CLEAN, name: 'HANDLE', ngons: 2, maxSides: 8, boundaryEdges: 4 };
+      const objects = request?.objects?.includes('HEAD') ? [head] : [head, handle];
+      return { objects, totals: { ...CLEAN, ngons: 2, maxSides: 8, boundaryEdges: 4 } };
+    },
     close: async () => {},
   };
   return { engine, calls };
 }
+
+/** A mesh with nothing wrong in it, as `inspect` counts it. */
+const CLEAN: TopologyData = {
+  verts: 8,
+  edges: 12,
+  faces: 6,
+  tris: 12,
+  triangles: 0,
+  quads: 6,
+  ngons: 0,
+  maxSides: 4,
+  nonManifoldEdges: 0,
+  boundaryEdges: 0,
+  wireEdges: 0,
+  looseVerts: 0,
+  degenerateFaces: 0,
+  duplicateVerts: 0,
+  flippedEdges: 0,
+  shells: 1,
+  insideOutShells: 0,
+  poles: { three: 8, five: 0, sixPlus: 0 },
+  twoEdgeVerts: 0,
+  twistedQuads: 0,
+  sharpEdges: 0,
+  smoothFaces: 0,
+  materials: 1,
+};
 
 /** What the fake engine says it measured in a reference. */
 const SUMMARY: ReferenceSummaryData = {
@@ -183,8 +218,49 @@ describe('the tools', () => {
       'share_link',
       'open_file',
       'get_scene',
+      'inspect_mesh',
     ]);
     for (const tool of tools) expect(tool.inputSchema.type).toBe('object');
+  });
+
+  it('reports the topology with its problems in words', async () => {
+    const { engine, calls } = fakeEngine();
+    const result = await callTool(
+      'inspect_mesh',
+      {},
+      { engine, config, protocolVersion: '2025-06-18' },
+    );
+
+    expect(calls).toEqual([{ method: 'inspect', argument: { objects: undefined } }]);
+    expect(result.isError).toBeUndefined();
+    expect(textOf(result)).toContain('Topology of 2 objects');
+    expect(textOf(result)).toContain('- HANDLE: 2 n-gons, the largest with 8 corners');
+    expect(textOf(result)).toContain('- HANDLE: 4 boundary edges');
+    expect(textOf(result)).not.toContain('- HEAD:');
+  });
+
+  it('says so when the inspected mesh has nothing wrong', async () => {
+    const { engine, calls } = fakeEngine();
+    const result = await callTool(
+      'inspect_mesh',
+      { objects: ['HEAD'] },
+      { engine, config, protocolVersion: '2025-06-18' },
+    );
+
+    expect(calls[0].argument).toEqual({ objects: ['HEAD'] });
+    expect(textOf(result)).toContain('Topology of 1 object,');
+    expect(textOf(result)).toContain('No problems');
+  });
+
+  it('refuses objects that are not a list of names', async () => {
+    const { engine } = fakeEngine();
+    const result = await callTool(
+      'inspect_mesh',
+      { objects: 'HEAD' },
+      { engine, config, protocolVersion: '2025-06-18' },
+    );
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toMatch(/list of object or folder names/);
   });
 
   it('runs a script, resetting first when asked, and reports what it logged', async () => {

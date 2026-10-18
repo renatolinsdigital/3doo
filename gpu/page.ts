@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { OCCLUDER_LAYER } from '@bridge/materials';
 import type { CameraPose } from '@store/types';
 import { useEditorStore, type EditorStore } from '@store/useEditorStore';
+import { renderSnapshots } from '@viewport/snapshot';
 import { Viewport } from '@viewport/Viewport';
 
 /** The parts of an object view the check reads; all private to the app. */
@@ -113,6 +114,50 @@ export function gpuName(): string {
   const gl = viewport().renderer.getContext();
   const info = gl.getExtension('WEBGL_debug_renderer_info');
   return String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER));
+}
+
+/**
+ * How many pixels the wire changes in a picture of a cube, taken the way the
+ * MCP's `render_views` takes them: the same view in `solid` and in
+ * `solidWire`, compared pixel by pixel. The wire is dark, so it is measured
+ * over the light surface rather than against the dark background. Pictures
+ * come from a renderer of their own, outside the viewport's frame.
+ */
+export async function pictureWire(): Promise<number> {
+  const store = useEditorStore.getState();
+  store.resetScene();
+  store.addPrimitive('cube');
+  const size = 320;
+  const pixels = async (shading: 'solid' | 'solidWire') => {
+    const [shot] = await renderSnapshots(['perspective'], {
+      width: size,
+      height: size,
+      shading,
+      projection: 'auto',
+      grid: false,
+    });
+    const image = new Image();
+    image.src = shot.dataUrl;
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = size;
+    canvas.height = size;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('No 2D context to read the picture with');
+    context.drawImage(image, 0, 0);
+    return context.getImageData(0, 0, size, size).data;
+  };
+  const plain = await pixels('solid');
+  const wired = await pixels('solidWire');
+  let wire = 0;
+  for (let i = 0; i < plain.length; i += 4) {
+    const change =
+      Math.abs(plain[i] - wired[i]) +
+      Math.abs(plain[i + 1] - wired[i + 1]) +
+      Math.abs(plain[i + 2] - wired[i + 2]);
+    if (change > 30) wire++;
+  }
+  return wire;
 }
 
 /** Builds one of the scenes the leaks came back in, with its marks on show. */

@@ -4,11 +4,13 @@ paths:
   - "src/domain/mcp/**/*"
   - "src/app/automation/**/*"
   - "mcp/**/*.ts"
+  - "aie2e/**/*.ts"
 ---
 
 # Room: scripting and MCP
 
-Depth: `docs/scripting.md`, `docs/mcp.md`, `docs/mcp-package.md`.
+Depth: `docs/scripting.md`, `docs/mcp.md`, `docs/mcp-package.md`,
+`docs/how_aie2e_agents_work.md`.
 
 ## Scripting
 
@@ -42,3 +44,26 @@ Depth: `docs/scripting.md`, `docs/mcp.md`, `docs/mcp-package.md`.
   ASSISTANTS docs section.
 - `mcp-package/` is published to npm with a version of its own. Ask before
   bumping it, as for the app.
+
+## AI end to end
+
+- `aie2e/` runs its agents as `claude -p` sessions on the user's login, with
+  `--setting-sources user` and a working directory outside the repository.
+  This project's hooks would copy every agent prompt into the user's prompt
+  history, and its rules would brief the agents as developers of 3DOO.
+- Keep `--strict-mcp-config`: without it a session inherits every MCP server
+  the user has.
+- Each session starts its own MCP servers, and each server its own empty
+  scene. The agents share one through `bridge.ts` into `SceneHub`; the judges'
+  port refuses anything that writes.
+- Node runs `mcp/` and `aie2e/` by stripping types: no parameter properties,
+  enums or namespaces there.
+- Given the topology numbers, the style judge raised triangle counts instead
+  of judging style: `judgePrompt` keeps them from it.
+- Keep the lists in `MODELER_SCHEMA` and `verdictSchema` optional. The model
+  folds a list into the string before it (`</summary><parameter name=...>`),
+  and a required list made the CLI refuse the answer five times and fail the
+  turn; `readModelerReport` and `readVerdict` take it back out.
+- Each agent has its own hub port (`AGENT_ROLES`), which is how calls are
+  labelled; the judges run at the same time, so nothing may rely on whose
+  turn it is.

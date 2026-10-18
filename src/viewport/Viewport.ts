@@ -7,6 +7,7 @@ import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeome
 import {
   AXIS_COLORS,
   DOT_OCCLUSION,
+  NO_OCCLUSION_MAP,
   OCCLUDER_LAYER,
   ObjectView,
   VIEWPORT_COLORS,
@@ -4626,7 +4627,7 @@ export class Viewport {
     DOT_OCCLUSION.dotOcclusionActive.value = this.renderDotOcclusion();
     this.renderer.render(this.scene, this.camera);
     DOT_OCCLUSION.dotOcclusionActive.value = false;
-    DOT_OCCLUSION.dotOcclusionMap.value = null;
+    DOT_OCCLUSION.dotOcclusionMap.value = NO_OCCLUSION_MAP;
   };
 
   /**

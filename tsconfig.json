@@ -34,5 +34,5 @@
       "@global-styles/*": ["src/global-styles/*"]
     }
   },
-  "include": ["src", "mcp", "gpu", "vite.config.ts"]
+  "include": ["src", "mcp", "gpu", "aie2e", "vite.config.ts"]
 }

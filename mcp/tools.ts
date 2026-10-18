@@ -11,6 +11,8 @@ import type {
   ReferenceSummaryData,
   RenderRequest,
   SceneSummary,
+  TopologyData,
+  TopologyReport,
 } from '../src/app/automation/types.ts';
 
 import { type Config, linkTarget, outputPath } from './config.ts';
@@ -785,6 +787,86 @@ const getScene: Tool = {
   },
 };
 
+const plural = (count: number, one: string, many = `${one}s`) =>
+  `${count} ${count === 1 ? one : many}`;
+
+/** What in one object's mesh a game engine or a modeller would object to, in words. */
+export function topologyProblems(data: TopologyData): string[] {
+  const problems: string[] = [];
+  const say = (count: number, words: string) => {
+    if (count > 0) problems.push(`${count} ${words}`);
+  };
+  if (data.ngons > 0) {
+    problems.push(
+      `${plural(data.ngons, 'n-gon')}, the largest with ${data.maxSides} corners: split into quads or triangles`,
+    );
+  }
+  say(data.nonManifoldEdges, 'non-manifold edges, shared by three faces or more');
+  say(data.boundaryEdges, 'boundary edges, the rims of holes or open sheets');
+  say(data.wireEdges, 'loose edges with no face');
+  say(data.looseVerts, 'loose vertices with no edge');
+  say(data.duplicateVerts, 'vertices stacked on another vertex');
+  say(data.degenerateFaces, 'faces with next to no area');
+  say(data.flippedEdges, 'edges between faces that disagree on which side is out');
+  say(data.insideOutShells, 'closed pieces turned inside out');
+  say(data.twistedQuads, 'twisted quads, their corners off one plane');
+  say(data.twoEdgeVerts, 'vertices with only two edges, which do no work');
+  return problems;
+}
+
+/** A topology report as the model reads it: counts as JSON, then the problems in words. */
+export function topologyText(report: TopologyReport): string {
+  const { objects, totals } = report;
+  const lines = [
+    `Topology of ${plural(objects.length, 'object')}, with modifiers applied, as exported. tris counts the triangles an engine draws.`,
+    `Totals: ${JSON.stringify(totals)}`,
+    ...objects.map((object) => JSON.stringify(object)),
+  ];
+  const found = objects.flatMap((object) =>
+    topologyProblems(object).map((problem) => `- ${object.name}: ${problem}`),
+  );
+  lines.push(
+    found.length > 0
+      ? `Problems:\n${found.join('\n')}`
+      : 'No problems: no n-gons, holes, non-manifold or loose geometry, stacked vertices, slivers, flipped or inside-out faces, or twisted quads.',
+  );
+  return lines.join('\n');
+}
+
+const inspectMesh: Tool = {
+  name: 'inspect_mesh',
+  title: 'Check the topology',
+  description: [
+    'Counts what each mesh is made of, as exported with its modifiers applied: triangles, quads and n-gons, the triangles an engine draws, poles, sharp edges, smooth faces and material slots.',
+    'It also finds what a game engine or a modeller would object to and lists it in words: n-gons, non-manifold edges, holes, loose vertices and edges, stacked vertices, slivers, faces that disagree on which side is out, pieces turned inside out and twisted quads.',
+    'Use it before handing over a model meant for a game or another program, and after booleans, merges and hand-built meshes, which are where these come from.',
+  ].join(' '),
+  inputSchema: {
+    type: 'object',
+    properties: {
+      objects: {
+        type: 'array',
+        items: { type: 'string' },
+        description:
+          'Inspect only these objects or folders, by name, hidden ones included. Default: every visible object.',
+      },
+    },
+  },
+  annotations: { readOnlyHint: true, openWorldHint: false },
+  async run(args, { engine }) {
+    const objects = args.objects;
+    if (
+      objects !== undefined &&
+      (!Array.isArray(objects) || objects.some((name) => typeof name !== 'string'))
+    ) {
+      throw new Error('objects has to be a list of object or folder names.');
+    }
+    return {
+      content: [text(topologyText(await engine.inspect({ objects: objects as string[] })))],
+    };
+  },
+};
+
 export const TOOLS: readonly Tool[] = [
   scriptingReference,
   runScript,
@@ -796,6 +878,7 @@ export const TOOLS: readonly Tool[] = [
   shareLink,
   openFile,
   getScene,
+  inspectMesh,
 ];
 
 // ----------------------------------------------------------------- files

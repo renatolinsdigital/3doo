@@ -251,9 +251,30 @@ export const OCCLUDER_LAYER = 1;
  * the dots are left to the depth test and their lift, as they were before this
  * existed.
  */
+/**
+ * What `DOT_OCCLUSION` holds for a map while no pass has filled it: one texel
+ * of nothing, in the format the pass writes. The shaders read the map through
+ * an unsigned integer sampler, and WebGL2 refuses a draw whose sampler and
+ * texture disagree, even where `dotOcclusionActive` keeps the map from being
+ * read. Left null, three bound a float texture of its own there, and every
+ * wire and dot drawn outside the viewport's frame was thrown away.
+ */
+export const NO_OCCLUSION_MAP: THREE.Texture = (() => {
+  const texture = new THREE.DataTexture(
+    new Uint32Array(4),
+    1,
+    1,
+    THREE.RGBAIntegerFormat,
+    THREE.UnsignedIntType,
+  );
+  texture.internalFormat = 'RGBA32UI';
+  texture.needsUpdate = true;
+  return texture;
+})();
+
 export const DOT_OCCLUSION = {
   dotOcclusionActive: { value: false },
-  dotOcclusionMap: { value: null as THREE.Texture | null },
+  dotOcclusionMap: { value: NO_OCCLUSION_MAP },
   /** The map's size in pixels. */
   dotOcclusionSize: { value: new THREE.Vector2(1, 1) },
 };

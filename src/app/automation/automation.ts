@@ -1,9 +1,11 @@
 import {
+  BMesh,
   type Vec3,
   exportFBX,
   exportOBJ,
   importFBX,
   importOBJ,
+  inspectMesh,
   STRAIGHT_VIEWS,
   VIEW_PLANES,
   parseProject,
@@ -62,6 +64,7 @@ import {
   type ComparisonData,
   type ExportRequest,
   type ExportedFile,
+  type InspectRequest,
   type LoadReferenceRequest,
   type LoadedReference,
   type ObjectSummary,
@@ -72,6 +75,8 @@ import {
   type RenderedView,
   type SceneSummary,
   type ShareLink,
+  type TopologyData,
+  type TopologyReport,
   type TraceRequest,
   type Vec3Data,
 } from './types';
@@ -458,6 +463,47 @@ async function compareReference(request: CompareRequest): Promise<ComparisonData
   };
 }
 
+// --------------------------------------------------------------- topology
+
+const LARGEST: readonly (keyof TopologyData)[] = ['maxSides', 'materials'];
+
+function topologyTotals(parts: readonly TopologyData[]): TopologyData {
+  // An empty mesh counts nothing, so its report is the zero to add onto.
+  const totals: TopologyData = inspectMesh(new BMesh());
+  const counts = totals as unknown as Record<string, number>;
+  for (const part of parts) {
+    for (const [key, value] of Object.entries(part)) {
+      if (typeof value !== 'number') continue;
+      counts[key] = LARGEST.includes(key as keyof TopologyData)
+        ? Math.max(counts[key], value)
+        : counts[key] + value;
+    }
+    totals.poles.three += part.poles.three;
+    totals.poles.five += part.poles.five;
+    totals.poles.sixPlus += part.poles.sixPlus;
+  }
+  return totals;
+}
+
+/** Each object's mesh as it is drawn and exported, with its modifiers applied. */
+function inspect(request: InspectRequest = {}): TopologyReport {
+  const state = store();
+  const named = request?.objects === undefined ? null : namedObjects(request.objects);
+  const chosen = state.objects.filter(
+    (object) => !object.lattice && (named ? named.has(object.id) : object.visible),
+  );
+  if (chosen.length === 0) {
+    throw new Error('Nothing to inspect: the scene is empty or every object is hidden.');
+  }
+  const objects = chosen.map((object) => {
+    const data: TopologyData = inspectMesh(
+      evaluatedMesh(object, undefined, undefined, state.objects),
+    );
+    return { name: object.name, ...data };
+  });
+  return { objects, totals: topologyTotals(objects) };
+}
+
 async function shareLink(appUrl: string): Promise<ShareLink> {
   let parsed: URL;
   try {
@@ -687,6 +733,7 @@ export function createAutomationApi(): AutomationApi {
     loadReference,
     traceReference: traceReferenceData,
     compareReference,
+    inspect,
   };
 }
 

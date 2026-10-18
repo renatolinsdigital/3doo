@@ -216,3 +216,16 @@ describe('marks on the real GPU', () => {
     },
   );
 });
+
+describe('pictures on the real GPU', () => {
+  it('draws the wire of a cube in a solidWire picture', async () => {
+    const wire = await page.evaluate(() =>
+      (window as unknown as CheckWindow).gpuCheck.pictureWire(),
+    );
+    // Pictures used to come out with no wire at all, solidWire drawing exactly
+    // what solid draws: outside the viewport's frame the occlusion map was
+    // null, and WebGL2 drops a draw whose unsigned integer sampler meets
+    // three's float stand-in.
+    expect(wire, `on ${gpu}`).toBeGreaterThan(300);
+  });
+});

@@ -32,6 +32,12 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    // The AI end-to-end run is a Node program that drives agents and a browser.
+    files: ['aie2e/**/*.ts'],
+    languageOptions: { globals: globals.node },
+    rules: { 'no-console': 'off' },
+  },
+  {
     // The GPU check drives the browser from Node; only gpu/page.ts runs in it.
     files: ['gpu/**/*.ts'],
     ignores: ['gpu/page.ts'],

@@ -209,6 +209,18 @@ describe('vertex point material', () => {
   it('is left to the depth test outside the viewport frame that fills it', () => {
     expect(DOT_OCCLUSION.dotOcclusionActive.value).toBe(false);
   });
+
+  it('holds a texture its unsigned integer sampler can read when no pass has filled it', () => {
+    // The map used to be null there, and three binds a float texture in its
+    // place. WebGL2 refuses a draw whose usampler2D meets a float texture, so
+    // every wire drawn outside the viewport's own frame was thrown away: the
+    // MCP's pictures came out with no wireframe in solidWire or wireframe.
+    expect(DOT_OCCLUSION.dotOcclusionMap.value).toMatchObject({
+      format: THREE.RGBAIntegerFormat,
+      type: THREE.UnsignedIntType,
+      internalFormat: 'RGBA32UI',
+    });
+  });
 });
 
 describe('dot occlusion material', () => {

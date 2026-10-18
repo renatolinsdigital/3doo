@@ -11,6 +11,7 @@ import {
   type AutomationApi,
   type ExportRequest,
   type ExportedFile,
+  type InspectRequest,
   type OpenRequest,
   type CompareRequest,
   type ComparisonData,
@@ -23,6 +24,7 @@ import {
   type RenderedView,
   type RunReport,
   type SceneSummary,
+  type TopologyReport,
 } from '../src/app/automation/types.ts';
 
 import { type Config, engineSource } from './config.ts';
@@ -39,6 +41,7 @@ export interface Engine {
   loadReference(request: LoadReferenceRequest): Promise<LoadedReference>;
   traceReference(request: TraceRequest): Promise<ReferenceTraceData>;
   compareReference(request: CompareRequest): Promise<ComparisonData>;
+  inspect(request?: InspectRequest): Promise<TopologyReport>;
   close(): Promise<void>;
 }
 
@@ -294,6 +297,10 @@ export class BrowserEngine implements Engine {
 
   compareReference(request: CompareRequest): Promise<ComparisonData> {
     return this.call('Comparing with the reference', 'compareReference', request);
+  }
+
+  inspect(request?: InspectRequest): Promise<TopologyReport> {
+    return this.call('Inspecting the mesh', 'inspect', request);
   }
 
   async close(): Promise<void> {

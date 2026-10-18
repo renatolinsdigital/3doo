@@ -26,7 +26,7 @@ Workflow:
 3. run_script builds the model in stages, each in a few short scripts and each checked before the next. The scene persists between calls; reset: true starts over; a failed script changes nothing and names the line.
    a. Blockout: the big shapes and their proportions only. Check with render_views, shading "silhouette" and sheet: true for front, right and top, or with compare_to_reference. Proportions are cheap to fix now and dear later.
    b. Forms: taper, bevels and the secondary shapes. Check with one solid render from a three-quarter camera, { yaw: 35, pitch: 20 }.
-   c. Detail and colour. Check once more.
+   c. Detail and colour. Check once more, and for a model meant for a game or another program, run inspect_mesh and fix the n-gons, holes and flipped faces it lists.
    Stop at the stage the request needs: a quick blockout ends after a. Check once a stage, fix what the check shows, and do not polish a model that already matches the request.
 4. Hand over only what was asked: export_model (.3doo, .obj or .fbx files), share_link (saves an .html page whose button opens the model in the editor, opened in the user's browser with open: true; pass on the path of that file), or the pictures from render_views. For several sides, render the views named: front, back, right, left, top, bottom, or perspective.
 

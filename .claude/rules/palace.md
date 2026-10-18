@@ -13,7 +13,7 @@ for people: `docs/ai-memory.md`.
 | `room-viewport.md` | `src/viewport` | The gizmo's rules, the camera's planes, the jsdom harness |
 | `room-ui.md` | `src/domain`, `src/shared`, `src/app`, `src/modules` | Text rules, keymap, panels, component tests |
 | `room-saving.md` | autosave, project files | No copy in the browser, `dirty`, the data-loss history |
-| `room-scripting.md` | scripting, automation, `mcp/` | Checked options, transactions, adding a tool |
+| `room-scripting.md` | scripting, automation, `mcp/`, `aie2e/` | Checked options, transactions, adding a tool, the aie2e agents |
 | `room-gpu.md` | `gpu/` | The real-GPU check, how it judges, what it cannot see |
 
 ## Where a task starts
@@ -33,6 +33,7 @@ Open these first and follow the code from there; do not survey the tree.
 | Import, export | `src/kernel/io/obj.ts`, `fbx.ts`, `ExportDialog`, `useProjectFiles.ts` |
 | Script API | `src/domain/scripting/api.ts`, `reference.ts`, `runScript.ts`, `sceneScript.ts` |
 | MCP tool | `src/app/automation/`, `mcp/tools.ts`, `mcp/engine.ts`, `src/domain/mcp/guide.ts` |
+| AI end to end run | `aie2e/run.ts`, `aie2e/rubric.ts`, the agents in `.claude/agents/`, `docs/how_aie2e_agents_work.md` |
 
 Every user-facing feature also gets its entry in `src/modules/docs/content.ts`.
 

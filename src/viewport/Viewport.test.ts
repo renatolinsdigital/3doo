@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { DOT_OCCLUSION, NO_OCCLUSION_MAP } from '@bridge/materials';
 import { MIN_OBJECT_SIZE } from '@kernel/index';
 import { useEditorStore } from '@store/index';
 
@@ -106,6 +107,17 @@ describe('Viewport', () => {
   afterEach(() => {
     viewport?.dispose();
     viewport = null;
+  });
+
+  it('leaves a readable stand-in in the occlusion map once its frame is drawn', () => {
+    store().addPrimitive('cube');
+    const view = mount();
+    frame(view);
+    // The map used to go back to null after the frame, so the next renderer to
+    // draw these materials, the one that takes the MCP's pictures, bound a float
+    // texture to their unsigned integer sampler and WebGL2 dropped every wire.
+    expect(DOT_OCCLUSION.dotOcclusionMap.value).toBe(NO_OCCLUSION_MAP);
+    expect(DOT_OCCLUSION.dotOcclusionActive.value).toBe(false);
   });
 
   it('carries a dragged object step for step with the pointer, through the store updates it causes', () => {

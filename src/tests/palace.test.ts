@@ -27,7 +27,7 @@ function walk(dir: string): string[] {
 
 const FILES = walk('');
 const ROOMS = FILES.filter((file) => /^\.claude\/rules\/(palace|room-[\w-]+)\.md$/.test(file));
-const SOURCE = FILES.filter((file) => /^(src|mcp|gpu)\/.*\.tsx?$/.test(file))
+const SOURCE = FILES.filter((file) => /^(src|mcp|gpu|aie2e)\/.*\.tsx?$/.test(file))
   .map((file) => readFileSync(join(ROOT, file), 'utf8'))
   .join('\n');
 

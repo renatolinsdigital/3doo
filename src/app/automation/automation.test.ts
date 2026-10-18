@@ -82,6 +82,38 @@ describe('the automation API', () => {
     expect(store().canUndo).toBe(false);
   });
 
+  it('inspects each visible mesh as exported, with totals across them', async () => {
+    await api.run(`
+      scene.add('cube', { name: 'BOX' });
+      scene.add('cylinder', { name: 'POST', segments: 8, position: [2, 0, 0] });
+      const hidden = scene.add('cube', { name: 'HIDDEN', position: [4, 0, 0] });
+      hidden.visible = false;
+    `);
+
+    const report = api.inspect();
+
+    expect(report.objects.map((object) => object.name)).toEqual(['BOX', 'POST']);
+    expect(report.objects[0]).toMatchObject({ quads: 6, ngons: 0, boundaryEdges: 0 });
+    expect(report.objects[1]).toMatchObject({ ngons: 2, maxSides: 8 });
+    expect(report.totals).toMatchObject({ faces: 6 + 10, ngons: 2, maxSides: 8, shells: 2 });
+    expect(report.totals.poles.three).toBe(8 + 16);
+  });
+
+  it('inspects named objects, hidden ones included, with modifiers applied', async () => {
+    const run = await api.run(`
+      const box = scene.add('cube', { name: 'BOX' });
+      box.addModifier('subdivide', { levels: 1 });
+      box.visible = false;
+    `);
+    expect(run.ok).toBe(true);
+
+    const [box] = api.inspect({ objects: ['box'] }).objects;
+
+    expect(box.faces).toBe(24);
+    expect(() => api.inspect()).toThrow(/Nothing to inspect/);
+    expect(() => api.inspect({ objects: ['nope'] })).toThrow(/no object or folder called "nope"/);
+  });
+
   it('exports a .3doo that opens back to the same scene', async () => {
     await api.run(`scene.add('cylinder', { name: 'POST', position: [1, 0, 0] });`);
 

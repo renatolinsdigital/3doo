@@ -8,7 +8,7 @@
  */
 
 /** Bumped when a payload changes shape, so a server can refuse an app it cannot drive. */
-export const AUTOMATION_VERSION = 3;
+export const AUTOMATION_VERSION = 4;
 
 export type Vec3Data = { x: number; y: number; z: number };
 
@@ -135,6 +135,56 @@ export interface AutomationApi {
   traceReference(request: TraceRequest): ReferenceTraceData;
   /** The model's silhouette against a loaded picture, seen from the picture's view. */
   compareReference(request: CompareRequest): Promise<ComparisonData>;
+  /** Counts what each object's mesh is made of, as exported, and what in it is broken. */
+  inspect(request?: InspectRequest): TopologyReport;
+}
+
+export interface InspectRequest {
+  /** Only these objects or folders, by name. Default: every visible object. */
+  objects?: string[];
+}
+
+/** `MeshInspection` from the kernel, restated here because this file imports nothing. */
+export interface TopologyData {
+  verts: number;
+  edges: number;
+  faces: number;
+  /** Triangles once every face is split, which is what an engine draws. */
+  tris: number;
+  triangles: number;
+  quads: number;
+  /** Faces of five corners or more. */
+  ngons: number;
+  maxSides: number;
+  /** Edges shared by three faces or more. */
+  nonManifoldEdges: number;
+  /** Edges with one face: the rim of a hole or of an open sheet. */
+  boundaryEdges: number;
+  wireEdges: number;
+  looseVerts: number;
+  degenerateFaces: number;
+  duplicateVerts: number;
+  /** Edges whose two faces disagree on which side is out. */
+  flippedEdges: number;
+  shells: number;
+  insideOutShells: number;
+  /** Vertices inside a surface with three, five, or six or more edges. */
+  poles: { three: number; five: number; sixPlus: number };
+  twoEdgeVerts: number;
+  twistedQuads: number;
+  sharpEdges: number;
+  smoothFaces: number;
+  materials: number;
+}
+
+export interface ObjectTopology extends TopologyData {
+  name: string;
+}
+
+export interface TopologyReport {
+  objects: ObjectTopology[];
+  /** The objects together: sums, except `maxSides` and `materials`, the largest of theirs. */
+  totals: TopologyData;
 }
 
 export interface ReferenceRequest {
