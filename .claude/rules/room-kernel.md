@@ -49,7 +49,9 @@ both lists match), then a button or key through `store.exec`.
   primitives merge unconditionally. Dissolved edge ends must not linger as
   points on a straight side, or extrude walls round them.
 - `ops/fill.ts`: a fill round a sheet's whole outline once folded a face back
-  over the mesh.
+  over the mesh. A new face's winding comes from its vertex order, never from
+  `addFace`: bridge once took it from the loop walk's direction, built walls
+  facing into the solid, and the far-side cull hid their edges.
 - `detachRegion` (`ops/region.ts`) duplicates only vertices touching the
   outside, so interior ones are moved in place by the same `offsetFor`; once
   they were not, and every region extrude and inset depth sagged to them.

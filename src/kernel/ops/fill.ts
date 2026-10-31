@@ -501,6 +501,10 @@ function fillable(verts: readonly Vert[], normalAt: (vert: Vert) => Vec3): boole
  * The second loop is rotated so its start is nearest the first loop's start,
  * and reversed if that produces less twisting: without it, bridging two rings
  * built in opposite directions folds the band over itself.
+ *
+ * The walk round the first loop runs whichever way its first edge happens to
+ * point, so the band is then wound as one against the faces along both loops.
+ * Wound with them, its walls faced into the solid.
  */
 export function bridgeEdgeLoops(mesh: BMesh, edges: readonly Edge[]): Face[] {
   const loops = edgeLoopsFrom(mesh, edges).map((loop) => loop.verts);
@@ -510,16 +514,22 @@ export function bridgeEdgeLoops(mesh: BMesh, edges: readonly Edge[]): Face[] {
   if (first.length !== second.length || first.length < 2) return [];
 
   const aligned = alignRing(first, second);
-  const created: Face[] = [];
+  const rings: Vert[][] = [];
+  let votes = 0;
 
   for (let i = 0; i < first.length; i++) {
     const next = (i + 1) % first.length;
     const ring = [first[i], first[next], aligned[next], aligned[i]];
     if (new Set(ring.map((vert) => vert.id)).size < 3) continue;
-    const face = mesh.addFace(ring);
-    face.selected = true;
-    created.push(face);
+    rings.push(ring);
+    votes += windingVotes(mesh, ring);
   }
+
+  const created = rings.map((ring) => {
+    const face = mesh.addFace(votes < 0 ? [...ring].reverse() : ring);
+    face.selected = true;
+    return face;
+  });
 
   mesh.computeNormals();
   return created;
@@ -552,6 +562,11 @@ function alignRing(reference: readonly Vert[], candidate: readonly Vert[]): Vert
  * each other border it, most of them have their way.
  */
 function orientAgainstNeighbours(mesh: BMesh, ring: readonly Vert[]): Vert[] {
+  return windingVotes(mesh, ring) < 0 ? [...ring].reverse() : [...ring];
+}
+
+/** For a ring's winding, the faces along its edges that agree less those that do not. */
+function windingVotes(mesh: BMesh, ring: readonly Vert[]): number {
   let votes = 0;
   for (let i = 0; i < ring.length; i++) {
     const from = ring[i];
@@ -559,5 +574,5 @@ function orientAgainstNeighbours(mesh: BMesh, ring: readonly Vert[]): Vert[] {
     // A manifold neighbour traverses the shared edge the other way round.
     for (const loop of edge?.loops ?? []) votes += loop.vert === from ? -1 : 1;
   }
-  return votes < 0 ? [...ring].reverse() : [...ring];
+  return votes;
 }

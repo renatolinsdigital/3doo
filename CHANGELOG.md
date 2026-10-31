@@ -10,19 +10,6 @@ All notable changes to 3DOO are recorded here. Versions follow
 New entries go under `Unreleased` until a version is cut. Group them under
 `Added`, `Changed`, `Fixed` or `Removed`.
 
-## [Unreleased]
-
-### Added
-
-- Extrude along normals (`Shift+E`, and a button under EXTRUDE in the
-  OPERATIONS panel): each selected face is pushed out along its own normal,
-  the region stays joined, and every face ends up the offset away.
-
-### Fixed
-
-- Extruding a region of faces, or insetting one with a depth, left any vertex
-  in the middle of the region behind, so the faces sagged down to it.
-
 ## [1.0.0] - 2026-10-05
 
 First tracked release. It marks the state of the project at this point,

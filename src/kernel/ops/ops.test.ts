@@ -2240,6 +2240,39 @@ describe('fill and bridge', () => {
     expect(mesh.faces.size).toBe(4);
     expect(mesh.validate()).toEqual([]);
   });
+
+  it('winds the band to match the faces along both loops', () => {
+    const cube = createBox(2);
+    const front = faceAt(cube, vec3(0, 0, 1));
+    const upright = cube.faceEdges(front).find((edge) => edge.v0.co.y !== edge.v1.co.y) as Edge;
+    loopCut(cube, upright, { cuts: 2 });
+    const band = [...cube.faces.values()].filter(
+      (face) => Math.abs(cube.faceCenter(face).y) < 1e-6 && Math.abs(face.normal.y) < 0.5,
+    );
+    expect(band).toHaveLength(4);
+    deleteGeometry(cube, { verts: [], edges: [], faces: band }, 'onlyFaces');
+
+    const bridged = bridgeEdgeLoops(
+      cube,
+      [...cube.edges.values()].filter((edge) => edge.loops.length === 1),
+    );
+
+    expect(bridged).toHaveLength(4);
+    expect(isClosed(cube)).toBe(true);
+    expect(eulerCharacteristic(cube)).toBe(2);
+    // The band took its winding from whichever way the walk round the first loop
+    // ran, which here was with the faces above and below rather than against
+    // them, so the walls faced into the box. The viewport counted them as its far
+    // side and left the edges between them undrawn.
+    for (const edge of cube.edges.values()) {
+      expect(edge.loops[0].vert === edge.loops[1].vert).toBe(false);
+    }
+    for (const face of bridged) {
+      const center = cube.faceCenter(face);
+      expect(face.normal.x * center.x + face.normal.z * center.z).toBeGreaterThan(0);
+    }
+    expect(cube.validate()).toEqual([]);
+  });
 });
 
 describe('normals', () => {
