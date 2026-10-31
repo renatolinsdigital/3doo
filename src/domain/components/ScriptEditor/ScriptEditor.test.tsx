@@ -142,6 +142,8 @@ describe('ScriptEditor', () => {
     expect(options.map((option) => option.textContent)).toEqual([
       expect.stringContaining('add'),
       expect.stringContaining('addMesh'),
+      expect.stringContaining('addImage'),
+      expect.stringContaining('addCage'),
     ]);
 
     await userEvent.keyboard('{ArrowDown}{Enter}');

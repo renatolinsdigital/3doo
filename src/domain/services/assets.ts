@@ -88,7 +88,7 @@ export function blobBytes(blob: Blob): Promise<Uint8Array<ArrayBuffer>> {
   });
 }
 
-const IMAGE_EXTENSIONS: Record<string, string> = {
+export const IMAGE_EXTENSIONS: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
   'image/bmp': 'bmp',
@@ -168,11 +168,15 @@ export function exportObjects(
   }));
 }
 
-export function base64ToBlob(data: string, type: string): Blob {
+export function base64Bytes(data: string): Uint8Array<ArrayBuffer> {
   const binary = atob(data);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type });
+  return bytes;
+}
+
+export function base64ToBlob(data: string, type: string): Blob {
+  return new Blob([base64Bytes(data)], { type });
 }
 
 /** Extension to MIME type, for browsers that hand over a file with neither. */
@@ -222,6 +226,44 @@ export async function imageDimensions(blob: Blob): Promise<{ width: number; heig
     };
     image.src = url;
   });
+}
+
+/**
+ * The pixel size a PNG, JPEG or BMP file declares in its header, or null when
+ * the bytes are not one of those.
+ *
+ * Read off the bytes rather than decoded like `imageDimensions`, so a script
+ * can add a picture without waiting on the browser, and without one at all.
+ */
+export function headerImageSize(bytes: Uint8Array): { width: number; height: number } | null {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const has = (length: number) => bytes.length >= length;
+
+  if (has(24) && view.getUint32(0) === 0x89504e47 && view.getUint32(12) === 0x49484452) {
+    return { width: view.getUint32(16), height: view.getUint32(20) };
+  }
+  if (has(26) && bytes[0] === 0x42 && bytes[1] === 0x4d) {
+    // A BMP stored top-down says so with a negative height.
+    return { width: Math.abs(view.getInt32(18, true)), height: Math.abs(view.getInt32(22, true)) };
+  }
+  if (has(4) && bytes[0] === 0xff && bytes[1] === 0xd8) {
+    let at = 2;
+    while (at + 9 <= bytes.length && bytes[at] === 0xff) {
+      const marker = bytes[at + 1];
+      // Every start of frame but DHT (C4), JPG (C8) and DAC (CC) carries the size.
+      if (
+        marker >= 0xc0 &&
+        marker <= 0xcf &&
+        marker !== 0xc4 &&
+        marker !== 0xc8 &&
+        marker !== 0xcc
+      ) {
+        return { width: view.getUint16(at + 7), height: view.getUint16(at + 5) };
+      }
+      at += 2 + view.getUint16(at + 2);
+    }
+  }
+  return null;
 }
 
 let assetCounter = 0;

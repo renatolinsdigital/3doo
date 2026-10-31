@@ -136,6 +136,7 @@ export function sceneSummary(): SceneSummary {
     const { rotation } = object.transform;
     return {
       name: object.name,
+      kind: object.lattice ? 'cage' : object.image ? 'image' : 'mesh',
       vertices: mesh.verts.size,
       edges: mesh.edges.size,
       faces: mesh.faces.size,
@@ -570,14 +571,26 @@ const WHAT_A_SCRIPT_CAN_DO = `- Add the ten primitives, or build any mesh from a
   folders, and cut them with booleans.
 - Edit a mesh the way edit mode does (\`object.edit\`): select vertices, edges or
   faces with a test function, run any modelling operation on the selection,
-  move vertices to computed points with \`mesh.deform\`, and read every vertex,
-  edge and face back.
+  move vertices to computed points with \`mesh.deform\`, split the selected
+  faces off (\`mesh.separate\`), and read every vertex, edge and face back.
 - Stack, set, reorder and apply modifiers: mirror, array, solidify, bend,
   twist, lattice, weld, subdivide, subsurf, quadify, triangulate and remesh.
+  Every setting of every one, the cage a lattice reads included.
+- Shape meshes with lattice cages: the cage a lattice fits (\`modifier.cage\`),
+  a new one (\`modifier.newCage\`) or one shared by several objects
+  (\`scene.addCage\`), its grid (\`cage.resolution\`) and its points
+  (\`cage.points\`).
+- Put a picture on a plane (\`scene.addImage\`) or on a mesh of your own with
+  its UVs (\`scene.addMesh\` with \`uvs\` and \`image\`), from a PNG, JPEG or BMP
+  data URL.
 - Colour objects, and give parts of one mesh colours of their own through
   material slots (\`object.addMaterial\`, \`mesh.assignMaterial\`).
 - Read the scene back: transforms, world bounds, counts, modifier settings,
-  colours and the project name, which exported files are named after.`;
+  cages and their points, pictures, colours and the project name, which
+  exported files are named after.
+
+Anything the editor can build, a script can build: the editor's SCENE tab
+writes any scene as the script that makes it again.`;
 
 const HOW_A_SCRIPT_WORKS = `- An operation acts on the selection, as its button does in edit mode, and
   leaves what it made selected: select the top face, extrude, then inset, and
@@ -589,8 +602,12 @@ const HOW_A_SCRIPT_WORKS = `- An operation acts on the selection, as its button 
   works on, until it is applied. \`scene.boolean\` refuses an object with a
   live modifier, and uses its cutters up: duplicate one first to keep it.
 - \`addModifier('lattice')\` also adds a cage around the mesh, an object named
-  after it with \`.CAGE\` on the end. Move that object's vertices with
-  \`mesh.deform\` to shape the mesh; a cage takes no other mesh operation.
+  after it with \`.CAGE\` on the end, and \`modifier.cage\` hands it back. Set
+  \`cage.points\` to shape the mesh: in the cage's own space, the grid from -0.5
+  to 0.5 on each axis, X fastest, then Y, then Z, so read \`cage.points\`, move
+  some and set the list back. Pass \`{ cage: other }\` to read a cage made
+  already, or \`{ cage: null }\` for none. A cage takes no modifiers and no mesh
+  operation that adds or removes a point.
 - \`object.bounds\` places one part against another: a lamp stands on a table
   at \`table.bounds.max.y\`.
 - \`scene.reference(id)\` is a loaded picture in world metres, its subject

@@ -731,6 +731,18 @@ describe('imported images', () => {
     expect(state.assets['asset-1']).toBeDefined();
   });
 
+  it('puts the picture on a mesh of its own when given one', () => {
+    const store = useEditorStore.getState();
+    store.resetScene();
+    const mesh = createBox();
+
+    store.addImage(asset(), mesh);
+
+    const object = useEditorStore.getState().objects[0];
+    expect(object.mesh === mesh).toBe(true);
+    expect(object.image).toEqual({ assetId: 'asset-1' });
+  });
+
   it('drops every asset with the scene', () => {
     const store = useEditorStore.getState();
     store.resetScene();
@@ -978,6 +990,32 @@ describe('lattice cages', () => {
     const after = useEditorStore.getState().objects;
     expect(after).toHaveLength(1);
     expect(after[0].modifiers).toHaveLength(0);
+  });
+
+  it('adds a lattice reading nothing when told not to fit a cage', () => {
+    boxScene();
+    useEditorStore.getState().addModifier('lattice', { fitCage: false });
+
+    const [object, ...rest] = useEditorStore.getState().objects;
+    expect(rest).toHaveLength(0);
+    expect(object.modifiers[0]).toMatchObject({ type: 'lattice', objectId: null });
+  });
+
+  it('adds a cage of its own at the 3D cursor, held to the grid sizes a cage can have', () => {
+    useEditorStore.getState().resetScene();
+    useEditorStore.getState().setCursor(vec3(1, 2, 3));
+
+    useEditorStore.getState().addCage({ x: 2, y: 4, z: 40 });
+
+    const [cage] = useEditorStore.getState().objects;
+    expect(cage.name).toBe('CAGE');
+    expect(cage.transform.position).toEqual({ x: 1, y: 2, z: 3 });
+    expect(cage.lattice).toEqual({ resolution: { x: 2, y: 4, z: 10 } });
+    expect(cage.mesh.verts.size).toBe(80);
+    expect(useEditorStore.getState().activeObjectId).toBe(cage.id);
+
+    useEditorStore.getState().undo();
+    expect(useEditorStore.getState().objects).toHaveLength(0);
   });
 
   it('leaves the mesh alone while the cage is at rest, wherever the cage stands', () => {

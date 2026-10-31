@@ -155,7 +155,7 @@ describe('completions', () => {
 
   it('offers the members of a namespace after its dot', () => {
     expect(at('scene.ad')).toEqual({ from: 6, prefix: 'ad', receiver: 'scene' });
-    expect(names('scene.ad')).toEqual(['add', 'addMesh']);
+    expect(names('scene.ad')).toEqual(['add', 'addMesh', 'addImage', 'addCage']);
   });
 
   it('offers the globals for a bare word', () => {

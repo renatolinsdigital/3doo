@@ -3,10 +3,12 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { Button, Modal, SegmentedControl, type SegmentedOption, Select } from '@shared/components';
 import { useEditorStore } from '@store/index';
+import type { SceneAsset } from '@store/types';
 
 import { SCRIPT_EXAMPLES, STARTER_SCRIPT } from '../../scripting/examples';
 import { runScript } from '../../scripting/runScript';
 import { type SceneScript, sceneScript } from '../../scripting/sceneScript';
+import { blobToBase64 } from '../../services/assets';
 import { ScriptEditor, type ScriptEditorHandle } from '../ScriptEditor/ScriptEditor';
 
 import './ScriptDialog.scss';
@@ -59,22 +61,41 @@ export const EMPTY_SCENE = '// The scene is empty.';
 function shortfall(gaps: number): string | null {
   if (gaps === 0) return null;
   return gaps === 1
-    ? 'One thing in the scene has no script form yet, so a run leaves it out'
-    : `${gaps} things in the scene have no script form yet, so a run leaves them out`;
+    ? 'One image has no picture the script can carry, so a run leaves it out'
+    : `${gaps} images have no picture the script can carry, so a run leaves them out`;
 }
 
-/**
- * What the dialog warns while any object still has modifiers, or null when none
- * does. A script writes and reads base meshes, so the shape a stack gives is
- * only in it once the stack is applied.
- */
-function unapplied(modified: readonly string[]): string | null {
-  if (modified.length === 0) return null;
-  const who =
-    modified.length === 1
-      ? `${modified[0]} still has modifiers on its stack`
-      : `${modified.length} objects still have modifiers on their stacks`;
-  return `Scripts map the scene fully only once every modifier is applied. ${who}`;
+/** Pictures already read, kept for as long as their bytes are, so reopening reads none again. */
+const DATA_URLS = new WeakMap<Blob, string>();
+
+async function dataUrl(asset: SceneAsset): Promise<readonly [string, string] | null> {
+  if (!asset.blob) return null;
+  let read = DATA_URLS.get(asset.blob);
+  if (!read) {
+    try {
+      read = `data:${asset.type};base64,${await blobToBase64(asset.blob)}`;
+    } catch {
+      return null;
+    }
+    DATA_URLS.set(asset.blob, read);
+  }
+  return [asset.id, read];
+}
+
+/** Each picture as the data URL the SCENE tab writes it as, by asset id, once it has been read. */
+function usePictures(assets: Record<string, SceneAsset> | undefined): ReadonlyMap<string, string> {
+  const [pictures, setPictures] = useState<ReadonlyMap<string, string>>(() => new Map());
+  useEffect(() => {
+    if (!assets) return;
+    let live = true;
+    void Promise.all(Object.values(assets).map(dataUrl)).then((read) => {
+      if (live) setPictures(new Map(read.filter((entry) => entry !== null)));
+    });
+    return () => {
+      live = false;
+    };
+  }, [assets]);
+  return pictures;
 }
 
 /**
@@ -89,13 +110,15 @@ function useSceneScript(open: boolean): SceneScript | null {
             objects: state.objects,
             groups: state.groups,
             cursor: state.cursor,
+            assets: state.assets,
             // An edit changes a mesh in place and says so here, leaving `objects` as it was.
             meshVersion: state.meshVersion,
           }
         : null,
     ),
   );
-  return useMemo(() => scene && sceneScript(scene), [scene]);
+  const pictures = usePictures(scene?.assets);
+  return useMemo(() => scene && sceneScript(scene, pictures), [scene, pictures]);
 }
 
 interface Problem {
@@ -130,14 +153,6 @@ export function ScriptDialog() {
   const [copied, setCopied] = useState(false);
   const scene = useSceneScript(open);
   const empty = !scene || scene.source === '';
-  const modified = useEditorStore(
-    useShallow((state) =>
-      open
-        ? state.objects.filter((object) => object.modifiers.length > 0).map(({ name }) => name)
-        : [],
-    ),
-  );
-  const warning = unapplied(modified);
   const failures = useRef(0);
   const editor = useRef<ScriptEditorHandle>(null);
 
@@ -250,13 +265,6 @@ export function ScriptDialog() {
           API REFERENCE ↗
         </a>
       </div>
-
-      {warning && (
-        <p className="script-dialog__warning" role="status">
-          <span className="script-dialog__warning-label">WARNING</span>
-          <span>{warning}</span>
-        </p>
-      )}
 
       <div className="script-dialog__panel" hidden={tab !== 'scene'}>
         <ScriptEditor

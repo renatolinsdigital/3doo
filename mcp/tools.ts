@@ -141,10 +141,10 @@ const runScript: Tool = {
   name: 'run_script',
   title: 'Run a 3DOO script',
   description: [
-    "Runs JavaScript against the 3DOO scene with the `scene` and `view` globals, the same API as the editor's SCRIPT dialog (see scripting_reference): add primitives or meshes of your own, edit them with any modelling operation, stack modifiers, cut booleans and colour objects or single faces.",
+    "Runs JavaScript against the 3DOO scene with the `scene` and `view` globals, the same API as the editor's SCRIPT dialog (see scripting_reference): add primitives or meshes of your own, edit them with any modelling operation, stack modifiers with every setting, shape meshes with lattice cages, put pictures on planes, cut booleans and colour objects or single faces. Anything the editor can build, a script can.",
     'The scene persists between calls, so a model can be built over several scripts; pass reset: true to start from an empty scene.',
     'Units are metres, rotations degrees, +Y is up, and the front view looks from +Z.',
-    'Returns what the run did and a summary of the scene: every object with its vertex and face counts, position, rotation, scale, world size and colour, and the bounds of the whole scene.',
+    'Returns what the run did and a summary of the scene: every object with its kind (mesh, image or cage), vertex and face counts, position, rotation, scale, world size, colour and modifiers, and the bounds of the whole scene.',
     'A script that fails reports the reason and the line, and leaves the scene exactly as it was before the run.',
     'To read values out, `return` one or console.log them: text comes back as it is, anything else as JSON, so `return box.bounds` reads where an object sits.',
     'Build in stages, the big shapes first, then their forms, then detail, and check each stage with render_views, or compare_to_reference when building from a picture, before starting the next. Then export_model or share_link hands it over.',

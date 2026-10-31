@@ -3,6 +3,8 @@ import {
   type BooleanOp,
   type Edge,
   type Face,
+  type LatticeModifier,
+  type LatticeResolution,
   type Material,
   type Modifier,
   type ModifierType,
@@ -20,18 +22,27 @@ import {
   createLathe,
   createOutlinePrism,
   degToRad,
+  latticePointCount,
   radToDeg,
   transformPoint,
   vec3,
 } from '@kernel/index';
 import { type SceneObject, evaluatedMesh, useEditorStore } from '@store/index';
-import type { ShadingMode } from '@store/types';
+import type { SceneAsset, ShadingMode } from '@store/types';
 
 import { selfCrossing } from '@domain/references/analysis';
 import { type ReferenceTrace, getReference, traceReference } from '@domain/references/references';
+import {
+  IMAGE_EXTENSIONS,
+  base64Bytes,
+  headerImageSize,
+  nextAssetId,
+} from '@domain/services/assets';
 
 import {
+  CAGE_OPTIONS,
   type FieldSpec,
+  IMAGE_OPTIONS,
   LATHE_OPTIONS,
   MATERIAL_OPTIONS,
   MODIFIER_FIELDS,
@@ -199,9 +210,16 @@ function readValue(spec: ValueSpec, value: unknown, what: string, current?: unkn
       return readEnum(value, spec.values, what);
     case 'vector': {
       const vector = readVector(value, what, current as Vec3 | undefined, spec.uniform);
-      for (const axis of ['x', 'y', 'z'] as const) inRange(vector[axis], spec, `${what}.${axis}`);
+      for (const axis of ['x', 'y', 'z'] as const) {
+        if (spec.integer && !Number.isInteger(vector[axis])) {
+          throw new Error(`${what}.${axis} has to be a whole number, not ${vector[axis]}.`);
+        }
+        inRange(vector[axis], spec, `${what}.${axis}`);
+      }
       return vector;
     }
+    case 'cage':
+      return readCage(value, what);
     case 'flags':
       return readFlags(
         value,
@@ -376,6 +394,75 @@ function sceneObject(id: string, lastName: string): SceneObject {
 function unlocked(object: SceneObject): SceneObject {
   if (object.locked) throw new Error(`${object.name} is locked: set locked = false to edit it.`);
   return object;
+}
+
+/** A cage given as its object or its name, as the id a lattice reads, or null for none. */
+function readCage(value: unknown, what: string): string | null {
+  if (value === null) return null;
+  let object: SceneObject | undefined;
+  if (value instanceof ObjectHandle) {
+    object = sceneObject(value.id, 'That cage');
+  } else if (typeof value === 'string') {
+    object = store().objects.find(
+      (candidate) => candidate.name.toLowerCase() === value.toLowerCase(),
+    );
+    if (!object) {
+      const cages = store()
+        .objects.filter((candidate) => candidate.lattice)
+        .map((candidate) => candidate.name);
+      throw new Error(`${what}: there is no object called "${value}".${suggestion(value, cages)}`);
+    }
+  } else {
+    throw new Error(`${what} takes a cage or its name, or null, not ${describe(value)}.`);
+  }
+  if (!object.lattice) {
+    throw new Error(
+      `${what}: ${object.name} is not a cage. scene.addCage and modifier.newCage make one.`,
+    );
+  }
+  return object.id;
+}
+
+/** A cage, or why the member asked for only means something on one. */
+function cageOf(object: SceneObject, what: string): SceneObject {
+  if (!object.lattice) {
+    throw new Error(`${what} is for a cage, and ${object.name} is not one.`);
+  }
+  return object;
+}
+
+/** A picture's file name when none is given, from its type: `image.png`. */
+export const pictureName = (type: string) => `image.${IMAGE_EXTENSIONS[type] ?? 'png'}`;
+
+const DATA_URL = /^data:(image\/(?:png|jpeg|bmp));base64,([\w+/=\s]*)$/i;
+
+/** A data URL as the asset an image object is drawn with. */
+function readPicture(value: unknown, fileName: string | undefined, what: string): SceneAsset {
+  const match = typeof value === 'string' ? DATA_URL.exec(value) : null;
+  if (!match) {
+    const shown = typeof value === 'string' ? `"${value.slice(0, 30)}..."` : describe(value);
+    throw new Error(
+      `${what} takes a PNG, JPEG or BMP as a data URL, "data:image/png;base64,...", not ${shown}.`,
+    );
+  }
+  const type = match[1].toLowerCase();
+  let bytes: Uint8Array<ArrayBuffer>;
+  try {
+    bytes = base64Bytes(match[2].replace(/\s/g, ''));
+  } catch {
+    throw new Error(`${what}: the picture's base64 does not decode.`);
+  }
+  const size = headerImageSize(bytes);
+  if (!size || size.width < 1 || size.height < 1) {
+    throw new Error(`${what}: the picture is not a PNG, JPEG or BMP that says how big it is.`);
+  }
+  return {
+    id: nextAssetId(),
+    name: fileName ?? pictureName(type),
+    type,
+    ...size,
+    blob: new Blob([bytes], { type }),
+  };
 }
 
 function soleUser(object: SceneObject): SceneObject {
@@ -701,11 +788,17 @@ export interface MeshTools {
   selectFaces(where?: ((face: FaceInfo) => unknown) | Vec3[], options?: { add?: boolean }): number;
   deform(move: (vert: VertInfo) => unknown): number;
   assignMaterial(material: unknown): number;
+  separate(): ObjectHandle;
   run(name: string, params?: Record<string, unknown>): string;
   [operation: string]: unknown;
 }
 
-function meshTools(objectId: string, lastName: string, startMode: SelectMode): MeshTools {
+function meshTools(
+  objectId: string,
+  lastName: string,
+  startMode: SelectMode,
+  handles: Handles,
+): MeshTools {
   let mode = startMode;
   const mesh = () => sceneObject(objectId, lastName).mesh;
   const touched = () => store().touchMesh();
@@ -816,6 +909,20 @@ function meshTools(objectId: string, lastName: string, startMode: SelectMode): M
       onObject(objectId, () => store().patchActiveObject({ primitive: null }));
       return faces.length;
     },
+    separate() {
+      const object = soleUser(unlocked(sceneObject(objectId, lastName)));
+      if (object.lattice) throw new Error('mesh.separate: a cage has no faces to separate.');
+      const selected = object.mesh.selectedFaces().length;
+      if (selected === 0) throw new Error('mesh.separate needs at least one face selected first.');
+      if (selected === object.mesh.faces.size) {
+        throw new Error('mesh.separate: every face is selected, so nothing would be left behind.');
+      }
+      const before = new Set(store().objects.map((candidate) => candidate.id));
+      onObject(objectId, () => store().separateSelection());
+      const added = store().objects.find((candidate) => !before.has(candidate.id));
+      if (!added) throw new Error(`mesh.separate: ${store().status}.`);
+      return handles.object(added.id);
+    },
   };
 
   for (const spec of OPERATOR_SPECS) {
@@ -862,6 +969,7 @@ export class ModifierHandle {
     private readonly objectId: string,
     readonly id: string,
     private lastName: string,
+    private readonly handles: Handles,
   ) {}
 
   private get modifier(): Modifier {
@@ -869,6 +977,23 @@ export class ModifierHandle {
     const modifier = object.modifiers.find((candidate) => candidate.id === this.id);
     if (!modifier) throw new Error(`That modifier is no longer on ${object.name}.`);
     return modifier;
+  }
+
+  private lattice(what: string): LatticeModifier {
+    const modifier = this.modifier;
+    if (modifier.type !== 'lattice') {
+      throw new Error(
+        `modifier.${what} is for a lattice, and ${modifier.name} is a ${modifier.type}.`,
+      );
+    }
+    return modifier;
+  }
+
+  /** The cage a lattice reads, while there is one: a deleted cage leaves its id behind. */
+  private cageObject(modifier: LatticeModifier): SceneObject | null {
+    return (
+      store().objects.find((object) => object.id === modifier.objectId && object.lattice) ?? null
+    );
   }
 
   private update(patch: Partial<Modifier>): void {
@@ -903,10 +1028,15 @@ export class ModifierHandle {
   }
 
   get settings(): Record<string, unknown> {
-    const { id, type, ...settings } = structuredClone(this.modifier);
+    const modifier = this.modifier;
+    const { id, type, ...settings } = structuredClone(modifier);
     void id;
     void type;
-    return settings;
+    if (modifier.type !== 'lattice') return settings;
+    // The cage by the name a script knows it by, where the stack keeps an id.
+    const { objectId, ...rest } = settings as Omit<LatticeModifier, 'id' | 'type'>;
+    void objectId;
+    return { ...rest, cage: this.cageObject(modifier)?.name ?? null };
   }
 
   set(settings: unknown): this {
@@ -916,14 +1046,34 @@ export class ModifierHandle {
       { name: 'enabled', value: { kind: 'boolean' }, description: '' },
       ...MODIFIER_FIELDS[modifier.type],
     ];
-    const patch = readFields(
+    const { cage, ...patch } = readFields(
       `${modifier.type} modifier`,
       fields,
       settings,
       modifier as unknown as Record<string, unknown>,
     );
-    this.update(patch as Partial<Modifier>);
+    this.update({
+      ...patch,
+      ...(cage === undefined ? {} : { objectId: cage }),
+    } as Partial<Modifier>);
     return this;
+  }
+
+  get cage(): ObjectHandle | null {
+    const cage = this.cageObject(this.lattice('cage'));
+    return cage ? this.handles.object(cage.id) : null;
+  }
+
+  set cage(value: unknown) {
+    this.lattice('cage');
+    this.set({ cage: value });
+  }
+
+  newCage(): ObjectHandle {
+    const modifier = this.lattice('newCage');
+    unlocked(sceneObject(this.objectId, this.lastName));
+    onObject(this.objectId, () => store().addLatticeCage(modifier.id));
+    return this.cage as ObjectHandle;
   }
 
   apply(): void {
@@ -1140,6 +1290,47 @@ export class ObjectHandle {
     return object.materials.map((material) => this.handles.material(object, material.id));
   }
 
+  get image(): { fileName: string; width: number; height: number } | null {
+    const image = this.object.image;
+    const asset = image ? store().assets[image.assetId] : undefined;
+    return asset ? { fileName: asset.name, width: asset.width, height: asset.height } : null;
+  }
+
+  get resolution(): Vec3 | null {
+    const lattice = this.object.lattice;
+    return lattice ? { ...lattice.resolution } : null;
+  }
+
+  set resolution(value: unknown) {
+    const cage = unlocked(cageOf(this.object, 'object.resolution'));
+    const resolution = readValue(CAGE_OPTIONS[0].value, value, 'object.resolution');
+    store().setLatticeResolution(cage.id, resolution as LatticeResolution);
+  }
+
+  get points(): Vec3[] | null {
+    const object = this.object;
+    return object.lattice ? [...object.mesh.verts.values()].map((vert) => ({ ...vert.co })) : null;
+  }
+
+  set points(value: unknown) {
+    const cage = unlocked(cageOf(this.object, 'object.points'));
+    const { x, y, z } = cage.lattice?.resolution ?? { x: 0, y: 0, z: 0 };
+    const count = latticePointCount({ x, y, z });
+    if (!Array.isArray(value) || value.length !== count) {
+      throw new Error(
+        `object.points has to be a list of ${count} points, one for each of the ${x}×${y}×${z} grid, not ${describe(value)}.`,
+      );
+    }
+    const points = value.map((point, index) => readVector(point, `object.points[${index}]`));
+    [...cage.mesh.verts.values()].forEach((vert, index) => (vert.co = points[index]));
+    store().touchMesh();
+  }
+
+  resetCage(): this {
+    store().resetLattice(unlocked(cageOf(this.object, 'object.resetCage')).id);
+    return this;
+  }
+
   select(add: unknown = false): this {
     if (typeof add !== 'boolean') {
       throw new Error(`object.select takes true to add to the selection, not ${describe(add)}.`);
@@ -1166,7 +1357,12 @@ export class ObjectHandle {
   addModifier(type: unknown, settings?: unknown): ModifierHandle {
     const kind = readEnum(type, MODIFIER_TYPES, 'object.addModifier: type');
     const object = unlocked(this.object);
-    onObject(this.id, () => store().addModifier(kind));
+    if (object.lattice) {
+      throw new Error(`${object.name} is a cage, and a cage takes no modifiers: it shapes others.`);
+    }
+    // A cage named in the settings stands in for the one a lattice is fitted with.
+    const fitCage = !(settings !== null && typeof settings === 'object' && 'cage' in settings);
+    onObject(this.id, () => store().addModifier(kind, { fitCage }));
     const added = this.object.modifiers[this.object.modifiers.length - 1];
     const handle = this.handles.modifier(object, added.id);
     if (settings !== undefined) handle.set(settings);
@@ -1197,7 +1393,7 @@ export class ObjectHandle {
     const live = state.mode === 'edit' && state.activeObjectId === this.id;
     if (!live) object.mesh.deselectAll();
 
-    const tools = meshTools(this.id, object.name, live ? state.selectMode : 'vertex');
+    const tools = meshTools(this.id, object.name, live ? state.selectMode : 'vertex', this.handles);
     const finish = () => {
       // Shows what the script picked the way it picked it.
       if (live && store().selectMode !== tools.selectMode) store().setSelectMode(tools.selectMode);
@@ -1280,11 +1476,13 @@ class Handles {
     return handle;
   }
 
+  /** Keyed by object too: a duplicate's modifiers keep the ids of the original's. */
   modifier(object: SceneObject, id: string): ModifierHandle {
-    let handle = this.modifiers.get(id);
+    const key = `${object.id}/${id}`;
+    let handle = this.modifiers.get(key);
     if (!handle) {
-      handle = guarded(new ModifierHandle(object.id, id, object.name), 'modifier');
-      this.modifiers.set(id, handle);
+      handle = guarded(new ModifierHandle(object.id, id, object.name, this), 'modifier');
+      this.modifiers.set(key, handle);
     }
     return handle;
   }
@@ -1361,6 +1559,30 @@ export function createScriptApi(): ScriptApi {
     return handle;
   };
 
+  /**
+   * The same picture handed over twice in one run as one asset, as a file
+   * duplicated in the editor is, rather than its bytes held twice.
+   */
+  const pictures = new Map<string, SceneAsset>();
+  const picture = (value: unknown, fileName: unknown, what: string): SceneAsset => {
+    if (fileName !== undefined && (typeof fileName !== 'string' || fileName.trim() === '')) {
+      throw new Error(`${what}: fileName has to be some text, not ${describe(fileName)}.`);
+    }
+    const key = `${fileName ?? ''}\n${typeof value === 'string' ? value : ''}`;
+    const known = pictures.get(key);
+    if (known) return known;
+    const asset = readPicture(value, fileName, what);
+    pictures.set(key, asset);
+    return asset;
+  };
+
+  const addPictured = (asset: SceneAsset, mesh?: BMesh): ObjectHandle => {
+    store().addImage(asset, mesh);
+    const id = store().activeObjectId;
+    if (!id) throw new Error(`${asset.name} could not be added.`);
+    return handles.object(id);
+  };
+
   const scene = {
     add(kind: unknown, options?: unknown): ObjectHandle {
       const primitive = readEnum(kind, PRIMITIVE_KINDS, 'scene.add: kind') as PrimitiveKind;
@@ -1388,10 +1610,8 @@ export function createScriptApi(): ScriptApi {
       if (data === null || typeof data !== 'object' || Array.isArray(data)) {
         throw new Error('scene.addMesh takes { verts, faces }, each a list.');
       }
-      const { verts, faces, edges, smooth, faceMaterials, sharp, ...rest } = data as Record<
-        string,
-        unknown
-      >;
+      const { verts, faces, edges, smooth, faceMaterials, sharp, uvs, image, fileName, ...rest } =
+        data as Record<string, unknown>;
       const placement = readFields('scene.addMesh', PLACEMENT_OPTIONS, rest);
       if (!Array.isArray(verts)) {
         throw new Error('scene.addMesh: verts has to be a list of [x, y, z] points.');
@@ -1484,8 +1704,65 @@ export function createScriptApi(): ScriptApi {
           edge.sharp = true;
         });
       }
+
+      if (uvs !== undefined) {
+        if (!Array.isArray(uvs) || uvs.length !== faces.length) {
+          throw new Error(
+            `scene.addMesh: uvs has to be a list with one list of [u, v] corners per face, ${faces.length} in all.`,
+          );
+        }
+        madeFaces.forEach((face, index) => {
+          const what = `scene.addMesh: uvs[${index}]`;
+          const corners = uvs[index] as unknown;
+          const sides = (faces[index] as unknown[]).length;
+          if (!Array.isArray(corners) || corners.length !== sides) {
+            throw new Error(
+              `${what} has to list one [u, v] for each of the face's ${sides} corners.`,
+            );
+          }
+          let corner = 0;
+          for (const loop of mesh.faceLoops(face)) {
+            const uv = corners[corner] as unknown;
+            if (!Array.isArray(uv) || uv.length !== 2 || !uv.every(finite)) {
+              throw new Error(`${what}[${corner}] has to be [u, v], not ${describe(uv)}.`);
+            }
+            loop.uv = { u: uv[0], v: uv[1] };
+            corner++;
+          }
+        });
+      }
       mesh.computeNormals();
-      return addBuilt(mesh, placement, 'MESH');
+
+      if (image === undefined) {
+        if (fileName !== undefined) {
+          throw new Error('scene.addMesh: fileName names the picture, so it goes with image.');
+        }
+        return addBuilt(mesh, placement, 'MESH');
+      }
+      const handle = addPictured(picture(image, fileName, 'scene.addMesh: image'), mesh);
+      // Where any built mesh goes, rather than the origin an imported picture starts at.
+      place(handle, { name: 'MESH', position: store().cursor, ...placement });
+      return handle;
+    },
+
+    addImage(value: unknown, options?: unknown): ObjectHandle {
+      const what = 'scene.addImage';
+      const read = readFields(what, [...IMAGE_OPTIONS, ...PLACEMENT_OPTIONS], options);
+      const { placement, shape } = split(read);
+      const handle = addPictured(picture(value, shape.fileName, what));
+      place(handle, placement);
+      return handle;
+    },
+
+    addCage(options?: unknown): ObjectHandle {
+      const read = readFields('scene.addCage', [...CAGE_OPTIONS, ...PLACEMENT_OPTIONS], options);
+      const { placement, shape } = split(read);
+      store().addCage(shape.resolution as LatticeResolution | undefined);
+      const id = store().activeObjectId;
+      if (!id) throw new Error('The cage could not be added.');
+      const handle = handles.object(id);
+      place(handle, placement);
+      return handle;
     },
 
     lathe(profile: unknown, options?: unknown): ObjectHandle {

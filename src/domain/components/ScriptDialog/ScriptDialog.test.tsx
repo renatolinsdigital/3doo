@@ -10,6 +10,9 @@ import { SCRIPT_EXAMPLES, STARTER_SCRIPT } from '../../scripting/examples';
 import { DRAFT_KEY, EMPTY_SCENE, ScriptDialog } from './ScriptDialog';
 
 const store = () => useEditorStore.getState();
+/** A 2 by 1 pixel PNG. */
+const PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAD0lEQVR4nGP4z8DAwPAfAAcAAf9+CLHQAAAAAElFTkSuQmCC';
 const field = () => screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Script' });
 const sceneView = () => screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'Scene' });
 const button = (name: string) => screen.getByRole('button', { name });
@@ -122,7 +125,7 @@ describe('ScriptDialog', () => {
     expect(store().objects.map(({ name, transform }) => ({ name, transform }))).toEqual(built);
   });
 
-  it('warns on a copy that leaves out what no script can make', async () => {
+  it('warns on a copy that leaves out an image whose picture is missing', async () => {
     const user = userEvent.setup();
     store().addImage({
       id: 'asset-photo',
@@ -138,40 +141,51 @@ describe('ScriptDialog', () => {
     await user.click(button('COPY'));
 
     expect(await navigator.clipboard.readText()).toBe(
-      "// PHOTO.PNG: an image, which a script cannot add\nscene.add('cone');",
+      "// PHOTO.PNG: an image whose picture is missing from the project\nscene.add('cone');",
     );
     expect(store().toasts).toEqual([
       expect.objectContaining({
         variant: 'warning',
-        message: 'Copied. One thing in the scene has no script form yet, so a run leaves it out',
+        message: 'Copied. One image has no picture the script can carry, so a run leaves it out',
       }),
     ]);
   });
 
-  it('warns while any modifier is unapplied, on either tab, and stops once all are', async () => {
-    store().addPrimitive('cube');
-    render(<ScriptDialog />);
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
-
-    act(() => store().addModifier('mirror'));
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Scripts map the scene fully only once every modifier is applied. CUBE still has modifiers on its stack',
-    );
-
-    act(() => store().addPrimitive('cone'));
-    act(() => store().addModifier('twist'));
-    await openEditor();
-    expect(screen.getByRole('status')).toHaveTextContent(
-      '2 objects still have modifiers on their stacks',
-    );
-
-    act(() => {
-      for (const object of store().objects) {
-        store().setActiveObject(object.id);
-        store().applyModifierToMesh(object.modifiers[0].id);
-      }
+  it('writes an image with its picture once the picture has been read', async () => {
+    const bytes = Uint8Array.from(atob(PNG), (char) => char.charCodeAt(0));
+    store().addImage({
+      id: 'asset-photo',
+      name: 'photo.png',
+      type: 'image/png',
+      width: 2,
+      height: 1,
+      blob: new Blob([bytes], { type: 'image/png' }),
     });
+    render(<ScriptDialog />);
+
+    await waitFor(() =>
+      expect(sceneView().value).toBe(
+        [
+          `const photoPicture = 'data:image/png;base64,${PNG}';`,
+          '',
+          "scene.addImage(photoPicture, { fileName: 'photo.png' });",
+        ].join('\n'),
+      ),
+    );
+  });
+
+  it('maps a scene whose objects keep modifiers on their stacks, without a warning', () => {
+    store().addPrimitive('cube');
+    store().addModifier('mirror');
+    store().addModifier('lattice');
+    render(<ScriptDialog />);
+
+    // The dialog used to warn that scripts map the scene fully only once every
+    // modifier is applied, which stopped being true once lattices and their
+    // cages could be written: every stack now runs back exactly as it stands.
     expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    expect(sceneView().value).toContain("cube.addModifier('lattice', { cage: null });");
+    expect(sceneView().value).toContain('cube.modifiers[1].cage = cubeCage;');
   });
 
   it('says so when the browser refuses the clipboard', async () => {

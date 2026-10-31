@@ -28,6 +28,12 @@ Depth: `docs/scripting.md`, `docs/mcp.md`, `docs/mcp-package.md`,
 - The SCENE tab (`sceneScript.ts`) writes the scene on screen as the script
   that builds it, read off the scene each time rather than logged as it was
   made. The old ACTIONS log was removed for that reason.
+- Its only gap is an image with no picture to write. Anything new the editor
+  can build needs a script form and a round trip in `sceneScript.test.ts`, or
+  that promise breaks: lattices write `cage: null` and a link line at the end,
+  since a cage is listed after the object it was fitted round.
+- A duplicate keeps its modifier and material ids, so `Handles` keys both by
+  object and id; by id alone a copy's modifier came back as the original's.
 
 ## MCP
 

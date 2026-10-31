@@ -54,6 +54,7 @@ const report = (totals: Partial<TopologyData> = {}): TopologyReport => {
 
 const OBJECT: ObjectSummary = {
   name: 'AXE_HEAD',
+  kind: 'mesh',
   vertices: 500,
   edges: 1000,
   faces: 500,
@@ -138,6 +139,23 @@ describe('gameReadyNotes', () => {
     expect(notes.join('\n')).toMatch(/Cylinder\.001 still carries scale/);
     expect(notes.join('\n')).toMatch(/Cylinder\.001 has a default name/);
     expect(notes.join('\n')).toMatch(/live modifiers \(subsurf\)/);
+  });
+
+  it('leaves out the cage a lattice reads, which is no part of the asset', () => {
+    const cage: ObjectSummary = {
+      ...OBJECT,
+      name: 'AXE_HEAD.CAGE',
+      kind: 'cage',
+      faces: 0,
+      scale: { x: 0.4, y: 0.9, z: 0.1 },
+    };
+
+    // A cage keeps its scale, which places its grid, and the editor refuses to
+    // apply it; the notes used to tell the modeller to apply it anyway, and
+    // counted the cage as one more part of the axe.
+    expect(gameReadyNotes(scene([{ ...OBJECT, modifiers: ['lattice'] }, cage]), report())).toEqual([
+      'AXE_HEAD has live modifiers (lattice): they export applied, but check the result.',
+    ]);
   });
 });
 

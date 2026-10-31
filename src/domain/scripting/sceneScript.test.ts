@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { type Edge, type Face, degToRad, serializeMesh, vec3 } from '@kernel/index';
+import { type Edge, type Face, type Vec3, degToRad, serializeMesh, vec3 } from '@kernel/index';
 import { activeObject, useEditorStore } from '@store/index';
 
 import { SCRIPT_EXAMPLES } from './examples';
@@ -8,7 +8,22 @@ import { runScript } from './runScript';
 import { sceneScript } from './sceneScript';
 
 const store = () => useEditorStore.getState();
-const script = () => sceneScript(store()).source;
+
+/** A 2 by 1 pixel PNG, the one picture these tests use. */
+const PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAD0lEQVR4nGP4z8DAwPAfAAcAAf9+CLHQAAAAAElFTkSuQmCC';
+const PICTURE = `data:image/png;base64,${PNG}`;
+const pngBlob = () =>
+  new Blob([Uint8Array.from(atob(PNG), (char) => char.charCodeAt(0))], { type: 'image/png' });
+
+/** Every picture in the store as the dialog would have read it: all of them are `PNG` here. */
+const pictures = () =>
+  new Map(
+    Object.values(store().assets)
+      .filter((asset) => asset.blob)
+      .map((asset) => [asset.id, PICTURE]),
+  );
+const script = () => sceneScript(store(), pictures()).source;
 
 const id = (name: string) => store().objects.find((object) => object.name === name)?.id ?? '';
 
@@ -47,18 +62,44 @@ const point = ({ x, y, z }: { x: number; y: number; z: number }) => [x, y, z];
 const pairs = (list: [number, number][]) =>
   list.map(([a, b]) => (a < b ? `${a} ${b}` : `${b} ${a}`)).sort();
 
+const sameGrid = (a: Vec3, b: Vec3) => a.x === b.x && a.y === b.y && a.z === b.z;
+
 /**
  * Everything a run of the script has to build again: what the scene is, less
- * the ids, the selection and the UVs, which it leaves out by design.
+ * the ids, the selection and the UVs of anything without a picture, which it
+ * leaves out by design.
  */
 function scene() {
-  const { objects, groups, cursor } = store();
+  const { objects, groups, cursor, assets } = store();
+  const cageIndex = (id: string | null) =>
+    objects.findIndex((object) => object.id === id && object.lattice);
   return {
     cursor: point(cursor),
     groups: groups.map((group) => group.name),
     objects: objects.map((object) => {
       const mesh = serializeMesh(object.mesh);
+      const asset = object.image ? assets[object.image.assetId] : undefined;
+      const { lattice } = object;
       return {
+        image: asset && {
+          name: asset.name,
+          type: asset.type,
+          width: asset.width,
+          height: asset.height,
+          sharesPictureWith: objects.findIndex(
+            (other) => other.image?.assetId === object.image?.assetId,
+          ),
+        },
+        uvs: asset ? mesh.uvs : undefined,
+        lattice: lattice && {
+          resolution: lattice.resolution,
+          // A shape remembered at the grid's own resolution is one no change of
+          // resolution reads, so a run has nothing of it to bring back.
+          shape:
+            lattice.shape && !sameGrid(lattice.shape.resolution, lattice.resolution)
+              ? lattice.shape
+              : undefined,
+        },
         name: object.name,
         visible: object.visible,
         locked: object.locked,
@@ -79,7 +120,11 @@ function scene() {
           name: MADE_NAME.test(name) ? 'made' : name,
           color: [color.r, color.g, color.b],
         })),
-        modifiers: object.modifiers.map((modifier) => ({ ...modifier, id: undefined })),
+        modifiers: object.modifiers.map((modifier) => ({
+          ...modifier,
+          id: undefined,
+          ...(modifier.type === 'lattice' ? { objectId: cageIndex(modifier.objectId) } : {}),
+        })),
       };
     }),
   };
@@ -369,7 +414,103 @@ describe('the scene script', () => {
     expect(source).toContain("const object3dPart = scene.add('cube', { name: '3D PART' });");
   });
 
-  it('notes what no script can make, counts it, and still builds the rest', async () => {
+  it('writes a lattice with the cage it reads, the grid of that cage and the points moved on it', async () => {
+    store().addPrimitive('cube');
+    store().addModifier('lattice');
+    store().updateModifier(editing().modifiers[0].id, { strength: 0.5 });
+    store().setLatticeResolution(store().objects[1].id, { x: 4, y: 3, z: 3 });
+    const cage = store().objects[1];
+    const corner = [...cage.mesh.verts.values()].at(-1);
+    if (corner) corner.co = vec3(0.8, 0.7, 0.6);
+    store().touchMesh();
+
+    // A lattice used to be written as a comment asking for it to be applied,
+    // and its cage as one saying no script could add it: a run lost both.
+    const source = await rebuild();
+    expect(source).toContain("cube.addModifier('lattice', { cage: null, strength: 0.5 });");
+    expect(source).toContain(
+      "const cubeCage = scene.addCage({ resolution: [4, 3, 3], name: 'CUBE.CAGE', scale: 1.1 });",
+    );
+    expect(source).toContain('cubeCage.points = [');
+    expect(source).toContain('[0.8, 0.7, 0.6]');
+    expect(source.endsWith('cube.modifiers[0].cage = cubeCage;')).toBe(true);
+    expect(sceneScript(store(), pictures()).gaps).toBe(0);
+  });
+
+  it('brings back the shape a cage remembers from another resolution', async () => {
+    store().addPrimitive('cube');
+    store().addModifier('lattice');
+    const first = [...store().objects[1].mesh.verts.values()][0];
+    first.co = vec3(-0.7, -0.5, -0.5);
+    store().touchMesh();
+    store().setLatticeResolution(store().objects[1].id, { x: 2, y: 2, z: 2 });
+
+    const source = await rebuild();
+    expect(source).toContain('cubeCage.resolution = [2, 2, 2];');
+
+    // Going back to the grid the shape was made on gives that shape back,
+    // which only a cage that remembers it can do.
+    store().setLatticeResolution(store().objects[1].id, { x: 3, y: 3, z: 3 });
+    const [corner] = store().objects[1].mesh.verts.values();
+    expect(point(corner.co)).toEqual(close([-0.7, -0.5, -0.5]));
+  });
+
+  it('points every lattice at its cage, on a linked copy and on a cage several objects share', async () => {
+    store().addPrimitive('cube');
+    store().addModifier('lattice');
+    store().duplicateSelected(true);
+    store().addCage({ x: 2, y: 2, z: 2 });
+    const shared = store().activeObjectId ?? '';
+    store().setObjectTransform(shared, { position: vec3(3, 0, 0), scale: vec3(2, 2, 2) });
+    store().addPrimitive('cone');
+    store().addModifier('lattice', { fitCage: false });
+    store().updateModifier(editing().modifiers[0].id, { objectId: shared });
+    store().addPrimitive('torus');
+    store().addModifier('lattice', { fitCage: false });
+    store().updateModifier(editing().modifiers[0].id, { objectId: shared });
+    store().addCage();
+
+    const source = await rebuild();
+    expect(source).toContain('cubeCopy.modifiers[0].cage = cubeCage;');
+    expect(source).toContain('cone.modifiers[0].cage = cage;');
+    expect(source).toContain('torus.modifiers[0].cage = cage;');
+    expect(source).toContain(
+      'const cage = scene.addCage({ resolution: [2, 2, 2], position: [3, 0, 0], scale: 2 });',
+    );
+    // A cage nothing reads is a cage all the same.
+    expect(source).toContain('\nscene.addCage();');
+  });
+
+  it('writes an image as its picture, on its plane or on the mesh its plane was edited into', async () => {
+    store().addImage({
+      id: 'asset-photo',
+      name: 'photo.png',
+      type: 'image/png',
+      width: 2,
+      height: 1,
+      blob: pngBlob(),
+    });
+    store().setObjectTransform(id('PHOTO.PNG'), { position: vec3(0, 1, -2) });
+    store().duplicateSelected();
+    store().setMode('edit');
+    pickFaces(() => true);
+    store().exec('subdivide', { cuts: 1 }, 'Subdivide');
+    store().setMode('object');
+
+    // An image used to be written as a comment saying no script could add it.
+    const source = await rebuild();
+    expect(source.startsWith(`const photoPicture = '${PICTURE}';\n\n`)).toBe(true);
+    expect(source).toContain(
+      "scene.addImage(photoPicture, { fileName: 'photo.png', position: [0, 1, -2] });",
+    );
+    expect(source).toContain("name: 'PHOTO.PNG.COPY'");
+    expect(source).toContain('uvs: [');
+    expect(source).toContain('image: photoPicture');
+    const [plane, edited] = store().objects;
+    expect(edited.image?.assetId).toBe(plane.image?.assetId);
+  });
+
+  it('notes an image whose picture it cannot carry, counts it, and still builds the rest', async () => {
     store().addImage({
       id: 'asset-photo',
       name: 'photo.png',
@@ -378,42 +519,29 @@ describe('the scene script', () => {
       height: 32,
       blob: null,
     });
+    store().addImage({
+      id: 'asset-sketch',
+      name: 'sketch.png',
+      type: 'image/png',
+      width: 2,
+      height: 1,
+      blob: pngBlob(),
+    });
     store().addPrimitive('cube');
-    store().addModifier('lattice');
 
     const { source, gaps } = sceneScript(store());
-    expect(gaps).toBe(3);
+    expect(gaps).toBe(2);
     expect(source).toBe(
       [
-        '// PHOTO.PNG: an image, which a script cannot add',
-        '',
+        '// PHOTO.PNG: an image whose picture is missing from the project',
+        '// SKETCH.PNG: an image whose picture is still being read',
         "scene.add('cube');",
-        '// CUBE: its LATTICE modifier must be applied for a script to hold the shape it gives',
-        '',
-        `// ${store().objects[2].name}: a lattice cage, gone once the LATTICE modifier on CUBE is applied`,
       ].join('\n'),
     );
 
     store().resetScene();
     expect(await runScript(source)).toMatchObject({ ok: true });
     expect(store().objects.map((object) => object.name)).toEqual(['CUBE']);
-  });
-
-  it('names every object a shared cage shapes, and only a cage nothing reads as one to add', () => {
-    store().addPrimitive('cube');
-    store().addModifier('lattice');
-    const cage = store().objects[1];
-    store().duplicateSelected();
-
-    expect(script()).toContain(
-      `// ${cage.name}: a lattice cage, gone once the lattice modifiers on CUBE and CUBE.COPY are applied`,
-    );
-
-    for (const object of [store().objects[0], store().objects[2]]) {
-      store().setActiveObject(object.id);
-      store().removeModifier(object.modifiers[0].id);
-    }
-    expect(script()).toContain(`// ${cage.name}: a lattice cage, which a script cannot add`);
   });
 
   it.each(SCRIPT_EXAMPLES.map((example) => [example.label, example] as const))(

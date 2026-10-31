@@ -9,6 +9,10 @@ import { runScript } from './runScript';
 
 const store = () => useEditorStore.getState();
 
+/** A 2 by 1 pixel PNG. */
+const PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAD0lEQVR4nGP4z8DAwPAfAAcAAf9+CLHQAAAAAElFTkSuQmCC';
+
 async function run(source: string) {
   const outcome = await runScript(source);
   if (!outcome.ok) throw new Error(`Line ${outcome.line}: ${outcome.message}`);
@@ -409,6 +413,178 @@ box.edit((mesh) => {
       count: 3,
       relativeOffset: { x: 1.5, y: 0, z: 0 },
     });
+  });
+
+  it('sets the modifier of a copy on the copy, not on the object it was copied from', async () => {
+    await run(`
+      const bar = scene.add('cube');
+      bar.addModifier('array', { count: 2 });
+      const copy = bar.duplicate();
+      copy.modifiers[0].set({ count: 5 });
+    `);
+
+    // A copy keeps the ids of the modifiers it was copied with, and handles
+    // were kept by that id alone, so the copy's modifier came back as the
+    // original's: the count went onto the bar and the copy kept its 2.
+    expect(store().objects.map((object) => object.modifiers[0])).toEqual([
+      expect.objectContaining({ count: 2 }),
+      expect.objectContaining({ count: 5 }),
+    ]);
+  });
+
+  it('says a cage takes no modifiers rather than failing on one that was never added', async () => {
+    await run(`scene.add('cube').addModifier('lattice');`);
+    const outcome = await fail(`scene.find('CUBE.CAGE').addModifier('mirror');`);
+
+    // The store turned the modifier down with a status line, and the script
+    // went on to read the modifier it expected on the end of the stack, which
+    // was not there: the run died on "Cannot read properties of undefined".
+    expect(outcome.message).toBe(
+      'CUBE.CAGE is a cage, and a cage takes no modifiers: it shapes others.',
+    );
+  });
+
+  it('fits a cage with a new lattice, and shapes the mesh through its points', async () => {
+    const outcome = await run(`
+      const bar = scene.add('cube');
+      const lattice = bar.addModifier('lattice', { strength: 0.5 });
+      const cage = lattice.cage;
+      cage.resolution = 2;
+      cage.points = cage.points.map((p) => (p.y > 0 ? [p.x * 2, p.y, p.z * 2] : p));
+      return { cage: cage.name, resolution: cage.resolution, settings: lattice.settings };
+    `);
+
+    expect(JSON.parse(outcome.message)).toEqual({
+      cage: 'CUBE.CAGE',
+      resolution: { x: 2, y: 2, z: 2 },
+      settings: {
+        name: 'LATTICE',
+        enabled: true,
+        interpolation: 'smooth',
+        strength: 0.5,
+        cage: 'CUBE.CAGE',
+      },
+    });
+    const [, cage] = store().objects;
+    expect(cage.lattice?.resolution).toEqual({ x: 2, y: 2, z: 2 });
+    expect([...cage.mesh.verts.values()].at(-1)?.co).toEqual({ x: 1, y: 0.5, z: 1 });
+  });
+
+  it('points lattices at a cage of their own, by object or by name, and fits new ones', async () => {
+    await run(`
+      const cage = scene.addCage({ resolution: [2, 3, 2], position: [0, 1, 0], scale: 3 });
+      scene.add('cube').addModifier('lattice', { cage });
+      const cone = scene.add('cone');
+      const lattice = cone.addModifier('lattice', { cage: 'cage' });
+      if (lattice.cage !== cage) throw new Error('cage should hand back the same object');
+      lattice.newCage().name = 'OWN';
+      lattice.cage = null;
+      cage.points = cage.points;
+      cage.resetCage();
+    `);
+
+    expect(store().objects.map((object) => object.name)).toEqual(['CAGE', 'CUBE', 'CONE', 'OWN']);
+    const [cage, cube, cone] = store().objects;
+    expect(cage.lattice).toEqual({ resolution: { x: 2, y: 3, z: 2 } });
+    expect(cage.transform.scale).toEqual({ x: 3, y: 3, z: 3 });
+    expect(cube.modifiers[0]).toMatchObject({ type: 'lattice', objectId: cage.id });
+    expect(cone.modifiers[0]).toMatchObject({ type: 'lattice', objectId: null });
+  });
+
+  it('refuses a cage that is not one, a grid of the wrong size and a resolution in parts', async () => {
+    await run(`scene.add('cube', { name: 'BOX' }).addModifier('lattice'); scene.addCage();`);
+
+    expect((await fail(`scene.find('BOX').modifiers[0].cage = 'BOX';`)).message).toBe(
+      'lattice modifier: cage: BOX is not a cage. scene.addCage and modifier.newCage make one.',
+    );
+    expect((await fail(`scene.find('BOX').addModifier('mirror').cage;`)).message).toBe(
+      'modifier.cage is for a lattice, and MIRROR is a mirror.',
+    );
+    expect((await fail(`scene.find('CAGE').points = [[0, 0, 0]];`)).message).toBe(
+      'object.points has to be a list of 27 points, one for each of the 3×3×3 grid, not [[0, 0, 0]].',
+    );
+    expect((await fail(`scene.find('CAGE').resolution = [2.5, 2, 2];`)).message).toBe(
+      'object.resolution.x has to be a whole number, not 2.5.',
+    );
+    expect((await fail(`scene.find('BOX').resolution = 4;`)).message).toBe(
+      'object.resolution is for a cage, and BOX is not one.',
+    );
+    expect((await run(`return scene.find('BOX').points;`)).message).toBe('null');
+  });
+
+  it('adds a picture on its plane, and the same picture twice as one image', async () => {
+    const outcome = await run(`
+      const picture = 'data:image/png;base64,${PNG}';
+      const front = scene.addImage(picture, { fileName: 'front.png', position: [0, 1, 0] });
+      scene.addImage(picture, { fileName: 'front.png' });
+      return front.image;
+    `);
+
+    expect(JSON.parse(outcome.message)).toEqual({ fileName: 'front.png', width: 2, height: 1 });
+    const [front, again] = store().objects;
+    expect(front.name).toBe('FRONT.PNG');
+    expect(front.transform.position).toEqual({ x: 0, y: 1, z: 0 });
+    expect(again.image?.assetId).toBe(front.image?.assetId);
+    expect(Object.keys(store().assets)).toHaveLength(1);
+  });
+
+  it('refuses a picture that is not a PNG, JPEG or BMP data URL', async () => {
+    expect((await fail(`scene.addImage('photo.png');`)).message).toBe(
+      'scene.addImage takes a PNG, JPEG or BMP as a data URL, "data:image/png;base64,...", not "photo.png...".',
+    );
+    expect((await fail(`scene.addImage('data:image/png;base64,AAAA');`)).message).toBe(
+      'scene.addImage: the picture is not a PNG, JPEG or BMP that says how big it is.',
+    );
+  });
+
+  it('builds a mesh with the UVs of each face and a picture on it', async () => {
+    await run(`
+      scene.addMesh({
+        verts: [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]],
+        faces: [[0, 1, 2, 3]],
+        uvs: [[[0, 0], [1, 0], [1, 1], [0, 1]]],
+        image: 'data:image/png;base64,${PNG}',
+      });
+    `);
+
+    const [object] = store().objects;
+    expect(object.name).toBe('MESH');
+    expect(store().assets[object.image?.assetId ?? '']).toMatchObject({
+      name: 'image.png',
+      width: 2,
+      height: 1,
+    });
+    const [face] = object.mesh.faces.values();
+    expect(object.mesh.faceLoops(face).map((loop) => loop.uv)).toEqual([
+      { u: 0, v: 0 },
+      { u: 1, v: 0 },
+      { u: 1, v: 1 },
+      { u: 0, v: 1 },
+    ]);
+    expect(
+      (
+        await fail(
+          `scene.addMesh({ verts: [[0, 0, 0], [1, 0, 0], [0, 1, 0]], faces: [[0, 1, 2]], uvs: [[[0, 0]]] });`,
+        )
+      ).message,
+    ).toBe("scene.addMesh: uvs[0] has to list one [u, v] for each of the face's 3 corners.");
+  });
+
+  it('separates the selected faces into an object of their own', async () => {
+    const outcome = await run(`
+      const box = scene.add('cube');
+      const lid = box.edit((mesh) => {
+        mesh.selectFaces((face) => face.normal.y > 0.9);
+        return mesh.separate();
+      });
+      return [box.stats.faces, lid.name, lid.stats.faces];
+    `);
+
+    expect(outcome.message).toBe('[5,"CUBE.PART",1]');
+    expect(
+      (await fail(`scene.find('CUBE').edit((mesh) => { mesh.selectFaces(); mesh.separate(); });`))
+        .message,
+    ).toBe('mesh.separate: every face is selected, so nothing would be left behind.');
   });
 
   it('holds a modifier setting to the range the panel does', async () => {

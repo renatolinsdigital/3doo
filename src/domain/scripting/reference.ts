@@ -1,12 +1,14 @@
 import {
   FALLOFF_CURVES,
   MAX_BEND_ANGLE,
+  MAX_LATTICE_RESOLUTION,
   MAX_SHARP_ANGLE,
   MAX_SMOOTHING,
   MAX_SUBSURF_LEVELS,
   MAX_TARGET_FACES,
   MAX_TWIST_ANGLE,
   MAX_VOXEL_SIZE,
+  MIN_LATTICE_RESOLUTION,
   MIN_OBJECT_SIZE,
   MIN_TARGET_FACES,
   MIN_VOXEL_SIZE,
@@ -34,8 +36,9 @@ export type ValueSpec =
   /**
    * `{ x, y, z }` numbers, written as `[x, y, z]` or `{ x, y, z }`. `uniform`
    * takes one number for all three, which only means something for a scale.
+   * `integer` holds each to a whole number, as counts are.
    */
-  | { kind: 'vector'; min?: number; max?: number; uniform?: boolean }
+  | { kind: 'vector'; min?: number; max?: number; uniform?: boolean; integer?: boolean }
   /** `{ x, y, z }` switches, written the same two ways. */
   | { kind: 'flags' }
   /** `"#rrggbb"`, `"#rgb"` or `[r, g, b]` from 0 to 1. */
@@ -43,7 +46,9 @@ export type ValueSpec =
   /** The knife's runs of points, each point checked for its kind and fields. */
   | { kind: 'knifeCuts' }
   /** `"x"`, `"y"` or `"z"`, or any direction as `[x, y, z]`. */
-  | { kind: 'axis' };
+  | { kind: 'axis' }
+  /** A lattice cage, as the object or its name, or null for none. */
+  | { kind: 'cage' };
 
 export interface FieldSpec {
   name: string;
@@ -663,6 +668,31 @@ export const REFERENCE_OPTIONS: readonly FieldSpec[] = [
   },
 ];
 
+/** What `scene.addImage` takes besides the picture. */
+export const IMAGE_OPTIONS: readonly FieldSpec[] = [
+  {
+    name: 'fileName',
+    value: { kind: 'string' },
+    description:
+      'The file the picture goes by, which an export names its image file after and the object is named after. Default image.png, image.jpg or image.bmp, by its type.',
+  },
+];
+
+/** What `scene.addCage` takes besides where it goes. */
+export const CAGE_OPTIONS: readonly FieldSpec[] = [
+  {
+    name: 'resolution',
+    value: {
+      kind: 'vector',
+      min: MIN_LATTICE_RESOLUTION,
+      max: MAX_LATTICE_RESOLUTION,
+      uniform: true,
+      integer: true,
+    },
+    description: `Points along its own X, Y and Z, each ${MIN_LATTICE_RESOLUTION} to ${MAX_LATTICE_RESOLUTION}, as [x, y, z] or one number for all three. Default 3.`,
+  },
+];
+
 /** What a material slot can be made with. */
 export const MATERIAL_OPTIONS: readonly FieldSpec[] = [
   { name: 'name', value: { kind: 'string' }, description: 'What the MATERIALS list calls it.' },
@@ -737,6 +767,12 @@ export const MODIFIER_FIELDS: Record<ModifierType, readonly FieldSpec[]> = {
     origin,
   ],
   lattice: [
+    {
+      name: 'cage',
+      value: { kind: 'cage' },
+      description:
+        'The cage whose points shape the mesh, as the object or its name, or null for none. Any cage will do, and one cage can shape several objects. Left out of addModifier, a new cage is fitted around the mesh.',
+    },
     {
       name: 'interpolation',
       value: oneOf('linear', 'smooth'),
@@ -880,9 +916,23 @@ export const API_ENTRIES: readonly ApiEntry[] = [
     {
       name: 'addMesh',
       kind: 'function',
-      args: '{ verts, faces, edges?, smooth?, faceMaterials?, sharp?, name?, position?, rotation?, scale?, color? }',
+      args: '{ verts, faces, edges?, smooth?, faceMaterials?, sharp?, uvs?, image?, fileName?, name?, position?, rotation?, scale?, color? }',
       summary:
-        'Builds an object from your own geometry and returns it. verts lists [x, y, z] points, faces lists the vertex indices around each face, three or more per face. edges lists [a, b] pairs joined by an edge with no face. smooth is true for every face or one true or false per face, faceMaterials the material slot each face wears, and sharp the [a, b] edges marked sharp.',
+        'Builds an object from your own geometry and returns it. verts lists [x, y, z] points, faces lists the vertex indices around each face, three or more per face. edges lists [a, b] pairs joined by an edge with no face. smooth is true for every face or one true or false per face, faceMaterials the material slot each face wears, and sharp the [a, b] edges marked sharp. uvs gives each face its [u, v] corners in the order faces lists them. image puts a picture on it, as scene.addImage takes one, and fileName names that picture.',
+    },
+    {
+      name: 'addImage',
+      kind: 'function',
+      args: 'picture, options?',
+      summary:
+        'Adds a picture on an upright plane facing +Z, 1 m along its longer side, at the world origin as an imported image is, and returns it. picture is a PNG, JPEG or BMP as a data URL, "data:image/png;base64,...". The same picture added twice in one run is one image. options takes fileName, and name, position, rotation, scale and color.',
+    },
+    {
+      name: 'addCage',
+      kind: 'function',
+      args: 'options?',
+      summary:
+        'Adds a lattice cage of its own at the 3D cursor, 1 m across, and returns it: set modifier.cage to it on any lattice modifier, and one cage shapes them all. options takes resolution, and name, position, rotation, scale and color.',
     },
     {
       name: 'lathe',
@@ -1019,6 +1069,29 @@ export const API_ENTRIES: readonly ApiEntry[] = [
         'Its material slots, in order. Every face wears one; the first is the one color sets.',
     },
     {
+      name: 'image',
+      kind: 'property',
+      summary:
+        'The picture it is drawn with, as { fileName, width, height } in pixels, or null for ordinary geometry.',
+    },
+    {
+      name: 'resolution',
+      kind: 'property',
+      summary: `A cage's points along its own X, Y and Z, as { x, y, z }, or null for anything but a cage. Set it, ${MIN_LATTICE_RESOLUTION} to ${MAX_LATTICE_RESOLUTION} each, to rebuild the grid: the shape it gives holds as closely as the new grid can, and setting it back brings that shape back exactly.`,
+    },
+    {
+      name: 'points',
+      kind: 'property',
+      summary:
+        "A cage's points in its own space, X fastest, then Y, then Z, where a new grid fills the cube from -0.5 to 0.5. null for anything but a cage. Set the whole list, one [x, y, z] per point, to shape every mesh the cage shapes.",
+    },
+    {
+      name: 'resetCage',
+      kind: 'function',
+      summary:
+        'Puts every point of a cage back where it rests, letting go of the meshes it shapes.',
+    },
+    {
       name: 'select',
       kind: 'function',
       args: 'add?',
@@ -1131,6 +1204,12 @@ export const API_ENTRIES: readonly ApiEntry[] = [
       summary:
         "Puts the selected faces on one of the object's material slots, given as the material, its index or its name. Needs at least one face selected.",
     },
+    {
+      name: 'separate',
+      kind: 'function',
+      summary:
+        'Moves the selected faces into an object of their own and returns it, named after this one with .PART on the end. Needs faces selected, and some left over.',
+    },
     ...OPERATOR_SPECS.map((spec): EntrySource => ({
       name: spec.name,
       kind: 'function',
@@ -1146,7 +1225,23 @@ export const API_ENTRIES: readonly ApiEntry[] = [
       kind: 'property',
       summary: 'Switches it on or off, leaving it in the stack.',
     },
-    { name: 'settings', kind: 'property', summary: 'A copy of its settings.' },
+    {
+      name: 'settings',
+      kind: 'property',
+      summary: "A copy of its settings. A lattice's cage is there by name.",
+    },
+    {
+      name: 'cage',
+      kind: 'property',
+      summary:
+        "A lattice's cage, as an object, or null when it reads none. Set it to a cage or a cage's name, or null.",
+    },
+    {
+      name: 'newCage',
+      kind: 'function',
+      summary:
+        'Fits a new cage around the mesh, points this lattice at it and returns it. The cage it read before stays in the scene.',
+    },
     {
       name: 'set',
       kind: 'function',

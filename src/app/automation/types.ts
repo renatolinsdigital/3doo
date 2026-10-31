@@ -8,12 +8,14 @@
  */
 
 /** Bumped when a payload changes shape, so a server can refuse an app it cannot drive. */
-export const AUTOMATION_VERSION = 4;
+export const AUTOMATION_VERSION = 5;
 
 export type Vec3Data = { x: number; y: number; z: number };
 
 export interface ObjectSummary {
   name: string;
+  /** A mesh, a picture on a mesh, or a lattice cage, whose points shape what reads it. */
+  kind: 'mesh' | 'image' | 'cage';
   /** Counts of the shape as drawn and exported, with the modifiers applied. */
   vertices: number;
   edges: number;

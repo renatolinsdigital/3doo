@@ -39,7 +39,7 @@ export const MCP_TOOLS: readonly McpToolGuide[] = [
     args: ['script', 'reset'],
     does: 'Runs a script against the scene with the API of SCRIPT. The scene carries over from one call to the next; reset starts from an empty one.',
     returns:
-      "What the run did, whatever the script returned or logged, and the scene: each object's counts, position, rotation, scale, size, colour and modifiers. A run that fails names the line and changes nothing.",
+      "What the run did, whatever the script returned or logged, and the scene: each object's kind (mesh, image or cage), counts, position, rotation, scale, size, colour and modifiers. A run that fails names the line and changes nothing.",
   },
   {
     name: 'render_views',

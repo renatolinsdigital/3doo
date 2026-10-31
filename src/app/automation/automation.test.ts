@@ -50,6 +50,21 @@ describe('the automation API', () => {
     expect(report.scene.totals).toEqual({ objects: 1, vertices: 8, faces: 6 });
   });
 
+  it('says which objects are meshes, pictures or the cages lattices read', async () => {
+    const report = await api.run(`
+      scene.add('cube').addModifier('lattice');
+      scene.addImage('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAD0lEQVR4nGP4z8DAwPAfAAcAAf9+CLHQAAAAAElFTkSuQmCC');
+    `);
+
+    expect(
+      report.scene.objects.map(({ name, kind, modifiers }) => ({ name, kind, modifiers })),
+    ).toEqual([
+      { name: 'CUBE', kind: 'mesh', modifiers: ['lattice'] },
+      { name: 'CUBE.CAGE', kind: 'cage', modifiers: [] },
+      { name: 'IMAGE.PNG', kind: 'image', modifiers: [] },
+    ]);
+  });
+
   it('hands back what a script returns and logs, which is how a script reads values out', async () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     try {

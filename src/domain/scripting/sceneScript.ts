@@ -4,19 +4,24 @@ import {
   type Modifier,
   type ModifierType,
   type Vec3,
+  DEFAULT_LATTICE_RESOLUTION,
   DEFAULT_PRIMITIVE_PARAMS,
   PRIMITIVE_DEFAULT_OVERRIDES,
   PRIMITIVE_FIELDS,
   PRIMITIVE_LABELS,
+  createImagePlane,
   createModifier,
   createPrimitive,
+  imagePlaneSize,
+  latticeRestPoints,
   radToDeg,
+  resampleLattice,
   serializeMesh,
   vec3,
 } from '@kernel/index';
 import { DEFAULT_MATERIAL_COLOR, type EditorStore, type SceneObject } from '@store/index';
 
-import { toHex } from './api';
+import { pictureName, toHex } from './api';
 import { MODIFIER_FIELDS } from './reference';
 
 /*
@@ -29,9 +34,10 @@ import { MODIFIER_FIELDS } from './reference';
  *
  * It writes what the scene is, not how it is being looked at: what is selected,
  * the shading and the camera are left out, and so are UVs, which nothing on
- * screen shows. Images and lattices have no script form yet, so each is noted
- * in a comment instead and counted, for COPY to say a run leaves them out. A
- * lattice's comment says to apply it, which bakes its shape into the mesh.
+ * screen shows outside an image. Every modifier is written, lattices with the
+ * cages they read. A picture goes in as a data URL, read from its bytes by the
+ * caller; one whose bytes are missing, or not read yet, is noted in a comment
+ * instead and counted, for COPY to say a run leaves it out.
  */
 
 // ------------------------------------------------------------------ writing code
@@ -234,7 +240,11 @@ function meshFields(mesh: BMesh): Field[] {
 
 const modifierDefaults = new Map<ModifierType, Record<string, unknown>>();
 
-/** A modifier's settings that differ from a new one's, as `addModifier` takes them. */
+/**
+ * A modifier's settings that differ from a new one's, as `addModifier` takes
+ * them. A lattice always says `cage: null`, since one left out would be fitted
+ * with a new cage: its own cage is pointed at once every object is made.
+ */
 function modifierFields(modifier: Modifier): Field[] {
   let defaults = modifierDefaults.get(modifier.type);
   if (!defaults) {
@@ -246,6 +256,10 @@ function modifierFields(modifier: Modifier): Field[] {
   if (modifier.name !== defaults.name) fields.push(['name', str(modifier.name)]);
   if (!modifier.enabled) fields.push(['enabled', 'false']);
   for (const { name } of MODIFIER_FIELDS[modifier.type]) {
+    if (name === 'cage') {
+      fields.push(['cage', 'null']);
+      continue;
+    }
     const value = values[name];
     if (value !== undefined && literal(value) !== literal(defaults[name])) {
       fields.push([name, literal(value)]);
@@ -261,30 +275,35 @@ const sameModifiers = (a: readonly Modifier[], b: readonly Modifier[]) =>
       literal({ ...modifier, id: undefined }) === literal({ ...b[index], id: undefined }),
   );
 
-/** `A`, `A and B`, `A, B and C`. */
-function names(items: readonly string[]): string {
-  if (items.length < 2) return items.join('');
-  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+/** Whether an image plane is still the plane its picture was added on, so `scene.addImage` makes it again. */
+function isPlainImagePlane(object: SceneObject, width: number, height: number): boolean {
+  const size = imagePlaneSize(width, height);
+  const read = (mesh: BMesh) => JSON.stringify({ ...geometry(mesh), uvs: serializeMesh(mesh).uvs });
+  return read(createImagePlane(size.width, size.height)) === read(object.mesh);
 }
 
-/**
- * What a cage's comment says: that applying the lattices reading it takes it
- * away, since applying is what a script needs. A cage nothing reads is only
- * one a script cannot add.
- */
-function cageNote(cage: SceneObject, objects: readonly SceneObject[]): string {
-  const readers = objects.flatMap((object) =>
-    object.modifiers
-      .filter((modifier) => modifier.type === 'lattice' && modifier.objectId === cage.id)
-      .map((modifier) => ({ object, modifier })),
-  );
-  if (readers.length === 0) return 'a lattice cage, which a script cannot add';
-  if (readers.length === 1) {
-    const [{ object, modifier }] = readers;
-    return `a lattice cage, gone once the ${modifier.name} modifier on ${object.name} is applied`;
-  }
-  const owners = [...new Set(readers.map(({ object }) => object.name))];
-  return `a lattice cage, gone once the lattice modifiers on ${names(owners)} are applied`;
+/** Each face's corners as `[u, v]` pairs, the way `scene.addMesh` takes `uvs`. */
+function uvFields(mesh: BMesh): Field {
+  const faces = serializeMesh(mesh).uvs.map((flat) => {
+    const corners: string[] = [];
+    for (let index = 0; index < flat.length; index += 2) {
+      corners.push(`[${num(flat[index])}, ${num(flat[index + 1])}]`);
+    }
+    return `[${corners.join(', ')}]`;
+  });
+  return list('uvs', faces);
+}
+
+const points = (grid: readonly Vec3[]) => grid.map(vec);
+
+const samePoints = (a: readonly Vec3[], b: readonly Vec3[]) =>
+  a.length === b.length && a.every((point, index) => vec(point) === vec(b[index]));
+
+/** `target = [items];`, in rows beneath it when it does not fit on one line. */
+function assignList(target: string, items: readonly string[]): string {
+  const inline = `${target} = [${items.join(', ')}];`;
+  if (inline.length <= WIDTH) return inline;
+  return `${target} = [\n${rows(items, '  ')}\n];`;
 }
 
 // ------------------------------------------------------------------- the script
@@ -297,16 +316,33 @@ interface Creation {
 
 type Statement = string | Creation;
 
+/** How a new object is made: its call, the name that call gives it, and what follows the call. */
+interface Maker {
+  defaultName: string;
+  code: (prefix: string, name: Field[], place: Field[]) => string;
+  after?: string[];
+}
+
 export interface SceneScript {
   source: string;
   /** What the scene holds that no call makes, each noted in the source by a comment. */
   gaps: number;
 }
 
-export type SceneState = Pick<EditorStore, 'objects' | 'groups' | 'cursor'>;
+export type SceneState = Pick<EditorStore, 'objects' | 'groups' | 'cursor' | 'assets'>;
 
-/** The scene as the script that builds it, run on a new project. Empty for an empty scene. */
-export function sceneScript({ objects, groups, cursor }: SceneState): SceneScript {
+const sameResolution = (a: Vec3, b: Vec3) => a.x === b.x && a.y === b.y && a.z === b.z;
+
+/**
+ * The scene as the script that builds it, run on a new project. Empty for an empty scene.
+ *
+ * `pictures` holds the bytes of each image as a data URL, by asset id. Reading
+ * a blob means waiting, which this does not, so the caller reads them first.
+ */
+export function sceneScript(
+  { objects, groups, cursor, assets }: SceneState,
+  pictures: ReadonlyMap<string, string> = new Map(),
+): SceneScript {
   const variables = new Map<string, string>();
   const taken = new Set(RESERVED);
   /** The object's variable, which also says its creation has to declare one. */
@@ -327,6 +363,25 @@ export function sceneScript({ objects, groups, cursor }: SceneState): SceneScrip
 
   /** The objects written, by id, with the modifiers their lines leave on them. */
   const written = new Map<string, Modifier[]>();
+
+  /** Each picture once, as the constant every image of it is added with. */
+  const pictureLines: string[] = [];
+  const pictureVariables = new Map<string, string>();
+  const pictureOf = (assetId: string, dataUrl: string) => {
+    let variable = pictureVariables.get(assetId);
+    if (!variable) {
+      variable = variableFor(`${assets[assetId].name.replace(/\.\w+$/, '')} picture`, taken);
+      pictureVariables.set(assetId, variable);
+      pictureLines.push(`const ${variable} = ${str(dataUrl)};`);
+    }
+    return variable;
+  };
+
+  const cages = new Map(
+    objects.filter((object) => object.lattice).map((object) => [object.id, object]),
+  );
+  /** Lattices pointed at their cages, once every cage is made. */
+  const links: string[] = [];
 
   function materialLines(object: SceneObject, from: readonly Material[]): string[] {
     const lines: string[] = [];
@@ -358,23 +413,13 @@ export function sceneScript({ objects, groups, cursor }: SceneState): SceneScrip
   }
 
   function modifierLines(object: SceneObject, from: readonly Modifier[]): string[] {
-    const scriptable = object.modifiers.filter((modifier) => modifier.type !== 'lattice');
-    written.set(object.id, scriptable);
-    const rebuild = !sameModifiers(from, scriptable);
+    written.set(object.id, object.modifiers);
     const lines: string[] = [];
-    if (rebuild) {
+    if (!sameModifiers(from, object.modifiers)) {
       for (let index = from.length - 1; index >= 0; index--) {
         lines.push(`${variableOf(object)}.modifiers[${index}].remove();`);
       }
-    }
-    for (const modifier of object.modifiers) {
-      if (modifier.type === 'lattice') {
-        lines.push(
-          gap(
-            `${object.name}: its ${modifier.name} modifier must be applied for a script to hold the shape it gives`,
-          ),
-        );
-      } else if (rebuild) {
+      for (const modifier of object.modifiers) {
         lines.push(
           invoke(
             '',
@@ -385,25 +430,117 @@ export function sceneScript({ objects, groups, cursor }: SceneState): SceneScrip
         );
       }
     }
+    // A linked copy takes its lattices from the original before they read
+    // anything, so it is pointed at the cage as well.
+    object.modifiers.forEach((modifier, index) => {
+      const cage = modifier.type === 'lattice' && cages.get(modifier.objectId ?? '');
+      if (cage) links.push(`${variableOf(object)}.modifiers[${index}].cage = ${variableOf(cage)};`);
+    });
     return lines;
   }
 
-  function newObject(object: SceneObject): Statement[] {
+  /**
+   * A cage as `scene.addCage`, then its points. A shape it remembers from
+   * another resolution goes in first, and the grid is resampled from it as the
+   * editor did, so a later change of resolution rebuilds from the same shape.
+   */
+  function cageMaker(object: SceneObject, lattice: NonNullable<SceneObject['lattice']>): Maker {
+    const { resolution } = lattice;
+    const shape =
+      lattice.shape && !sameResolution(lattice.shape.resolution, resolution)
+        ? lattice.shape
+        : undefined;
+    const start = shape?.resolution ?? resolution;
+    const target = () => `${variableOf(object)}.points`;
+    const after: string[] = [];
+    let expected = latticeRestPoints(start);
+    if (shape) {
+      after.push(assignList(target(), points(shape.points)));
+      after.push(`${variableOf(object)}.resolution = ${literal(resolution)};`);
+      expected = resampleLattice(shape.resolution, shape.points, resolution);
+    }
+    const grid = [...object.mesh.verts.values()].map((vert) => vert.co);
+    if (!samePoints(grid, expected)) after.push(assignList(target(), points(grid)));
+    const fields: Field[] = sameResolution(start, DEFAULT_LATTICE_RESOLUTION)
+      ? []
+      : [['resolution', literal(start)]];
+    return {
+      defaultName: 'CAGE',
+      after,
+      code: (prefix, name, place) =>
+        invoke(prefix, 'scene.addCage', [], [...fields, ...name, ...place]),
+    };
+  }
+
+  /** An image as `scene.addImage`, or as `scene.addMesh` with its picture once its plane is edited. */
+  function imageMaker(object: SceneObject, assetId: string): Maker | string {
+    const asset = assets[assetId];
+    if (!asset?.blob) return `${object.name}: an image whose picture is missing from the project`;
+    const dataUrl = pictures.get(assetId);
+    if (!dataUrl) return `${object.name}: an image whose picture is still being read`;
+    const picture = pictureOf(assetId, dataUrl);
+    const file: Field[] =
+      asset.name === pictureName(asset.type) ? [] : [['fileName', str(asset.name)]];
+    if (isPlainImagePlane(object, asset.width, asset.height)) {
+      return {
+        defaultName: asset.name.toUpperCase(),
+        code: (prefix, name, place) =>
+          invoke(prefix, 'scene.addImage', [picture], [...file, ...name, ...place]),
+      };
+    }
+    return {
+      defaultName: 'MESH',
+      code: (prefix, name, place) =>
+        invoke(
+          prefix,
+          'scene.addMesh',
+          [],
+          [
+            ...name,
+            ...meshFields(object.mesh),
+            uvFields(object.mesh),
+            ['image', picture],
+            ...file,
+            ...place,
+          ],
+        ),
+    };
+  }
+
+  function maker(object: SceneObject): Maker | string {
+    if (object.lattice) return cageMaker(object, object.lattice);
+    if (object.image) return imageMaker(object, object.image.assetId);
     const live = isLivePrimitive(object) ? object.primitive : null;
-    const { name, place } = placement(object, live ? PRIMITIVE_LABELS[live.kind] : 'MESH');
+    if (live) {
+      return {
+        defaultName: PRIMITIVE_LABELS[live.kind],
+        code: (prefix, name, place) =>
+          invoke(prefix, 'scene.add', [str(live.kind)], [...shapeFields(live), ...name, ...place]),
+      };
+    }
+    return {
+      defaultName: 'MESH',
+      code: (prefix, name, place) =>
+        invoke(prefix, 'scene.addMesh', [], [...name, ...meshFields(object.mesh), ...place]),
+    };
+  }
+
+  function newObject(object: SceneObject): Statement[] {
+    const made = maker(object);
+    if (typeof made === 'string') return [gap(made)];
+    const { name, place } = placement(object, made.defaultName);
     const first = object.materials[0];
     const painted = first && !sameColor(first.color, DEFAULT_MATERIAL_COLOR);
     if (painted) place.push(['color', color(first.color)]);
 
-    const creation: Creation = {
-      object,
-      code: (prefix) =>
-        live
-          ? invoke(prefix, 'scene.add', [str(live.kind)], [...shapeFields(live), ...name, ...place])
-          : invoke(prefix, 'scene.addMesh', [], [...name, ...meshFields(object.mesh), ...place]),
-    };
+    const creation: Creation = { object, code: (prefix) => made.code(prefix, name, place) };
     const slot = painted ? { ...NEW_SLOT, color: first.color } : NEW_SLOT;
-    return [creation, ...materialLines(object, [slot]), ...modifierLines(object, [])];
+    return [
+      creation,
+      ...(made.after ?? []),
+      ...materialLines(object, [slot]),
+      ...modifierLines(object, []),
+    ];
   }
 
   /**
@@ -440,17 +577,14 @@ export function sceneScript({ objects, groups, cursor }: SceneState): SceneScrip
   const blocks: Statement[][] = [];
   const owners = new Map<BMesh, SceneObject>();
   for (const object of objects) {
-    if (object.image) {
-      blocks.push([gap(`${object.name}: an image, which a script cannot add`)]);
-      continue;
-    }
-    if (object.lattice) {
-      blocks.push([gap(`${object.name}: ${cageNote(object, objects)}`)]);
-      continue;
-    }
     const owner = owners.get(object.mesh);
-    if (!owner) owners.set(object.mesh, object);
-    blocks.push(owner ? linkedCopy(object, owner) : newObject(object));
+    if (owner) {
+      blocks.push(linkedCopy(object, owner));
+      continue;
+    }
+    const block = newObject(object);
+    if (written.has(object.id)) owners.set(object.mesh, object);
+    blocks.push(block);
   }
 
   const included = objects.filter((object) => written.has(object.id));
@@ -476,15 +610,16 @@ export function sceneScript({ objects, groups, cursor }: SceneState): SceneScrip
     return statement.code(variable ? `const ${variable} = ` : '');
   };
   // One-line objects sit together; anything longer stands apart, as does each
-  // part after the objects.
+  // part around the objects.
   const objectTexts = blocks.map((block) => block.map(render).join('\n'));
   const parts = [
+    pictureLines.join('\n'),
     objectTexts.reduce((text, block, index) => {
       if (index === 0) return block;
       const apart = block.includes('\n') || objectTexts[index - 1].includes('\n');
       return `${text}${apart ? '\n\n' : '\n'}${block}`;
     }, ''),
-    ...[folders, flags, place].map((lines) => lines.join('\n')),
+    ...[links, folders, flags, place].map((lines) => lines.join('\n')),
   ];
   return { source: parts.filter((part) => part !== '').join('\n\n'), gaps };
 }

@@ -17,6 +17,8 @@ import {
   type ApiOwner,
   type FieldSpec,
   type ValueSpec,
+  CAGE_OPTIONS,
+  IMAGE_OPTIONS,
   LATHE_OPTIONS,
   MODIFIER_FIELDS,
   MODIFIER_TYPES,
@@ -141,7 +143,7 @@ function scriptEditorBlocks(): DocsBlock[] {
   return [
     {
       kind: 'prose',
-      text: 'The <> button at the right of the top bar opens SCRIPT, in two tabs. SCENE shows the scene in the viewport as the script that builds it. EDITOR is where you build and change the scene with JavaScript. Everything the panels do can be done from a script: add primitives or your own geometry, place and colour objects, select vertices, edges and faces and run any modelling operation on them, give parts of a mesh colours of their own, stack modifiers, cut booleans, fill outliner folders, move the 3D cursor and frame the view.',
+      text: 'The <> button at the right of the top bar opens SCRIPT, in two tabs. SCENE shows the scene in the viewport as the script that builds it. EDITOR is where you build and change the scene with JavaScript. Everything the panels do can be done from a script: add primitives or your own geometry, place and colour objects, select vertices, edges and faces and run any modelling operation on them, give parts of a mesh colours of their own, stack modifiers and shape meshes with lattice cages, add pictures, cut booleans, fill outliner folders, move the 3D cursor and frame the view.',
     },
     {
       kind: 'steps',
@@ -187,11 +189,7 @@ function scriptEditorBlocks(): DocsBlock[] {
     },
     {
       kind: 'prose',
-      text: "SCENE is the scene as it stands, written as script, and never a record of how you got there: add a cube and delete it again, and there is nothing to show. A primitive you have not edited is the scene.add that makes it, with only the options you changed. A mesh you have edited is a scene.addMesh with its points and faces, its smooth faces, the material slot each face wears and its sharp edges. Materials, modifiers, linked duplicates, outliner folders, what is hidden or locked and where the 3D cursor stands follow. What is selected, the shading and the camera are how you look at the scene, not part of it, so they are left out. The script is read only: rest the pointer on a name for its reference, as in the editor, and COPY puts it on the clipboard. Paste it into EDITOR on a new project and run it, and it builds this scene again. Images and lattices have no script form yet, so each is noted in a comment and COPY says the run will leave it out. A lattice's comment says to apply it: that bakes its shape into the mesh, which the script then writes. A script reads and writes the mesh under the modifier stack, not the shape the stack gives, so while any object has modifiers the dialog warns that the scene is mapped fully only once every modifier is applied.",
-    },
-    {
-      kind: 'note',
-      text: 'An edit mode selection is written as the points the vertices stand on, or the middles of the edges or faces, so it still picks the right ones after an undo has rebuilt the mesh. An undo takes its lines off the log and a redo puts them back, so the log always builds the scene on screen. A few things have no script that repeats them, such as importing a file or sliding along edges: the log says so in a comment where they happened, and so does a script you run. COPY warns when the log holds one of these, since a run leaves it out.',
+      text: 'SCENE is the scene as it stands, written as script, and never a record of how you got there: add a cube and delete it again, and there is nothing to show. A primitive you have not edited is the scene.add that makes it, with only the options you changed. A mesh you have edited is a scene.addMesh with its points and faces, its smooth faces, the material slot each face wears and its sharp edges. Materials, every modifier with every setting, linked duplicates, outliner folders, what is hidden or locked and where the 3D cursor stands follow. A lattice cage is a scene.addCage with the points you moved, and each lattice is pointed at its cage once every object is made. An image is a scene.addImage with its picture written in full as a data URL at the top of the script, or a scene.addMesh with its UVs and picture once you have edited its plane. What is selected, the shading and the camera are how you look at the scene, not part of it, so they are left out. The script is read only: rest the pointer on a name for its reference, as in the editor, and COPY puts it on the clipboard. Paste it into EDITOR on a new project and run it, and it builds this scene again, modifier stacks and all. The one thing it cannot carry is a picture whose file did not come with the project: that image is noted in a comment, and COPY says the run will leave it out.',
     },
     {
       kind: 'note',
@@ -244,7 +242,13 @@ export function scriptingApiBlocks(): DocsBlock[] {
         ['scene.lathe(profile, options?)', fieldText(LATHE_OPTIONS)],
         ['scene.extrudeOutline(points, options?)', fieldText(OUTLINE_OPTIONS)],
         ['scene.reference(id, options?)', fieldText(REFERENCE_OPTIONS)],
+        ['scene.addImage(picture, options?)', fieldText(IMAGE_OPTIONS)],
+        ['scene.addCage(options?)', fieldText(CAGE_OPTIONS)],
       ],
+    },
+    {
+      kind: 'prose',
+      text: "scene.addImage puts a picture on an upright plane, as importing one does. The picture is the file's bytes as a data URL, 'data:image/png;base64,...', for a PNG, JPEG or BMP, and the same picture added twice in one run is one image. To put a picture on a mesh of your own, give scene.addMesh its image and uvs: one [u, v] for each corner of each face, in the order faces lists them, with [0, 0] at the bottom left of the picture.",
     },
     {
       kind: 'prose',
@@ -285,6 +289,10 @@ export function scriptingApiBlocks(): DocsBlock[] {
     {
       kind: 'prose',
       text: "object.addModifier('mirror', { axes: { x: true } }) puts a modifier at the bottom of the stack, and modifier.set changes it later. Settings left out keep the values the MODIFIERS panel starts from. A modifier changes what is drawn and exported, not the mesh object.edit works on, until modifier.apply bakes it in.",
+    },
+    {
+      kind: 'prose',
+      text: "A lattice reads a cage, an object of its own whose points shape the mesh. object.addModifier('lattice') fits one round the mesh, and modifier.cage hands it back. Read cage.points, move the ones you want and set the list back: they are in the cage's own space, where a new grid fills the cube from -0.5 to 0.5, X fastest, then Y, then Z. cage.resolution sets how many points the grid holds. To shape several objects with one cage, make it with scene.addCage and give each lattice { cage }, or set modifier.cage to it.",
     },
     apiTable('MODIFIER', ['modifier']),
     {

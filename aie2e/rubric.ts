@@ -129,7 +129,8 @@ export function measureGates(report: TopologyReport | null): GateResult[] {
  */
 export function gameReadyNotes(scene: SceneSummary, report: TopologyReport | null): string[] {
   const notes: string[] = [];
-  const visible = scene.objects.filter((object) => object.visible);
+  // A cage shapes the asset and never ships with it, and keeps the scale that places its grid.
+  const visible = scene.objects.filter((object) => object.visible && object.kind !== 'cage');
   const longest = scene.bounds
     ? Math.max(scene.bounds.size.x, scene.bounds.size.y, scene.bounds.size.z)
     : 0;

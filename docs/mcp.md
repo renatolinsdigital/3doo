@@ -328,7 +328,7 @@ finished would picture half of it.
   "result": {
     "content": [{
       "type": "text",
-      "text": "Script ran: 1 object added\n\nScene: {\"name\":\"untitled\",\"totals\":{\"objects\":1,\"vertices\":8,\"faces\":6},\"bounds\":{\"min\":{\"x\":-1,\"y\":0.95,\"z\":-0.5},\"max\":{\"x\":1,\"y\":1.05,\"z\":0.5},\"size\":{\"x\":2,\"y\":0.1,\"z\":1}}}\nObjects (1):\n{\"name\":\"TOP\",\"vertices\":8,\"edges\":12,\"faces\":6,\"position\":{\"x\":0,\"y\":1,\"z\":0},\"rotation\":{\"x\":0,\"y\":0,\"z\":0},\"scale\":{\"x\":2,\"y\":0.1,\"z\":1},\"dimensions\":{\"x\":2,\"y\":0.1,\"z\":1},\"color\":\"#b8452f\",\"modifiers\":[],\"visible\":true,\"group\":null}"
+      "text": "Script ran: 1 object added\n\nScene: {\"name\":\"untitled\",\"totals\":{\"objects\":1,\"vertices\":8,\"faces\":6},\"bounds\":{\"min\":{\"x\":-1,\"y\":0.95,\"z\":-0.5},\"max\":{\"x\":1,\"y\":1.05,\"z\":0.5},\"size\":{\"x\":2,\"y\":0.1,\"z\":1}}}\nObjects (1):\n{\"name\":\"TOP\",\"kind\":\"mesh\",\"vertices\":8,\"edges\":12,\"faces\":6,\"position\":{\"x\":0,\"y\":1,\"z\":0},\"rotation\":{\"x\":0,\"y\":0,\"z\":0},\"scale\":{\"x\":2,\"y\":0.1,\"z\":1},\"dimensions\":{\"x\":2,\"y\":0.1,\"z\":1},\"color\":\"#b8452f\",\"modifiers\":[],\"visible\":true,\"group\":null}"
     }],
     "isError": false
   }

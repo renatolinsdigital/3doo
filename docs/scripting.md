@@ -218,8 +218,10 @@ An object, modifier or material handle holds an id, not the thing itself, and
 looks it up on every use, so a handle stays good through edits that replace
 the store's objects. A material handle matters most here: slots are addressed
 by position, removing one renumbers the rest, and `material.index` reads the
-slot's place afresh each time. Material ids are copied with a duplicate, so
-the handle cache keys a material by object and id together. `mesh.assignMaterial`
+slot's place afresh each time. Material and modifier ids are copied with a
+duplicate, so the handle cache keys both by object and id together: keyed by
+id alone, `copy.modifiers[0]` came back as the original's modifier and a
+setting meant for the copy went onto the original. `mesh.assignMaterial`
 writes each selected face's `materialIndex` directly and clears the object's
 `primitive`, as the panel's ASSIGN does, because a primitive rebuilt from its
 parameters would lose what its faces wear.
@@ -249,6 +251,31 @@ It is part of the API rather than only a tool of the server so that a script
 builds from the numbers directly. An outline of a few hundred points would cost
 a model tokens to copy into a script, and characters to get wrong. In the
 editor no reference is loaded, and the call says so.
+
+### Cages and pictures
+
+A lattice reads a cage, which is an object of its own (see
+[mesh-kernel.md](mesh-kernel.md)). `addModifier('lattice')` fits one round the
+mesh as the panel does, unless its settings name a `cage`, which may be a cage
+object, a cage's name or `null`; the store's `addModifier` takes
+`{ fitCage: false }` for that. The modifier keeps the cage as `objectId`, and
+the handle trades it for the cage's name in `settings` and for the cage itself
+in `modifier.cage`, since an id means nothing to a script. `scene.addCage` makes
+a cage nothing has fitted, at the 3D cursor, through the store's `addCage`.
+
+A cage's `points` are its mesh's vertices in grid order, in its own space, and
+setting them writes the vertices in place and announces it with `touchMesh`, as
+`mesh.deform` does. `resolution` goes through `setLatticeResolution`, so a
+script changing it keeps the shape it gives exactly as the panel does, and
+remembers the shape it was made on.
+
+`scene.addImage` takes the picture as a data URL and reads its size off the
+file's header (`headerImageSize` in `src/domain/services/assets.ts`) rather
+than decoding it, so it needs no `await` and runs where no browser decodes.
+One run turns the same data URL into one asset, as a duplicate in the editor
+shares one. `scene.addMesh` takes `image` too, with `uvs` per face corner,
+which is how an edited image plane is built again: the store's `addImage`
+takes the mesh to put the picture on.
 
 ### Finding the failing line
 
@@ -296,8 +323,10 @@ console too. See [mcp.md](mcp.md).
 
 The SCENE tab shows the scene on screen as the script that builds it.
 `sceneScript()` in `sceneScript.ts` is a pure function of the store's
-`objects`, `groups` and `cursor`, and the dialog calls it again whenever they or
-`meshVersion` change while it is open. It describes the result rather than
+`objects`, `groups`, `cursor` and `assets`, and the dialog calls it again
+whenever they or `meshVersion` change while it is open. Its second argument is
+each picture as a data URL by asset id: reading a blob means waiting, so the
+dialog reads them first (`usePictures`) and keeps them per blob. It describes the result rather than
 recording the steps, so the two cannot disagree: a cube added and deleted again
 writes nothing, and an undo takes lines away because it takes the objects away.
 
@@ -331,7 +360,20 @@ How each part of the scene is written:
   goes in the add's `color`. A slot's name is written unless it is the
   `Material N` the session numbered it with, since a run numbers its own.
 - **Modifiers are `addModifier(type, settings)`** with only the settings that
-  differ from `createModifier(type)`.
+  differ from `createModifier(type)`. A lattice always says `cage: null`, since
+  one left out is fitted with a new cage, and is pointed at its cage by a line
+  of its own once every object is made: a cage is listed after the object it
+  was fitted round. A linked copy takes its lattices from the original before
+  that line, so it gets one too.
+- **A cage is `scene.addCage`**, with its resolution, then `cage.points` when
+  any point has moved. A shape the cage remembers from another resolution goes
+  in first, at that resolution, and the resolution is then changed as the
+  editor did, so the next change of resolution rebuilds from the same shape. A
+  shape remembered at the grid's own resolution changes nothing and is not
+  written.
+- **An image is `scene.addImage`** while its plane is the one its picture came
+  on, and `scene.addMesh` with `uvs` and `image` once it is edited. Each picture
+  is written once, as a data URL in a constant at the top of the script.
 - **A linked duplicate is `duplicate(true)`** of the first object that shares
   its mesh, followed by whatever sets it apart: name, transform, materials and
   modifiers. A duplicate is added at the end of the list, so writing objects in
@@ -345,17 +387,16 @@ what it is: what is selected (objects, and elements in edit mode), the active
 material slot, the shading, the camera, the project name, which folders are
 folded, and UVs, which nothing on screen shows outside an image.
 
-Images and lattices have no script form yet. An image's picture is a binary
-asset, and no API call makes a cage, while adding a lattice modifier fits a new
-cage of its own. Each is written as a comment and counted in `gaps`, and COPY
-warns that a run leaves them out. A lattice's comments say to apply it rather
-than that it cannot be written: applying bakes the cage's pull into the mesh and
-deletes the cage, and the mesh is something a script can write.
+Everything else the editor can build has a script form, every modifier
+included. The one gap left is an image whose picture is not there to write: a
+project opened without the image file in it, or a picture the dialog has not
+read yet. Each is written as a comment and counted in `gaps`, and COPY warns
+that a run leaves it out.
 
-A script writes and reads base meshes, not what a modifier stack makes of them,
-so the shape a stack gives is only in the script once the stack is applied.
-While any object still has modifiers, the dialog says so above both tabs:
-scripts map the scene fully only once every modifier is applied.
+Until lattices and images could be written, the dialog warned above both tabs
+that scripts map the scene fully only once every modifier is applied. The
+script writes base meshes and the stacks on them, and a run builds the same
+stacks again, so the warning went with the last modifier that had no form.
 
 The script holds for a run on a new project. Like any script it adds to the
 scene rather than replacing it.
@@ -366,6 +407,8 @@ otherwise be hundreds of thousands of spans.
 
 `sceneScript.test.ts` holds the tab to its promise. Each test builds a scene
 through the store, runs its script on a new project, expects the same scene
-back to five places (ids, selection and UVs aside), and expects the rebuilt
+back to five places (ids, selection and the UVs of anything without a picture
+aside, with a lattice's cage compared by its place in the list), and expects
+the rebuilt
 scene to read back as the same script. Every example in the EXAMPLE menu goes
 through the same round trip.

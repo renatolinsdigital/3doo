@@ -718,8 +718,11 @@ export interface SceneSlice {
    * The origin rather than the 3D cursor, unlike every other add: a reference
    * image is lined up against the world, and starting it wherever the cursor
    * was left is a nuisance rather than a convenience.
+   *
+   * `mesh` puts the picture on a mesh of the caller's own instead of a new
+   * plane, which is how a script builds an image plane that was edited.
    */
-  addImage: (asset: SceneAsset) => void;
+  addImage: (asset: SceneAsset, mesh?: BMesh) => void;
   /**
    * Adds what a mesh file held, as one step to undo, named after the file.
    *
@@ -812,13 +815,19 @@ export interface SceneSlice {
   setActiveMaterial: (index: number) => void;
   assignMaterialToSelection: () => void;
 
-  addModifier: (type: Modifier['type']) => void;
+  /** `fitCage: false` adds a lattice reading no cage, for a script to point at one of its own. */
+  addModifier: (type: Modifier['type'], options?: { fitCage?: boolean }) => void;
   updateModifier: (id: string, patch: Partial<Modifier>) => void;
   removeModifier: (id: string) => void;
   moveModifier: (id: string, direction: -1 | 1) => void;
   applyModifierToMesh: (id: string) => void;
   /** Fits a new cage around the active object and points its lattice modifier `id` at it. */
   addLatticeCage: (id: string) => void;
+  /**
+   * Adds a cage of its own at the 3D cursor, a metre across, for lattice
+   * modifiers to be pointed at: one cage can shape several objects.
+   */
+  addCage: (resolution?: LatticeResolution) => void;
   /**
    * Rebuilds a cage at another resolution. Its points are placed where the old
    * grid had carried them, so the shape it gave its mesh holds.
@@ -1070,12 +1079,12 @@ export const createSceneSlice: StateCreator<
     }));
   },
 
-  addImage: (asset) => {
+  addImage: (asset, built) => {
     const name = asset.name.toUpperCase();
     get().recordHistory(`Add ${name}`);
 
     const { width, height } = imagePlaneSize(asset.width, asset.height);
-    const mesh = createImagePlane(width, height);
+    const mesh = built ?? createImagePlane(width, height);
     const transform = createTransform();
 
     const object: SceneObject = {
@@ -2404,7 +2413,7 @@ export const createSceneSlice: StateCreator<
     }));
   },
 
-  addModifier: (type) => {
+  addModifier: (type, options) => {
     const object = activeObject(get());
     if (!object) return;
     if (object.lattice) {
@@ -2417,7 +2426,7 @@ export const createSceneSlice: StateCreator<
     // a cage already fitted around the mesh: one step from the menu to a grid
     // of points to pull on.
     const modifier = createModifier(type);
-    if (modifier.type === 'lattice') {
+    if (modifier.type === 'lattice' && options?.fitCage !== false) {
       set((state) => withNewCage(state, object, modifier));
       return;
     }
@@ -2507,6 +2516,39 @@ export const createSceneSlice: StateCreator<
 
     get().recordHistory('New cage');
     set((state) => withNewCage(state, object, modifier));
+  },
+
+  addCage: (resolution = DEFAULT_LATTICE_RESOLUTION) => {
+    get().recordHistory('Add cage');
+    const grid = clampLatticeResolution(resolution);
+    const transform = createTransform();
+    transform.position = { ...get().cursor };
+
+    const cage: SceneObject = {
+      id: nextObjectId(),
+      name: 'CAGE',
+      mesh: createLatticeMesh(grid),
+      transform,
+      visible: true,
+      locked: false,
+      parentId: null,
+      groupId: null,
+      materials: [defaultMaterial()],
+      modifiers: [],
+      activeMaterial: 0,
+      primitive: null,
+      image: null,
+      lattice: { resolution: grid },
+    };
+
+    set((state) => ({
+      objects: [...state.objects, cage],
+      activeObjectId: cage.id,
+      selectedObjectIds: [cage.id],
+      meshVersion: state.meshVersion + 1,
+      activeTool: 'move',
+      status: 'Added CAGE',
+    }));
   },
 
   setLatticeResolution: (cageId, resolution) => {
