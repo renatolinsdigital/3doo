@@ -189,9 +189,9 @@ async function copyTo(
 /** The starting cube, for a fresh tab or a scene that would not open. */
 function openOnCube(): void {
   const state = useEditorStore.getState();
-  // Undoable like any other add, so anyone who wants the empty viewport is
-  // one Ctrl+Z from it.
   state.addPrimitive('cube');
+  // The user never placed it, so a first Ctrl+Z must not take it away.
+  state.clearHistory();
   // The cube is the editor's doing, not the user's. A tab opened and left
   // alone has nothing worth keeping, so it is not counted as a change.
   state.markSaved();

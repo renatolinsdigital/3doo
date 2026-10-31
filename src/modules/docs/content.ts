@@ -338,7 +338,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'The starting cube is an ordinary object: one Ctrl+Z removes it if you would rather start empty. FILE > NEW starts the next project on a cube too.',
+        text: 'The starting cube is part of the scene you open on, not a step you took, so Ctrl+Z leaves it in place. Delete it with X if you would rather start empty. FILE > NEW starts the next project on a cube too.',
       },
       {
         kind: 'note',

@@ -263,13 +263,16 @@ describe('what the editor opens on', () => {
     expect(replacingLosesNothing()).toBe(true);
   });
 
-  it('is one undo away from the empty scene, for anyone who wants that', async () => {
+  it('leaves nothing to undo on the cube the tab opens on', async () => {
     renderHook(() => useAutosave());
     await waitFor(() => expect(objects()).toHaveLength(1));
 
     act(() => useEditorStore.getState().undo());
 
-    expect(objects()).toHaveLength(0);
+    // The cube used to be an undoable add, so the first Ctrl+Z in a fresh tab
+    // took away an object the user never placed. This test once asserted that.
+    expect(useEditorStore.getState().canUndo).toBe(false);
+    expect(objects()).toHaveLength(1);
   });
 
   it('does not put the cube back once the scene has been emptied', async () => {

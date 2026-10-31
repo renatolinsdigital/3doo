@@ -233,8 +233,8 @@ the editor opens, and one on a timer.
 ### When the editor opens
 
 - **It opens the editor on a cube.** An empty viewport gives you nothing to try
-  a tool on. The cube is an ordinary undoable add, so one Ctrl+Z empties the
-  scene. No earlier session is restored, whatever the AUTOSAVE switch says: the
+  a tool on. The cube's add is cleared from history, since the user never
+  placed it, so the first Ctrl+Z finds nothing to undo. No earlier session is restored, whatever the AUTOSAVE switch says: the
   numbered copies are files, and FILE > OPEN is the way back to one.
 - **It reads the autosave location back,** so PREFS can name it (see
   [permission after a restart](#permission-after-a-restart)).

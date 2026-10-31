@@ -283,13 +283,18 @@ describe('project actions announce themselves', () => {
     expect(state.activeObjectId).toBe(state.objects[0].id);
   });
 
-  it('leaves that cube one undo from an empty scene', async () => {
+  it('leaves nothing to undo on the cube the new project starts on', async () => {
     const project = files();
 
     await act(() => project.current.newProject());
     act(() => useEditorStore.getState().undo());
 
-    expect(useEditorStore.getState().objects).toHaveLength(0);
+    // The cube used to be the first step on the new timeline, so a Ctrl+Z
+    // pressed before doing anything took away an object the user never placed.
+    // This test once asserted exactly that.
+    expect(useEditorStore.getState().canUndo).toBe(false);
+    expect(useEditorStore.getState().objects).toHaveLength(1);
+    expect(useEditorStore.getState().status).toBe('Nothing to undo');
   });
 
   it('imports an image as a plane at the world origin', async () => {

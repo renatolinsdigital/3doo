@@ -90,9 +90,9 @@ export function useProjectFiles() {
     state.resetScene();
     // A new project starts on a cube, the way Blender's does, for the same
     // reason a fresh tab does: an empty viewport gives you nothing to try a
-    // tool against. One Ctrl+Z takes it away for anyone who wants the empty
-    // scene, since the reset cleared history and this is the first step on it.
+    // tool against. The user never placed it, so it is no step to undo.
     state.addPrimitive('cube');
+    state.clearHistory();
     // The cube is where the new project starts, not an edit to it: an editor
     // left alone from here has nothing worth writing.
     useEditorStore.setState({

@@ -28,6 +28,8 @@ Depth: `docs/saving.md`.
   base64 and nowhere else.
 - `loadProjectDocument` repairs duplicate ids from files written before ids
   were stamped.
+- The starting cube (`openOnCube`, `newProject`) is no undo step: both call
+  `clearHistory` after adding it. It used to be, and Ctrl+Z took it away.
 
 ## Bugs that came back, and their tests
 
