@@ -1988,7 +1988,7 @@ export const createSceneSlice: StateCreator<
         : linked
           ? LINKED_MESH_REFUSAL
           : state.selectMode === 'face'
-            ? 'Separating by loop cuts along edges, so switch to edge select mode (2)'
+            ? 'Separating by edge loop cuts along edges, so switch to edge select mode (2)'
             : object.mesh.selectedEdges().length === 0
               ? 'Select an edge loop to cut the object apart along'
               : 'The selected edges cut nothing off: select a loop that runs all the way round';
@@ -1997,7 +1997,7 @@ export const createSceneSlice: StateCreator<
       return;
     }
 
-    get().recordHistory('Separate by loop');
+    get().recordHistory('Separate by edge loop');
 
     const [rest, piece] = split;
     const separated = recenterOrigin({

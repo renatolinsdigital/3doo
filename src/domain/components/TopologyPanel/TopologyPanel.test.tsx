@@ -50,7 +50,7 @@ describe('TopologyPanel', () => {
       'EDGE LOOP',
       'FACE LOOP',
       'SEPARATE SELECTED',
-      'SEPARATE BY LOOP',
+      'SEPARATE BY EDGE LOOP',
       'VERTEX SLIDE',
       'EDGE SLIDE',
       'MAKE PLANAR',
@@ -163,16 +163,16 @@ describe('TopologyPanel', () => {
       store.touchMesh();
     });
 
-    expect(button('SEPARATE BY LOOP')).not.toHaveAttribute('aria-disabled');
+    expect(button('SEPARATE BY EDGE LOOP')).not.toHaveAttribute('aria-disabled');
 
-    await userEvent.click(button('SEPARATE BY LOOP'));
+    await userEvent.click(button('SEPARATE BY EDGE LOOP'));
 
     // The four edges round the top cut its face off the other five.
     expect(useEditorStore.getState().objects).toHaveLength(2);
     expect(activeMesh().faces.size).toBe(5);
   });
 
-  it('keeps separate by loop off in face select mode', () => {
+  it('keeps separate by edge loop off in face select mode', () => {
     render(<TopologyPanel />);
 
     act(() => {
@@ -184,7 +184,7 @@ describe('TopologyPanel', () => {
       store.touchMesh();
     });
 
-    expect(button('SEPARATE BY LOOP')).toHaveAttribute('aria-disabled', 'true');
+    expect(button('SEPARATE BY EDGE LOOP')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('enables connect on two or more vertices', () => {

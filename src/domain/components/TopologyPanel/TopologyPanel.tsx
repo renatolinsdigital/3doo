@@ -317,6 +317,7 @@ export function TopologyPanel() {
           />
           <Button
             label="SEPARATE SELECTED"
+            className="topology__wide-button"
             disabled={selection.faces === 0 || selection.faces === totalFaces}
             hint={
               selection.faces === 0
@@ -328,11 +329,12 @@ export function TopologyPanel() {
             onClick={separateSelection}
           />
           <Button
-            label="SEPARATE BY LOOP"
+            label="SEPARATE BY EDGE LOOP"
+            className="topology__wide-button"
             disabled={faceMode || selection.edges === 0}
             hint={
               faceMode
-                ? 'Separating by loop cuts along edges, so switch to edge select mode (2)'
+                ? 'Separating by edge loop cuts along edges, so switch to edge select mode (2)'
                 : selection.edges === 0
                   ? 'Select an edge loop that runs all the way round, for the object to come apart along'
                   : 'Cut the object apart along the selected edge loop and move the smaller side into a new object. Edges that stop short of a loop cut nothing off'

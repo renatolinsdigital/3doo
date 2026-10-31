@@ -1112,7 +1112,7 @@ describe('editor store', () => {
     ['no edge is selected', 'edge', () => activeObject().mesh.deselectAll(), /Select an edge loop/],
     ['the edges stop short of a loop', 'edge', () => selectTopRing(3), /all the way round/],
     ['faces are selected', 'face', () => selectTopRing(), /edge select mode/],
-  ] as const)('refuses to separate by loop when %s', (_, mode, select, status) => {
+  ] as const)('refuses to separate by edge loop when %s', (_, mode, select, status) => {
     store().addPrimitive('uvSphere');
     const faces = activeObject().mesh.faces.size;
     store().setMode('edit');
@@ -1161,7 +1161,7 @@ describe('editor store', () => {
       () => store().separateSelection(),
     ],
     [
-      'separating by loop',
+      'separating by edge loop',
       () => {
         store().addPrimitive('uvSphere');
         store().setMode('edit');

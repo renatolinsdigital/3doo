@@ -431,7 +431,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ['Join objects', 'Select several and press M to merge them into the active one.'],
           [
             'Separate',
-            'P splits the loose parts of a mesh into an object each. To split off faces that are still attached, use SEPARATE SELECTED or SEPARATE BY LOOP in edit mode.',
+            'P splits the loose parts of a mesh into an object each. To split off faces that are still attached, use SEPARATE SELECTED or SEPARATE BY EDGE LOOP in edit mode.',
           ],
           [
             'Cut in half',
@@ -654,7 +654,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'In the SELECTION row of the TOPOLOGY panel. Moves the selected faces into a new object, named after this one with .PART on the end, and takes them out of this one. The vertices along the border go to both, so the two come apart there and each is left with an open edge. The new object keeps the material slots and modifiers, and gets its origin on its own middle. You stay in edit mode on the original.',
           ],
           [
-            'Separate by loop',
+            'Separate by edge loop',
             'In the SELECTION row of the TOPOLOGY panel. Select an edge loop in edge or vertex select mode and the object comes apart along it: the side with fewer faces moves into a new object, named after this one with .PART on the end. The loop goes to both sides, so each is left with an open edge where it ran, still selected, and F fills it straight away. Edges that stop short of running all the way round cut nothing off, and the status bar says so. With two loops selected the mesh falls into three pieces: the biggest stays and the other two leave together in the one new object. Pieces of the mesh the loop never runs through stay too. The new object keeps the material slots and modifiers, and gets its origin on its own middle. You stay in edit mode on the original.',
           ],
           [
