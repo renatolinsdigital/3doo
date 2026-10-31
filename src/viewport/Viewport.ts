@@ -384,11 +384,15 @@ const OFFSET_LABELS: Record<OffsetDrag['kind'], string> = {
   extrude: 'Extrude',
 };
 
+/** The undo step for an extrude that pushes each face out along its own normal. */
+const ALONG_NORMALS_LABEL = 'Extrude along normals';
+
 /** The one parameter each of them spends its distance on. */
 function offsetParams(drag: OffsetDrag): Record<string, unknown> {
   if (drag.free) return { translation: drag.free.local };
   if (drag.kind === 'bevel') return { width: drag.amount };
   if (drag.kind === 'inset') return { thickness: drag.amount };
+  if (drag.alongNormals) return { offset: drag.amount, alongNormals: true };
   return { offset: drag.amount };
 }
 
@@ -537,6 +541,11 @@ interface OffsetDrag {
   screenAxis: THREE.Vector2 | null;
   /** Set for an extrude of edges, which goes wherever the pointer takes it. */
   free: FreeTravel | null;
+  /**
+   * Set for an extrude that pushes each face out along its own normal. The
+   * pointer still reads its one distance along the region's average normal.
+   */
+  alongNormals: boolean;
   /** The distance the last preview ran with: the length of the travel, for edges. */
   amount: number;
   /** What that preview reported, which is what the status bar says at the end. */
@@ -1408,7 +1417,7 @@ export class Viewport {
             modal?.kind === 'inset' ||
             modal?.kind === 'extrude'
           ) {
-            this.beginOffsetDrag(modal.kind, modal.element);
+            this.beginOffsetDrag(modal.kind, modal.element, modal.alongNormals);
           }
           // Cleared from somewhere else (a mode change, a reset) while a
           // modal transform is still live: put everything back.
@@ -2764,7 +2773,11 @@ export class Viewport {
    * that axis drawn through the geometry instead. Edges have no normal, so an
    * extrude of them travels freely until an axis is pinned.
    */
-  private beginOffsetDrag(kind: OffsetDrag['kind'], element?: ModalTransform['element']): void {
+  private beginOffsetDrag(
+    kind: OffsetDrag['kind'],
+    element?: ModalTransform['element'],
+    alongNormals = false,
+  ): void {
     if (this.offsetDrag || this.scaleDrag || this.rotateDrag || this.slideDrag) return;
 
     const state = useEditorStore.getState();
@@ -2784,7 +2797,7 @@ export class Viewport {
     // as well.
     const scale = meanScale(object.transform.scale);
 
-    state.recordHistory(OFFSET_LABELS[kind]);
+    state.recordHistory(alongNormals ? ALONG_NORMALS_LABEL : OFFSET_LABELS[kind]);
     state.patchActiveObject({ primitive: null }, { touchGeometry: false });
 
     const original = cloneMesh(object.mesh);
@@ -2812,6 +2825,7 @@ export class Viewport {
       axis,
       screenAxis: axis ? this.projectDirection(pivot, axis) : null,
       free,
+      alongNormals,
       amount: 0,
       status: null,
     };
@@ -2996,7 +3010,11 @@ export class Viewport {
       state.patchActiveObject({ mesh: drag.original });
       state.discardHistory();
     } else {
-      state.noteOperator(drag.kind, offsetParams(drag), OFFSET_LABELS[drag.kind]);
+      state.noteOperator(
+        drag.kind,
+        offsetParams(drag),
+        drag.alongNormals ? ALONG_NORMALS_LABEL : OFFSET_LABELS[drag.kind],
+      );
     }
 
     // Cleared before the store is told, so the modal subscription sees nothing

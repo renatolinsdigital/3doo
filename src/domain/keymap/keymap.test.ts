@@ -144,6 +144,13 @@ describe('keymap', () => {
     expect(reserved).toEqual([]);
   });
 
+  it('puts extrude along normals on Shift+E, clear of extrude and the cursor', () => {
+    expect(matchBinding(keyEvent('E', { shiftKey: true }), 'edit')?.id).toBe('extrudeAlongNormals');
+    expect(matchBinding(keyEvent('e'), 'edit')?.id).toBe('extrude');
+    expect(matchBinding(keyEvent('e', { altKey: true }), 'edit')?.id).toBe('cursorToEdge');
+    expect(matchBinding(keyEvent('E', { shiftKey: true }), 'object')).toBeNull();
+  });
+
   it('gives extrude, inset and bevel one key each', () => {
     // Each of the three starts a drag that owns the pointer until it is
     // confirmed. A second key onto the same one is a second way into that, and

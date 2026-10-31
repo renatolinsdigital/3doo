@@ -59,6 +59,16 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
     label: 'Extrude: drag faces along their normal, or edges anywhere (X/Y/Z to pin an axis)',
     group: 'Modelling',
   },
+  // Shift+E rather than Blender's Alt+E menu, which is where this lives there:
+  // Alt+E already puts the cursor on an edge here.
+  {
+    id: 'extrudeAlongNormals',
+    key: 'e',
+    shift: true,
+    mode: 'edit',
+    label: 'Extrude along normals: drag each selected face out along its own normal',
+    group: 'Modelling',
+  },
   {
     id: 'inset',
     key: 'i',

@@ -472,6 +472,33 @@ describe('editor store', () => {
     expect(store().status).toMatch(/X\/Y\/Z to constrain/);
   });
 
+  it('starts an extrude along normals off the keyboard, adding nothing until the pointer moves', () => {
+    store().addPrimitive('cube');
+    store().setMode('edit');
+    store().setSelectMode('face');
+    store().exec('selectAll', {}, 'Select all');
+
+    store().beginOffset('extrudeAlongNormals');
+
+    expect(store().modal).toMatchObject({ kind: 'extrude', alongNormals: true, value: { x: 0 } });
+    expect(store().status).toMatch(/^EXTRUDE ALONG NORMALS:/);
+    expect(activeObject().mesh.faces.size).toBe(6);
+  });
+
+  it('turns an extrude along normals away with only edges selected, and says so', () => {
+    store().addPrimitive('cube');
+    store().setMode('edit');
+    store().setSelectMode('edge');
+    const mesh = activeObject().mesh;
+    for (const vert of mesh.verts.values()) vert.selected = vert.co.y > 0 && vert.co.z > 0;
+    mesh.flushSelection('vertex');
+
+    store().beginOffset('extrudeAlongNormals');
+
+    expect(store().modal).toBeNull();
+    expect(store().status).toMatch(/select faces to extrude along their normals/i);
+  });
+
   it('turns an extrude away with nothing selected, and says so', () => {
     store().addPrimitive('cube');
     store().setMode('edit');

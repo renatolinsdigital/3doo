@@ -160,6 +160,69 @@ describe('extrude', () => {
     expect(cube.validate()).toEqual([]);
   });
 
+  it('carries a vertex inside the region along with the faces around it', () => {
+    const grid = createGrid(2, 2);
+
+    const result = extrudeFaces(grid, [...grid.faces.values()], { offset: 1 });
+
+    // Only the vertices a wall hangs from were moved, so the one in the middle
+    // of the region, with region faces all the way round it, stayed on the
+    // ground and the lifted faces sagged down to a point there.
+    for (const face of result.faces) {
+      for (const vert of grid.faceVerts(face)) expect(vert.co.y).toBeCloseTo(1);
+    }
+  });
+
+  describe('along normals', () => {
+    it('pushes a lone face straight out, without flaring its corners', () => {
+      const top = faceAt(cube, vec3(0, 1, 0));
+
+      const result = extrudeFaces(cube, [top], { offset: 1, alongNormals: true });
+
+      // The corners used to follow the whole mesh's vertex normal, which leans
+      // on the side faces too, so the new top came out a size bigger than the
+      // face it was pulled from.
+      for (const vert of result.newVerts) {
+        expect(vert.co.y).toBeCloseTo(2);
+        expect(Math.abs(vert.co.x)).toBeCloseTo(1);
+        expect(Math.abs(vert.co.z)).toBeCloseTo(1);
+      }
+      expect(isClosed(cube)).toBe(true);
+      expect(cube.validate()).toEqual([]);
+    });
+
+    it('moves every face of the region the offset out along its own normal', () => {
+      const axes = [vec3(0, 1, 0), vec3(0, 0, 1), vec3(1, 0, 0)];
+      const faces = axes.map((axis) => faceAt(cube, axis));
+
+      const result = extrudeFaces(cube, faces, { offset: 0.5, alongNormals: true });
+
+      // The corner the three faces share travels the diagonal, and each face
+      // arrives flat and exactly half a metre out from where it was.
+      result.faces.forEach((face, index) => {
+        for (const vert of cube.faceVerts(face)) expect(dot(vert.co, axes[index])).toBeCloseTo(1.5);
+      });
+      expect(eulerCharacteristic(cube)).toBe(2);
+      expect(isClosed(cube)).toBe(true);
+      expect(cube.validate()).toEqual([]);
+    });
+
+    it('keeps a curved region an even thickness out from the surface', () => {
+      const sphere = createUVSphere(1, 16, 8);
+      sphere.computeNormals();
+      const cap = [...sphere.faces.values()].filter((face) => face.normal.y > 0.5);
+
+      const result = extrudeFaces(sphere, cap, { offset: 0.25, alongNormals: true });
+
+      // Every vertex the cap moved, the one at the pole included, lands on a
+      // sphere a quarter of a metre bigger rather than being carried straight up.
+      for (const face of result.faces) {
+        for (const vert of sphere.faceVerts(face)) expect(length(vert.co)).toBeCloseTo(1.25, 1);
+      }
+      expect(sphere.validate()).toEqual([]);
+    });
+  });
+
   describe('of edges', () => {
     /** Selects the top edge along the front of the cube, the one a lid hinges on. */
     const selectFrontTopEdge = (mesh: BMesh): void => {
@@ -234,6 +297,18 @@ describe('inset', () => {
     const result = insetFaces(cube, [top], { thickness: 0.25, depth: -0.5 });
 
     for (const vert of cube.faceVerts(result.faces[0])) expect(vert.co.y).toBeCloseTo(0.5);
+  });
+
+  it('lifts a vertex inside the region along with the faces around it', () => {
+    const grid = createGrid(2, 2);
+
+    const result = insetFaces(grid, [...grid.faces.values()], { thickness: 0.2, depth: 0.5 });
+
+    // The depth used to reach only the vertices on the region's border, so the
+    // one in the middle stayed behind and pinned the inset faces down to it.
+    for (const face of result.faces) {
+      for (const vert of grid.faceVerts(face)) expect(vert.co.y).toBeCloseTo(0.5);
+    }
   });
 
   it('keeps the outline when insetting a region', () => {

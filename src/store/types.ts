@@ -462,6 +462,8 @@ export interface ModalTransform {
    * the other transforms.
    */
   element?: 'vertex' | 'edge';
+  /** Set for an extrude that pushes each face out along its own normal. */
+  alongNormals?: boolean;
   axis: 'x' | 'y' | 'z' | null;
   /** Axis excluded rather than constrained to, from Shift + axis. */
   excludeAxis: boolean;

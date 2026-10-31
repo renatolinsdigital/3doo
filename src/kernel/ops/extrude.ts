@@ -1,4 +1,4 @@
-import { type Vec3, add, mul, normalize } from '../math';
+import { type Vec3, add, clamp, dot, length, mul, normalize, sub, vec3 } from '../math';
 import type { BMesh } from '../mesh';
 import type { Edge, Face, Vert } from '../mesh/types';
 
@@ -10,7 +10,10 @@ export interface ExtrudeFacesOptions {
   direction?: Vec3;
   /** Extrude each face on its own normal instead of as one connected region. */
   individual?: boolean;
-  /** Offset every vertex along its own normal rather than one shared direction. */
+  /**
+   * Push each face out along its own normal rather than all of them one shared
+   * way, keeping the region joined.
+   */
   alongNormals?: boolean;
 }
 
@@ -47,13 +50,65 @@ export function extrudeFaces(
 
   mesh.computeNormals();
   const direction = options.direction ? normalize(options.direction) : averageNormal(faces);
+  const alongNormals = options.alongNormals ? regionNormalOffsets(mesh, faces, offset) : null;
 
   const result = detachRegion(mesh, faces, (vert) =>
-    options.alongNormals ? mul(vert.normal, offset) : mul(direction, offset),
+    alongNormals ? (alongNormals.get(vert.id) ?? vec3()) : mul(direction, offset),
   );
 
   mesh.computeNormals();
   return { faces: result.faces, newVerts: result.newVerts };
+}
+
+/**
+ * Where each vertex of a region goes for every one of its faces to end up
+ * `offset` out along its own normal.
+ *
+ * Only the region's faces have a say. A face outside it is staying where it
+ * is, and leaning on it flared the extruded corners out sideways. Each face
+ * counts by its corner angle, so a face cut into triangles pulls no harder than
+ * the quad beside it. Where faces meet at an angle the vertex travels further
+ * than the offset, √2 times it at a right angle, which is what brings both
+ * faces out the full distance rather than rounding the edge between them.
+ */
+function regionNormalOffsets(
+  mesh: BMesh,
+  faces: readonly Face[],
+  offset: number,
+): Map<number, Vec3> {
+  const corners = new Map<number, { normal: Vec3; angle: number }[]>();
+  for (const face of faces) {
+    for (const loop of mesh.faceLoops(face)) {
+      const toPrev = normalize(sub(loop.prev.vert.co, loop.vert.co));
+      const toNext = normalize(sub(loop.next.vert.co, loop.vert.co));
+      const angle = Math.acos(clamp(dot(toPrev, toNext), -1, 1));
+      const list = corners.get(loop.vert.id) ?? [];
+      list.push({ normal: face.normal, angle });
+      corners.set(loop.vert.id, list);
+    }
+  }
+
+  const offsets = new Map<number, Vec3>();
+  for (const [id, list] of corners) {
+    let sum = vec3();
+    let weight = 0;
+    for (const corner of list) {
+      sum = add(sum, mul(corner.normal, corner.angle));
+      weight += corner.angle;
+    }
+    // Faces folded back onto each other point both ways at once, with no
+    // outward between them, so the vertex is left where it is.
+    const normal = normalize(sum);
+    if (length(normal) === 0) continue;
+
+    // Floored like a miter: a near fold would otherwise fling the vertex out.
+    let stretch = 0;
+    for (const corner of list) {
+      stretch += corner.angle / Math.max(dot(normal, corner.normal), 0.2);
+    }
+    offsets.set(id, mul(normal, (offset * stretch) / weight));
+  }
+  return offsets;
 }
 
 /**

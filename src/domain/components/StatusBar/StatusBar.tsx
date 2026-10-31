@@ -8,7 +8,7 @@ import './StatusBar.scss';
 
 /** "SCALE X ×1.420": what the transform has reached so far. */
 function modalLabel(modal: ModalTransform): string {
-  const kind = modal.kind.toUpperCase();
+  const kind = modal.alongNormals ? 'EXTRUDE ALONG NORMALS' : modal.kind.toUpperCase();
   const axis = modal.axis ? ` ${modal.axis.toUpperCase()}` : '';
   if (modal.typed) return `${kind}${axis} ${modal.typed}`;
 

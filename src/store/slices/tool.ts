@@ -58,6 +58,12 @@ const OFFSET_OPERATORS = {
     refusal: 'Select faces or edges to extrude',
     ready: (mesh: BMesh) => mesh.selectedFaces().length > 0 || mesh.selectedEdges().length > 0,
   },
+  // Faces only: an edge has no normal of its own to be pushed out along.
+  extrudeAlongNormals: {
+    label: 'Extruding along normals',
+    refusal: 'Select faces to extrude along their normals',
+    ready: (mesh: BMesh) => mesh.selectedFaces().length > 0,
+  },
 } as const;
 
 /** The order V steps through, and the order the select tool's menu lists. */
@@ -91,8 +97,12 @@ export interface ToolSlice {
   setAutoMerge: (patch: Partial<AutoMergeSettings>) => void;
   setSlidePreview: (preview: SlidePreview | null) => void;
   beginSlide: () => void;
-  beginOffset: (kind: 'bevel' | 'inset' | 'extrude') => void;
-  beginModal: (kind: ModalTransform['kind'], element?: ModalTransform['element']) => void;
+  beginOffset: (kind: keyof typeof OFFSET_OPERATORS) => void;
+  beginModal: (
+    kind: ModalTransform['kind'],
+    element?: ModalTransform['element'],
+    alongNormals?: boolean,
+  ) => void;
   updateModal: (patch: Partial<ModalTransform>) => void;
   endModal: (status?: string) => void;
   setSelectExtend: (extend: boolean) => void;
@@ -269,13 +279,18 @@ export const createToolSlice: StateCreator<
       return;
     }
 
+    if (kind === 'extrudeAlongNormals') {
+      get().beginModal('extrude', undefined, true);
+      return;
+    }
+
     // Edges have no region normal to run along, so an extrude of them follows
     // the pointer freely, the way a move does, and takes an axis the same way.
     const freeEdges = kind === 'extrude' && object.mesh.selectedFaces().length === 0;
     get().beginModal(kind, freeEdges ? 'edge' : undefined);
   },
 
-  beginModal: (kind, element) => {
+  beginModal: (kind, element, alongNormals) => {
     // A turn or a scale about the 3D cursor swings the selection round a point
     // that may be nowhere near it, which looks like the object flying off until
     // you know the pivot is set that way. Said here because this is the moment
@@ -284,18 +299,20 @@ export const createToolSlice: StateCreator<
     const about = orbiting ? ' about the 3D cursor' : '';
     const ending = kind === 'knife' ? 'Esc to cancel' : 'click or Enter to confirm, Esc to cancel';
     const hint = kind === 'extrude' && element === 'edge' ? MODAL_HINTS.move : MODAL_HINTS[kind];
+    const name = alongNormals ? 'EXTRUDE ALONG NORMALS' : kind.toUpperCase();
 
     set({
       modal: {
         kind,
         element,
+        alongNormals,
         axis: null,
         excludeAxis: false,
         typed: '',
         // A scale of nothing is 1, and the status bar reads this out live.
         value: kind === 'scale' ? { x: 1, y: 1, z: 1 } : { x: 0, y: 0, z: 0 },
       },
-      status: `${kind.toUpperCase()}${about}: ${hint}, ${ending}`,
+      status: `${name}${about}: ${hint}, ${ending}`,
     });
   },
 

@@ -231,6 +231,39 @@ describe('Viewport', () => {
     ]);
   });
 
+  it('drags an extrude along normals out with each face on its own normal', () => {
+    store().addPrimitive('cube');
+    poseAt(10);
+    store().setMode('edit');
+    store().setSelectMode('face');
+    const mesh = store().objects[0].mesh;
+    const back = Math.min(...[...mesh.verts.values()].map((vert) => vert.co.z));
+    mesh.deselectAll();
+    for (const face of mesh.faces.values()) {
+      face.selected = face.normal.y > 0.99 || face.normal.z > 0.99;
+    }
+    mesh.flushSelection('face');
+    const view = mount();
+    frame(view);
+    const canvas = (view as unknown as { canvas: HTMLCanvasElement }).canvas;
+    const move = (y: number) =>
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: SIZE / 2, clientY: y }));
+
+    store().beginOffset('extrudeAlongNormals');
+    move(SIZE / 2);
+    move(SIZE / 2 - 100);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    const params = store().lastOperator?.params;
+    expect(params).toMatchObject({ alongNormals: true });
+    expect(params?.offset).toBeGreaterThan(0);
+    expect(store().historyUndo[0]).toBe('Extrude along normals');
+    // The top rises straight up, so its back edge stays over the cube's back.
+    // Taken along the two faces' average, it would have leant forward with them.
+    const moved = store().objects[0].mesh.selectedVerts();
+    expect(Math.min(...moved.map((vert) => vert.co.z))).toBeCloseTo(back);
+  });
+
   it('keeps the target in view at the furthest the orbit zooms out', () => {
     store().addPrimitive('cube');
     poseAt(MAX_ORBIT_DISTANCE);

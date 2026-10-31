@@ -139,6 +139,9 @@ export function useKeymap(): void {
         case 'extrude':
           state.beginOffset('extrude');
           break;
+        case 'extrudeAlongNormals':
+          state.beginOffset('extrudeAlongNormals');
+          break;
         case 'inset':
           state.beginOffset('inset');
           break;

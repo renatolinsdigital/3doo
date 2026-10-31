@@ -150,7 +150,8 @@ export const OPERATOR_SPECS: readonly OperatorSpec[] = [
       {
         name: 'alongNormals',
         value: boolean,
-        description: 'Move each vertex along its own normal. Default false.',
+        description:
+          'Push each face out along its own normal, keeping the region joined. Faces only, and individual already does it face by face. Default false.',
       },
     ],
   },

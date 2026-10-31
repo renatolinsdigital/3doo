@@ -413,7 +413,7 @@ describe('App shell', () => {
     const dialog = screen.getByRole('dialog', { name: 'KEYBOARD SHORTCUTS' });
     // Matched on the operator rather than the whole label: what is being
     // checked is that the overlay lists the keymap, not how a row is worded.
-    expect(within(dialog).getByText(/^Extrude/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/^Extrude:/)).toBeInTheDocument();
   });
 
   it('adds a modifier and renders it in the stack', async () => {

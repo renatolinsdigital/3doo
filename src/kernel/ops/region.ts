@@ -60,7 +60,7 @@ export function analyseRegion(mesh: BMesh, faces: readonly Face[]): RegionShell 
 
 /**
  * Detaches a face region from the surrounding mesh and stitches walls along the
- * boundary. `offsetFor` positions each duplicated vertex.
+ * boundary. `offsetFor` says how far each of the region's vertices moves.
  *
  * Extrude and region inset are the same topological edit (only the placement
  * rule differs), so both go through here.
@@ -80,6 +80,18 @@ export function detachRegion(
     vertMap.set(vert.id, duplicate);
     newVerts.push(duplicate);
   }
+
+  // A vertex with region faces all the way round it has nothing outside to
+  // let go of, so it is not duplicated. It still travels with its faces, or an
+  // extrude lifts them and leaves them pinned down to it.
+  const interior = new Map<number, Vert>();
+  for (const face of faces) {
+    for (const vert of mesh.faceVerts(face)) {
+      if (!vertMap.has(vert.id)) interior.set(vert.id, vert);
+    }
+  }
+  const moves = [...interior.values()].map((vert) => ({ vert, offset: offsetFor(vert) }));
+  for (const { vert, offset } of moves) vert.co = add(vert.co, offset);
 
   const rebuilt = faces.map((face) => ({
     ring: mesh.faceVerts(face).map((vert) => vertMap.get(vert.id) ?? vert),

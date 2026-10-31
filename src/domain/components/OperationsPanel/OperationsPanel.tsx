@@ -40,7 +40,7 @@ export function OperationsPanel() {
         <Toggle
           label="INDIVIDUAL"
           checked={extrudeIndividual}
-          hint="Extrude each selected face along its own normal"
+          hint="Extrude each selected face on its own, apart from its neighbours"
           onChange={setExtrudeIndividual}
         />
         <Button
@@ -54,6 +54,18 @@ export function OperationsPanel() {
           }
           onClick={() =>
             exec('extrude', { offset: extrudeOffset, individual: extrudeIndividual }, 'Extrude')
+          }
+        />
+        <Button
+          label="EXTRUDE ALONG NORMALS"
+          disabled={selection.faces === 0}
+          hint={
+            selection.faces > 0
+              ? 'Push each selected face out along its own normal, keeping them joined (Shift+E)'
+              : 'Extruding along normals pushes faces out, so select some first (Shift+E)'
+          }
+          onClick={() =>
+            exec('extrude', { offset: extrudeOffset, alongNormals: true }, 'Extrude along normals')
           }
         />
       </FieldRow>

@@ -28,7 +28,7 @@ function button(name: string) {
   return screen.getByRole('button', { name });
 }
 
-const OPERATIONS = ['EXTRUDE', 'INSET', 'BEVEL'];
+const OPERATIONS = ['EXTRUDE', 'EXTRUDE ALONG NORMALS', 'INSET', 'BEVEL'];
 
 describe('OperationsPanel', () => {
   beforeEach(() => {
@@ -80,6 +80,40 @@ describe('OperationsPanel', () => {
     await userEvent.click(button('BEVEL'));
 
     expect(exec).toHaveBeenCalledWith('bevel', { width: 0.35, segments: 1 }, 'Bevel');
+  });
+
+  it('extrudes along normals by the offset the field is set to', async () => {
+    const exec = vi.fn();
+    useEditorStore.setState({ exec });
+    act(() => {
+      activeMesh().selectAll();
+      useEditorStore.getState().touchMesh();
+    });
+    render(<OperationsPanel />);
+
+    const offset = screen.getByLabelText('OFFSET');
+    await userEvent.clear(offset);
+    await userEvent.type(offset, '0.25{Enter}');
+    await userEvent.click(button('EXTRUDE ALONG NORMALS'));
+
+    expect(exec).toHaveBeenCalledWith(
+      'extrude',
+      { offset: 0.25, alongNormals: true },
+      'Extrude along normals',
+    );
+  });
+
+  it('keeps extrude along normals for faces, leaving edges to the plain extrude', () => {
+    act(() => {
+      const mesh = activeMesh();
+      for (const vert of mesh.verts.values()) vert.selected = vert.co.y > 0 && vert.co.z > 0;
+      mesh.flushSelection('vertex');
+      useEditorStore.getState().touchMesh();
+    });
+    render(<OperationsPanel />);
+
+    expect(button('EXTRUDE')).not.toHaveAttribute('aria-disabled');
+    expect(button('EXTRUDE ALONG NORMALS')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('still shows the hint of a disabled operation, saying what to select', () => {

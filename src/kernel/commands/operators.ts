@@ -278,7 +278,8 @@ export const OPERATORS: Record<string, OperatorHandler> = {
       for (const face of result.faces) face.selected = true;
       mesh.flushSelection('face');
       mesh.flushSelection(selectMode);
-      return { status: `Extruded ${faces.length} face(s) by ${offset}` };
+      const along = alongNormals && !individual ? ' along their normals' : '';
+      return { status: `Extruded ${faces.length} face(s) by ${offset}${along}` };
     }
 
     if (edges.length > 0) {

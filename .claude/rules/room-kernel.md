@@ -50,6 +50,9 @@ both lists match), then a button or key through `store.exec`.
   points on a straight side, or extrude walls round them.
 - `ops/fill.ts`: a fill round a sheet's whole outline once folded a face back
   over the mesh.
+- `detachRegion` (`ops/region.ts`) duplicates only vertices touching the
+  outside, so interior ones are moved in place by the same `offsetFor`; once
+  they were not, and every region extrude and inset depth sagged to them.
 - `mesh/triangulate.ts`: a concave quad splits through its folded corner.
 - Edit-mode handles are world-aligned and the mesh is in object space.
   Offsets go through the object's whole frame (`inverseTransformOffset` in

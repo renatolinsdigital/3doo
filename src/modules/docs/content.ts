@@ -587,7 +587,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
     blocks: [
       {
         kind: 'prose',
-        text: 'The edit-mode operations live in three panels. OPERATIONS adds geometry (extrude, inset, bevel). LOOP OPERATIONS works along edge loops (loop cut, subdivide, relax, circle, space). TOPOLOGY joins, welds, cleans up, widens the selection or separates it into an object of its own. Most operations have a shortcut. A button is disabled when the current selection cannot feed it, and its hint says what to select instead.',
+        text: 'The edit-mode operations live in three panels. OPERATIONS adds geometry (extrude, extrude along normals, inset, bevel). LOOP OPERATIONS works along edge loops (loop cut, subdivide, relax, circle, space). TOPOLOGY joins, welds, cleans up, widens the selection or separates it into an object of its own. Most operations have a shortcut. A button is disabled when the current selection cannot feed it, and its hint says what to select instead.',
       },
       {
         kind: 'table',
@@ -595,7 +595,11 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'Extrude (E)',
-            'Pulls the selected faces or edges out into new geometry. INDIVIDUAL extrudes each face along its own normal instead of as one region.',
+            'Pulls the selected faces or edges out into new geometry. INDIVIDUAL extrudes each face along its own normal instead of as one region, so each comes away from its neighbours.',
+          ],
+          [
+            'Extrude along normals (Shift+E)',
+            'Pushes each selected face out along its own normal instead of moving them all one way, and keeps them joined as one region. Every face ends up OFFSET away from where it was: the top of a box rises straight up, a band of faces round a cylinder swells into a thicker band, and a patch of a sphere lifts into an even shell. Where two selected faces meet at an angle, the corner between them travels further, so both arrive the full distance and the edge stays crisp. Faces outside the selection have no say in the direction. It needs faces, since an edge has no normal of its own to follow. A negative OFFSET sinks the faces in instead. The button sits under EXTRUDE in the OPERATIONS panel and uses the same OFFSET.',
           ],
           [
             'Inset (I)',
@@ -673,7 +677,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'prose',
-        text: 'E, I and Ctrl+B take their distance from the pointer, so you see the shape before you commit to it:',
+        text: 'E, Shift+E, I and Ctrl+B take their distance from the pointer, so you see the shape before you commit to it:',
       },
       {
         kind: 'steps',
@@ -690,6 +694,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           [
             'Extrude (E)',
             'Faces: along the dashed line drawn through the selection. Only travel along that line counts, so the pointer can wander off it. Pull back past the start to sink the region into the surface instead of raising it. Edges: anywhere, as a move does. Press X, Y or Z to keep the new edges on that axis, and the same key again to free them. The new edges stay selected, so E again carries the strip on.',
+          ],
+          [
+            'Extrude along normals (Shift+E)',
+            'Along the dashed line, as for E. The line runs along the average normal of the selection, and the distance you drag along it is how far each face travels along its own. Pull back past the start to sink the faces in. X, Y and Z do nothing here: every face already has its own direction.',
           ],
           [
             'Inset (I)',
