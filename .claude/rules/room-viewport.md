@@ -21,6 +21,10 @@ by React. Depth: `docs/rendering.md` (camera, gizmo, picking).
   the drag code relies on, so an upgrade that changes it fails loudly.
 - A drag test must compare the object against the pointer, not the handle:
   the drift bug moved the handle along with the object.
+- A gesture's key and pointer listeners sit on the window, so `dispose` calls
+  off whatever is in progress (`finishKnife`, `finishModal`). A disposed
+  viewport once swallowed the next viewport's Enter, and only showed up as a
+  test that failed after the one before it.
 
 ## The gizmo
 

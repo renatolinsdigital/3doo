@@ -66,6 +66,7 @@ function previewSlide(mesh: BMesh, way: SlideWay, distance: number, scale: Vec3)
 export function TopologyPanel() {
   const exec = useEditorStore((state) => state.exec);
   const separateSelection = useEditorStore((state) => state.separateSelection);
+  const separateByLoop = useEditorStore((state) => state.separateByLoop);
   const openDialog = useEditorStore((state) => state.openDialog);
   const proportional = useEditorStore((state) => state.proportional);
   const setProportional = useEditorStore((state) => state.setProportional);
@@ -264,68 +265,81 @@ export function TopologyPanel() {
         />
       </FieldRow>
 
-      <FieldRow legend="SELECTION" columns={2}>
-        <Button
-          label="GROW"
-          disabled={selection.verts === 0}
-          hint={
-            selection.verts > 0
-              ? 'Extend the selection to adjacent geometry (])'
-              : 'Select some geometry for the selection to grow out from (])'
-          }
-          onClick={() => exec('growSelection', {}, 'Grow selection')}
-        />
-        <Button
-          label="SHRINK"
-          disabled={selection.verts === 0}
-          hint={
-            selection.verts > 0
-              ? 'Remove the border from the current selection ([)'
-              : 'Nothing is selected for the selection to shrink back from ([)'
-          }
-          onClick={() => exec('shrinkSelection', {}, 'Shrink selection')}
-        />
-        <Button
-          label="EDGE LOOP"
-          disabled={!edgeLoopAvailable}
-          hint={
-            !edgeMode
-              ? 'Edge loops run along edges, so switch to edge select mode (2)'
-              : selection.edges < 2
-                ? 'Select two connected edges for the loop to run along (Alt+click)'
-                : !edgeLoopAvailable
-                  ? 'Those edges do not meet: a loop is named by two that share a vertex'
-                  : 'Extend the selection along the whole loop those edges sit in'
-          }
-          onClick={() => exec('selectEdgeLoop', {}, 'Select edge loop')}
-        />
-        <Button
-          label="FACE LOOP"
-          disabled={!faceLoopAvailable}
-          hint={
-            !faceMode
-              ? 'Face loops run through faces, so switch to face select mode (3)'
-              : selection.faces < 2
-                ? 'Select two adjacent faces for the loop to run through (Alt+L)'
-                : !faceLoopAvailable
-                  ? 'Those faces do not touch: a loop is named by two that share an edge (Alt+L)'
-                  : 'Extend the selection along the whole loop those faces sit in (Alt+L)'
-          }
-          onClick={() => exec('selectFaceLoop', {}, 'Select face loop')}
-        />
-        <Button
-          label="SEPARATE SELECTED"
-          className="topology__wide"
-          disabled={selection.faces === 0 || selection.faces === totalFaces}
-          hint={
-            selection.faces === 0
-              ? 'Select the faces to move into an object of their own'
-              : selection.faces === totalFaces
-                ? 'Every face is selected, so nothing would be left behind. Deselect the faces that should stay'
-                : 'Move the selected faces into a new object, taking them out of this one'
-          }
-          onClick={separateSelection}
-        />
+      <FieldRow legend="SELECTION" columns={1}>
+        <div className="topology__selection-buttons">
+          <Button
+            label="GROW"
+            disabled={selection.verts === 0}
+            hint={
+              selection.verts > 0
+                ? 'Extend the selection to adjacent geometry (])'
+                : 'Select some geometry for the selection to grow out from (])'
+            }
+            onClick={() => exec('growSelection', {}, 'Grow selection')}
+          />
+          <Button
+            label="SHRINK"
+            disabled={selection.verts === 0}
+            hint={
+              selection.verts > 0
+                ? 'Remove the border from the current selection ([)'
+                : 'Nothing is selected for the selection to shrink back from ([)'
+            }
+            onClick={() => exec('shrinkSelection', {}, 'Shrink selection')}
+          />
+          <Button
+            label="EDGE LOOP"
+            disabled={!edgeLoopAvailable}
+            hint={
+              !edgeMode
+                ? 'Edge loops run along edges, so switch to edge select mode (2)'
+                : selection.edges < 2
+                  ? 'Select two connected edges for the loop to run along (Alt+click)'
+                  : !edgeLoopAvailable
+                    ? 'Those edges do not meet: a loop is named by two that share a vertex'
+                    : 'Extend the selection along the whole loop those edges sit in'
+            }
+            onClick={() => exec('selectEdgeLoop', {}, 'Select edge loop')}
+          />
+          <Button
+            label="FACE LOOP"
+            disabled={!faceLoopAvailable}
+            hint={
+              !faceMode
+                ? 'Face loops run through faces, so switch to face select mode (3)'
+                : selection.faces < 2
+                  ? 'Select two adjacent faces for the loop to run through (Alt+L)'
+                  : !faceLoopAvailable
+                    ? 'Those faces do not touch: a loop is named by two that share an edge (Alt+L)'
+                    : 'Extend the selection along the whole loop those faces sit in (Alt+L)'
+            }
+            onClick={() => exec('selectFaceLoop', {}, 'Select face loop')}
+          />
+          <Button
+            label="SEPARATE SELECTED"
+            disabled={selection.faces === 0 || selection.faces === totalFaces}
+            hint={
+              selection.faces === 0
+                ? 'Select the faces to move into an object of their own'
+                : selection.faces === totalFaces
+                  ? 'Every face is selected, so nothing would be left behind. Deselect the faces that should stay'
+                  : 'Move the selected faces into a new object, taking them out of this one'
+            }
+            onClick={separateSelection}
+          />
+          <Button
+            label="SEPARATE BY LOOP"
+            disabled={faceMode || selection.edges === 0}
+            hint={
+              faceMode
+                ? 'Separating by loop cuts along edges, so switch to edge select mode (2)'
+                : selection.edges === 0
+                  ? 'Select an edge loop that runs all the way round, for the object to come apart along'
+                  : 'Cut the object apart along the selected edge loop and move the smaller side into a new object. Edges that stop short of a loop cut nothing off'
+            }
+            onClick={separateByLoop}
+          />
+        </div>
       </FieldRow>
 
       <FieldRow legend="SLIDE" columns={1}>

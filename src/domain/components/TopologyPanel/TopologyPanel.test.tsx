@@ -19,6 +19,8 @@ function editBox() {
   store.resetScene();
   store.addPrimitive('cube');
   store.setMode('edit');
+  // `resetScene` keeps the select mode, which the test before may have changed.
+  store.setSelectMode('vertex');
 }
 
 function button(name: string) {
@@ -48,6 +50,7 @@ describe('TopologyPanel', () => {
       'EDGE LOOP',
       'FACE LOOP',
       'SEPARATE SELECTED',
+      'SEPARATE BY LOOP',
       'VERTEX SLIDE',
       'EDGE SLIDE',
       'MAKE PLANAR',
@@ -143,6 +146,45 @@ describe('TopologyPanel', () => {
 
     expect(useEditorStore.getState().objects).toHaveLength(2);
     expect(activeMesh().faces.size).toBe(5);
+  });
+
+  it('separates the object in two along the selected edge loop', async () => {
+    render(<TopologyPanel />);
+
+    act(() => {
+      const store = useEditorStore.getState();
+      store.setSelectMode('edge');
+      const mesh = activeMesh();
+      mesh.deselectAll();
+      for (const edge of mesh.edges.values()) {
+        if (edge.v0.co.y > 0 && edge.v1.co.y > 0) edge.selected = true;
+      }
+      mesh.flushSelection('edge');
+      store.touchMesh();
+    });
+
+    expect(button('SEPARATE BY LOOP')).not.toHaveAttribute('aria-disabled');
+
+    await userEvent.click(button('SEPARATE BY LOOP'));
+
+    // The four edges round the top cut its face off the other five.
+    expect(useEditorStore.getState().objects).toHaveLength(2);
+    expect(activeMesh().faces.size).toBe(5);
+  });
+
+  it('keeps separate by loop off in face select mode', () => {
+    render(<TopologyPanel />);
+
+    act(() => {
+      const store = useEditorStore.getState();
+      store.setSelectMode('face');
+      const mesh = activeMesh();
+      [...mesh.faces.values()][0].selected = true;
+      mesh.flushSelection('face');
+      store.touchMesh();
+    });
+
+    expect(button('SEPARATE BY LOOP')).toHaveAttribute('aria-disabled', 'true');
   });
 
   it('enables connect on two or more vertices', () => {

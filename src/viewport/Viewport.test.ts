@@ -183,6 +183,54 @@ describe('Viewport', () => {
     expect(helper.visible).toBe(false);
   });
 
+  it('calls off a modal scale when it is disposed partway through', () => {
+    store().addPrimitive('cube');
+    const view = mount();
+    store().beginModal('scale');
+
+    view.dispose();
+    viewport = null;
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+    window.dispatchEvent(enter);
+
+    // Only a knife cut was called off. A scale, a turn, a slide or an offset
+    // drag left the store holding the modal and its listeners on the window,
+    // where they swallowed the next Enter, Esc or click for a viewport that
+    // was gone, and the next viewport's gesture never heard its confirm.
+    expect(store().modal).toBeNull();
+    expect(enter.defaultPrevented).toBe(false);
+  });
+
+  it('puts a confirmed extrude drag up as a success toast', () => {
+    store().addPrimitive('cube');
+    poseAt(10);
+    store().setMode('edit');
+    store().setSelectMode('face');
+    const mesh = store().objects[0].mesh;
+    mesh.deselectAll();
+    for (const face of mesh.faces.values()) face.selected = face.normal.y > 0.99;
+    mesh.flushSelection('face');
+    const view = mount();
+    frame(view);
+    useEditorStore.setState({ toasts: [] });
+    const canvas = (view as unknown as { canvas: HTMLCanvasElement }).canvas;
+    const move = (y: number) =>
+      canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: SIZE / 2, clientY: y }));
+
+    store().beginModal('extrude');
+    move(SIZE / 2);
+    move(SIZE / 2 - 100);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+    // E runs the operator itself rather than through the store, so it said
+    // what it did in the status bar alone while a button for the same extrude
+    // raised a toast.
+    expect(store().status).toMatch(/^Extruded 1 face/);
+    expect(store().toasts.map(({ variant, message }) => [variant, message])).toEqual([
+      ['success', store().status],
+    ]);
+  });
+
   it('keeps the target in view at the furthest the orbit zooms out', () => {
     store().addPrimitive('cube');
     poseAt(MAX_ORBIT_DISTANCE);

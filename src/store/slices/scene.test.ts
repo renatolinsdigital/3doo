@@ -213,6 +213,7 @@ describe('booleans against an unapplied modifier stack', () => {
   }
 
   const names = () => useEditorStore.getState().objects.map((object) => object.name);
+  const variants = () => useEditorStore.getState().toasts.map((toast) => toast.variant);
 
   it('refuses while the active object still has a live stack', async () => {
     const { box } = pair();
@@ -263,7 +264,8 @@ describe('booleans against an unapplied modifier stack', () => {
     await useEditorStore.getState().booleanWithSelected('union');
 
     expect(names()).toEqual(['CUBE']);
-    expect(useEditorStore.getState().toasts).toHaveLength(0);
+    // Only the toast saying the union went through: nothing held it up.
+    expect(variants()).toEqual(['success']);
   });
 
   it('goes ahead once the stack has been applied', async () => {
@@ -277,7 +279,8 @@ describe('booleans against an unapplied modifier stack', () => {
 
     // The cutter is consumed, so one object is left holding the result.
     expect(names()).toEqual(['CUBE']);
-    expect(useEditorStore.getState().toasts).toHaveLength(0);
+    // One for the apply and one for the union: nothing held either up.
+    expect(variants()).toEqual(['success', 'success']);
   });
 });
 

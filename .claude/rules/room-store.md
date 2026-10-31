@@ -22,6 +22,12 @@ preferences. Depth: `docs/state-management.md`.
   `transact` makes a batch one step and rolls back on a throw.
 - A refused or cancelled action must not drop a step it did not record
   (`discardHistory` once took the step underneath).
+- An operation that splits, joins, cuts, deletes or reshapes ends with
+  `announce(get())`, which raises its status as a success toast. `exec` does
+  it for every operator outside `SELECTION_OPERATORS`. It is quiet inside
+  `transact`, so a script raises one toast, not one per step. Adding objects
+  stays quiet: the opening cube goes through `addPrimitive`.
+- `resetScene` keeps the toasts on screen.
 - Assets sit in `state.assets` by id, never inside an object, so history
   never copies image bytes.
 - Ids carry a per-page-load stamp. Counters restart on reload; without the
@@ -40,6 +46,7 @@ preferences. Depth: `docs/state-management.md`.
 
 ## Tests
 
-`resetScene()` in `beforeEach`. Wrap a store update made while a component is
-mounted in `act`. Undo restores through the project format, so test undo
-across it, not just the action.
+`resetScene()` in `beforeEach`. It keeps the select mode, so a test that
+switches it leaks into the next: set the mode a test relies on. Wrap a store
+update made while a component is mounted in `act`. Undo restores through the
+project format, so test undo across it, not just the action.

@@ -60,4 +60,5 @@ touch a long press stands in for hover and right-click.
 
 Testing Library against the real component; `App.test.tsx` mounts the whole
 shell with the viewport mocked. A store update made while mounted goes in
-`act`.
+`act`. A toast has the `status` role too, so read the status bar's line through
+`statusLine` there, not `getByRole('status')`.

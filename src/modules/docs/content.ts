@@ -395,6 +395,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Status bar',
             'Scene and selection counts, the last operation that ran, and the hint line during a modal transform. A small floppy disk turns once each time autosave writes a copy.',
           ],
+          [
+            'Toasts',
+            'Pop up in the bottom right corner for three seconds. One marked ✓ says an operation went through: an edit-mode operation from a button, a key or a menu, an extrude, inset or bevel drag, or an object-mode one that splits, joins, cuts, deletes, applies or moves an origin. Selecting, and moving, turning or scaling by hand, raise none, since the viewport already shows what they did. Nor does each operation inside a script: the run says what it did in one toast at the end. A warning says why an operation did nothing.',
+          ],
         ],
       },
       {
@@ -427,7 +431,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ['Join objects', 'Select several and press M to merge them into the active one.'],
           [
             'Separate',
-            'P splits the loose parts of a mesh into an object each. To split off faces that are still attached, use SEPARATE SELECTED in edit mode.',
+            'P splits the loose parts of a mesh into an object each. To split off faces that are still attached, use SEPARATE SELECTED or SEPARATE BY LOOP in edit mode.',
           ],
           [
             'Cut in half',
@@ -648,6 +652,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           [
             'Separate selected',
             'In the SELECTION row of the TOPOLOGY panel. Moves the selected faces into a new object, named after this one with .PART on the end, and takes them out of this one. The vertices along the border go to both, so the two come apart there and each is left with an open edge. The new object keeps the material slots and modifiers, and gets its origin on its own middle. You stay in edit mode on the original.',
+          ],
+          [
+            'Separate by loop',
+            'In the SELECTION row of the TOPOLOGY panel. Select an edge loop in edge or vertex select mode and the object comes apart along it: the side with fewer faces moves into a new object, named after this one with .PART on the end. The loop goes to both sides, so each is left with an open edge where it ran, still selected, and F fills it straight away. Edges that stop short of running all the way round cut nothing off, and the status bar says so. With two loops selected the mesh falls into three pieces: the biggest stays and the other two leave together in the one new object. Pieces of the mesh the loop never runs through stay too. The new object keeps the material slots and modifiers, and gets its origin on its own middle. You stay in edit mode on the original.',
           ],
           [
             'Triangulate (Alt+T) / tris to quads (Alt+J)',

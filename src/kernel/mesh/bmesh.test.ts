@@ -14,6 +14,7 @@ import {
   cloneMesh,
   deserializeMesh,
   serializeMesh,
+  splitAlongSelectedEdges,
   splitLooseParts,
   splitSelectedFaces,
 } from './serialize';
@@ -334,6 +335,65 @@ describe('serialization', () => {
     expect(rest.faces.size).toBe(0);
     expect(rest.edges.size).toBe(1);
     expect(rest.verts.size).toBe(3);
+  });
+
+  /** Selects the ring of edges that runs round a UV sphere at height `y`. */
+  function selectRing(mesh: BMesh, y: number, count = Infinity): void {
+    mesh.deselectAll();
+    const atHeight = (vert: { co: { y: number } }) => Math.abs(vert.co.y - y) < 1e-6;
+    let selected = 0;
+    for (const edge of mesh.edges.values()) {
+      if (selected < count && atHeight(edge.v0) && atHeight(edge.v1)) {
+        edge.selected = true;
+        selected++;
+      }
+    }
+    mesh.flushSelection('edge');
+  }
+
+  it('splits along a selected loop, moving the smaller side out', () => {
+    // Four rings of eight: the loop below the top cap cuts eight triangles off
+    // a sphere of thirty-two faces.
+    const mesh = createUVSphere(0.5, 8, 4);
+    selectRing(mesh, Math.cos(Math.PI / 4) * 0.5);
+
+    const split = splitAlongSelectedEdges(mesh);
+    if (!split) throw new Error('The loop cut nothing off');
+    const [rest, cut] = split;
+
+    expect(rest.faces.size).toBe(24);
+    expect(cut.faces.size).toBe(8);
+    // The ring's eight vertices go to both sides.
+    expect(rest.verts.size).toBe(25);
+    expect(cut.verts.size).toBe(9);
+    // The loop stays selected on each, as the open border it now is.
+    expect(rest.selectedEdges()).toHaveLength(8);
+    expect(cut.selectedEdges()).toHaveLength(8);
+    expect(rest.validate()).toEqual([]);
+    expect(cut.validate()).toEqual([]);
+    expect(mesh.faces.size).toBe(32);
+  });
+
+  it('cuts nothing off when the selected edges stop short of a loop', () => {
+    const mesh = createUVSphere(0.5, 8, 4);
+    selectRing(mesh, Math.cos(Math.PI / 4) * 0.5, 7);
+
+    expect(splitAlongSelectedEdges(mesh)).toBeNull();
+  });
+
+  it('leaves a shell the loop never runs through with the rest', () => {
+    const mesh = createUVSphere(0.5, 8, 4);
+    const quad = [vec3(5, 0, 0), vec3(6, 0, 0), vec3(6, 0, 1), vec3(5, 0, 1)];
+    mesh.addFace(quad.map((co) => mesh.addVert(co)));
+    selectRing(mesh, Math.cos(Math.PI / 4) * 0.5);
+
+    const split = splitAlongSelectedEdges(mesh);
+    if (!split) throw new Error('The loop cut nothing off');
+
+    // The quad is a piece of its own and smaller than the cap, but the loop
+    // never touched it, so it is not what the cut took away.
+    expect(split[0].faces.size).toBe(25);
+    expect(split[1].faces.size).toBe(8);
   });
 
   it('produces an independent copy', () => {

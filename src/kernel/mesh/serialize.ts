@@ -228,6 +228,67 @@ export function splitSelectedFaces(mesh: BMesh): [rest: BMesh, selected: BMesh] 
 }
 
 /**
+ * Splits a mesh along its selected edges: the first mesh holds the rest, the
+ * second what the edges cut off. The faces fall into pieces that meet only
+ * across selected edges; in each shell the edges cut, the piece with the most
+ * faces stays and the others go. A shell they never cut stays whole, so a
+ * character's separate eyes do not leave with the hand cut off its arm.
+ *
+ * Both sides keep the selection, which leaves the loop selected round each
+ * new opening. Null when nothing is cut off: edges that stop short of running
+ * all the way round leave the faces either side joined round their ends.
+ */
+export function splitAlongSelectedEdges(mesh: BMesh): [rest: BMesh, cut: BMesh] | null {
+  const pieceOf = new Map<Face, number>();
+  const sizes: number[] = [];
+  for (const start of mesh.faces.values()) {
+    if (pieceOf.has(start)) continue;
+    const piece = sizes.length;
+    const stack = [start];
+    pieceOf.set(start, piece);
+    let size = 0;
+    for (let face = stack.pop(); face; face = stack.pop()) {
+      size++;
+      for (const loop of mesh.faceLoops(face)) {
+        if (loop.edge.selected) continue;
+        for (const next of mesh.edgeFaces(loop.edge)) {
+          if (pieceOf.has(next)) continue;
+          pieceOf.set(next, piece);
+          stack.push(next);
+        }
+      }
+    }
+    sizes.push(size);
+  }
+
+  // Pieces either side of a selected edge are one shell; across the others
+  // they are one piece already.
+  const shell = sizes.map((_, piece) => piece);
+  const find = (piece: number): number => {
+    while (shell[piece] !== piece) piece = shell[piece];
+    return piece;
+  };
+  for (const edge of mesh.edges.values()) {
+    if (!edge.selected) continue;
+    const [first, ...others] = mesh.edgeFaces(edge).map((face) => find(pieceOf.get(face) ?? 0));
+    for (const other of others) shell[other] = first;
+  }
+
+  // The first of two pieces the same size stays, so the outcome follows mesh
+  // order rather than chance.
+  const kept = new Map<number, number>();
+  sizes.forEach((size, piece) => {
+    const root = find(piece);
+    const best = kept.get(root);
+    if (best === undefined || size > sizes[best]) kept.set(root, piece);
+  });
+  const goes = (piece: number): boolean => kept.get(find(piece)) !== piece;
+  if (!sizes.some((_, piece) => goes(piece))) return null;
+
+  return splitFaces(mesh, (face) => goes(pieceOf.get(face) ?? 0));
+}
+
+/**
  * Splits the faces `pick` chooses off a mesh: the first mesh holds the rest,
  * the second the faces chosen. A vertex on the border between them goes into
  * both, so the two come apart there. Wire edges and loose vertices stay with

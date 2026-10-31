@@ -45,6 +45,7 @@ import {
   execOperator,
   flipNormals,
   imagePlaneSize,
+  splitAlongSelectedEdges,
   splitLooseParts,
   splitSelectedFaces,
   inverseMatrix,
@@ -119,6 +120,19 @@ const history = new History(DEFAULT_PREFERENCES.historySize);
  * stands for all of them.
  */
 let historyHold = 0;
+
+/**
+ * Puts the status an operation has just written up as a success toast too.
+ * The status bar sits at the foot of the window, and an operation that leaves
+ * the view looking the same, such as a part split off where it stood, went by
+ * without the user seeing anything happen.
+ *
+ * Quiet inside a transaction: a script runs operations by the hundred and
+ * reports its own outcome once it ends.
+ */
+function announce(state: EditorStore): void {
+  if (historyHold === 0) state.pushToast('success', state.status);
+}
 
 /** The mirror the undo buttons and the history dialog render from. */
 function historyState() {
@@ -493,6 +507,17 @@ const CAGE_OPERATORS: ReadonlySet<string> = new Set([
   'shrinkSelection',
 ]);
 
+/** The operators that only change the selection, which shows what they did. */
+const SELECTION_OPERATORS: ReadonlySet<string> = new Set([
+  'selectAll',
+  'deselectAll',
+  'invertSelection',
+  'selectEdgeLoop',
+  'selectFaceLoop',
+  'growSelection',
+  'shrinkSelection',
+]);
+
 /** How far a new cage stands off the mesh, as a share of the mesh's longest side. */
 const CAGE_MARGIN = 0.1;
 
@@ -788,6 +813,11 @@ export interface SceneSlice {
   separateLooseParts: () => void;
   /** Moves the selected faces of the object in edit mode into an object of their own. */
   separateSelection: () => void;
+  /**
+   * Cuts the object in edit mode apart along its selected edges and moves the
+   * smaller side into an object of its own.
+   */
+  separateByLoop: () => void;
   /** Cuts the active object in two across its own axis, halfway along its bounds. */
   cutInHalf: (axis: Axis) => void;
   /** Deletes the selection, or the objects named: the outliner's row menu names one. */
@@ -1429,6 +1459,7 @@ export const createSceneSlice: StateCreator<
         status: `Merged ${sources.length + 1} objects`,
       };
     });
+    announce(get());
   },
 
   groupSelected: () => {
@@ -1495,6 +1526,7 @@ export const createSceneSlice: StateCreator<
         status: `Deleted ${group.name} and its ${doomed.size} object(s)`,
       };
     });
+    announce(get());
   },
 
   joinGroup: (id) => {
@@ -1528,6 +1560,7 @@ export const createSceneSlice: StateCreator<
       // The target is a member, so the folder keeps it and survives.
       status: `Joined ${sources.length + 1} objects of ${group.name}`,
     }));
+    announce(get());
   },
 
   ungroup: (id) => {
@@ -1789,6 +1822,7 @@ export const createSceneSlice: StateCreator<
             : `${BOOLEAN_LABELS[op]} with ${tools.length} object(s)`,
       };
     });
+    announce(get());
   },
 
   /**
@@ -1859,6 +1893,7 @@ export const createSceneSlice: StateCreator<
       meshVersion: state.meshVersion + 1,
       status: `Separated ${parts.length} loose parts`,
     }));
+    announce(get());
   },
 
   /**
@@ -1919,6 +1954,74 @@ export const createSceneSlice: StateCreator<
       meshVersion: state.meshVersion + 1,
       status: `Separated ${selected} face(s) into ${separated.name}`,
     }));
+    announce(get());
+  },
+
+  /**
+   * Cuts the object being edited apart along its selected edges, as
+   * `separateSelection` does with faces: the new object gets the smaller side,
+   * the material slots, the modifier stack and an origin of its own, and the
+   * edited object keeps its origin and stays in edit mode.
+   *
+   * Refused in face select mode, where every edge round the selected faces is
+   * selected too and the cut would take each face off on its own.
+   */
+  separateByLoop: () => {
+    const state = get();
+    const object = activeObject(state);
+    if (!object) return;
+    if (object.locked) {
+      get().noteLockedAttempt(object.id);
+      return;
+    }
+
+    const linked = state.objects.some(
+      (other) => other.id !== object.id && other.mesh === object.mesh,
+    );
+    const split =
+      object.lattice || linked || state.selectMode === 'face'
+        ? null
+        : splitAlongSelectedEdges(object.mesh);
+    if (!split) {
+      const refusal = object.lattice
+        ? CAGE_REFUSAL
+        : linked
+          ? LINKED_MESH_REFUSAL
+          : state.selectMode === 'face'
+            ? 'Separating by loop cuts along edges, so switch to edge select mode (2)'
+            : object.mesh.selectedEdges().length === 0
+              ? 'Select an edge loop to cut the object apart along'
+              : 'The selected edges cut nothing off: select a loop that runs all the way round';
+      set({ status: refusal });
+      get().pushToast('warning', refusal);
+      return;
+    }
+
+    get().recordHistory('Separate by loop');
+
+    const [rest, piece] = split;
+    const separated = recenterOrigin({
+      ...object,
+      id: nextObjectId(),
+      name: `${object.name}.PART`,
+      mesh: piece,
+      transform: structuredClone(object.transform),
+      materials: structuredClone(object.materials),
+      modifiers: structuredClone(object.modifiers),
+      primitive: null,
+    });
+
+    set((state) => ({
+      objects: state.objects.flatMap((candidate) =>
+        candidate.id === object.id
+          ? [{ ...candidate, mesh: rest, primitive: null }, separated]
+          : [candidate],
+      ),
+      selectedObjectIds: [object.id, separated.id],
+      meshVersion: state.meshVersion + 1,
+      status: `Separated ${piece.faces.size} face(s) into ${separated.name}`,
+    }));
+    announce(get());
   },
 
   /**
@@ -1986,6 +2089,7 @@ export const createSceneSlice: StateCreator<
       meshVersion: state.meshVersion + 1,
       status: `Cut ${object.name} in half on ${label}`,
     }));
+    announce(get());
   },
 
   deleteSelected: (ids) => {
@@ -2008,6 +2112,7 @@ export const createSceneSlice: StateCreator<
         status: `Deleted ${targetIds.length} object(s)`,
       };
     });
+    announce(get());
   },
 
   /**
@@ -2069,6 +2174,7 @@ export const createSceneSlice: StateCreator<
       meshVersion: state.meshVersion + 1,
       status: `Applied rotation and scale to ${single.length} object(s)`,
     }));
+    announce(get());
   },
 
   /**
@@ -2123,6 +2229,7 @@ export const createSceneSlice: StateCreator<
       meshVersion: state.meshVersion + 1,
       status: `Origin to geometry on ${moved.size} object(s)`,
     }));
+    announce(get());
   },
 
   setObjectTransform: (id, transform) => {
@@ -2337,6 +2444,7 @@ export const createSceneSlice: StateCreator<
       meshVersion: state.meshVersion + 1,
       status: `Origin to cursor on ${moved.size} object(s)`,
     }));
+    announce(get());
   },
 
   addMaterial: () => {
@@ -2503,6 +2611,7 @@ export const createSceneSlice: StateCreator<
         status: `Applied ${modifier.name} and deleted ${cage.name}`,
       };
     });
+    announce(get());
   },
 
   addLatticeCage: (id) => {
@@ -2684,6 +2793,9 @@ export const createSceneSlice: StateCreator<
         : null,
       lastOperator: { name, label: label ?? name, params },
     }));
+    // A call that recorded no step is one tick of a continuous edit, which
+    // would raise a toast for every move of the pointer.
+    if (record && !SELECTION_OPERATORS.has(name)) announce(get());
     return result;
   },
 

@@ -20,6 +20,11 @@ vi.mock('@viewport/index', async (importOriginal) => ({
   },
 }));
 
+/** The status bar's message line. A toast is a status too, so it is found by where it sits. */
+function statusLine() {
+  return within(screen.getByRole('contentinfo')).getByRole('status');
+}
+
 describe('App shell', () => {
   beforeAll(async () => {
     setOpeningSceneDone(true);
@@ -93,7 +98,7 @@ describe('App shell', () => {
     expect(useEditorStore.getState().objects).toHaveLength(1);
     const outliner = screen.getByRole('region', { name: 'OUTLINER' });
     expect(within(outliner).getByRole('button', { name: 'CUBE' })).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Added CUBE');
+    expect(statusLine()).toHaveTextContent('Added CUBE');
   });
 
   it('arms the move tool on the rail when a primitive is added', async () => {
@@ -141,7 +146,7 @@ describe('App shell', () => {
     await userEvent.click(within(operations).getByRole('button', { name: 'SUBDIVIDE' }));
 
     expect(useEditorStore.getState().objects[0].mesh.faces.size).toBe(24);
-    expect(screen.getByRole('status')).toHaveTextContent('Subdivided');
+    expect(statusLine()).toHaveTextContent('Subdivided');
   });
 
   it('cuts one object out of another from the boolean panel', async () => {
@@ -180,7 +185,7 @@ describe('App shell', () => {
     const cut = useEditorStore.getState().objects[0];
     const box = cut.mesh.boundingBox();
     expect(cut.transform.position.x + box.max.x).toBeCloseTo(0, 5);
-    expect(screen.getByRole('status')).toHaveTextContent('Difference');
+    expect(statusLine()).toHaveTextContent('Difference');
   });
 
   it('undoes from the keyboard', async () => {
@@ -497,7 +502,7 @@ describe('App shell', () => {
     fireEvent.keyDown(window, { key: 'a' });
 
     expect(useEditorStore.getState().selectedObjectIds).toHaveLength(2);
-    expect(screen.getByRole('status')).toHaveTextContent('Selected all 2 object(s)');
+    expect(statusLine()).toHaveTextContent('Selected all 2 object(s)');
   });
 
   it('selects all geometry when pressing A in edit mode', async () => {

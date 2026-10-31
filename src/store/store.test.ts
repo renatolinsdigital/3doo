@@ -46,6 +46,9 @@ function driftMesh(delta: Vec3) {
 describe('editor store', () => {
   beforeEach(() => {
     store().resetScene();
+    // A new scene keeps the toasts on screen, and the operations one test runs
+    // would otherwise be counted by the next.
+    useEditorStore.setState({ toasts: [] });
   });
 
   it('adds a primitive and makes it active', () => {
@@ -1054,6 +1057,220 @@ describe('editor store', () => {
     expect(store().objects).toHaveLength(1);
     expect(activeObject().mesh.faces.size).toBe(6);
     expect(store().status).toMatch(status);
+  });
+
+  /** Selects the ring of edges just below the top of a UV sphere, or `count` of them. */
+  function selectTopRing(count = Infinity) {
+    const mesh = activeObject().mesh;
+    mesh.deselectAll();
+    const pole = mesh.boundingBox().max.y;
+    const height = Math.max(
+      ...[...mesh.verts.values()].map((vert) => vert.co.y).filter((y) => y < pole - 1e-6),
+    );
+    const onRing = (edge: Edge) =>
+      [edge.v0, edge.v1].every((vert) => Math.abs(vert.co.y - height) < 1e-6);
+    let selected = 0;
+    for (const edge of mesh.edges.values()) {
+      if (selected < count && onRing(edge)) {
+        edge.selected = true;
+        selected++;
+      }
+    }
+    mesh.flushSelection('edge');
+  }
+
+  it('separates the object in two along the selected edge loop', () => {
+    store().addPrimitive('uvSphere');
+    const original = activeObject();
+    const faces = original.mesh.faces.size;
+    store().setMode('edit');
+    store().setSelectMode('edge');
+    selectTopRing();
+    const ring = activeObject().mesh.selectedEdges().length;
+
+    store().separateByLoop();
+
+    expect(store().objects).toHaveLength(2);
+    const separated = store().objects.find((object) => object.id !== original.id);
+    if (!separated) throw new Error('Nothing was separated');
+    // The cap above the ring is the smaller side, so it is the one that leaves.
+    expect(separated.mesh.faces.size).toBe(ring);
+    expect(activeObject().mesh.faces.size).toBe(faces - ring);
+    expect(separated.name).toBe(`${original.name}.PART`);
+    expect(separated.mesh.validate()).toEqual([]);
+    expect(activeObject().mesh.selectedEdges()).toHaveLength(ring);
+    expect(store().mode).toBe('edit');
+    expect(store().selectedObjectIds).toEqual([original.id, separated.id]);
+
+    store().undo();
+
+    expect(store().objects).toHaveLength(1);
+    expect(activeObject().mesh.faces.size).toBe(faces);
+  });
+
+  it.each([
+    ['no edge is selected', 'edge', () => activeObject().mesh.deselectAll(), /Select an edge loop/],
+    ['the edges stop short of a loop', 'edge', () => selectTopRing(3), /all the way round/],
+    ['faces are selected', 'face', () => selectTopRing(), /edge select mode/],
+  ] as const)('refuses to separate by loop when %s', (_, mode, select, status) => {
+    store().addPrimitive('uvSphere');
+    const faces = activeObject().mesh.faces.size;
+    store().setMode('edit');
+    store().setSelectMode(mode);
+    select();
+    const before = store().canUndo;
+
+    store().separateByLoop();
+
+    expect(store().objects).toHaveLength(1);
+    expect(activeObject().mesh.faces.size).toBe(faces);
+    expect(store().status).toMatch(status);
+    expect(store().canUndo).toBe(before);
+  });
+
+  function successToasts() {
+    return store()
+      .toasts.filter((toast) => toast.variant === 'success')
+      .map((toast) => toast.message);
+  }
+
+  /** Two cubes 3 m apart, both selected, with the first one active. */
+  function twoCubes() {
+    store().addPrimitive('cube');
+    const first = activeObject().id;
+    store().addPrimitive('cube');
+    const second = activeObject().id;
+    store().setObjectTransform(second, { position: { x: 3, y: 0, z: 0 } });
+    useEditorStore.setState({ selectedObjectIds: [first, second], activeObjectId: first });
+  }
+
+  function groupTwoCubes() {
+    twoCubes();
+    store().groupSelected();
+    return store().groups[0].id;
+  }
+
+  it.each<[string, () => void, () => unknown]>([
+    [
+      'separating the selected faces',
+      () => {
+        store().addPrimitive('cube');
+        store().setMode('edit');
+        selectTopFace();
+      },
+      () => store().separateSelection(),
+    ],
+    [
+      'separating by loop',
+      () => {
+        store().addPrimitive('uvSphere');
+        store().setMode('edit');
+        store().setSelectMode('edge');
+        selectTopRing();
+      },
+      () => store().separateByLoop(),
+    ],
+    [
+      'separating the loose parts',
+      () => {
+        twoCubes();
+        store().mergeSelected();
+      },
+      () => store().separateLooseParts(),
+    ],
+    ['merging objects', twoCubes, () => store().mergeSelected()],
+    ['joining a folder', () => groupTwoCubes(), () => store().joinGroup(store().groups[0].id)],
+    ['deleting a folder', () => groupTwoCubes(), () => store().deleteGroup(store().groups[0].id)],
+    [
+      'a boolean',
+      () => {
+        twoCubes();
+        store().setObjectTransform(store().objects[1].id, { position: { x: 0.5, y: 0, z: 0 } });
+      },
+      () => store().booleanWithSelected('difference'),
+    ],
+    ['cutting in half', () => store().addPrimitive('cube'), () => store().cutInHalf('x')],
+    ['deleting objects', () => store().addPrimitive('cube'), () => store().deleteSelected()],
+    [
+      'applying the transform',
+      () => {
+        store().addPrimitive('cube');
+        store().setObjectTransform(activeObject().id, { scale: { x: 2, y: 2, z: 2 } });
+      },
+      () => store().applyTransformToSelected(),
+    ],
+    [
+      'moving the origin to the geometry',
+      () => {
+        store().addPrimitive('cube');
+        driftMesh(vec3(0, 3, 0));
+      },
+      () => store().originToGeometry(),
+    ],
+    [
+      'moving the origin to the cursor',
+      () => {
+        store().addPrimitive('cube');
+        store().setCursor({ x: 0, y: 1, z: 0 });
+      },
+      () => store().originToCursor(),
+    ],
+    [
+      'applying a modifier',
+      () => {
+        store().addPrimitive('cube');
+        store().addModifier('array');
+      },
+      () => store().applyModifierToMesh(activeObject().modifiers[0].id),
+    ],
+    [
+      'an edit-mode operator',
+      () => {
+        store().addPrimitive('cube');
+        store().setMode('edit');
+        activeObject().mesh.selectAll();
+      },
+      () => store().exec('subdivide', { cuts: 1 }, 'Subdivide'),
+    ],
+  ])('puts %s up as a success toast', async (_, prepare, operate) => {
+    prepare();
+    useEditorStore.setState({ toasts: [] });
+
+    await operate();
+
+    // The status bar was the only place that said so, and an operation that
+    // leaves the view looking the same, such as a part split off where it
+    // stood, went by without the user seeing anything happen.
+    expect(successToasts()).toEqual([store().status]);
+  });
+
+  it.each(['growSelection', 'selectAll', 'deselectAll', 'invertSelection'])(
+    'leaves %s off the toasts, since the selection shows what it did',
+    (name) => {
+      store().addPrimitive('cube');
+      store().setMode('edit');
+      activeObject().mesh.selectAll();
+      useEditorStore.setState({ toasts: [] });
+
+      store().exec(name, {}, name);
+
+      expect(successToasts()).toEqual([]);
+    },
+  );
+
+  it('leaves the operations a script runs off the toasts', async () => {
+    store().addPrimitive('cube');
+    store().setMode('edit');
+    selectTopFace();
+    useEditorStore.setState({ toasts: [] });
+
+    await store().transact('Run script', async () => {
+      store().exec('extrude', { offset: 1 }, 'extrude', { record: false, throws: true });
+      store().separateSelection();
+    });
+
+    expect(store().objects).toHaveLength(2);
+    expect(successToasts()).toEqual([]);
   });
 
   it('cuts the active object in half into two objects that stay where it was', () => {

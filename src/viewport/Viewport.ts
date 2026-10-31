@@ -3005,6 +3005,7 @@ export class Viewport {
     this.modalLine.visible = false;
 
     state.endModal(abandoned ? undefined : (drag.status ?? undefined));
+    if (!abandoned && drag.status) state.pushToast('success', drag.status);
     state.touchMesh();
   }
 
@@ -5021,8 +5022,9 @@ export class Viewport {
     resetViewAxes();
 
     // Called off rather than left open: the store would go on holding the
-    // keyboard for a cut no viewport is drawing any more.
+    // keyboard for a cut or a drag no viewport is drawing any more.
     this.finishKnife(true);
+    this.finishModal(true);
     for (const unsubscribe of this.unsubscribers) unsubscribe();
     this.cancelLongPress();
     this.touchHost?.removeEventListener('pointerdown', this.handleTouchDown, true);
