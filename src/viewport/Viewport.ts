@@ -1287,6 +1287,7 @@ export class Viewport {
             state.overlays.normals,
             state.overlays.faceOrientation,
             state.overlays.nonPlanar,
+            state.overlays.ngons,
             state.overlays.origins,
           ] as const,
         () => this.syncScene(),

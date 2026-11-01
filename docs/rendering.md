@@ -382,6 +382,12 @@ does: the edited mesh for the object in edit mode, which is the one Make
 Planar flattens, and the modifier result everywhere else. It draws over the
 selection wash, so a bent quad reads as bent whether it is picked or not.
 
+**N-gons** washes cyan every face of five corners or more, built by
+`buildNgonTriangles` and drawn exactly as the non-planar wash is: the same
+wash material, the same mesh, split the way `buildSolid` splits it, counted in
+`showsMarks`. The two share a render order, since one marks only quads and the
+other only faces past four corners, so they never lie on the same triangle.
+
 ## Picking
 
 Each element type needs its own strategy:

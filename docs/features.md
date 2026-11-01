@@ -16,7 +16,7 @@ drive them, see [keymap.md](keymap.md).
 | Remesh | A modifier with three methods: voxel quad shell (signed distance field, surface nets, crease and corner constraints), blocks straight off the lattice, and quadric error decimation |
 | 3D cursor | Right-click to place it on a point, vertex, edge or face; snap it to the selection or the selection to it; use it as the transform pivot, as a mirror plane or as the centre of a bend or a twist |
 | Proportional editing | Six falloff curves, with a viewport ring showing how far the falloff reaches. Scroll to resize it mid-transform, or Ctrl+scroll any time |
-| Viewport | Orbit / pan / zoom, solid / wireframe / x-ray / matcap, adaptive grid, normals overlay, non-planar quads overlay |
+| Viewport | Orbit / pan / zoom, solid / wireframe / x-ray / matcap, adaptive grid, normals overlay, non-planar quads overlay, n-gons overlay |
 | Touch | Pinch to zoom, two-finger slide to pan, two-finger twist to turn, drag the axis widget to orbit, long press for the right-click menus. Panels become drawers on narrow screens, and a quick bar holds undo, redo, ADD, delete and the knife's CUT / UNDO POINT / CANCEL |
 | Files | Save and load `.3doo` projects (JSON, with imported images inside), OBJ and FBX import (binary or ASCII, FBX 7 onwards, landing the right way up and the right size), PNG / JPG / BMP import as a plane at the origin |
 | Autosave | Off until turned on. Writes numbered `.3doo` copies into a `3doo-auto-saves` folder you choose, every 30 seconds to 15 minutes, and only when the scene has changed. The browser keeps no copy of the project. Needs a browser with a folder picker (Chrome, Edge) |

@@ -9,6 +9,7 @@ import {
   VIEWPORT_COLORS,
   createDotOcclusionMaterial,
   createHoverPointMaterial,
+  createNgonMaterial,
   createNonPlanarMaterial,
   createOutlineMaterial,
   createPointMaterial,
@@ -461,6 +462,25 @@ describe('non-planar overlay', () => {
     const selection = createSelectionOverlayMaterial() as THREE.MeshBasicMaterial;
 
     expect(wash.color.getHex()).toBe(VIEWPORT_COLORS.amber);
+    for (const key of [
+      'depthTest',
+      'depthWrite',
+      'transparent',
+      'polygonOffsetFactor',
+      'polygonOffsetUnits',
+    ] as const) {
+      expect(wash[key]).toBe(selection[key]);
+    }
+    expect(wash.userData.surfaceTag).toEqual({ value: 0 });
+  });
+});
+
+describe('n-gon overlay', () => {
+  it('is a cyan wash drawn the way the selection one is', () => {
+    const wash = createNgonMaterial() as THREE.MeshBasicMaterial;
+    const selection = createSelectionOverlayMaterial() as THREE.MeshBasicMaterial;
+
+    expect(wash.color.getHex()).toBe(VIEWPORT_COLORS.cyan);
     for (const key of [
       'depthTest',
       'depthWrite',

@@ -1289,6 +1289,15 @@ export function createNonPlanarMaterial(): THREE.Material {
   return createWashMaterial(VIEWPORT_COLORS.amber, 0.55);
 }
 
+/**
+ * The cyan wash over the faces of five corners or more, for the n-gon overlay.
+ * Drawn the way the non-planar one is. Red and amber are taken by the selection
+ * and the bent quads, and cyan elsewhere only marks lines and dots.
+ */
+export function createNgonMaterial(): THREE.Material {
+  return createWashMaterial(VIEWPORT_COLORS.cyan, 0.45);
+}
+
 function createWashMaterial(color: number, opacity: number): THREE.Material {
   const material = new THREE.MeshBasicMaterial({
     color,

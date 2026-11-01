@@ -6,6 +6,7 @@ import {
   add,
   createBox,
   createCircle,
+  createCone,
   createPlane,
   vec3,
   BMesh,
@@ -15,6 +16,7 @@ import {
   UNKNOWN_POINT_FACES,
   buildEdgeCull,
   buildMeshBuffers,
+  buildNgonTriangles,
   buildNonPlanarTriangles,
   buildPointFaces,
   buildSilhouetteEdges,
@@ -28,16 +30,33 @@ function edgeCount(positions: Float32Array): number {
   return positions.length / 6;
 }
 
-describe('non-planar triangles', () => {
-  /** Each triangle in a position buffer, its corners written out, for comparing. */
-  function triangles(positions: Float32Array): string[] {
-    const found: string[] = [];
-    for (let at = 0; at < positions.length; at += 9) {
-      found.push([...positions.subarray(at, at + 9)].map((n) => n.toFixed(5)).join(','));
-    }
-    return found;
+/** Each triangle in a position buffer, its corners written out, for comparing. */
+function triangles(positions: Float32Array): string[] {
+  const found: string[] = [];
+  for (let at = 0; at < positions.length; at += 9) {
+    found.push([...positions.subarray(at, at + 9)].map((n) => n.toFixed(5)).join(','));
   }
+  return found;
+}
 
+describe('n-gon triangles', () => {
+  it('holds nothing for a mesh of quads', () => {
+    expect(buildNgonTriangles(createBox(1))).toHaveLength(0);
+  });
+
+  it('holds the n-gons and not the triangles round them, split as the solid splits them', () => {
+    const cone = createCone(0.5, 1, 8);
+
+    const wash = triangles(buildNgonTriangles(cone));
+    const solid = new Set(triangles(buildMeshBuffers(cone).solid.positions));
+
+    // The eight-cornered base, six triangles, and none of the eight sides.
+    expect(wash).toHaveLength(6);
+    for (const triangle of wash) expect(solid.has(triangle)).toBe(true);
+  });
+});
+
+describe('non-planar triangles', () => {
   it('holds nothing for a mesh of flat quads', () => {
     expect(buildNonPlanarTriangles(createBox(1))).toHaveLength(0);
   });

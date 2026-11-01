@@ -1004,6 +1004,27 @@ export function buildNonPlanarTriangles(mesh: BMesh): Float32Array {
   return new Float32Array(positions);
 }
 
+/**
+ * The faces of five corners or more, as triangles, for the n-gon overlay.
+ * Split the way `buildSolid` splits them, so the wash lies on the triangles
+ * it marks.
+ */
+export function buildNgonTriangles(mesh: BMesh): Float32Array {
+  const positions: number[] = [];
+
+  for (const face of mesh.faces.values()) {
+    if (mesh.faceLoopCount(face) <= 4) continue;
+    const points = mesh.facePoints(face);
+
+    for (const index of triangulatePolygon(points, face.normal)) {
+      const co = points[index];
+      positions.push(co.x, co.y, co.z);
+    }
+  }
+
+  return new Float32Array(positions);
+}
+
 /** Line segments showing each face normal, for the normals overlay. */
 export function buildNormalLines(mesh: BMesh, length = 0.2): Float32Array {
   const positions: number[] = [];

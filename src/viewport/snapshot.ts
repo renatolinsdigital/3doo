@@ -333,6 +333,7 @@ export async function renderSnapshots(
       normals: false,
       faceOrientation: false,
       nonPlanar: false,
+      ngons: false,
     },
     backfaceCulling: state.backfaceCulling,
     orthographic: options.projection === 'orthographic',

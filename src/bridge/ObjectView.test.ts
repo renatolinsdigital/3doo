@@ -625,13 +625,13 @@ describe('ObjectView vertex dots', () => {
       if (line === outline) continue;
       expect((line.material as LineMaterial).uniforms.surfaceTag.value).toBe(tag);
     }
-    // The selection's and the non-planar overlay's.
+    // The selection's, the non-planar overlay's and the n-gon overlay's.
     const washes = view.group.children.filter(
       (child): child is THREE.Mesh =>
         child instanceof THREE.Mesh &&
         (child.material as THREE.Material).userData.surfaceTag !== undefined,
     );
-    expect(washes).toHaveLength(2);
+    expect(washes).toHaveLength(3);
     for (const wash of washes) {
       expect((wash.material as THREE.Material).userData.surfaceTag.value).toBe(tag);
     }
@@ -1074,6 +1074,79 @@ describe('ObjectView non-planar overlay', () => {
 
   it('counts as a mark, so the occlusion pass runs for it under plain solid shading', () => {
     const { object, settings } = bentCube();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), state(settings, false));
+    expect(view.showsMarks).toBe(false);
+
+    view.update(object, evaluatedMesh(object), state(settings, true));
+    expect(view.showsMarks).toBe(true);
+  });
+});
+
+describe('ObjectView n-gon overlay', () => {
+  function washOf(view: ObjectView, id: string): THREE.Mesh {
+    return view.group.getObjectByName(`${id}:ngons`) as THREE.Mesh;
+  }
+
+  function state(settings: ViewportSettings, ngons: boolean) {
+    return {
+      mode: 'object' as const,
+      selectMode: 'face' as const,
+      isActive: true,
+      isSelected: true,
+      eye: vec3(0, 0, 10),
+      selectionLine: SELECTION_LINE,
+      meshVersion: 1,
+      settings: {
+        ...settings,
+        shading: 'solid' as const,
+        overlays: { ...settings.overlays, ngons },
+      },
+    };
+  }
+
+  function cylinder(): { object: SceneObject; settings: ViewportSettings } {
+    const { settings } = scene();
+    useEditorStore.getState().resetScene();
+    useEditorStore.getState().addPrimitive('cylinder');
+    return { object: useEditorStore.getState().objects[0], settings };
+  }
+
+  it('washes the n-gons and nothing else', () => {
+    const { object, settings } = cylinder();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), state(settings, true));
+
+    const wash = washOf(view, object.id);
+    expect(wash.visible).toBe(true);
+    // The two 24-cornered caps, 22 triangles each, three corners a triangle.
+    // The quads round the side stay out.
+    expect(wash.geometry.getAttribute('position').count).toBe(132);
+  });
+
+  it('shows nothing on a mesh of quads', () => {
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), state(settings, true));
+
+    expect(washOf(view, object.id).visible).toBe(false);
+  });
+
+  it('goes away with the overlay', () => {
+    const { object, settings } = cylinder();
+    const view = new ObjectView(object.id);
+
+    view.update(object, evaluatedMesh(object), state(settings, true));
+    view.update(object, evaluatedMesh(object), state(settings, false));
+
+    expect(washOf(view, object.id).visible).toBe(false);
+  });
+
+  it('counts as a mark, so the occlusion pass runs for it under plain solid shading', () => {
+    const { object, settings } = cylinder();
     const view = new ObjectView(object.id);
 
     view.update(object, evaluatedMesh(object), state(settings, false));

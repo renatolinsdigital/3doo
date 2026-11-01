@@ -112,6 +112,11 @@ const OVERLAY_OPTIONS: readonly { key: keyof OverlaySettings; label: string; hin
     hint: 'Quads bent out of flat tinted amber, so a twist that would crease the shading or split differently on export shows up. MAKE PLANAR in the TOPOLOGY panel flattens the selected ones',
   },
   {
+    key: 'ngons',
+    label: 'N-GONS',
+    hint: 'Faces of five corners or more tinted cyan. They pinch under subdivision and may be cut into triangles differently by another program, so they are worth finding before export',
+  },
+  {
     key: 'statistics',
     label: 'STATISTICS',
     hint: 'Vertex, edge, face and triangle counts in the status bar',

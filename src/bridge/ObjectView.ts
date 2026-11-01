@@ -14,6 +14,7 @@ import {
   VIEWPORT_COLORS,
   createFaceOrientationMaterial,
   createHoverPointMaterial,
+  createNgonMaterial,
   createNonPlanarMaterial,
   createNormalsMaterial,
   createOriginMaterial,
@@ -38,6 +39,7 @@ import {
   UNKNOWN_POINT_FACES,
   buildEdgeCull,
   buildMeshBuffers,
+  buildNgonTriangles,
   buildNonPlanarTriangles,
   buildNormalLines,
   buildPointFaces,
@@ -261,6 +263,7 @@ export class ObjectView {
   private readonly vertexHighlight = new THREE.LineSegments();
   private readonly selectedFaces = new THREE.Mesh();
   private readonly nonPlanar = new THREE.Mesh();
+  private readonly ngons = new THREE.Mesh();
   private readonly sharpEdges = new LineSegments2();
   private readonly selectedEdges = new LineSegments2();
   private readonly points = new THREE.Points();
@@ -328,6 +331,7 @@ export class ObjectView {
     this.origin.name = `${objectId}:origin`;
     this.sharpEdges.name = `${objectId}:sharp`;
     this.nonPlanar.name = `${objectId}:nonPlanar`;
+    this.ngons.name = `${objectId}:ngons`;
 
     // Never drawn: the modifier result is what the user looks at, and this is
     // only here for the ray to hit. Three raycasts a mesh it is handed whether
@@ -344,6 +348,7 @@ export class ObjectView {
     this.selectedEdges.material = createWireMaterial(true);
     this.selectedFaces.material = createSelectionOverlayMaterial();
     this.nonPlanar.material = createNonPlanarMaterial();
+    this.ngons.material = createNgonMaterial();
     this.points.material = createPointMaterial();
     this.hoverPoint.material = createHoverPointMaterial();
     this.recentPoints.material = createRecentPointMaterial();
@@ -361,7 +366,7 @@ export class ObjectView {
     for (const line of this.liftedLines()) {
       (line.material as LineMaterial).uniforms.surfaceTag.value = tag;
     }
-    for (const wash of [this.selectedFaces, this.nonPlanar]) {
+    for (const wash of [this.selectedFaces, this.nonPlanar, this.ngons]) {
       (wash.material as THREE.Material).userData.surfaceTag.value = tag;
     }
 
@@ -374,6 +379,8 @@ export class ObjectView {
     // picked or not. Like that wash it tints the plain wire, and every line
     // and dot after it is drawn over it.
     this.nonPlanar.renderOrder = 2.5;
+    // Level with it: that one marks only quads, so the two never share a face.
+    this.ngons.renderOrder = 2.5;
     // Under every mark of the selection, so a sharp edge that is picked, or
     // has a picked end, reads as picked first.
     this.sharpEdges.renderOrder = 3;
@@ -420,6 +427,7 @@ export class ObjectView {
       this.vertexHighlight,
       this.selectedFaces,
       this.nonPlanar,
+      this.ngons,
       this.sharpEdges,
       this.selectedEdges,
       this.points,
@@ -503,6 +511,7 @@ export class ObjectView {
     this.updateDots(cage.points, cageMesh, object, state);
     this.updateNormals(displayMesh, state);
     this.updateNonPlanar(cageMesh, object, state);
+    this.updateNgons(cageMesh, object, state);
     // The point the object gizmo sits on, so the square says where the handles
     // will be before any tool that has them is picked up, and says where a
     // rotation will turn about once one is. Selected objects only, as Blender's
@@ -967,6 +976,18 @@ export class ObjectView {
     this.nonPlanar.visible = triangles.length > 0;
   }
 
+  /** Washes the faces of five corners or more, read off the same mesh as `updateNonPlanar`. */
+  private updateNgons(mesh: BMesh, object: SceneObject, state: ObjectViewState): void {
+    this.ngons.visible = false;
+    if (!state.settings.overlays.ngons || object.lattice !== null) return;
+
+    const triangles = buildNgonTriangles(mesh);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(triangles, 3));
+    this.replaceGeometry(this.ngons, geometry);
+    this.ngons.visible = triangles.length > 0;
+  }
+
   private replaceGeometry(target: THREE.Object3D, geometry: THREE.BufferGeometry): void {
     const holder = target as THREE.Object3D & { geometry?: THREE.BufferGeometry };
     holder.geometry?.dispose();
@@ -1009,6 +1030,7 @@ export class ObjectView {
       this.group.visible &&
       (this.selectedFaces.visible ||
         this.nonPlanar.visible ||
+        this.ngons.visible ||
         this.liftedLines().some((line) => line.visible))
     );
   }

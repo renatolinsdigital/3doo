@@ -198,6 +198,8 @@ export interface OverlaySettings {
   faceOrientation: boolean;
   /** Quads bent out of flat, washed amber. */
   nonPlanar: boolean;
+  /** Faces of five corners or more, washed cyan. */
+  ngons: boolean;
   statistics: boolean;
   /** The 3D cursor crosshair. Hiding it does not move or disable it. */
   cursor: boolean;
