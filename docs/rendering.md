@@ -400,7 +400,12 @@ the design asks for.
 
 **Face orientation** draws a second mesh with `side: THREE.BackSide` in red.
 Anywhere red shows, you are seeing the inside of the surface, which is exactly
-the problem to catch before exporting.
+the problem to catch before exporting. While it is on, the fill draws front
+faces only, so a back face the eye meets has nothing but the red on it, and the
+red is sunk twice as far as the fill, by a constant. At every contour the far
+side meets the near one at the same depth: lifted by its slope, as it once was,
+the red came through the near faces as lines along the edges, and level with
+the fill, the fill's own back faces still won a pixel here and there.
 
 **Non-planar** washes amber every quad bent more than
 `PLANAR_TOLERANCE_DEGREES` (0.1°) out of flat, built by

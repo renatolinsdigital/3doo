@@ -139,6 +139,14 @@ left to its lift against its own object (the folded and the layered sheet) all
 fail it. Dropping only the test of the wire against other objects' surfaces
 does not: in edit mode the wire stays hidden behind another object without it.
 
+The face orientation overlay is checked the same way, over the closed scenes
+with every normal outward seen from outside (the thin plate, the sphere, the
+cylinder and the cube behind another): switching it on must turn no pixel red.
+The room, seen from inside, is the control that must turn red. With the overlay
+lifted by its slope, as it was, every closed scene fails. Red is what counts,
+not any change: with the overlay on the fill draws front faces only, which
+moves the odd contour pixel by a shade of grey.
+
 One more check looks at pictures rather than the viewport: `pictureWire` takes
 a cube the way the MCP's `render_views` does, in `solid` and in `solidWire`,
 and counts the pixels the wire changes. Pictures once came out with no edges

@@ -39,8 +39,10 @@ apart, each with the other switched off.
 Put back and caught: the far-side cull ignoring an eye inside a mesh, every
 dot or edge lifted for the steepest face, the occlusion pass off, a fixed
 orthographic depth range, the wire's own-surface test off (folded and layered
-sheet). Not caught: dropping `markOccluded` alone, since in
-edit mode something else still hides the wire behind another object.
+sheet), the face orientation red lifted by its slope (`orientationInk`, which
+counts pixels turned red, not changed). Not caught: dropping `markOccluded`
+alone, since in edit mode something else still hides the wire behind another
+object.
 
 `pictureWire` checks pictures rather than the viewport: the wire a snapshot
 draws over a cube. To put its bug back, null the occlusion map both in

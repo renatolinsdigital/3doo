@@ -2,7 +2,7 @@ import { type Vec3, centroid, distance, distanceSq, dot, lerp, sub } from '../ma
 import type { BMesh } from '../mesh';
 import type { Edge, Vert } from '../mesh/types';
 
-import { type KnifePoint, knifeCut, knifeSegmentFace } from './knife';
+import { type KnifePoint, knifeCut, knifeSegmentFace, spliceEdges } from './knife';
 
 export interface ConnectPathResult {
   /** Every edge the path now runs along, new or already there. */
@@ -29,6 +29,8 @@ const ON_LINE = 1e-4;
  * of a solid, the pair gets a plain edge and no face is touched.
  */
 export function connectVertPath(mesh: BMesh, verts: readonly Vert[]): ConnectPathResult {
+  closeCracks(mesh, verts);
+
   const runs: KnifePoint[][] = [];
   const bare: [Vert, Vert][] = [];
 
@@ -81,6 +83,67 @@ export function connectionOrder(verts: readonly Vert[]): Vert[] {
   return chain;
 }
 
+/**
+ * Closes the cracks the paths would stop at.
+ *
+ * A crack is a vertex part way along an edge that has a face on one side only:
+ * the faces on the other side run through the vertex, and the face across never
+ * got it as a corner. A loop cut that stopped at an n-gon used to leave one. The
+ * walk only steps into faces a vertex is a corner of, so from there it could not
+ * reach the face across, which is the face the user means to cut. Every crack on
+ * the straight line between two vertices joined is closed, the vertex going into
+ * the face's edge.
+ */
+function closeCracks(mesh: BMesh, verts: readonly Vert[]): void {
+  const open = [...mesh.edges.values()].filter((edge) => edge.loops.length === 1);
+  const rims = new Set(open.flatMap((edge) => [edge.v0, edge.v1]));
+  const inside = (edge: Edge, co: Vec3) => {
+    const t = lineParameter(edge.v0.co, edge.v1.co, co);
+    return t !== null && t > ON_LINE && t < 1 - ON_LINE;
+  };
+  // The vertex's own open edges run along the edge, so the two sides are one
+  // seam rather than two pieces that merely touch.
+  const cracks = (edge: Edge, vert: Vert) =>
+    vert !== edge.v0 &&
+    vert !== edge.v1 &&
+    inside(edge, vert.co) &&
+    vert.edges.some((own) => {
+      if (own.loops.length !== 1) return false;
+      const other = own.v0 === vert ? own.v1 : own.v0;
+      return other === edge.v0 || other === edge.v1 || inside(edge, other.co);
+    });
+
+  const closed = new Map<Edge, Vert[]>();
+  for (let i = 0; i < verts.length - 1; i++) {
+    for (const vert of rims) {
+      const t = lineParameter(verts[i].co, verts[i + 1].co, vert.co);
+      if (t === null || t < -ON_LINE || t > 1 + ON_LINE) continue;
+      for (const edge of open) {
+        const held = closed.get(edge) ?? [];
+        if (!held.includes(vert) && cracks(edge, vert)) closed.set(edge, [...held, vert]);
+      }
+    }
+  }
+
+  for (const [edge, held] of closed) {
+    const span = sub(edge.v1.co, edge.v0.co);
+    held.sort((a, b) => dot(sub(a.co, b.co), span));
+  }
+  spliceEdges(mesh, closed);
+}
+
+/**
+ * How far along the line from `a` to `b` a point sits, 0 to 1 between them,
+ * or null when it is off the line.
+ */
+function lineParameter(a: Vec3, b: Vec3, co: Vec3): number | null {
+  const span = sub(b, a);
+  const lengthSq = dot(span, span);
+  if (lengthSq === 0) return null;
+  const t = dot(sub(co, a), span) / lengthSq;
+  return distance(co, lerp(a, b, t)) <= Math.sqrt(lengthSq) * ON_LINE ? t : null;
+}
+
 function vertPoint(vert: Vert): KnifePoint {
   return { kind: 'vert', vert: vert.id };
 }
@@ -103,11 +166,7 @@ function linePath(mesh: BMesh, a: Vert, b: Vert): KnifePoint[] | null {
   const span = sub(b.co, a.co);
   const lengthSq = dot(span, span);
   if (lengthSq === 0) return null;
-  const tolerance = Math.sqrt(lengthSq) * ON_LINE;
-  const alongLine = (co: Vec3): number | null => {
-    const t = dot(sub(co, a.co), span) / lengthSq;
-    return distance(co, lerp(a.co, b.co, t)) <= tolerance ? t : null;
-  };
+  const alongLine = (co: Vec3) => lineParameter(a.co, b.co, co);
   /** Where along the edge it comes nearest the line, or null when that is at or past an end. */
   const nearest = (edge: Edge): number | null => {
     const d = sub(edge.v1.co, edge.v0.co);

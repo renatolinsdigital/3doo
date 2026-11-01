@@ -611,7 +611,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Loop cut (Ctrl+R)',
-            'Adds edge loops across the ring of quads the selected edge runs through, and leaves the new loop selected, ready to move or scale. It needs quads: an edge with a triangle or an n-gon on both sides (every edge of a cone) has nothing to cut across, so the button stays unavailable.',
+            'Adds edge loops across the ring of quads the selected edge runs through, and leaves the new loop selected, ready to move or scale. It needs quads: an edge with a triangle or an n-gon on both sides (every edge of a cone) has nothing to cut across, so the button stays unavailable. Where the ring stops at a triangle or an n-gon, that face takes the new vertex as a corner, so the surface stays joined along the edge.',
           ],
           [
             'Knife (K)',
@@ -651,7 +651,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Connect (J)',
-            'Joins the selected vertices one after the next, in the order you picked them, along the straight line between each pair. Where that line lies on faces the whole way, every face under it is cut along it: a vertex goes on each edge it crosses, and a vertex it passes through is used rather than doubled. The faces either side of the line end up separate, with no vertex left hanging in the middle of an edge. Where the line leaves the surface, through the air or through the inside of a solid, the pair just gets an edge and no face changes. Vertices picked with box select or select all, which have no order, are chained from one end, each to the nearest one left.',
+            'Joins the selected vertices one after the next, in the order you picked them, along the straight line between each pair. Where that line lies on faces the whole way, every face under it is cut along it: a vertex goes on each edge it crosses, and a vertex it passes through is used rather than doubled. The faces either side of the line end up separate, with no vertex left hanging in the middle of an edge. A vertex on the line that sits along an edge of a face without being one of its corners, as older loop cuts left them at n-gons, goes into that edge first, so the face behind it is cut too. Where the line leaves the surface, through the air or through the inside of a solid, the pair just gets an edge and no face changes. Vertices picked with box select or select all, which have no order, are chained from one end, each to the nearest one left.',
           ],
           [
             'Separate selected',

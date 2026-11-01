@@ -31,6 +31,10 @@ The most regressed area of the app: nine leak fixes in seven weeks,
 - Far-side edges are culled exactly (`frontEdgeLines`), except in x-ray and
   wireframe, for selected edges, and with the eye inside a closed mesh
   (winding number in `encloses`; the bounding box alone said inside too often).
+- Face orientation: while it is on the fill draws front faces only and the red
+  back-face mesh is sunk below it by a constant (`createFaceOrientationMaterial`).
+  Lifted by its slope it drew red lines along every contour; level with a
+  two-sided fill, the fill's own back faces still won contour pixels.
 - Outside the viewport's frame `DOT_OCCLUSION` holds `NO_OCCLUSION_MAP`, never
   null. The marks read the map through a `usampler2D`, and WebGL2 drops a draw
   that meets three's float stand-in there, even with the test switched off:

@@ -2,6 +2,7 @@ import { clamp, lerp } from '../math';
 import type { BMesh } from '../mesh';
 import type { Edge, Face, Loop, Vert } from '../mesh/types';
 
+import { spliceEdges } from './knife';
 import { carrySharp } from './normals';
 
 export interface LoopCutOptions {
@@ -138,6 +139,17 @@ export function loopCut(mesh: BMesh, start: Edge, options: LoopCutOptions = {}):
   for (const spec of rebuilt) {
     mesh.addFace(spec.ring, { materialIndex: spec.materialIndex, smooth: spec.smooth });
   }
+
+  // Where the ring stops at an n-gon or a triangle, the edge it split there
+  // still runs across that face, which has to take the new vertices too or it
+  // meets the quads along a crack.
+  const beyond = new Map<Edge, Vert[]>();
+  for (const edge of consumedEdges) {
+    const cut = cutVerts.get(edge.id);
+    if (!cut || edge.loops.length === 0) continue;
+    beyond.set(edge, cut.from === edge.v0 ? cut.verts : [...cut.verts].reverse());
+  }
+  spliceEdges(mesh, beyond);
 
   for (const edge of consumedEdges) {
     const cut = cutVerts.get(edge.id);

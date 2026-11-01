@@ -894,22 +894,30 @@ function insideFace(mesh: BMesh, face: Face, point: Vec3): boolean {
   return inside;
 }
 
-/**
- * Splits edges at the parameters asked of them, splicing the new vertices into
- * every face each edge borders.
- *
- * Every such face is rebuilt with the new corners in the order it walks the
- * edge, which runs `v1` to `v0` for one of the two, and with UVs carried along
- * the edge, so an image plane keeps its picture where the knife went through.
- */
+/** Splits edges at the parameters asked of them, and returns the vertices made on each. */
 function splitEdges(mesh: BMesh, cuts: ReadonlyMap<Edge, readonly number[]>): Map<Edge, Vert[]> {
   const made = new Map<Edge, Vert[]>();
-  const faces = new Map<number, Face>();
   for (const [edge, ts] of cuts) {
     made.set(
       edge,
       ts.map((t) => mesh.addVert(lerp(edge.v0.co, edge.v1.co, t))),
     );
+  }
+  spliceEdges(mesh, made);
+  return made;
+}
+
+/**
+ * Puts vertices lying along edges into them, in order from each edge's `v0`,
+ * splicing them into every face the edge borders.
+ *
+ * Every such face is rebuilt with the new corners in the order it walks the
+ * edge, which runs `v1` to `v0` for one of the two, and with UVs carried along
+ * the edge, so an image plane keeps its picture where the knife went through.
+ */
+export function spliceEdges(mesh: BMesh, splices: ReadonlyMap<Edge, readonly Vert[]>): void {
+  const faces = new Map<number, Face>();
+  for (const edge of splices.keys()) {
     for (const face of mesh.edgeFaces(edge)) faces.set(face.id, face);
   }
 
@@ -920,15 +928,15 @@ function splitEdges(mesh: BMesh, cuts: ReadonlyMap<Edge, readonly number[]>): Ma
       ring.push(loop.vert);
       uvs.push({ ...loop.uv });
 
-      const ts = cuts.get(loop.edge);
-      const verts = made.get(loop.edge);
-      if (!ts || !verts) continue;
+      const verts = splices.get(loop.edge);
+      if (!verts) continue;
 
       const forward = loop.edge.v0 === loop.vert;
-      for (let k = 0; k < ts.length; k++) {
-        const i = forward ? k : ts.length - 1 - k;
-        const t = forward ? ts[i] : 1 - ts[i];
-        ring.push(verts[i]);
+      const span = sub(loop.next.vert.co, loop.vert.co);
+      for (let k = 0; k < verts.length; k++) {
+        const vert = verts[forward ? k : verts.length - 1 - k];
+        const t = dot(sub(vert.co, loop.vert.co), span) / dot(span, span);
+        ring.push(vert);
         uvs.push({
           u: loop.uv.u + (loop.next.uv.u - loop.uv.u) * t,
           v: loop.uv.v + (loop.next.uv.v - loop.uv.v) * t,
@@ -945,7 +953,7 @@ function splitEdges(mesh: BMesh, cuts: ReadonlyMap<Edge, readonly number[]>): Ma
     });
   }
 
-  for (const [edge, verts] of made) {
+  for (const [edge, verts] of splices) {
     // The faces that bordered the edge now run through the new vertices, which
     // leaves it bordering nothing. A wire edge had no face to lay its pieces
     // down, so they are laid here; for every other edge they already exist.
@@ -954,8 +962,6 @@ function splitEdges(mesh: BMesh, cuts: ReadonlyMap<Edge, readonly number[]>): Ma
     for (let i = 0; i < chain.length - 1; i++) mesh.addEdge(chain[i], chain[i + 1]);
     carrySharp(mesh, edge, chain);
   }
-
-  return made;
 }
 
 /**

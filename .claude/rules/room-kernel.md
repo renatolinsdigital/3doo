@@ -56,6 +56,11 @@ both lists match), then a button or key through `store.exec`.
   outside, so interior ones are moved in place by the same `offsetFor`; once
   they were not, and every region extrude and inset depth sagged to them.
 - `mesh/triangulate.ts`: a concave quad splits through its folded corner.
+- Splitting an edge means splicing the new vertex into every face it borders
+  (`spliceEdges` in `ops/knife.ts`). `ops/loopcut.ts` once split the edge where
+  its ring stopped for its own quads only, leaving a crack the connect walk
+  could not cross; saved scenes still carry them, so `closeCracks` in
+  `ops/connect.ts` closes any on a connect's line.
 - Edit-mode handles are world-aligned and the mesh is in object space.
   Offsets go through the object's whole frame (`inverseTransformOffset` in
   `math/mat4.ts`), not its scale alone, and a world-axis scale passes the

@@ -519,6 +519,27 @@ describe('loop cut', () => {
     expect(canLoopCut(cube, edge)).toBe(true);
     expect(loopCut(cube, edge, { cuts: 1 }).verts.length).toBeGreaterThan(0);
   });
+
+  it('gives the face where the ring stops the new vertex as a corner', () => {
+    const sphere = createUVSphere(1, 8, 4);
+    const equator = [...sphere.edges.values()].find(
+      (edge) => Math.abs(edge.v0.co.y) < 1e-6 && Math.abs(edge.v1.co.y) < 1e-6,
+    ) as Edge;
+
+    loopCut(sphere, equator, { cuts: 1 });
+
+    // The ring runs pole to pole and stops at a triangle each end. The edge it
+    // split there used to be split for the quads only, so the triangle kept
+    // running straight across under the new vertex: a crack the next connect
+    // could not cut through.
+    expect(isClosed(sphere)).toBe(true);
+    expect(eulerCharacteristic(sphere)).toBe(2);
+    expect(sphere.validate()).toEqual([]);
+    const poles = [...sphere.faces.values()].filter((face) =>
+      sphere.faceVerts(face).some((vert) => Math.abs(Math.abs(vert.co.y) - 1) < 1e-6),
+    );
+    expect(poles.filter((face) => sphere.faceVerts(face).length === 4)).toHaveLength(2);
+  });
 });
 
 describe('relax', () => {
@@ -1607,6 +1628,62 @@ describe('connect verts', () => {
     expect(result.splits).toBe(0);
     expect(mesh.faces.size).toBe(1);
     expect(mesh.findEdge(corners[2], corners[4])?.loops).toEqual([]);
+  });
+
+  /**
+   * Two quads on a pentagon, as a loop cut that stopped at the pentagon once
+   * left them: the quads meet at a vertex half way along the edge under them,
+   * which the pentagon runs straight across without.
+   */
+  function crackedSheet() {
+    const mesh = new BMesh();
+    const at = (x: number, z: number) => mesh.addVert(vec3(x, 0, z));
+    const [a, below, b] = [at(0, 0), at(1, 0), at(2, 0)];
+    const [c, crack, d] = [at(0, 1), at(1, 1), at(2, 1)];
+    const [e, above, f] = [at(0, 2), at(1, 2), at(2, 2)];
+    mesh.addFace([a, below, b, d, c]);
+    mesh.addFace([c, crack, above, e]);
+    mesh.addFace([crack, d, f, above]);
+    return { mesh, crack, below, above };
+  }
+
+  it('cuts the face a vertex lies on the edge of, though the face lacks it as a corner', () => {
+    const { mesh, crack, below } = crackedSheet();
+
+    const result = connectVertPath(mesh, [crack, below]);
+
+    // The pentagon was no face of the vertex on its edge, so the path found no
+    // face to cross from it and fell back to a plain edge lying over the
+    // pentagon, which stayed whole behind it.
+    expect(result.splits).toBe(1);
+    expect(mesh.faces.size).toBe(4);
+    expectCleanCut(mesh, result.edges);
+  });
+
+  it('carries the path on through such a vertex into the face beyond', () => {
+    const { mesh, crack, below, above } = crackedSheet();
+
+    const result = connectVertPath(mesh, [above, below]);
+
+    // The walk reached the vertex along the quads' edge and had nowhere to go
+    // from it, so the whole pair got a plain edge instead.
+    expect(result.splits).toBe(1);
+    expect(linked(result.edges, above, crack)).toBe(true);
+    expect(linked(result.edges, crack, below)).toBe(true);
+    expectCleanCut(mesh, result.edges);
+  });
+
+  it('reports a cut that closed a crack as a cut, not as nothing to do', () => {
+    const { mesh, crack, below } = crackedSheet();
+    mesh.selectVert(crack);
+    mesh.selectVert(below);
+
+    const result = execOperator({ mesh, selectMode: 'vertex', cursor: vec3() }, 'connect');
+
+    // Closing the crack takes away the pentagon's long edge and the cut adds
+    // one, so counting edges read no change and refused the cut it had made.
+    expect(result.refused).toBeUndefined();
+    expect(result.status).toMatch(/^Connected 2 vertices, cutting 1 face/);
   });
 
   it('joins a whole sequence, one vertex to the next', () => {

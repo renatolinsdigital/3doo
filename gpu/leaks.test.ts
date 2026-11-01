@@ -231,6 +231,43 @@ describe('marks on the real GPU', () => {
   );
 });
 
+/** Closed, every normal outward, and seen from outside: no back face is in sight. */
+const OUTWARD: SceneName[] = ['thin plate', 'sphere', 'cylinder', 'behind another'];
+
+function posesOf(name: SceneName): Pose[] {
+  return SCENES.find(([scene]) => scene === name)?.[1] ?? [];
+}
+
+describe('face orientation on the real GPU', () => {
+  it.each(OUTWARD)('paints no back face of a %s seen from outside', async (name) => {
+    await page.evaluate((scene) => (window as unknown as CheckWindow).gpuCheck.build(scene), name);
+    const failures: string[] = [];
+    for (const pose of posesOf(name)) {
+      const pixels = await page.evaluate(
+        (at) => (window as unknown as CheckWindow).gpuCheck.orientationInk(at),
+        pose,
+      );
+      if (pixels > 0) failures.push(`${label(pose)}: ${pixels}px`);
+    }
+    // The red used to be pulled towards the camera by each face's slope, which
+    // near a contour is steep enough to bring the far side's back faces up
+    // through the near ones: a red line along the edges there, in solid too.
+    expect(failures, `on ${gpu}`).toEqual([]);
+  });
+
+  it('paints the walls of a room seen from inside', async () => {
+    await page.evaluate(() => (window as unknown as CheckWindow).gpuCheck.build('room'));
+    // Without it, a sweep that never switched the overlay on would pass.
+    for (const pose of posesOf('room')) {
+      const pixels = await page.evaluate(
+        (at) => (window as unknown as CheckWindow).gpuCheck.orientationInk(at),
+        pose,
+      );
+      expect(pixels, `${label(pose)} on ${gpu}`).toBeGreaterThan(10_000);
+    }
+  });
+});
+
 describe('pictures on the real GPU', () => {
   it('draws the wire of a cube in a solidWire picture', async () => {
     const wire = await page.evaluate(() =>

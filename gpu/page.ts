@@ -474,15 +474,52 @@ function judge(
   };
 }
 
-/** Looks at the active object's marks from `pose` and reports any on the wrong side of a surface. */
-export function check(pose: Pose): PoseReport {
+function aim(pose: Pose): void {
   const store = useEditorStore;
   if (store.getState().orthographic !== pose.orthographic) {
     store.setState({ orthographic: pose.orthographic });
   }
-  const view = viewport();
-  view.controls.setPose(pose);
+  viewport().controls.setPose(pose);
   draw();
+}
+
+/**
+ * How many pixels switching the face orientation overlay on turns red from
+ * `pose`, with the wire and the dots off. It is a setting rather than a mark of
+ * its own, so the frames come from the store, and it is off again after.
+ *
+ * Red, not merely changed: with the overlay on the fill draws front faces only,
+ * so a contour pixel where it used to draw the far side in grey changes shade
+ * without a back face being painted there.
+ */
+export function orientationInk(pose: Pose): number {
+  aim(pose);
+  const marks = [...viewport().views.values()].flatMap((view) => [view.wire, view.points]);
+  const shown = marks.map((mark) => mark.visible);
+  const frame = (faceOrientation: boolean) => {
+    useEditorStore.getState().setOverlay({ faceOrientation });
+    useEditorStore.getState().touchMesh();
+    for (const mark of marks) mark.visible = false;
+    return draw();
+  };
+
+  const on = frame(true);
+  const off = frame(false);
+  marks.forEach((mark, index) => (mark.visible = shown[index]));
+
+  let reddened = 0;
+  for (let i = 0; i < on.length; i += 4) {
+    const redness = (frame: Uint8Array) => frame[i] - Math.max(frame[i + 1], frame[i + 2]);
+    if (redness(on) - redness(off) > INK) reddened += 1;
+  }
+  return reddened;
+}
+
+/** Looks at the active object's marks from `pose` and reports any on the wrong side of a surface. */
+export function check(pose: Pose): PoseReport {
+  const store = useEditorStore;
+  aim(pose);
+  const view = viewport();
 
   const marks = view.views.get(store.getState().activeObjectId as string);
   if (!marks) throw new Error('The active object has no view');

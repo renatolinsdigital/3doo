@@ -973,6 +973,8 @@ export interface SurfaceMaterialOptions {
   backfaceCulling: boolean;
   /** An imported image drawn on the surface, for an image plane. */
   map?: THREE.Texture | null;
+  /** The face orientation overlay is on, and draws the faces seen from behind itself. */
+  faceOrientation?: boolean;
 }
 
 export function createSurfaceMaterial({
@@ -980,8 +982,9 @@ export function createSurfaceMaterial({
   shading,
   backfaceCulling,
   map = null,
+  faceOrientation = false,
 }: SurfaceMaterialOptions): THREE.Material {
-  const side = backfaceCulling ? THREE.FrontSide : THREE.DoubleSide;
+  const side = backfaceCulling || faceOrientation ? THREE.FrontSide : THREE.DoubleSide;
 
   // An imported picture is drawn unlit and from both sides: it is a reference
   // to model against, and one that dims as the scene's light swings past it,
@@ -993,7 +996,7 @@ export function createSurfaceMaterial({
     return new THREE.MeshBasicMaterial({
       color: 0xffffff,
       map,
-      side: THREE.DoubleSide,
+      side: faceOrientation ? THREE.FrontSide : THREE.DoubleSide,
       ...SURFACE_DEPTH_OFFSET,
       ...OUTLINE_STENCIL_STAMP,
     });
@@ -1029,13 +1032,23 @@ export function createSurfaceMaterial({
   });
 }
 
-/** Red backfaces make inverted normals obvious before an export. */
+/**
+ * Red backfaces make inverted normals obvious before an export.
+ *
+ * The fill draws front faces only while this is on (see `createSurfaceMaterial`),
+ * so where a back face is what the eye meets, this is all there is to see. It
+ * is sunk further than the fill, by a constant: at every contour the far side
+ * meets the near one at the same depth, and anything less than a clear margin
+ * there let the far side's back faces through the near faces as red lines. It
+ * used to be lifted by its slope instead, which near a contour is steep.
+ */
 export function createFaceOrientationMaterial(): THREE.Material {
   return new THREE.MeshBasicMaterial({
     color: VIEWPORT_COLORS.red,
     side: THREE.BackSide,
     polygonOffset: true,
-    polygonOffsetFactor: -1,
+    polygonOffsetFactor: 0,
+    polygonOffsetUnits: SURFACE_DEPTH_OFFSET.polygonOffsetUnits * 2,
   });
 }
 

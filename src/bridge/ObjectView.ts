@@ -228,7 +228,13 @@ function solidMaterialKey(object: SceneObject, state: ObjectViewState): string {
   // The texture's own id, so a picture arriving late rebuilds the material once
   // and a drag over an image plane does not rebuild it at all.
   const image = state.texture?.uuid ?? object.image?.assetId ?? '';
-  return [state.settings.shading, state.settings.backfaceCulling, image, ...colours].join('|');
+  return [
+    state.settings.shading,
+    state.settings.backfaceCulling,
+    state.settings.overlays.faceOrientation,
+    image,
+    ...colours,
+  ].join('|');
 }
 
 /**
@@ -573,6 +579,7 @@ export class ObjectView {
             shading: state.settings.shading,
             backfaceCulling: state.settings.backfaceCulling,
             map: state.texture ?? null,
+            faceOrientation: state.settings.overlays.faceOrientation,
           }),
       );
       this.solidMaterialKey = materialKey;

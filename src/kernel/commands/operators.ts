@@ -606,9 +606,11 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     if (verts.length < 2)
       return { status: 'Select two or more vertices to connect', refused: true };
 
-    const before = mesh.edges.size;
+    // Ids are never reused, so an unchanged mesh has exactly the edges it had.
+    // Counting them is not enough: closing a crack takes one away.
+    const before = new Set(mesh.edges.keys());
     const result = connectVertPath(mesh, verts);
-    if (mesh.edges.size === before) {
+    if (mesh.edges.size === before.size && [...mesh.edges.keys()].every((id) => before.has(id))) {
       return { status: 'Those vertices are already connected', refused: true };
     }
 

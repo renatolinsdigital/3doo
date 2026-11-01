@@ -8,6 +8,7 @@ import {
   DOT_OCCLUSION,
   VIEWPORT_COLORS,
   createDotOcclusionMaterial,
+  createFaceOrientationMaterial,
   createHoverPointMaterial,
   createNgonMaterial,
   createNonPlanarMaterial,
@@ -76,6 +77,39 @@ describe('surface depth offset', () => {
 
   it('leaves the x-ray fill flat, having no depth for a line to fight over', () => {
     expect(surface('xray').depthWrite).toBe(false);
+  });
+});
+
+describe('face orientation overlay', () => {
+  const oriented = (shading: ShadingMode, map: THREE.Texture | null = null) =>
+    createSurfaceMaterial({
+      color: 0xcccccc,
+      shading,
+      backfaceCulling: false,
+      map,
+      faceOrientation: true,
+    });
+
+  it.each(['solid', 'solidWire', 'matcap'] as const)(
+    'leaves the back faces of a %s fill to the overlay',
+    (shading) => {
+      expect(oriented(shading).side).toBe(THREE.FrontSide);
+    },
+  );
+
+  it('leaves the back of a picture to the overlay too', () => {
+    expect(oriented('solid', new THREE.Texture()).side).toBe(THREE.FrontSide);
+  });
+
+  it('sinks the red below the fill by a constant, never by its slope', () => {
+    const overlay = createFaceOrientationMaterial();
+
+    // It was lifted by its slope, which near a contour is steep enough to bring
+    // the far side's back faces up through the near ones as red lines. Lifted by
+    // nothing at all, the fill's own back faces won a pixel here and there.
+    expect(overlay.side).toBe(THREE.BackSide);
+    expect(overlay.polygonOffsetFactor).toBe(0);
+    expect(overlay.polygonOffsetUnits).toBeGreaterThan(surface('solid').polygonOffsetUnits);
   });
 });
 
