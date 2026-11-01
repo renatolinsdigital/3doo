@@ -342,7 +342,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'Undo holds the last 50 steps, or as many as UNDO STEPS in preferences allows. The ▤ button in the top bar lists them, so you can click straight back to any one. Selecting is a step too: every click, box, lasso or outliner pick that changes what is selected, in object or edit mode, is one Ctrl+Z away, so a selection a stray click threw away comes back. A click that leaves the selection as it was records nothing.',
+        text: 'Undo holds the last 100 steps, or as many as UNDO STEPS in preferences allows, anywhere from 10 to 200. The ▤ button in the top bar lists them, so you can click straight back to any one. Selecting is a step too: every click, box, lasso or outliner pick that changes what is selected, in object or edit mode, is one Ctrl+Z away, so a selection a stray click threw away comes back. A click that leaves the selection as it was records nothing.',
       },
       {
         kind: 'note',

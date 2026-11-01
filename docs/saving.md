@@ -79,8 +79,8 @@ pixel size and its bytes. The scene holds all assets in one map,
 
 Assets sit beside the objects, not inside them, so that undo stays affordable.
 Undo replays the object list from a snapshot. An image stored on the object
-would be copied into every history step: fifty steps of a scene with a 4MB
-photograph is 200MB of history. With the bytes kept apart, a step describes the
+would be copied into every history step: a hundred steps of a scene with a 4MB
+photograph is 400MB of history. With the bytes kept apart, a step describes the
 scene and the assets stay where they are. It also means that deleting an image
 object and undoing finds the bytes still loaded.
 

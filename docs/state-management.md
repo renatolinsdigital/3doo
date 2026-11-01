@@ -180,8 +180,8 @@ exec: (name, params, label) => {
 ```
 
 Undo pops the past stack, pushes the *current* document onto the redo stack, and
-restores. The stack is capped by the UNDO STEPS preference, 50 entries by
-default and anywhere from 10 to 100, so memory stays bounded.
+restores. The stack is capped by the UNDO STEPS preference, 100 entries by
+default and anywhere from 10 to 200, so memory stays bounded.
 
 The `History` instance lives at module scope, not in the store. It is not render
 state. Only `canUndo`, `canRedo` and the label of each step are mirrored into
@@ -220,8 +220,8 @@ step: they live in the store, and are inlined as base64 only when a `.3doo` is
 written.
 
 The reason is cost. Undo replays the object list, so a picture stored on the
-object would be copied into every history step: fifty steps of a scene holding
-a 4MB photograph is 200MB of history. Keeping it out of the replay also means an
+object would be copied into every history step: a hundred steps of a scene
+holding a 4MB photograph is 400MB of history. Keeping it out of the replay also means an
 image object can be deleted and undone with its bytes still loaded. See
 [saving.md](saving.md#images).
 

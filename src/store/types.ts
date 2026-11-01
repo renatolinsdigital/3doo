@@ -357,7 +357,7 @@ export interface Preferences {
    * How many steps undo keeps, from `MIN_HISTORY_SIZE` to `MAX_HISTORY_SIZE`.
    *
    * A preference rather than a fixed cap because what it costs depends on the
-   * scene: each step is a whole copy of it, so the same fifty steps are nothing
+   * scene: each step is a whole copy of it, so the same hundred steps are nothing
    * on a few boxes and hundreds of megabytes on a dense sculpt.
    */
   historySize: number;

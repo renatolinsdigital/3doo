@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   DEFAULT_PREFERENCES,
+  MAX_HISTORY_SIZE,
   MAX_ORBIT_SPEED,
   MAX_WHEEL_ZOOM_STEP,
+  MIN_HISTORY_SIZE,
   MIN_ORBIT_SPEED,
   MIN_WHEEL_ZOOM_STEP,
   autosaveIntervalLabel,
@@ -188,6 +190,16 @@ describe('coercePreferences', () => {
     expect(coercePreferences({ wheelZoomStep: 'fast' }).wheelZoomStep).toBe(
       DEFAULT_PREFERENCES.wheelZoomStep,
     );
+  });
+
+  it('keeps a hundred undo steps by default and takes up to two hundred', () => {
+    // A fresh install used to keep fifty, and anything past a hundred was cut
+    // back to a hundred, so a long session lost the start of its timeline.
+    expect(DEFAULT_PREFERENCES.historySize).toBe(100);
+    expect(coercePreferences({ historySize: 200 }).historySize).toBe(200);
+    expect(coercePreferences({ historySize: 500 }).historySize).toBe(MAX_HISTORY_SIZE);
+    expect(MAX_HISTORY_SIZE).toBe(200);
+    expect(coercePreferences({ historySize: 2 }).historySize).toBe(MIN_HISTORY_SIZE);
   });
 
   it('orbits slower with nothing selected than with a selection by default', () => {

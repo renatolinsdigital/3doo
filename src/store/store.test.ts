@@ -2183,6 +2183,23 @@ describe('history timeline', () => {
     store().setPreferences({ historySize: 50 });
     expect(store().historyUndo).toHaveLength(10);
   });
+
+  it('walks back two hundred steps at the top of the range', () => {
+    store().setPreferences({ historySize: 200 });
+    store().addPrimitive('cube');
+    store().addPrimitive('cylinder');
+    const [box, cylinder] = store().objects;
+    for (let step = 0; step < 220; step++) {
+      store().setActiveObject(step % 2 ? cylinder.id : box.id);
+    }
+
+    // The size stopped at a hundred, so everything past the hundredth step
+    // back was gone however far the slider was pushed.
+    expect(store().historySize).toBe(200);
+    expect(store().historyUndo).toHaveLength(200);
+    store().undoTimes(200);
+    expect(store().canUndo).toBe(false);
+  });
 });
 
 describe('selection on the timeline', () => {

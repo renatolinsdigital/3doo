@@ -39,7 +39,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   snapEnabled: false,
   snapMode: 'grid',
   snapStep: 0.1,
-  historySize: 50,
+  historySize: 100,
   autosaveEnabled: false,
   autosaveInterval: 180,
   // VIEWPORT_COLORS.grid and .rust, which the viewport used to hard-code. Named
@@ -82,12 +82,12 @@ export const MAX_SNAP_STEP = MAX_GRID_SCALE;
 /**
  * How many steps undo keeps.
  *
- * Ten is enough to back out of a bad idea, fifty is what a fresh install keeps,
- * and a hundred is the ceiling because every step holds a whole copy of the
- * scene: what history costs is this figure times the size of the model.
+ * Ten is enough to back out of a bad idea, a hundred is what a fresh install
+ * keeps, and two hundred is the ceiling because every step holds a whole copy of
+ * the scene: what history costs is this figure times the size of the model.
  */
 export const MIN_HISTORY_SIZE = 10;
-export const MAX_HISTORY_SIZE = 100;
+export const MAX_HISTORY_SIZE = 200;
 
 /**
  * How often the autosave may run, in seconds: thirty seconds to fifteen minutes.

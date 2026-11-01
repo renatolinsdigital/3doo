@@ -25,7 +25,7 @@ drive them, see [keymap.md](keymap.md).
 | Export | OBJ + MTL, **binary FBX 7.4**, with Unity / Unreal / Blender / Maya axis and unit presets; image planes keep their picture |
 | Scripting | A JavaScript editor behind the `<>` button: primitives and custom meshes, solids turned from a profile or made from an outline, transforms, colours down to single faces through material slots, every modelling operation on a scripted selection, modifiers, booleans, folders, and world bounds for placing parts. Syntax colours, suggestions, hover help linked to the docs, examples. One undo step per run, and a failed run changes nothing |
 | AI assistants | An MCP server that drives the editor in a headless browser: an assistant runs scripts, renders the perspective view, the six Shift+number views and any angle, in any shading or as a black silhouette, one picture each or all on one sheet, loads drawings and photos of the subject as references measured in metres, traces their outlines and compares the model with them, exports `.3doo`, OBJ and FBX, and saves pages that open the editor on the result, at any size. The MCP button beside `<>` explains how it connects and what it returns, with the setup commands ready to copy. See [mcp.md](mcp.md) |
-| Undo | Whole-scene snapshot history, 50 steps by default and 10 to 100 under UNDO STEPS, with a history list to click straight back to any of them |
+| Undo | Whole-scene snapshot history, 100 steps by default and 10 to 200 under UNDO STEPS, with a history list to click straight back to any of them |
 
 ## How the editor behaves, and why
 
