@@ -144,6 +144,48 @@ function historyState() {
   };
 }
 
+/**
+ * What is selected, written out so two moments can be compared: the objects,
+ * and the elements of the active one. The order its vertices were clicked in
+ * counts too, since merging at the first or last reads it, but as an order
+ * rather than as stamps: picking the same vertex again stamps it anew.
+ */
+function selectionKey(state: EditorStore): string {
+  const parts = [state.activeObjectId ?? '', state.selectedObjectIds.join(',')];
+  const mesh = activeObject(state)?.mesh;
+  if (mesh) {
+    const verts = mesh.selectedVerts();
+    const clicked = verts
+      .filter((vert) => vert.selectSeq > 0)
+      .sort((a, b) => a.selectSeq - b.selectSeq);
+    parts.push(
+      verts.map((vert) => vert.id).join(','),
+      clicked.map((vert) => vert.id).join(','),
+      mesh
+        .selectedEdges()
+        .map((edge) => edge.id)
+        .join(','),
+      mesh
+        .selectedFaces()
+        .map((face) => face.id)
+        .join(','),
+    );
+  }
+  return parts.join('|');
+}
+
+/** What picking `ids` the way `intent` asks is called on the undo timeline. */
+function objectSelectionLabel(
+  objects: readonly SceneObject[],
+  ids: readonly string[],
+  intent: SelectIntent,
+): string {
+  if (ids.length === 0) return 'Deselect all';
+  const verb = intent === 'subtract' ? 'Deselect' : 'Select';
+  if (ids.length > 1) return `${verb} ${ids.length} objects`;
+  return `${verb} ${objects.find((object) => object.id === ids[0])?.name ?? 'object'}`;
+}
+
 let objectCounter = 0;
 let groupCounter = 0;
 let materialCounter = 0;
@@ -923,6 +965,16 @@ export interface SceneSlice {
   setAutosaveLocation: (location: FileSystemDirectoryHandle | null, ready: boolean) => void;
   recordHistory: (label: string) => void;
   /**
+   * Runs a change to what is selected as one step to undo, named `label`.
+   *
+   * Picking is part of the work: a selection built face by face can take as
+   * long as an edit, and Ctrl+Z has to give back one a stray click threw away.
+   * A change that leaves the selection as it was records nothing, so a click on
+   * what is already picked neither fills the timeline nor throws away the redo
+   * in front of it.
+   */
+  recordSelection: (label: string, change: () => void) => void;
+  /**
    * Records a document captured earlier rather than the one on screen now.
    *
    * For an edit that stands as a preview before it is committed: the state to
@@ -1014,6 +1066,7 @@ export const createSceneSlice: StateCreator<
         groups,
         assetMetadata(assets),
       ),
+      selectedObjectIds: [...get().selectedObjectIds],
       panels: { ...collapsedPanels },
     };
   },
@@ -1039,11 +1092,37 @@ export const createSceneSlice: StateCreator<
     set(historyState());
   },
 
+  recordSelection: (label, change) => {
+    // Inside a transaction, or inside another pick, the step already being
+    // kept stands for this one too.
+    if (historyHold > 0) {
+      change();
+      return;
+    }
+
+    const before = get().snapshotDocument();
+    const untouched = selectionKey(get());
+    historyHold += 1;
+    try {
+      change();
+    } finally {
+      historyHold -= 1;
+    }
+    if (selectionKey(get()) !== untouched) get().recordHistoryDocument(label, before);
+  },
+
   transact: async (label, work) => {
     const before = get().snapshotDocument();
-    const { selectedObjectIds } = get();
     const signal = (state: EditorStore) =>
-      [state.meshVersion, state.objects, state.groups, state.cursor, state.assets] as const;
+      [
+        state.meshVersion,
+        state.objects,
+        state.groups,
+        state.cursor,
+        state.assets,
+        state.activeObjectId,
+        state.selectedObjectIds,
+      ] as const;
     const untouched = signal(get());
 
     historyHold += 1;
@@ -1052,10 +1131,6 @@ export const createSceneSlice: StateCreator<
       result = await work();
     } catch (error) {
       get().loadProjectDocument({ ...before, name: get().projectName });
-      // The load keeps only the active object selected; what else was picked
-      // before the run was not the run's to drop.
-      const restored = new Set(get().objects.map((object) => object.id));
-      set({ selectedObjectIds: selectedObjectIds.filter((id) => restored.has(id)) });
       throw error;
     } finally {
       historyHold -= 1;
@@ -1238,30 +1313,33 @@ export const createSceneSlice: StateCreator<
   },
 
   setActiveObject: (id, intent = 'replace') => {
-    if (id === null) {
-      set({ activeObjectId: null, selectedObjectIds: [] });
-      return;
-    }
+    const label = objectSelectionLabel(get().objects, id === null ? [] : [id], intent);
+    get().recordSelection(label, () => {
+      if (id === null) {
+        set({ activeObjectId: null, selectedObjectIds: [] });
+        return;
+      }
 
-    if (intent === 'subtract') {
-      get().deselectObject(id);
-      return;
-    }
+      if (intent === 'subtract') {
+        get().deselectObject(id);
+        return;
+      }
 
-    set((state) => {
-      const selected =
-        intent === 'add'
-          ? state.selectedObjectIds.includes(id)
-            ? state.selectedObjectIds
-            : [...state.selectedObjectIds, id]
-          : [id];
-      return { activeObjectId: id, selectedObjectIds: selected };
+      set((state) => {
+        const selected =
+          intent === 'add'
+            ? state.selectedObjectIds.includes(id)
+              ? state.selectedObjectIds
+              : [...state.selectedObjectIds, id]
+            : [id];
+        return { activeObjectId: id, selectedObjectIds: selected };
+      });
+
+      // Selecting a locked object is allowed, but nothing can be done with it,
+      // say so on the click rather than letting the user find out on a failed edit.
+      const object = get().objects.find((candidate) => candidate.id === id);
+      if (object?.locked) get().noteLockedAttempt(id);
     });
-
-    // Selecting a locked object is allowed, but nothing can be done with it,
-    // say so on the click rather than letting the user find out on a failed edit.
-    const object = get().objects.find((candidate) => candidate.id === id);
-    if (object?.locked) get().noteLockedAttempt(id);
   },
 
   /**
@@ -1274,30 +1352,35 @@ export const createSceneSlice: StateCreator<
    * one behind, the same as clicking empty space.
    */
   selectObjects: (ids, intent = 'replace') => {
-    set((state) => {
-      if (intent === 'subtract') {
-        const selected = state.selectedObjectIds.filter((id) => !ids.includes(id));
+    get().recordSelection(objectSelectionLabel(get().objects, ids, intent), () =>
+      set((state) => {
+        if (intent === 'subtract') {
+          const selected = state.selectedObjectIds.filter((id) => !ids.includes(id));
+          return {
+            selectedObjectIds: selected,
+            // The active object has to be one of the survivors, or the outliner
+            // draws a deselected row as the active one.
+            activeObjectId:
+              state.activeObjectId && selected.includes(state.activeObjectId)
+                ? state.activeObjectId
+                : (selected[selected.length - 1] ?? null),
+          };
+        }
+
+        const additive = intent === 'add';
+        const selected = additive
+          ? [
+              ...state.selectedObjectIds,
+              ...ids.filter((id) => !state.selectedObjectIds.includes(id)),
+            ]
+          : [...ids];
+
         return {
           selectedObjectIds: selected,
-          // The active object has to be one of the survivors, or the outliner
-          // draws a deselected row as the active one.
-          activeObjectId:
-            state.activeObjectId && selected.includes(state.activeObjectId)
-              ? state.activeObjectId
-              : (selected[selected.length - 1] ?? null),
+          activeObjectId: ids[ids.length - 1] ?? (additive ? state.activeObjectId : null),
         };
-      }
-
-      const additive = intent === 'add';
-      const selected = additive
-        ? [...state.selectedObjectIds, ...ids.filter((id) => !state.selectedObjectIds.includes(id))]
-        : [...ids];
-
-      return {
-        selectedObjectIds: selected,
-        activeObjectId: ids[ids.length - 1] ?? (additive ? state.activeObjectId : null),
-      };
-    });
+      }),
+    );
   },
 
   /**
@@ -1308,18 +1391,20 @@ export const createSceneSlice: StateCreator<
    * deselected row as the active one.
    */
   deselectObject: (id) => {
-    set((state) => {
-      if (!state.selectedObjectIds.includes(id)) return {};
+    get().recordSelection(objectSelectionLabel(get().objects, [id], 'subtract'), () =>
+      set((state) => {
+        if (!state.selectedObjectIds.includes(id)) return {};
 
-      const selected = state.selectedObjectIds.filter((candidate) => candidate !== id);
-      return {
-        selectedObjectIds: selected,
-        activeObjectId:
-          state.activeObjectId === id
-            ? (selected[selected.length - 1] ?? null)
-            : state.activeObjectId,
-      };
-    });
+        const selected = state.selectedObjectIds.filter((candidate) => candidate !== id);
+        return {
+          selectedObjectIds: selected,
+          activeObjectId:
+            state.activeObjectId === id
+              ? (selected[selected.length - 1] ?? null)
+              : state.activeObjectId,
+        };
+      }),
+    );
   },
 
   /**
@@ -1329,31 +1414,35 @@ export const createSceneSlice: StateCreator<
    * on, but the tool stays as it was: it is the user's own choice, and picking
    * something else is not a request to change it.
    *
-   * No history entry, unlike Alt+A: Escape is the way out of a state, and
-   * filling undo with the times someone reached for it would bury the edits
-   * they actually want back.
+   * A step to undo like any other pick, so a selection lost to a stray Escape
+   * comes back with Ctrl+Z. With nothing selected it records nothing.
    */
   clearSelection: () => {
     const { mode } = get();
 
-    if (mode === 'edit') {
-      const object = activeObject(get());
-      object?.mesh.deselectAll();
-      set((state) => ({ meshVersion: state.meshVersion + 1 }));
-    } else {
-      set({ selectedObjectIds: [], activeObjectId: null });
-    }
+    get().recordSelection('Deselect all', () => {
+      if (mode === 'edit') {
+        const object = activeObject(get());
+        object?.mesh.deselectAll();
+        set((state) => ({ meshVersion: state.meshVersion + 1 }));
+      } else {
+        set({ selectedObjectIds: [], activeObjectId: null });
+      }
+    });
 
     set({ status: 'Deselected all' });
   },
 
   /** The object-mode equivalent of "select all" in edit mode. */
   selectAllObjects: () => {
-    set((state) => ({
-      selectedObjectIds: state.objects.map((object) => object.id),
-      activeObjectId: state.activeObjectId ?? state.objects[state.objects.length - 1]?.id ?? null,
-      status: `Selected all ${state.objects.length} object(s)`,
-    }));
+    get().recordSelection('Select all', () =>
+      set((state) => ({
+        selectedObjectIds: state.objects.map((object) => object.id),
+        activeObjectId:
+          state.activeObjectId ?? state.objects[state.objects.length - 1]?.id ?? null,
+        status: `Selected all ${state.objects.length} object(s)`,
+      })),
+    );
   },
 
   renameObject: (id, name) => {
@@ -1501,7 +1590,9 @@ export const createSceneSlice: StateCreator<
     if (!group) return;
 
     const members = groupMembers(objects, id);
-    get().selectObjects(members.map((object) => object.id));
+    get().recordSelection(`Select ${group.name}`, () =>
+      get().selectObjects(members.map((object) => object.id)),
+    );
     set({ status: `Selected ${members.length} object(s) in ${group.name}` });
   },
 
@@ -2886,6 +2977,11 @@ export const createSceneSlice: StateCreator<
       ...group,
       collapsed: folded.get(group.id) ?? false,
     }));
+    const selectedObjectIds = document.selectedObjectIds
+      ? document.selectedObjectIds.filter((id) => seen.has(id))
+      : restored.activeObjectId
+        ? [restored.activeObjectId]
+        : [];
 
     set((state) => ({
       objects,
@@ -2900,7 +2996,7 @@ export const createSceneSlice: StateCreator<
       projectName: restored.name,
       cursor: restored.cursor,
       activeObjectId: restored.activeObjectId,
-      selectedObjectIds: restored.activeObjectId ? [restored.activeObjectId] : [],
+      selectedObjectIds,
       meshVersion: state.meshVersion + 1,
     }));
   },

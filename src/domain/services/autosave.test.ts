@@ -86,9 +86,14 @@ describe('telling a changed scene from a touched one', () => {
     expect(sceneFingerprint(later)).toBe(sceneFingerprint(document));
   });
 
-  it('leaves out which object was active and which panels were folded', () => {
+  it('leaves out which objects were active or selected and which panels were folded', () => {
     const document = sceneAround(quadEditedOutOfOrder());
-    const lookedAround = { ...document, activeObjectId: null, panels: { OUTLINER: true } };
+    const lookedAround = {
+      ...document,
+      activeObjectId: null,
+      selectedObjectIds: ['quad'],
+      panels: { OUTLINER: true },
+    };
 
     expect(sceneFingerprint(lookedAround)).toBe(sceneFingerprint(document));
   });

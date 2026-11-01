@@ -342,7 +342,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'note',
-        text: 'Undo holds the last 50 steps, or as many as UNDO STEPS in preferences allows. The ▤ button in the top bar lists them, so you can click straight back to any one.',
+        text: 'Undo holds the last 50 steps, or as many as UNDO STEPS in preferences allows. The ▤ button in the top bar lists them, so you can click straight back to any one. Selecting is a step too: every click, box, lasso or outliner pick that changes what is selected, in object or edit mode, is one Ctrl+Z away, so a selection a stray click threw away comes back. A click that leaves the selection as it was records nothing.',
       },
       {
         kind: 'note',
@@ -566,7 +566,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ['Everything / nothing', 'A selects all, Alt+A deselects all, Ctrl+I inverts.'],
           [
             'Clear the selection',
-            'Esc clears it (objects in object mode, elements in edit mode) and puts the transform gizmo away. It adds no undo step of its own.',
+            'Esc clears it (objects in object mode, elements in edit mode) and puts the transform gizmo away. Ctrl+Z brings the selection back.',
           ],
           [
             'Wider or narrower',

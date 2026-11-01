@@ -855,16 +855,18 @@ describe('editor store', () => {
     expect(store().activeTool).toBe('rotate');
   });
 
-  it('leaves undo alone when a selection is cleared', () => {
+  it('takes back a selection cleared with Escape as a step of its own', () => {
     store().addPrimitive('cube');
-    const before = store().objects.length;
+    const [box] = store().objects;
 
     store().clearSelection();
     store().undo();
 
-    // Escape is a way out of a state, not an edit: the undo behind it is still
-    // the one that added the box.
-    expect(store().objects).toHaveLength(before - 1);
+    // Escape used to record nothing, so the undo after it reached past the
+    // cleared selection and took the box away, and a selection lost to a
+    // stray Escape could not be had back at all.
+    expect(store().objects).toHaveLength(1);
+    expect(store().selectedObjectIds).toEqual([box.id]);
   });
 
   it('hands the active object on when it is deselected', () => {
@@ -2180,6 +2182,147 @@ describe('history timeline', () => {
 
     store().setPreferences({ historySize: 50 });
     expect(store().historyUndo).toHaveLength(10);
+  });
+});
+
+describe('selection on the timeline', () => {
+  beforeEach(() => {
+    store().resetScene();
+    store().setPreferences({ historySize: 50 });
+    store().setMode('object');
+    store().addPrimitive('cube');
+    store().addPrimitive('cylinder');
+    store().clearHistory();
+  });
+
+  it('takes back each object picked, one step at a time', () => {
+    const [box, cylinder] = store().objects;
+
+    store().setActiveObject(box.id);
+    store().setActiveObject(cylinder.id, 'add');
+
+    // Picking used to record nothing, so Ctrl+Z skipped every selection and
+    // took back the last edit instead.
+    expect(store().historyUndo).toEqual([`Select ${cylinder.name}`, `Select ${box.name}`]);
+    store().undo();
+    expect(store().selectedObjectIds).toEqual([box.id]);
+    store().undo();
+    expect(store().selectedObjectIds).toEqual([cylinder.id]);
+    expect(store().objects).toHaveLength(2);
+  });
+
+  it('puts every selected object back, not only the active one', () => {
+    const [box, cylinder] = store().objects;
+    store().selectObjects([box.id, cylinder.id]);
+
+    store().groupSelected();
+    store().undo();
+
+    // The step held only the active object, so the undo came back with one
+    // object selected where there had been two.
+    expect(store().selectedObjectIds).toEqual([box.id, cylinder.id]);
+    expect(store().activeObjectId).toBe(cylinder.id);
+  });
+
+  it('records nothing for a pick that leaves the selection as it was', () => {
+    const [, cylinder] = store().objects;
+    store().setActiveObject(null);
+    store().undo();
+
+    store().setActiveObject(cylinder.id);
+    store().setMode('edit');
+    activeObject().mesh.deselectAll();
+    store().clearSelection();
+
+    // A click on what is already the selection is not a step, and recording
+    // one would also throw away the redo the user had just made room for.
+    expect(store().historyUndo).toEqual([]);
+    expect(store().historyRedo).toEqual(['Deselect all']);
+  });
+
+  it('takes back an object deselected, a region caught and everything selected', () => {
+    const [box, cylinder] = store().objects;
+
+    store().deselectObject(cylinder.id);
+    store().selectAllObjects();
+    store().selectObjects([box.id], 'subtract');
+    store().selectObjects([box.id, cylinder.id]);
+
+    expect(store().historyUndo).toEqual([
+      'Select 2 objects',
+      `Deselect ${box.name}`,
+      'Select all',
+      `Deselect ${cylinder.name}`,
+    ]);
+    store().undoTimes(2);
+    expect(store().selectedObjectIds).toEqual([box.id, cylinder.id]);
+    store().undoTimes(2);
+    expect(store().selectedObjectIds).toEqual([cylinder.id]);
+  });
+
+  it('takes back a whole folder picked in the outliner as one step', () => {
+    const [box, cylinder] = store().objects;
+    store().selectObjects([box.id, cylinder.id]);
+    store().groupSelected();
+    const [folder] = store().groups;
+    store().setActiveObject(box.id);
+
+    store().selectGroup(folder.id);
+
+    expect(store().historyUndo.slice(0, 2)).toEqual([`Select ${folder.name}`, `Select ${box.name}`]);
+    store().undo();
+    expect(store().selectedObjectIds).toEqual([box.id]);
+  });
+
+  it('takes back the faces picked in edit mode', () => {
+    store().setMode('edit');
+    store().setSelectMode('face');
+    activeObject().mesh.deselectAll();
+
+    store().recordSelection('Select face', () => {
+      selectTopFace();
+      store().touchMesh();
+    });
+
+    expect(store().historyUndo).toEqual(['Select face']);
+    store().undo();
+    expect(activeObject().mesh.selectedFaces()).toEqual([]);
+    store().redo();
+    expect(activeObject().mesh.selectedFaces()).toHaveLength(1);
+  });
+
+  it('counts a change of which vertex was picked first', () => {
+    store().setMode('edit');
+    store().setSelectMode('vertex');
+    const mesh = activeObject().mesh;
+    mesh.deselectAll();
+    const [first, second] = mesh.verts.values();
+    mesh.selectVert(first);
+    mesh.selectVert(second);
+
+    store().recordSelection('Select vertex', () => {
+      mesh.deselectAll();
+      mesh.selectVert(first);
+      mesh.selectVert(second);
+    });
+    expect(store().historyUndo).toEqual([]);
+
+    store().recordSelection('Select vertex', () => {
+      mesh.deselectAll();
+      mesh.selectVert(second);
+      mesh.selectVert(first);
+    });
+    // Merging at the first or last vertex reads this order, so a pick that
+    // changes it changes what the next merge does.
+    expect(store().historyUndo).toEqual(['Select vertex']);
+  });
+
+  it('keeps a step for a script that only selects', async () => {
+    const [box] = store().objects;
+
+    await store().transact('Run script', async () => store().setActiveObject(box.id));
+
+    expect(store().historyUndo).toEqual(['Run script']);
   });
 });
 

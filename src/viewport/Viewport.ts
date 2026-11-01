@@ -4122,14 +4122,22 @@ export class Viewport {
     const result = this.elementUnderPointer(pointer);
     if (!result) {
       if (intent === 'replace') {
-        object.mesh.deselectAll();
-        state.touchMesh(this.previewOnlyNote(view));
+        state.recordSelection('Deselect all', () => {
+          object.mesh.deselectAll();
+          state.touchMesh(this.previewOnlyNote(view));
+        });
       }
       return;
     }
 
-    clickElement(object.mesh, state.selectMode, result, intent, loopSelect);
-    state.touchMesh();
+    const { selectMode } = state;
+    const taken = clickIntent(intent, elementSelected(object.mesh, selectMode, result.elementId));
+    const loop = loopSelect && selectMode !== 'vertex' ? ' loop' : '';
+    const label = `${taken === 'subtract' ? 'Deselect' : 'Select'} ${selectMode}${loop}`;
+    state.recordSelection(label, () => {
+      clickElement(object.mesh, selectMode, result, intent, loopSelect);
+      state.touchMesh();
+    });
   }
 
   /**
@@ -4232,9 +4240,12 @@ export class Viewport {
       }
     }
 
-    applySelection(object.mesh, state.selectMode, hits, { intent, loopSelect: false });
-    object.mesh.flushSelection(state.selectMode);
-    state.touchMesh();
+    const elements = state.selectMode === 'vertex' ? 'vertices' : `${state.selectMode}s`;
+    state.recordSelection(`${intent === 'subtract' ? 'Deselect' : 'Select'} ${elements}`, () => {
+      applySelection(object.mesh, state.selectMode, hits, { intent, loopSelect: false });
+      object.mesh.flushSelection(state.selectMode);
+      state.touchMesh();
+    });
   }
 
   // ---------------------------------------------------------------- knife

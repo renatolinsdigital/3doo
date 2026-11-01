@@ -61,7 +61,8 @@ function hashText(text: string): number {
  * select all raise it on a scene the last save already holds.
  *
  * Leaves out what a document carries besides the scene, as the flag does:
- * when it was written, which object was active and which panels were folded.
+ * when it was written, which objects were active or selected and which panels
+ * were folded.
  * Edges count as sets. A mesh read back from a document, which is how undo
  * puts one back, builds its edges face by face rather than in the order the
  * edits made them, and without this an edit taken back would never read as
@@ -73,6 +74,7 @@ export function sceneFingerprint(document: ProjectDocument): number {
     // Undefined is left out of the text altogether.
     savedAt: undefined,
     activeObjectId: undefined,
+    selectedObjectIds: undefined,
     panels: undefined,
     objects: document.objects.map((object) => {
       const { mesh } = object;

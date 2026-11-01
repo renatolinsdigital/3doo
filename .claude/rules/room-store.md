@@ -22,6 +22,10 @@ preferences. Depth: `docs/state-management.md`.
   `transact` makes a batch one step and rolls back on a throw.
 - A refused or cancelled action must not drop a step it did not record
   (`discardHistory` once took the step underneath).
+- Every selection change is a step through `recordSelection`, which records
+  only when `selectionKey` moved: a no-op pick that recorded would also wipe
+  redo. The document carries `selectedObjectIds`; `sceneFingerprint` leaves
+  it out, as it does `activeObjectId`.
 - An operation that splits, joins, cuts, deletes or reshapes ends with
   `announce(get())`, which raises its status as a success toast. `exec` does
   it for every operator outside `SELECTION_OPERATORS`. It is quiet inside

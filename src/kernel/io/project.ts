@@ -105,6 +105,14 @@ export interface ProjectDocument {
   savedAt: string;
   cursor: Vec3;
   activeObjectId: string | null;
+  /**
+   * Every object selected, the active one included.
+   *
+   * Filled in and read back by the store, as `panels` is: undo replays the
+   * selection along with the scene, since picking is a step of its own. Absent
+   * in files written before, which load with the active object alone selected.
+   */
+  selectedObjectIds?: string[];
   objects: SceneObjectData[];
   /**
    * The outliner's folders. Absent in files written before grouping, which

@@ -187,6 +187,16 @@ The `History` instance lives at module scope, not in the store. It is not render
 state. Only `canUndo`, `canRedo` and the label of each step are mirrored into
 the store, because those drive the buttons and the history dialog.
 
+Selecting is a step too, as it is in Blender: a click, a box or lasso, an
+outliner pick, Escape and the selection operators each record one, so Ctrl+Z
+gives back a selection a stray click threw away. They go through
+`recordSelection(label, change)`, which snapshots, runs the change, and records
+only when the selection actually moved: a click on what is already selected
+would otherwise fill the timeline and throw away the redo in front of it. The
+element selection already rode in the mesh format; the document also carries
+`selectedObjectIds`, which the autosave fingerprint leaves out, as it does
+`activeObjectId`, so picking objects never reads as a changed scene.
+
 The cost is one `serializeMesh` per operation. That is the accepted trade for
 correctness. Per-operation inverse commands would remove it, and are not built.
 

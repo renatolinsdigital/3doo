@@ -264,6 +264,42 @@ describe('Viewport', () => {
     expect(Math.min(...moved.map((vert) => vert.co.z))).toBeCloseTo(back);
   });
 
+  it('takes back each face pick, click, miss and box alike', () => {
+    store().addPrimitive('cube');
+    poseAt(10);
+    store().setMode('edit');
+    store().setSelectMode('face');
+    store().objects[0].mesh.deselectAll();
+    store().clearHistory();
+    const view = mount();
+    frame(view);
+    const canvas = (view as unknown as { canvas: HTMLCanvasElement }).canvas;
+    const pointer = (type: string, x: number, y: number) =>
+      canvas.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, button: 0 }));
+    const click = (x: number, y: number) => {
+      pointer('pointerdown', x, y);
+      pointer('pointerup', x, y);
+    };
+    const picked = () => store().objects[0].mesh.selectedFaces().length;
+
+    click(SIZE / 2, SIZE / 2);
+    click(10, 10);
+    pointer('pointerdown', 10, 10);
+    pointer('pointermove', SIZE - 10, SIZE - 10);
+    pointer('pointerup', SIZE - 10, SIZE - 10);
+
+    // A pick changed the mesh's selection without a step, so Ctrl+Z after
+    // picking took back the edit before it instead of the pick.
+    expect(store().historyUndo).toEqual(['Select faces', 'Deselect all', 'Select face']);
+    expect(picked()).toBeGreaterThan(0);
+    store().undo();
+    expect(picked()).toBe(0);
+    store().undo();
+    expect(picked()).toBe(1);
+    store().undo();
+    expect(picked()).toBe(0);
+  });
+
   it('keeps the target in view at the furthest the orbit zooms out', () => {
     store().addPrimitive('cube');
     poseAt(MAX_ORBIT_DISTANCE);
