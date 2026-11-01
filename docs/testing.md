@@ -120,8 +120,10 @@ one off that nothing hides. Two sources answer, and neither shares code with the
 marks under test: a ray cast on the CPU to each vertex and to points along each
 edge says what is hidden, and the frame read back with the marks on and off
 says what was drawn. The scenes are the ones the leaks came back in: a thin
-plate edge on, a sheet over a grid of the same mesh, a sphere, a cylinder, a
-cube behind another object, and a room seen from inside.
+plate edge on, a sheet over a grid of the same mesh, an open sheet folded back
+under itself, a sphere, a cylinder, a cube behind another object, and a room
+seen from inside. Wire behind its own object is judged as strictly as wire
+behind another one, since both are tested where the wire really lies.
 
 What it cannot judge, by design:
 
@@ -129,14 +131,13 @@ What it cannot judge, by design:
   own. A far-side line running right beside a near one goes unseen.
 - A mark left off on a silhouette, where half of every line lies over the
   background and a dark line there has next to no contrast.
-- Wire behind its own object's surface by less than the lift the design gives
-  it (see `liftWire`), which shows by design.
 
 Each historical fix was put back to check the sweep fails on it: the far-side
 cull from inside a mesh, every dot or edge lifted for the steepest face, the
-occlusion pass switched off, and the fixed orthographic depth range all fail
-it. Dropping only the test of the wire against other objects' surfaces does
-not: in edit mode the wire stays hidden behind another object without it.
+occlusion pass switched off, the fixed orthographic depth range, and the wire
+left to its lift against its own object (the folded and the layered sheet) all
+fail it. Dropping only the test of the wire against other objects' surfaces
+does not: in edit mode the wire stays hidden behind another object without it.
 
 One more check looks at pictures rather than the viewport: `pictureWire` takes
 a cube the way the MCP's `render_views` does, in `solid` and in `solidWire`,

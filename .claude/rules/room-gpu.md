@@ -24,8 +24,11 @@ apart, each with the other switched off.
   `build` turns them off.
 - A dark mark over the background barely changes a pixel, so "left off" is
   judged only with surface on every side.
-- Wire behind its own object within its lift shows by design; the allowance
-  comes from the edge's two faces, not from the shader.
+- Wire behind its own object gets no allowance: it is judged as strictly as
+  wire behind another object.
+- An object mode sweep reports wire left off round the view centre, the same
+  with or without any wire test, so something drawn there covers it. The
+  edit mode scenes have none.
 - Read a pixel finding before trusting it: render the pose, crop round it,
   and compare rows with the mark on and off.
 - Never edit `src` while a sweep runs: Vite reloads the page and the sweep
@@ -35,7 +38,8 @@ apart, each with the other switched off.
 
 Put back and caught: the far-side cull ignoring an eye inside a mesh, every
 dot or edge lifted for the steepest face, the occlusion pass off, a fixed
-orthographic depth range. Not caught: dropping `markOccluded` alone, since in
+orthographic depth range, the wire's own-surface test off (folded and layered
+sheet). Not caught: dropping `markOccluded` alone, since in
 edit mode something else still hides the wire behind another object.
 
 `pictureWire` checks pictures rather than the viewport: the wire a snapshot

@@ -69,6 +69,20 @@ const SCENES: [SceneName, Pose[]][] = [
       ],
     ),
   ],
+  // From above the lower leaf's edges run out from the fold under the upper
+  // leaf, and from below the other way round.
+  [
+    'folded sheet',
+    sweep(
+      [3, 8, 20],
+      [
+        [0.3, 0.5],
+        [0.8, 1.2],
+        [1.2, 2.5],
+        [2.4, 4],
+      ],
+    ),
+  ],
   // Contours: the far side runs within a pixel of the near one there.
   [
     'sphere',

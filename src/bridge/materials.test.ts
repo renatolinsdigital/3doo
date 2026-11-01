@@ -203,7 +203,7 @@ describe('vertex point material', () => {
     // the spot.
     expect(test).toContain('if ( ( surface.a & 1048576u ) == 0u ) {');
     expect(test).toContain('if ( aheadAtEdge > margin ) return true;');
-    expect(test).toContain('if ( dotEdgeReach( edges[ k ], offset ) <= ');
+    expect(test).toContain('if ( faceEdgeReach( edges[ k ], offset ) <= ');
     expect(test.indexOf('if ( reaches ) return true;')).toBeGreaterThan(empty);
   });
 
@@ -417,6 +417,23 @@ describe('wireframe material', () => {
       'if ( surface.a >> 21 == uint( surfaceTag ) ) return false;',
     );
     expect(wire.fragmentShader).toContain('if ( wireOccluded() ) discard;');
+  });
+
+  it.each([
+    ['plain wire', () => createWireMaterial(false)],
+    ['selected edges', () => createWireMaterial(true)],
+    ['modifier preview', createPreviewWireMaterial],
+  ])('tests the %s against its own faces where they reach the wire', (_, create) => {
+    // Its own surface used to be left to the lift. An edge running out from
+    // under a face it shares a vertex with starts level with that face, so
+    // wherever the far-side cull was not running it came through as a tip as
+    // long as the lift over the gap: the far leaf of a folded sheet, the lower
+    // layer of one mesh in two.
+    const shader = create().fragmentShader;
+
+    expect(shader).toContain('wireBehindOwn( at, onLine, own )');
+    expect(shader).toContain('if ( surface.a >> 21 != uint( surfaceTag ) ) return false;');
+    expect(shader).toContain('if ( faceEdgeReach( edges[ k ], offset ) <= ');
   });
 });
 

@@ -475,15 +475,20 @@ export class ObjectView {
       return;
     }
 
-    // Where faces end is read only while vertices are marked, which is edit
-    // mode, and the far corners only of the object they are marked on.
+    // Where faces end is read while vertices are marked or the wire is drawn
+    // over the surface, which is edit mode or the solid-and-wire shading, and
+    // the far corners only of the object the vertices are marked on.
     const marksVerts =
       state.mode === 'edit' &&
       state.isActive &&
       (state.selectMode === 'vertex' || !!state.recentVerts?.size);
     const buffers = buildMeshBuffers(
       displayMesh,
-      marksVerts ? 'far' : state.mode === 'edit' ? 'edges' : undefined,
+      marksVerts
+        ? 'far'
+        : state.mode === 'edit' || state.settings.shading === 'solidWire'
+          ? 'edges'
+          : undefined,
     );
 
     // Edit mode works on the object's own mesh, so that is what it draws the

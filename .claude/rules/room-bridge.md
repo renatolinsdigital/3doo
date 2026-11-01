@@ -23,8 +23,11 @@ The most regressed area of the app: nine leak fixes in seven weeks,
   `dotOccluded` against the occlusion pass, which only counts a face that
   reaches the vertex (its own edges, not a triangle's diagonal).
 - Against other objects the wire is tested where it really lies, by
-  `markOccluded` and `surfaceTag`. Its own surface is left to the lift, so
-  layers of one mesh closer than the lift show each other's wire by design.
+  `markOccluded` and `surfaceTag`. Against its own, by `wireBehindOwn`: the
+  surface carried to the wire's line, not the fragment, and only a face that
+  reaches it. Left to the lift, hidden edges came through as tips from shared
+  vertices on open meshes and folds. It needs face edge codes on the solid, so
+  `'edges'` is built in object mode solid-and-wire too.
 - Far-side edges are culled exactly (`frontEdgeLines`), except in x-ray and
   wireframe, for selected edges, and with the eye inside a closed mesh
   (winding number in `encloses`; the bounding box alone said inside too often).

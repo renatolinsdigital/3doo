@@ -574,6 +574,24 @@ describe('ObjectView vertex dots', () => {
     expect(geometry.getAttribute('farCornerA')).toBeUndefined();
   });
 
+  it('gives the surface where its faces end while the wire is drawn over it', () => {
+    // The wire is tested against its own faces in object mode too, and with no
+    // ends to read every face reached as far as the test looked: a visible
+    // edge lost a pixel where a nearer part of the object's outline ran by.
+    const { object, settings } = scene();
+    const view = new ObjectView(object.id);
+    view.update(object, evaluatedMesh(object), {
+      ...editState(settings, 'solidWire'),
+      mode: 'object',
+    });
+
+    const geometry = (view.group.getObjectByName(`${object.id}:solid`) as THREE.Mesh).geometry;
+    expect(geometry.getAttribute('triangleCorner').count).toBe(
+      geometry.getAttribute('position').count,
+    );
+    expect(geometry.getAttribute('farCornerA')).toBeUndefined();
+  });
+
   it('says on the surface whether the dots are its own, for the test to read', () => {
     const { object, settings } = scene();
     const view = new ObjectView(object.id);

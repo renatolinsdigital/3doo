@@ -12,6 +12,7 @@
 import * as THREE from 'three';
 
 import { OCCLUDER_LAYER } from '@bridge/materials';
+import type { BMesh } from '@kernel/index';
 import type { CameraPose } from '@store/types';
 import { useEditorStore, type EditorStore } from '@store/useEditorStore';
 import { renderSnapshots } from '@viewport/snapshot';
@@ -25,7 +26,6 @@ interface ViewInternals {
   readonly points: THREE.Points;
   readonly vertPositions: Float32Array;
   readonly edgePositions: Float32Array;
-  readonly edgeIds: Int32Array;
 }
 
 interface ViewportInternals {
@@ -38,7 +38,13 @@ interface ViewportInternals {
 }
 
 export type SceneName =
-  'thin plate' | 'layered sheet' | 'sphere' | 'cylinder' | 'behind another' | 'room';
+  | 'thin plate'
+  | 'layered sheet'
+  | 'folded sheet'
+  | 'sphere'
+  | 'cylinder'
+  | 'behind another'
+  | 'room';
 
 export interface Pose extends CameraPose {
   orthographic: boolean;
@@ -74,22 +80,6 @@ const INK = 24;
 const CLEARANCE_PX = 3.5;
 /** Sample spacing along an edge, in pixels. */
 const WIRE_STEP_PX = 1;
-
-/**
- * What the design lets the wire through its own object's surface by. The wire
- * floats towards the camera by what the surface under it gains in depth across
- * half the line's width, so its own faces do not swallow it (see `liftWire` in
- * `src/bridge/materials.ts`), and only other objects' surfaces are tested
- * where it really lies. Layers of one mesh closer than that show through each
- * other by design. These are the design's numbers: half of the 1.4 px line,
- * and the 1 to 8 range its slope is held to.
- */
-const WIRE_HALF_PX = 0.7;
-const LIFT_SLOPE_MIN = 1;
-const LIFT_SLOPE_MAX = 8;
-/** Room for rasterising, over the lift itself. */
-const LIFT_MARGIN = 1.5;
-const LIFT_MARGIN_PX = 0.25;
 
 let live: ViewportInternals | null = null;
 
@@ -189,6 +179,9 @@ export function build(name: SceneName): void {
     place(under, { position: { x: 0, y: -0.005, z: 0 } });
     store.setState({ activeObjectId: active, selectedObjectIds: [active, under] });
     store.getState().mergeSelected();
+  } else if (name === 'folded sheet') {
+    active = add('plane', { size: 2 });
+    foldSheet(store.getState().objects.find((object) => object.id === active)?.mesh);
   } else if (name === 'sphere') {
     active = add('uvSphere', { segments: 16, rings: 8 });
   } else if (name === 'cylinder') {
@@ -216,6 +209,37 @@ export function build(name: SceneName): void {
   const mesh = store.getState().objects.find((object) => object.id === active)?.mesh;
   mesh?.deselectAll();
   store.getState().touchMesh();
+}
+
+/**
+ * An open sheet folded back under itself, two degrees apart, the lower leaf's
+ * rows fanning in under the upper leaf's. Every lower edge starts at a vertex
+ * of the fold, level with the face over it, and the gap opens slowly: lifted
+ * clear of its own faces, each came through the upper leaf as a tip running
+ * out from the fold. Open, so the far-side cull never runs and depth alone
+ * hides them.
+ */
+function foldSheet(mesh: BMesh | undefined): void {
+  if (!mesh) throw new Error('The folded sheet has no mesh to fold');
+  mesh.clear();
+  const fold = (2 * Math.PI) / 180;
+  const rows = [-1, -0.5, 0, 0.5, 1];
+  const across = [0, 0.5, 1];
+  const upper = across.map((d) => rows.map((z) => mesh.addVert({ x: -d, y: 0, z })));
+  const lower = across.map((d, j) =>
+    j === 0
+      ? upper[0]
+      : rows.map((z) =>
+          mesh.addVert({ x: -d * Math.cos(fold), y: -d * Math.sin(fold), z: z * (1 - d / 2) }),
+        ),
+  );
+  for (let j = 0; j + 1 < across.length; j += 1) {
+    for (let i = 0; i + 1 < rows.length; i += 1) {
+      mesh.addFace([upper[j][i], upper[j + 1][i], upper[j + 1][i + 1], upper[j][i + 1]]);
+      mesh.addFace([lower[j][i], lower[j][i + 1], lower[j + 1][i + 1], lower[j + 1][i]]);
+    }
+  }
+  mesh.computeNormals();
 }
 
 /** Draws one frame now, in place of the next scheduled one, so the pixels can be read back. */
@@ -274,13 +298,12 @@ interface Occluder {
   b: THREE.Vector3;
   c: THREE.Vector3;
   oneSided: boolean;
-  owner: string;
 }
 
 /** Every surface that hides what is behind it, as world triangles. */
 function occluders(): Occluder[] {
   const triangles: Occluder[] = [];
-  for (const [owner, view] of viewport().views) {
+  for (const view of viewport().views.values()) {
     const { solid } = view;
     if (!view.group.visible || !solid.visible || !solid.layers.isEnabled(OCCLUDER_LAYER)) continue;
     const material = Array.isArray(solid.material) ? solid.material[0] : solid.material;
@@ -298,7 +321,6 @@ function occluders(): Occluder[] {
         b: corner(i + 1),
         c: corner(i + 2),
         oneSided: material.side === THREE.FrontSide,
-        owner,
       });
     }
   }
@@ -335,12 +357,7 @@ function sampler(width: number, height: number) {
     return triangles.some(({ a, b, c }) => ray.intersectTriangle(a, b, c, false, hit) !== null);
   };
 
-  /**
-   * `own` names the object the mark belongs to and how far behind that
-   * object's own surface it may sit and still be drawn; behind any other
-   * surface it is hidden past `HIDDEN_PX`.
-   */
-  const at = (point: THREE.Vector3, own?: { id: string; allowedPx: number }): Sample | null => {
+  const at = (point: THREE.Vector3): Sample | null => {
     const ndc = point.clone().project(camera);
     if (Math.abs(ndc.x) > 1 || Math.abs(ndc.y) > 1 || Math.abs(ndc.z) > 1) return null;
 
@@ -360,42 +377,20 @@ function sampler(width: number, height: number) {
     ray.direction.copy(point).sub(ray.origin).normalize();
 
     let nearest = Infinity;
-    let by = '';
-    for (const { a, b, c, oneSided, owner } of triangles) {
+    for (const { a, b, c, oneSided } of triangles) {
       if (!ray.intersectTriangle(a, b, c, oneSided, hit)) continue;
-      const along = hit.distanceTo(ray.origin);
-      if (along < nearest) {
-        nearest = along;
-        by = owner;
-      }
+      nearest = Math.min(nearest, hit.distanceTo(ray.origin));
     }
     const gapPx = Math.max(0, distance - nearest) / pixel;
-    const hiddenPx = own && by === own.id ? Math.max(HIDDEN_PX, own.allowedPx) : HIDDEN_PX;
     return {
       x: ((ndc.x + 1) / 2) * width,
       y: ((1 - ndc.y) / 2) * height,
-      state: gapPx < VISIBLE_PX ? 'visible' : gapPx > hiddenPx ? 'hidden' : 'unsure',
+      state: gapPx < VISIBLE_PX ? 'visible' : gapPx > HIDDEN_PX ? 'hidden' : 'unsure',
       gapPx,
     };
   };
 
   return { at, covered };
-}
-
-/**
- * How steeply the faces either side of an edge climb in depth across the
- * screen, seen along `ray`: the tangent of the angle each is turned from it,
- * the steeper of the two, held to the design's range. Back faces count the
- * same as front ones.
- */
-function liftSlope(normals: THREE.Vector3[], ray: THREE.Vector3): number {
-  let slope = LIFT_SLOPE_MIN;
-  for (const normal of normals) {
-    const facing = Math.abs(normal.dot(ray));
-    const steepness = facing > 1e-6 ? Math.sqrt(1 - facing * facing) / facing : LIFT_SLOPE_MAX;
-    slope = Math.max(slope, Math.min(steepness, LIFT_SLOPE_MAX));
-  }
-  return slope;
 }
 
 /** Inked pixels in the 3 by 3 block round a point. */
@@ -489,10 +484,8 @@ export function check(pose: Pose): PoseReport {
   view.controls.setPose(pose);
   draw();
 
-  const activeId = store.getState().activeObjectId as string;
-  const marks = view.views.get(activeId);
-  const mesh = store.getState().objects.find((object) => object.id === activeId)?.mesh;
-  if (!marks || !mesh) throw new Error('The active object has no view');
+  const marks = view.views.get(store.getState().activeObjectId as string);
+  if (!marks) throw new Error('The active object has no view');
   const toWorld = marks.group.matrixWorld;
 
   const dots = ink(marks.points, [marks.wire]);
@@ -508,15 +501,9 @@ export function check(pose: Pose): PoseReport {
   const wireSampler = sampler(wire.width, wire.height);
   const edgeSamples: Sample[] = [];
   const { camera } = view;
-  const toward = camera.getWorldDirection(new THREE.Vector3());
-  const normalToWorld = new THREE.Matrix3().getNormalMatrix(toWorld);
   for (let i = 0; i < marks.edgePositions.length; i += 6) {
     const a = new THREE.Vector3().fromArray(marks.edgePositions, i).applyMatrix4(toWorld);
     const b = new THREE.Vector3().fromArray(marks.edgePositions, i + 3).applyMatrix4(toWorld);
-    const edge = mesh.edges.get(marks.edgeIds[i / 6]);
-    const normals = (edge ? mesh.edgeFaces(edge) : []).map(({ normal }) =>
-      new THREE.Vector3(normal.x, normal.y, normal.z).applyMatrix3(normalToWorld).normalize(),
-    );
     const ends = [a.clone().project(camera), b.clone().project(camera)];
     const length = Math.hypot(
       ((ends[1].x - ends[0].x) / 2) * wire.width,
@@ -524,16 +511,7 @@ export function check(pose: Pose): PoseReport {
     );
     const steps = Math.max(2, Math.ceil(length / WIRE_STEP_PX));
     for (let step = 0; step < steps; step += 1) {
-      const point = a.clone().lerp(b, (step + 0.5) / steps);
-      const ray =
-        camera instanceof THREE.PerspectiveCamera
-          ? point.clone().sub(camera.position).normalize()
-          : toward;
-      const lift = WIRE_HALF_PX * liftSlope(normals, ray);
-      const sample = wireSampler.at(point, {
-        id: activeId,
-        allowedPx: lift * LIFT_MARGIN + LIFT_MARGIN_PX,
-      });
+      const sample = wireSampler.at(a.clone().lerp(b, (step + 0.5) / steps));
       if (sample) edgeSamples.push(sample);
     }
   }

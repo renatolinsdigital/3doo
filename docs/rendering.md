@@ -140,6 +140,37 @@ broken. They sit on the edge's own pixels rather than spreading across a quad,
 so the constant is all they need. The vertex dots do spread, and get a lift of
 their own (see below).
 
+**What the lift lets through.** A lift is depth, and anything of the same mesh
+standing in front of the wire by less than that depth loses to it. An edge
+meets the face hiding it at a shared vertex, where the gap between them starts
+from nothing, so the hidden edge came through as a tip running out from the
+vertex, as long as the lift over the rate the gap opens at. A fold, a part
+tucked under a thin flange, or one mesh in two layers made tips many pixels
+long. The far-side cull hides most of these on a closed mesh, but an open mesh
+gets no cull at all.
+
+So in the viewport's own frame each wire fragment is also tested against the
+occlusion pass the vertex dots use (see below), as `wireBehindOwn` in
+`materials.ts`:
+
+- The surface at the fragment's pixel is carried to the nearest point on the
+  wire's line, not to the fragment itself. The faces either side of the edge
+  then land exactly on the wire's depth wherever across the line's width the
+  fragment lies, so they never hide it. Their climb across that width is the
+  lift's job, and the lift stays.
+- Any other face of the same object hides the fragment when it stands in front
+  of that point and its face reaches it, read from the face edges the pass
+  writes. The faces round the wire's end vertex lean in front of the wire past
+  their own edges, and without that question they ate the end of every edge
+  at a convex corner.
+- The pass needs those face edges on the wire's own object, so they are built
+  whenever the wire is drawn over a surface: edit mode, and the solid-and-wire
+  shading in object mode.
+
+Other objects' surfaces are tested where the fragment lies, without the
+question of reach (`markOccluded`). Outside the viewport's frame, in snapshots,
+there is no pass and the wire falls back on the depth test and its lift.
+
 ### Edges on the far side are not drawn
 
 **The problem.** Depth cannot reliably hide the back of a model. Near a
