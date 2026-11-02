@@ -6,6 +6,7 @@ import {
   dot,
   lengthSq,
   mul,
+  mulVec,
   normalize,
   polygonNormal,
   sub,
@@ -155,6 +156,10 @@ function selectedRings(mesh: BMesh, edges: readonly Edge[]): Vert[][] {
  * Only then: inside a bigger selection, a loose line stopped short on a face
  * would lay a stray face over it.
  *
+ * The rings are traced and weighed at the object's `scale`, the shape on
+ * screen. Squashed along one axis, the walls round a hole at a sharp tip lean
+ * back like a sheet round its outline in the mesh's own space.
+ *
  * A selected face folded flat back over the faces around it covers no hole,
  * but it puts a second face on the edges of the holes it runs round, and to
  * the walk they would look closed. The walk looks past it, and the fill
@@ -163,7 +168,7 @@ function selectedRings(mesh: BMesh, edges: readonly Edge[]): Vert[][] {
 export function fillHole(
   mesh: BMesh,
   edges: readonly Edge[],
-  { fromFaces = false }: { fromFaces?: boolean } = {},
+  { fromFaces = false, scale = vec3(1, 1, 1) }: { fromFaces?: boolean; scale?: Vec3 } = {},
 ): Face[] {
   const selected = new Set(edges);
   const folded = foldedOver(mesh, selected);
@@ -175,7 +180,7 @@ export function fillHole(
     created.push(face);
   };
 
-  for (const region of emptyRegions(mesh, folded)) {
+  for (const region of emptyRegions(mesh, folded, scale)) {
     const rim = region.edges.filter(
       (edge) => !fromFaces || edge.loops.some((loop) => !folded.has(loop.face)),
     );
@@ -195,7 +200,8 @@ export function fillHole(
     );
     if (!open || mesh.findFace(ring)) continue;
     const wound = orientAgainstNeighbours(mesh, ring);
-    if (fillable(wound, (vert) => averageNormal(mesh, mesh.vertFaces(vert)))) make(wound);
+    const normalAt = (vert: Vert) => averageNormal(mesh, mesh.vertFaces(vert), scale);
+    if (fillable(wound, normalAt, scale)) make(wound);
   }
 
   if (created.length === 0 && !fromFaces && edges.every((edge) => edge.loops.length < 2)) {
@@ -270,9 +276,9 @@ interface Region {
  * to the smallest region: taking whichever edge comes first strings parts of
  * different regions into one ring. The `ignored` faces count as not there.
  */
-function emptyRegions(mesh: BMesh, ignored: ReadonlySet<Face>): Region[] {
+function emptyRegions(mesh: BMesh, ignored: ReadonlySet<Face>, scale: Vec3): Region[] {
   const network = openNetwork(mesh, ignored);
-  const normals = turningNormals(mesh, network, ignored);
+  const normals = turningNormals(mesh, network, ignored, scale);
   const uncovered = (edge: Edge, from: Vert) =>
     edge.loops.every((loop) => loop.vert !== from || ignored.has(loop.face));
   const key = (edge: Edge, from: Vert) => edge.id * 2 + (from === edge.v0 ? 0 : 1);
@@ -280,12 +286,12 @@ function emptyRegions(mesh: BMesh, ignored: ReadonlySet<Face>): Region[] {
   const regions: Region[] = [];
 
   const turn = (edge: Edge, from: Vert, at: Vert, normal: Vec3): Edge | null => {
-    const back = flatten(sub(from.co, at.co), normal);
+    const back = flatten(mulVec(sub(from.co, at.co), scale), normal);
     let best: Edge | null = null;
     let bestAngle = -1;
     for (const candidate of network.get(at.id) ?? []) {
       if (candidate === edge || !uncovered(candidate, at)) continue;
-      const out = flatten(sub(mesh.edgeOther(candidate, at).co, at.co), normal);
+      const out = flatten(mulVec(sub(mesh.edgeOther(candidate, at).co, at.co), scale), normal);
       let angle = Math.atan2(dot(normal, cross(back, out)), dot(back, out));
       if (angle < 0) angle += 2 * Math.PI;
       if (angle > bestAngle) {
@@ -320,7 +326,7 @@ function emptyRegions(mesh: BMesh, ignored: ReadonlySet<Face>): Region[] {
     };
     const normal = normals.get(id) as Vec3;
     if (leavesApart(normal)) continue;
-    const plane = spannedNormal(mesh, at, around);
+    const plane = spannedNormal(mesh, at, around, scale);
     const facing = dot(plane, normal) < 0 ? mul(plane, -1) : plane;
     const chosen = [facing, mul(facing, -1)].find(
       (side) => lengthSq(side) > 0 && leavesApart(side),
@@ -358,7 +364,7 @@ function emptyRegions(mesh: BMesh, ignored: ReadonlySet<Face>): Region[] {
       // A loose edge joining two rings is walked once each way, which a face
       // cannot do.
       if (new Set(verts).size < verts.length) continue;
-      if (!fillable(verts, (vert) => normals.get(vert.id) as Vec3)) continue;
+      if (!fillable(verts, (vert) => normals.get(vert.id) as Vec3, scale)) continue;
       regions.push({ verts, edges });
     }
   }
@@ -411,6 +417,7 @@ function turningNormals(
   mesh: BMesh,
   network: Map<number, Edge[]>,
   ignored: ReadonlySet<Face>,
+  scale: Vec3,
 ): Map<number, Vec3> {
   const normals = new Map<number, Vec3>();
   const queue: Vert[] = [];
@@ -418,7 +425,7 @@ function turningNormals(
     const vert = mesh.verts.get(id) as Vert;
     const faces = mesh.vertFaces(vert).filter((face) => !ignored.has(face));
     if (faces.length === 0) continue;
-    normals.set(id, averageNormal(mesh, faces));
+    normals.set(id, averageNormal(mesh, faces, scale));
     queue.push(vert);
   }
 
@@ -448,7 +455,9 @@ function turningNormals(
         component.push(other);
       }
     }
-    const plane = polygonNormal([...component].sort((a, b) => a.id - b.id).map((vert) => vert.co));
+    const plane = polygonNormal(
+      [...component].sort((a, b) => a.id - b.id).map((vert) => mulVec(vert.co, scale)),
+    );
     for (const vert of component) {
       if (!normals.has(vert.id)) normals.set(vert.id, lengthSq(plane) > 0 ? plane : vec3(0, 1, 0));
     }
@@ -464,8 +473,10 @@ function flatten(direction: Vec3, normal: Vec3): Vec3 {
  * The normal of the plane a vertex's edges come nearest to lying in: the cross
  * of each pair of them, every one turned to agree with the longest.
  */
-function spannedNormal(mesh: BMesh, vert: Vert, edges: readonly Edge[]): Vec3 {
-  const directions = edges.map((edge) => normalize(sub(mesh.edgeOther(edge, vert).co, vert.co)));
+function spannedNormal(mesh: BMesh, vert: Vert, edges: readonly Edge[], scale: Vec3): Vec3 {
+  const directions = edges.map((edge) =>
+    normalize(mulVec(sub(mesh.edgeOther(edge, vert).co, vert.co), scale)),
+  );
   const crosses: Vec3[] = [];
   for (let i = 0; i < directions.length; i++) {
     for (let j = i + 1; j < directions.length; j++) {
@@ -476,10 +487,10 @@ function spannedNormal(mesh: BMesh, vert: Vert, edges: readonly Edge[]): Vec3 {
   return normalize(crosses.reduce((sum, each) => add(sum, mul(each, dot(each, longest))), vec3()));
 }
 
-function averageNormal(mesh: BMesh, faces: readonly Face[]): Vec3 {
-  return normalize(
-    faces.reduce((sum, face) => add(sum, polygonNormal(mesh.facePoints(face))), vec3()),
-  );
+function averageNormal(mesh: BMesh, faces: readonly Face[], scale: Vec3): Vec3 {
+  const normalOf = (face: Face) =>
+    polygonNormal(mesh.facePoints(face).map((point) => mulVec(point, scale)));
+  return normalize(faces.reduce((sum, face) => add(sum, normalOf(face)), vec3()));
 }
 
 /**
@@ -487,8 +498,12 @@ function averageNormal(mesh: BMesh, faces: readonly Face[]): Vec3 {
  * the faces along it. The outline of an open sheet does, where a hole winds
  * with them. Around the rim of a tube they stand square to it.
  */
-function fillable(verts: readonly Vert[], normalAt: (vert: Vert) => Vec3): boolean {
-  const facing = polygonNormal(verts.map((vert) => vert.co));
+function fillable(
+  verts: readonly Vert[],
+  normalAt: (vert: Vert) => Vec3,
+  scale: Vec3,
+): boolean {
+  const facing = polygonNormal(verts.map((vert) => mulVec(vert.co, scale)));
   if (lengthSq(facing) === 0) return false;
   const agreement =
     verts.reduce((sum, vert) => sum + dot(facing, normalAt(vert)), 0) / verts.length;

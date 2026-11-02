@@ -2263,6 +2263,37 @@ describe('fill and bridge', () => {
     expect(isClosed(cube)).toBe(true);
   });
 
+  it('judges a hole at the scale the object is drawn at', () => {
+    // The rim pulled out wide: a shallow dish in the mesh's own space, a tall
+    // flared cup once the object stretches it upright.
+    const cube = createBox(1);
+    const top = faceAt(cube, vec3(0, 1, 0));
+    const ring = cube.faceEdges(top);
+    deleteGeometry(cube, { verts: [], edges: [], faces: [top] }, 'onlyFaces');
+    for (const vert of cube.verts.values()) {
+      if (vert.co.y > 0) vert.co = vec3(vert.co.x * 2.5, vert.co.y, vert.co.z * 2.5);
+    }
+    cube.computeNormals();
+    for (const edge of ring) edge.selected = true;
+    cube.flushSelection('edge');
+    const context = {
+      mesh: cube,
+      selectMode: 'edge' as const,
+      cursor: vec3(),
+      objectScale: vec3(1, 4, 1),
+    };
+
+    const result = execOperator(context, 'fill');
+
+    // The walls were weighed in the mesh's own space, where they lean back
+    // like a sheet round its outline, so a hole at a tip the object's scale
+    // had squashed flat was refused while it stood plainly open on screen.
+    expect(result.refused).toBeUndefined();
+    expect(isClosed(cube)).toBe(true);
+    expect(faceAt(cube, vec3(0, 1, 0)).normal.y).toBeCloseTo(1);
+    expect(cube.validate()).toEqual([]);
+  });
+
   describe('round gaps in the side of a slab', () => {
     // Two cells long with the front wall left out. The loose edge between the
     // two gaps meets the top and bottom faces square on.

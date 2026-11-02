@@ -64,7 +64,9 @@ disabled button, until Shift+M reached it.
 - `ops/fill.ts`: a fill round a sheet's whole outline once folded a face back
   over the mesh. A new face's winding comes from its vertex order, never from
   `addFace`: bridge once took it from the loop walk's direction, built walls
-  facing into the solid, and the far-side cull hid their edges.
+  facing into the solid, and the far-side cull hid their edges. The outline
+  test (`fillable`) runs at the operator's `objectScale`: unscaled, a hole at
+  a tip of an object squashed to 0.18 in y leaned like an outline and refused.
 - `detachRegion` (`ops/region.ts`) duplicates only vertices touching the
   outside, so interior ones are moved in place by the same `offsetFor`; once
   they were not, and every region extrude and inset depth sagged to them.

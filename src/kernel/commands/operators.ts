@@ -635,7 +635,7 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     };
   },
 
-  fill: ({ mesh, selectMode, activeMaterial = 0 }, params) => {
+  fill: ({ mesh, selectMode, objectScale, activeMaterial = 0 }, params) => {
     const edges = mesh.selectedEdges();
     if (edges.length < 3) return { status: 'Select a boundary loop to fill' };
     if (readBoolean(params, 'bridge', false)) {
@@ -643,7 +643,7 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     }
     const faceMode = selectMode === 'face';
     const before = mesh.faces.size;
-    const created = fillHole(mesh, edges, { fromFaces: faceMode });
+    const created = fillHole(mesh, edges, { fromFaces: faceMode, scale: objectScale });
     if (created.length === 0) {
       return {
         status: faceMode
