@@ -115,8 +115,11 @@ How it behaves, and why:
   already touches the border. What the loop encloses is then a face of its own,
   and it is selected after the cut. Those joining edges are not part of the cut
   and are left unselected.
-- **It is a tool, not a one-off.** The knife stays in hand after a cut, the way
-  the move tool does, until another tool is picked or edit mode is left.
+- **A cut that goes in puts the knife down.** The select tool comes back, to
+  work on the edges the cut left selected, so a stray click picks rather than
+  starting another cut. A cut that is called off or refused (one point, or a
+  line that only follows edges already there) keeps the knife in hand for
+  another try. <kbd>K</kbd> picks it up again.
 
 ### Subdivide follows the select mode
 

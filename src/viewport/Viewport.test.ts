@@ -264,6 +264,47 @@ describe('Viewport', () => {
     expect(Math.min(...moved.map((vert) => vert.co.z))).toBeCloseTo(back);
   });
 
+  it('puts the knife down for the select tool once Enter makes a cut, and not before', () => {
+    store().addPrimitive('cube');
+    // From above, so the cut can run from the top face over the edge onto the front.
+    poseAt(10, Math.PI / 2 - 0.6);
+    store().setMode('edit');
+    store().objects[0].mesh.deselectAll();
+    store().setActiveTool('knife');
+    const view = mount();
+    frame(view);
+    const canvas = (view as unknown as { canvas: HTMLCanvasElement }).canvas;
+    const pointer = (type: string, x: number, y: number) =>
+      canvas.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, button: 0 }));
+    const camera = (view as unknown as { camera: THREE.Camera }).camera;
+    const click = (x: number, y: number, z: number) => {
+      const at = new THREE.Vector3(x, y, z).project(camera);
+      const pixels = [((at.x + 1) / 2) * SIZE, ((1 - at.y) / 2) * SIZE] as const;
+      pointer('pointermove', ...pixels);
+      pointer('pointerdown', ...pixels);
+      pointer('pointerup', ...pixels);
+    };
+    const enter = () => window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+    const faces = store().objects[0].mesh.faces.size;
+
+    // One point is no cut, so the knife stays in hand for another try.
+    click(0.1, 0.5, -0.5);
+    enter();
+    expect(store().objects[0].mesh.faces.size).toBe(faces);
+    expect(store().activeTool).toBe('knife');
+
+    click(0.1, 0.5, -0.5);
+    click(0.1, -0.5, 0.5);
+    enter();
+
+    // The knife used to stay in hand after a cut went in, so working on the
+    // edges it left selected took a V first, and a stray click started another
+    // cut instead of picking something.
+    expect(store().objects[0].mesh.faces.size).toBeGreaterThan(faces);
+    expect(store().activeTool).toBe('select');
+    expect(store().status).toMatch(/^Knife cut 2 face/);
+  });
+
   it('takes back each face pick, click, miss and box alike', () => {
     store().addPrimitive('cube');
     poseAt(10);

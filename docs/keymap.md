@@ -102,7 +102,7 @@ keyboard the way a modal transform does, and the ordinary bindings wait.
 
 | Key | Action |
 | --- | --- |
-| `Enter` / `Space` | Make the cut |
+| `Enter` / `Space` | Make the cut and go back to the select tool (a refused cut keeps the knife) |
 | `Backspace` / `Ctrl+Z` | Take the last point back |
 | `E` | Lift the knife: the next click starts a separate line |
 | `Shift`, held | Ignore vertices and edges, and place the point freely inside the face |

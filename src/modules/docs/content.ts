@@ -723,7 +723,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           'Press K, or pick the knife in the tool rail. It works in edit mode only.',
           'Click where the cut starts: on a vertex, on an edge, inside a face, or out in empty space beside the mesh to cut in from its edge.',
           'Click again wherever the cut should turn. A cyan line follows the pointer from the last point, with dots where it will cross the edges.',
-          'Press Enter or Space to make the cut. The new edges come out selected, ready to move, and the whole cut is one undo step.',
+          'Press Enter or Space to make the cut. The new edges come out selected, ready to move, the whole cut is one undo step, and the select tool comes back. Press K for the next cut.',
         ],
       },
       {
@@ -736,7 +736,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
           ],
           [
             'Enter or Space',
-            'Makes the cut. The two keys do the same thing: every line drawn so far goes into the mesh at once, as one undo step, and the new edges come out selected. The knife stays in hand, ready for the next cut.',
+            'Makes the cut. The two keys do the same thing: every line drawn so far goes into the mesh at once, as one undo step, and the new edges come out selected. The knife is put down for the select tool. A cut that adds nothing keeps the knife in hand.',
           ],
           ['Backspace or Ctrl+Z', 'Takes the last point back.'],
           [

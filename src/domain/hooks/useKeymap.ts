@@ -151,8 +151,8 @@ export function useKeymap(): void {
         case 'loopCut':
           state.exec('loopCut', { cuts: 1 }, 'Loop cut');
           break;
-        // A tool rather than a one-off: the knife stays in hand for the next
-        // cut, the way G leaves the move tool there, until another is picked.
+        // A tool rather than a modal: nothing starts until the mesh is clicked,
+        // and the knife stays in hand until a cut goes in.
         case 'knife':
           state.setActiveTool('knife');
           break;

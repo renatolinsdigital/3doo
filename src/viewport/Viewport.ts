@@ -4404,6 +4404,10 @@ export class Viewport {
    * One operator run for the whole cut, however many clicks went into it, so it
    * is one step to undo. A cut whose mesh was swapped out from under it is
    * called off however it ended, since its points name geometry that is gone.
+   *
+   * A cut that goes in puts the knife down for the select tool, to work on the
+   * edges it leaves selected. One that is called off or refused keeps the knife
+   * in hand for another try.
    */
   private finishKnife(cancelled: boolean): void {
     const session = this.knife;
@@ -4421,7 +4425,12 @@ export class Viewport {
       state.endModal('Knife cut cancelled');
     } else {
       state.endModal();
-      state.exec('knife', { cuts: knifeCutRuns(session.steps) }, 'Knife');
+      const cut = state.exec('knife', { cuts: knifeCutRuns(session.steps) }, 'Knife');
+      if (cut && !cut.refused) {
+        state.setActiveTool('select');
+        // The tool puts its own name up as the status, over the cut's report.
+        state.endModal(cut.status);
+      }
     }
     this.refreshKnife();
   }
