@@ -365,13 +365,10 @@ export class ObjectView {
       width: DEFAULT_PREFERENCES.selectionLineWidth,
     });
 
-    // Says which surface is this object's own to the lines lying on it, so
-    // their lift clears that one and no other (see `liftWire`).
+    // Says which surface is this object's own to the washes lying on it, so
+    // they are tested against other objects' surfaces alone.
     const tag = nextSurfaceTag();
     this.solid.userData.surfaceTag = tag;
-    for (const line of this.liftedLines()) {
-      (line.material as LineMaterial).uniforms.surfaceTag.value = tag;
-    }
     for (const wash of [this.selectedFaces, this.nonPlanar, this.ngons]) {
       (wash.material as THREE.Material).userData.surfaceTag.value = tag;
     }
@@ -481,20 +478,20 @@ export class ObjectView {
       return;
     }
 
-    // Where faces end is read while vertices are marked or the wire is drawn
-    // over the surface, which is edit mode or the solid-and-wire shading, and
-    // the far corners only of the object the vertices are marked on.
-    const marksVerts =
-      state.mode === 'edit' &&
-      state.isActive &&
-      (state.selectMode === 'vertex' || !!state.recentVerts?.size);
+    // Where faces end, far corners and all, is read wherever a mark is tested
+    // against its own object's faces: the dots and the wire of the object in
+    // edit mode, and the wire of every object in the solid-and-wire shading.
+    // The wire needs the far corners as much as the dots do. Without them, the
+    // triangle across a diagonal from an edge was taken to reach the edge, and
+    // a quad a little out of flat stood that triangle's plane just in front of
+    // it there: the wire lost half its width beside every long quad not quite
+    // flat. The other objects in edit mode are asked about only by the dots,
+    // which their own edges answer.
+    const testsOwnMarks =
+      (state.mode === 'edit' && state.isActive) || state.settings.shading === 'solidWire';
     const buffers = buildMeshBuffers(
       displayMesh,
-      marksVerts
-        ? 'far'
-        : state.mode === 'edit' || state.settings.shading === 'solidWire'
-          ? 'edges'
-          : undefined,
+      testsOwnMarks ? 'far' : state.mode === 'edit' ? 'edges' : undefined,
     );
 
     // Edit mode works on the object's own mesh, so that is what it draws the

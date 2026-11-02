@@ -278,9 +278,33 @@ describe('dot occlusion material', () => {
 
     expect(material.vertexShader).toContain('attribute float triangleCorner;');
     expect(material.vertexShader).toContain('attribute vec3 farCornerA;');
-    expect(material.fragmentShader).toContain('keepEdgeThrough( first, farAt, second );');
-    expect(material.fragmentShader).toContain('keepEdgeThrough( farAt, second, first );');
+    expect(material.fragmentShader).toContain('vec3 toFar = sideThrough( first, farAt, second );');
+    expect(material.fragmentShader).toContain(
+      'vec3 fromFar = sideThrough( farAt, second, first );',
+    );
     expect(material.uniforms.size.value).toBeInstanceOf(THREE.Vector2);
+  });
+
+  it('says where what it knows of a face runs out, past the triangle across a diagonal', () => {
+    // A face of many corners is known only one triangle past each diagonal.
+    // Taken to go on from there, a triangle across a cap not quite flat stood
+    // in front of the rim's own edges and hid them. The wire reads these ends
+    // as ends; the dots, which take a face to go on, pass over them.
+    const material = createDotOcclusionMaterial();
+
+    expect(material.fragmentShader).toContain('softEnds[ softCount ++ ] = toFar;');
+    expect(material.fragmentShader).toContain('keepSoftEnd( softEnds[ s ] );');
+    expect(material.fragmentShader).toContain('soft << 16');
+    // A solid built without far corners reads its origin for each of them.
+    expect(material.uniforms.farCorners.value).toBe(false);
+
+    const dots = {
+      uniforms: THREE.UniformsUtils.clone(THREE.ShaderLib.points.uniforms),
+      vertexShader: THREE.ShaderLib.points.vertexShader,
+      fragmentShader: THREE.ShaderLib.points.fragmentShader,
+    } as unknown as THREE.WebGLProgramParametersWithUniforms;
+    createPointMaterial().onBeforeCompile(dots, {} as THREE.WebGLRenderer);
+    expect(dots.vertexShader).toContain('if ( faceEdgeSoft( surface.a, k ) ) continue;');
   });
 
   it('packs all of it into four words a pixel, the size four floats took', () => {
@@ -433,41 +457,49 @@ describe('wireframe material', () => {
     ['plain wire', () => createWireMaterial(false)],
     ['selected edges', () => createWireMaterial(true)],
     ['modifier preview', createPreviewWireMaterial],
-  ])("tests the %s against other objects' surfaces where it lies before the lift", (_, create) => {
-    // The lift is owed to the wire's own surface. Zoomed out, it carried the
-    // edges of a part a few millimetres inside another across the outer one.
-    const wire = create();
+  ])(
+    'decides the %s once for each spot along its line, where it lies before the lift',
+    (_, create) => {
+      // Left to the lift, the wire came through whatever stood in front of it by
+      // less: a part a few millimetres inside another, the far leaf of a folded
+      // sheet. Asked fragment by fragment, the half of a hidden line lying past
+      // an outline was drawn, and the half of a visible one over a face climbing
+      // towards the eye was not.
+      const wire = create();
 
-    expect(wire.uniforms.dotOcclusionActive).toBe(DOT_OCCLUSION.dotOcclusionActive);
-    expect(wire.uniforms.dotOcclusionMap).toBe(DOT_OCCLUSION.dotOcclusionMap);
-    expect(wire.uniforms.surfaceTag.value).toBe(0);
+      expect(wire.uniforms.dotOcclusionActive).toBe(DOT_OCCLUSION.dotOcclusionActive);
+      expect(wire.uniforms.dotOcclusionMap).toBe(DOT_OCCLUSION.dotOcclusionMap);
 
-    const saved = wire.vertexShader.indexOf('vec4 wireStart = start;');
-    expect(saved).toBeGreaterThan(0);
-    expect(saved).toBeLessThan(wire.vertexShader.indexOf('start.xyz *= 1.0 - startLift'));
-    expect(wire.vertexShader).toContain('vWireStart = wireOnMap( projectionMatrix * wireStart );');
+      const saved = wire.vertexShader.indexOf('vec4 wireStart = start;');
+      expect(saved).toBeGreaterThan(0);
+      expect(saved).toBeLessThan(wire.vertexShader.indexOf('start.xyz *= 1.0 - startLift'));
+      expect(wire.vertexShader).toContain(
+        'vWireStart = wireOnMap( projectionMatrix * wireStart );',
+      );
 
-    expect(wire.fragmentShader).toContain(
-      'if ( surface.a >> 21 == uint( surfaceTag ) ) return false;',
-    );
-    expect(wire.fragmentShader).toContain('if ( wireOccluded() ) discard;');
-  });
+      expect(wire.fragmentShader).toContain(
+        'wireHidden( mix( vWireStart.xy, vWireEnd.xy, t ), mix( vWireStart.z, vWireEnd.z, t ) )',
+      );
+      expect(wire.fragmentShader).toContain('ivec2 first = ivec2( floor( onLine - 0.5 ) );');
+      expect(wire.fragmentShader).toContain('if ( faceEdgeReach( edges[ k ], offset ) <= ');
+      expect(wire.fragmentShader).toContain('return deepInFront == 4;');
+      expect(wire.fragmentShader).toContain('if ( wireOccluded( wireDepth ) ) discard;');
+    },
+  );
 
   it.each([
     ['plain wire', () => createWireMaterial(false)],
     ['selected edges', () => createWireMaterial(true)],
     ['modifier preview', createPreviewWireMaterial],
-  ])('tests the %s against its own faces where they reach the wire', (_, create) => {
-    // Its own surface used to be left to the lift. An edge running out from
-    // under a face it shares a vertex with starts level with that face, so
-    // wherever the far-side cull was not running it came through as a tip as
-    // long as the lift over the gap: the far leaf of a folded sheet, the lower
-    // layer of one mesh in two.
-    const shader = create().fragmentShader;
+  ])('keeps the depth test from eating the %s that the pass says shows', (_, create) => {
+    // Held to a face at 83 degrees, the lift let the fill eat the outer half
+    // of every line on a face seen nearly edge on, which on a thin plate
+    // turning in front of the camera is most of its lines.
+    const wire = create();
 
-    expect(shader).toContain('wireBehindOwn( at, onLine, own )');
-    expect(shader).toContain('if ( surface.a >> 21 != uint( surfaceTag ) ) return false;');
-    expect(shader).toContain('if ( faceEdgeReach( edges[ k ], offset ) <= ');
+    expect(wire.vertexShader).toContain('if ( dotOcclusionActive ) return 64.0;');
+    expect(wire.fragmentShader).toContain('depth = min( depth, wireInFront( at ) );');
+    expect(wire.fragmentShader).toContain('gl_FragDepth = wireDepth;');
   });
 });
 

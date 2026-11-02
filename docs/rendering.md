@@ -109,9 +109,10 @@ depth. Two adjustments then separate line from surface:
    - An orthographic camera has no ray to move along, so the lift comes
      straight off the depth.
 
-`WIRE_LIFT_SLOPE` caps how steep a surface may be before the lift stops being
-enough. It is eight, a face at about 83 degrees. Past that, a face is edge-on
-enough to count as a contour.
+`MARK_LIFT_SLOPE` caps how steep a surface may be before the lift stops being
+enough. It is eight, a face at about 83 degrees. In a picture, past that a face
+is edge-on enough to count as a contour. In the viewport's own frame the
+occlusion pass takes over from the lift (see "What the lift lets through").
 
 **Why not polygon offset with a slope term.** That was the earlier approach,
 and it cannot work for a wire quad. Polygon offset scales its slope term by the
@@ -149,27 +150,52 @@ tucked under a thin flange, or one mesh in two layers made tips many pixels
 long. The far-side cull hides most of these on a closed mesh, but an open mesh
 gets no cull at all.
 
-So in the viewport's own frame each wire fragment is also tested against the
-occlusion pass the vertex dots use (see below), as `wireBehindOwn` in
-`materials.ts`:
+And the lift is held to `MARK_LIFT_SLOPE`, a face at 83 degrees. Past that a
+face climbs faster than the lift, so the fill ate the outer half of every line
+on a face seen nearly edge on. A thin plate turning in front of the camera has
+most of its faces there at one moment or another.
 
-- The surface at the fragment's pixel is carried to the nearest point on the
-  wire's line, not to the fragment itself. The faces either side of the edge
-  then land exactly on the wire's depth wherever across the line's width the
-  fragment lies, so they never hide it. Their climb across that width is the
-  lift's job, and the lift stays.
-- Any other face of the same object hides the fragment when it stands in front
-  of that point and its face reaches it, read from the face edges the pass
-  writes. The faces round the wire's end vertex lean in front of the wire past
-  their own edges, and without that question they ate the end of every edge
-  at a convex corner.
-- The pass needs those face edges on the wire's own object, so they are built
-  whenever the wire is drawn over a surface: edit mode, and the solid-and-wire
-  shading in object mode.
+So in the viewport's own frame the occlusion pass the vertex dots use (see
+below) decides what hides the wire, as `wireHidden` in `materials.ts`, and the
+depth test only backs it up:
 
-Other objects' surfaces are tested where the fragment lies, without the
-question of reach (`markOccluded`). Outside the viewport's frame, in snapshots,
-there is no pass and the wire falls back on the depth test and its lift.
+- **Once for each spot along the line.** Every fragment asks about the point
+  on the wire's line nearest it, and the four pixels of the pass round that
+  point, each surface carried to it along its slope. Every fragment across the
+  line's width gets the same answer, so a line is drawn whole or not at all.
+  Asked where each fragment lay, the half of a hidden line lying past another
+  object's outline was drawn as a thin line along it.
+- **The faces either side land on the line.** Carried to the line, the faces
+  the edge is on stand exactly at the wire's depth and never hide it. Any
+  face, of this object or another, hides it where it stands in front of the
+  line and reaches it, read from the face edges the pass writes. The faces
+  round the wire's end vertex lean in front of it past their own edges, and
+  without that question they ate the end of every edge at a convex corner.
+- **Faces smaller than a pixel.** Surfaces two pixels of depth in front at all
+  four pixels hide the line though none reaches it, as for a dot.
+- **Where what the pass knows runs out.** Each pixel's face is known as far as
+  one triangle past each of its diagonals. A face of many corners goes on past
+  that, and a triangle across a cap not quite flat, taken to reach the rim,
+  stood in front of the rim's own edges and hid them. So the pass also marks
+  where its knowledge of the face runs out (`SOFT_END_SHIFT`), and the wire
+  takes those as ends. The dots go on taking the face to go on.
+- **The depth test backs up, and no more.** A fragment of a line that shows is
+  put just in front of the surface the pass drew under it, and the lift is a
+  fixed `TESTED_WIRE_LIFT_SLOPE`, a face at a little under 89 degrees. The
+  pass's pixels are CSS ones, and on a high-density screen a thin plate's rim
+  seen edge on can be narrower than one: the fixed lift keeps the line beside
+  it whole. The depth test is left to take away only something in front that
+  the pass could not see, by more than that.
+- **What the pass needs built.** Face edges and the far corners across each
+  triangle's diagonals (see "Diagonals" below), wherever the wire is drawn
+  over its own surface: the object in edit mode, whatever the select mode, and
+  every object in the solid-and-wire shading. With the edges alone, the face
+  was taken to go on past a diagonal, so the triangle across one from an edge
+  reached the edge itself, and on a quad a little out of flat it stood in
+  front of it: on a long quad, a line broken into dashes.
+
+Outside the viewport's frame, in snapshots, there is no pass, and the wire
+falls back on the depth test and the lift sized by its faces.
 
 ### Edges on the far side are not drawn
 
@@ -306,14 +332,17 @@ surfaces as they stand in that frame.
   edges of the face. The pass finds the triangle's own corners from the
   weights, where a corner's weight is one and the others nothing, and draws
   those sides between them and the far corner. A quad comes out exact. A long
-  fan is exact one triangle beyond each diagonal, and taken to go on past that.
+  fan is exact one triangle beyond each diagonal, and taken to go on past that
+  by the dots. The pass marks where that knowledge runs out in three bits of
+  its own, filling only slots no edge took, and the wire reads them as ends.
 - **What it costs.** The far corners are an array as long as the positions
-  again, and filling it took a rebuild of a 90k-quad mesh from about 77 ms to
-  about 108. Only the object whose vertices are marked has its own faces asked
-  about, so only it builds them (`buildMeshBuffers` with `'far'`). Every other
-  object in edit mode builds the cheap codes alone (`'edges'`), which cost
-  nothing measurable, and outside edit mode nothing is built, since no pass
-  runs.
+  again, and filling it takes a rebuild of a 90k-quad mesh from about 78 ms to
+  about 88. Only an object whose own marks are tested against its faces builds
+  them (`buildMeshBuffers` with `'far'`): the object in edit mode, for its dots
+  and its wire, and in the solid-and-wire shading every object, for its wire.
+  The other objects in edit mode are asked about by the dots alone and build
+  the cheap codes (`'edges'`), which cost nothing measurable. With no wire and
+  outside edit mode nothing is built, since no pass runs.
 - **Another object.** Its face at one of the four pixels hides the vertex when
   it is in front there and also at the face's nearest point to the vertex.
   Where that object's edge passes between the pixel and the vertex,

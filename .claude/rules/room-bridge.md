@@ -18,16 +18,25 @@ The most regressed area of the app: nine leak fixes in seven weeks,
 - The wire is drawn as quads (`LineSegments2`) and lifted by `liftWire`: half
   the line width times the slope of its own two faces, held to 1 to 8. Lifted
   for the steepest face on every edge, it once came through whatever stood in
-  front.
+  front. That is the whole story only in pictures (no pass); see below.
 - Dots are lifted the same way through `pointFaces`, and also hidden by
   `dotOccluded` against the occlusion pass, which only counts a face that
   reaches the vertex (its own edges, not a triangle's diagonal).
-- Against other objects the wire is tested where it really lies, by
-  `markOccluded` and `surfaceTag`. Against its own, by `wireBehindOwn`: the
-  surface carried to the wire's line, not the fragment, and only a face that
-  reaches it. Left to the lift, hidden edges came through as tips from shared
-  vertices on open meshes and folds. It needs face edge codes on the solid, so
-  `'edges'` is built in object mode solid-and-wire too.
+- In the viewport's frame the pass decides what hides the wire (`wireHidden`):
+  once per spot along the line, from the four pixels round it, any object's
+  face counting where it is in front and reaches the line. Asked per fragment,
+  a hidden line's half past an outline drew, and a visible line's half over a
+  face climbing towards the eye did not. The depth test only backs it up: the
+  lift is a fixed `TESTED_WIRE_LIFT_SLOPE` and a fragment that shows is put in
+  front of what the pass drew (`wireInFront`). Held to 8, the fill ate half of
+  every line on a face nearly edge on: a thin plate's lines as it turns.
+- The wire needs the far corners on the solid (`'far'`) wherever it is drawn
+  over its own surface: with `'edges'` alone, a quad a little out of flat stood
+  the triangle across its diagonal in front of its own edge. Past the known
+  triangle the pass marks soft ends (`SOFT_END_SHIFT`), read by the wire as
+  ends and skipped by the dots: a bent n-gon cap hid its own rim edges.
+- Washes still test other objects where each fragment lies (`markOccluded`,
+  `surfaceTag`); lines no longer carry a tag.
 - Far-side edges are culled exactly (`frontEdgeLines`), except in x-ray and
   wireframe, for selected edges, and with the eye inside a closed mesh
   (winding number in `encloses`; the bounding box alone said inside too often).

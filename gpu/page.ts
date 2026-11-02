@@ -35,6 +35,7 @@ interface ViewportInternals {
   readonly controls: { setPose(pose: CameraPose): void };
   readonly frameHandle: number;
   renderLoop(): void;
+  renderDotOcclusion(): boolean;
 }
 
 export type SceneName =
@@ -44,7 +45,13 @@ export type SceneName =
   | 'sphere'
   | 'cylinder'
   | 'behind another'
-  | 'room';
+  | 'room'
+  | 'twisted strips'
+  | 'edge under an outline'
+  | 'bent cap';
+
+/** Where the marks are drawn: edit mode in one of two select modes, or object mode with the wire on. */
+export type MarkMode = 'vertex' | 'edge' | 'object';
 
 export interface Pose extends CameraPose {
   orthographic: boolean;
@@ -59,7 +66,14 @@ export interface Finding {
 
 export interface PoseReport {
   dots: { checked: number; hidden: number; leaks: Finding[]; missing: Finding[] };
-  wire: { checked: number; hidden: number; leaks: Finding[]; missing: Finding[] };
+  wire: {
+    checked: number;
+    hidden: number;
+    leaks: Finding[];
+    missing: Finding[];
+    /** Pixels of visible wire the occlusion pass took away, a whole line or part of its width. */
+    thinned: Finding[];
+  };
 }
 
 /**
@@ -80,6 +94,12 @@ const INK = 24;
 const CLEARANCE_PX = 3.5;
 /** Sample spacing along an edge, in pixels. */
 const WIRE_STEP_PX = 1;
+/**
+ * How far from a sample on the wire a pixel's centre may be and still lie on
+ * the line: its half width, 0.7 of a pixel, and a little for the samples
+ * standing a pixel apart along it.
+ */
+const WIRE_BODY_PX = 0.75;
 
 let live: ViewportInternals | null = null;
 
@@ -151,7 +171,7 @@ export async function pictureWire(): Promise<number> {
 }
 
 /** Builds one of the scenes the leaks came back in, with its marks on show. */
-export function build(name: SceneName): void {
+export function build(name: SceneName, mode: MarkMode = 'vertex'): void {
   const store = useEditorStore;
   store.getState().resetScene();
   // Both sit in the middle of the view and are drawn over everything, so the
@@ -186,6 +206,28 @@ export function build(name: SceneName): void {
     active = add('uvSphere', { segments: 16, rings: 8 });
   } else if (name === 'cylinder') {
     active = add('cylinder', { segments: 16 });
+  } else if (name === 'twisted strips') {
+    active = add('plane', { size: 2 });
+    twistStrips(store.getState().objects.find((object) => object.id === active)?.mesh);
+  } else if (name === 'edge under an outline') {
+    // A plate over the cube with its right edge a millimetre past the cube's,
+    // a fraction of a pixel on screen: seen square on, the cube's right edges
+    // run just inside the plate's outline, all of them hidden. Tested where
+    // each fragment lay, the half of the line past the outline was drawn.
+    active = add('cube');
+    const plate = add('cube');
+    place(plate, { position: { x: -0.7495, y: 0, z: 1.2 }, scale: { x: 2.501, y: 3, z: 0.02 } });
+  } else if (name === 'bent cap') {
+    // A cylinder's cap is one face of 24 corners, and here one of them stands
+    // a centimetre proud, so the cap is not quite flat. The pass knows a face
+    // only one triangle past each diagonal, and a triangle further across,
+    // taken to go on to the rim, stood in front of the rim's own edges.
+    active = add('cylinder', { segments: 24 });
+    const mesh = store.getState().objects.find((object) => object.id === active)?.mesh;
+    const top = [...(mesh?.verts.values() ?? [])].filter((vert) => vert.co.y > 0);
+    if (!mesh || top.length === 0) throw new Error('The bent cap has no top to bend');
+    top[0].co = { ...top[0].co, y: top[0].co.y + 0.01 };
+    mesh.computeNormals();
   } else if (name === 'behind another') {
     // A plate standing in front of the cube being edited, so what hides the
     // cube's marks is another object's surface, which they are tested against
@@ -203,12 +245,42 @@ export function build(name: SceneName): void {
     place(crate, { scale: { x: 0.4, y: 0.4, z: 0.4 } });
   }
 
-  store.setState({ activeObjectId: active, selectedObjectIds: [active], shading: 'solid' });
-  store.getState().setMode('edit');
-  store.getState().setSelectMode('vertex');
+  if (mode === 'object') {
+    // Selected, it would carry the gizmo and the outline, both drawn over the
+    // wire wherever they cross it.
+    store.setState({ activeObjectId: active, selectedObjectIds: [], shading: 'solidWire' });
+    store.getState().setMode('object');
+  } else {
+    store.setState({ activeObjectId: active, selectedObjectIds: [active], shading: 'solid' });
+    store.getState().setMode('edit');
+    store.getState().setSelectMode(mode);
+  }
   const mesh = store.getState().objects.find((object) => object.id === active)?.mesh;
   mesh?.deselectAll();
   store.getState().touchMesh();
+}
+
+/**
+ * An open sheet of long, narrow quads, each a little out of flat. A quad's
+ * diagonal runs within a few degrees of its long edges, so beside each of them
+ * lies the triangle across the diagonal for many pixels, and out of flat that
+ * triangle's plane, carried to the edge, stands just in front of it or just
+ * behind. Thin parts of a model are made of quads like these.
+ */
+function twistStrips(mesh: BMesh | undefined): void {
+  if (!mesh) throw new Error('The twisted strips have no mesh to twist');
+  mesh.clear();
+  const across = [-1, 0, 1];
+  const rows = Array.from({ length: 21 }, (_, j) => -1 + j * 0.1);
+  const grid = rows.map((z, j) =>
+    across.map((x, i) => mesh.addVert({ x, y: 0.01 * Math.sin(2.3 * i + 1.7 * j), z })),
+  );
+  for (let j = 0; j + 1 < rows.length; j += 1) {
+    for (let i = 0; i + 1 < across.length; i += 1) {
+      mesh.addFace([grid[j][i], grid[j + 1][i], grid[j + 1][i + 1], grid[j][i + 1]]);
+    }
+  }
+  mesh.computeNormals();
 }
 
 /**
@@ -261,11 +333,40 @@ function draw(): Uint8Array {
   return pixels;
 }
 
-/** Which pixels change when `mark` is switched off, top row first. */
+/**
+ * The frame with `wire` drawn as if nothing stood in front of it: no occlusion
+ * pass and no depth test, every line whole wherever it runs.
+ */
+function unhidden(wire: THREE.Mesh, others: THREE.Object3D[]): Uint8Array {
+  const view = viewport() as Partial<Pick<ViewportInternals, 'renderDotOcclusion'>>;
+  const material = wire.material as THREE.Material;
+  const shown = others.map((other) => other.visible);
+  for (const other of others) other.visible = false;
+  view.renderDotOcclusion = () => false;
+  material.depthTest = false;
+  try {
+    return draw();
+  } finally {
+    material.depthTest = true;
+    delete view.renderDotOcclusion;
+    others.forEach((other, index) => (other.visible = shown[index]));
+  }
+}
+
+/** How much a pixel changes between two frames, read from the first word of it. */
+function change(a: Uint8Array, b: Uint8Array, read: number): number {
+  return (
+    Math.abs(a[read] - b[read]) +
+    Math.abs(a[read + 1] - b[read + 1]) +
+    Math.abs(a[read + 2] - b[read + 2])
+  );
+}
+
+/** Which pixels change when `mark` is switched off, top row first, and the two frames. */
 function ink(
   mark: THREE.Object3D,
   others: THREE.Object3D[],
-): { mask: Uint8Array; width: number; height: number } {
+): { mask: Uint8Array; width: number; height: number; on: Uint8Array; off: Uint8Array } {
   const gl = viewport().renderer.getContext();
   const width = gl.drawingBufferWidth;
   const height = gl.drawingBufferHeight;
@@ -282,15 +383,10 @@ function ink(
   const mask = new Uint8Array(width * height);
   for (let y = 0; y < height; y += 1) {
     for (let x = 0; x < width; x += 1) {
-      const read = ((height - 1 - y) * width + x) * 4;
-      const change =
-        Math.abs(on[read] - off[read]) +
-        Math.abs(on[read + 1] - off[read + 1]) +
-        Math.abs(on[read + 2] - off[read + 2]);
-      mask[y * width + x] = change > INK ? 1 : 0;
+      mask[y * width + x] = change(on, off, ((height - 1 - y) * width + x) * 4) > INK ? 1 : 0;
     }
   }
-  return { mask, width, height };
+  return { mask, width, height, on, off };
 }
 
 interface Occluder {
@@ -474,6 +570,45 @@ function judge(
   };
 }
 
+/**
+ * Visible wire the viewport took away, whatever took it: ink the line has when
+ * nothing hides it (`unhidden`) that the frame lost more than half of, on a
+ * visible stretch of wire and clear of any sample hidden or too close to call.
+ * Half a line's width counts as much as a whole line, which `judge` would
+ * never call left off.
+ *
+ * Only pixels whose centre is within the line itself count. One whose centre
+ * lies past it is ink the antialiasing gave the line's edge, and a sample or
+ * two of it changing is no line lost.
+ */
+function thinned(
+  samples: Sample[],
+  frames: { on: Uint8Array; off: Uint8Array; reference: Uint8Array },
+  width: number,
+  height: number,
+): Finding[] {
+  const onVisible = nearness(
+    samples.filter((sample) => sample.state === 'visible'),
+    WIRE_BODY_PX,
+  );
+  const nearOther = nearness(
+    samples.filter((sample) => sample.state !== 'visible'),
+    CLEARANCE_PX,
+  );
+  const findings: Finding[] = [];
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const read = ((height - 1 - y) * width + x) * 4;
+      const whole = change(frames.reference, frames.off, read);
+      if (whole <= 2 * INK || change(frames.on, frames.reference, read) <= whole / 2) continue;
+      if (onVisible(x + 0.5, y + 0.5) && !nearOther(x + 0.5, y + 0.5)) {
+        findings.push({ x, y, gapPx: 0 });
+      }
+    }
+  }
+  return findings;
+}
+
 function aim(pose: Pose): void {
   const store = useEditorStore;
   if (store.getState().orthographic !== pose.orthographic) {
@@ -535,6 +670,7 @@ export function check(pose: Pose): PoseReport {
   }
 
   const wire = ink(marks.wire, [marks.points]);
+  const reference = unhidden(marks.wire as THREE.Mesh, [marks.points]);
   const wireSampler = sampler(wire.width, wire.height);
   const edgeSamples: Sample[] = [];
   const { camera } = view;
@@ -555,6 +691,9 @@ export function check(pose: Pose): PoseReport {
 
   return {
     dots: judge(vertSamples, dots.mask, dots.width, dots.height, 3, dotSampler.covered),
-    wire: judge(edgeSamples, wire.mask, wire.width, wire.height, 2, wireSampler.covered),
+    wire: {
+      ...judge(edgeSamples, wire.mask, wire.width, wire.height, 2, wireSampler.covered),
+      thinned: thinned(edgeSamples, { ...wire, reference }, wire.width, wire.height),
+    },
   };
 }

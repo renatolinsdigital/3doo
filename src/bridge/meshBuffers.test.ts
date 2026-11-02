@@ -621,8 +621,8 @@ describe('triangle corners', () => {
   });
 
   it('carries none of it unless asked, and the far corners only when asked for them', () => {
-    // Each costs every rebuild time, and the occlusion pass reads them only
-    // while vertices are marked.
+    // Each costs every rebuild time, and the occlusion pass reads the far
+    // corners only of an object whose own dots or wire it tests.
     const plain = buildMeshBuffers(createPlane(2)).solid;
     const edges = buildMeshBuffers(createPlane(2), 'edges').solid;
 

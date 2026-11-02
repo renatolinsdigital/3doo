@@ -125,12 +125,39 @@ under itself, a sphere, a cylinder, a cube behind another object, and a room
 seen from inside. Wire behind its own object is judged as strictly as wire
 behind another one, since both are tested where the wire really lies.
 
+A mark is left off only when a sample has no ink at all round it, which a line
+that lost half its width still passes. So the wire is also drawn as if nothing
+hid it, with no occlusion pass and no depth test, and any pixel of a visible
+stretch of wire, clear of anything hidden, that the real frame lost more than
+half of is reported as wire taken off. Only pixels whose centre lies within
+the line count: the antialiased rim past it changes with a sample or two.
+
+Two scenes are there for that alone, each checked in object mode with the
+wire on and in edit mode: twisted strips, an open sheet of long quads each a
+little out of flat, whose diagonals run within a few degrees of their edges,
+and a bent cap, a cylinder whose cap of 24 corners has one standing a
+centimetre proud. Built with each triangle's own edges but not the far
+corners across its diagonals, as object mode and edge select mode once were,
+the strips lose wire at every pose. Without the marks for where the pass's
+knowledge of a face runs out, the cap hides its own rim edges.
+
+The sphere, the cylinder and the cube behind another lose wire to the old
+depth test, which held the lift to a face at 83 degrees, so they guard the
+fixed lift and the depth put in front of the pass's surface too. And the cube
+behind a plate whose edge runs a fraction of a pixel past the cube's, seen
+square on, guards deciding the wire once for each spot along its line: asked
+fragment by fragment, the half of the line past the plate's outline was
+drawn.
+
 What it cannot judge, by design:
 
 - Ink within 3.5 px of a mark that should show, which could be that mark's
   own. A far-side line running right beside a near one goes unseen.
 - A mark left off on a silhouette, where half of every line lies over the
   background and a dark line there has next to no contrast.
+- A bumpy open sheet seen nearly edge on, whose crests hide the rows behind
+  them by a few pixels of depth: some of that wire still comes through, the
+  same in every mode, so the strips are looked at from higher up.
 
 Each historical fix was put back to check the sweep fails on it: the far-side
 cull from inside a mesh, every dot or edge lifted for the steepest face, the

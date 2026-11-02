@@ -117,12 +117,28 @@ const MARK_LIFT_SLOPE = 8;
  */
 const MARK_LIFT_MIN_SLOPE = 1;
 
+/**
+ * The wire's lift, as a slope, while the occlusion pass decides what hides it
+ * (see `wireHidden`): a face at a little under 89 degrees, whatever the faces
+ * either side of the edge are.
+ *
+ * Each fragment of a line that shows is also put in front of whatever the pass
+ * drew under it, but the pass's pixels are CSS ones, and the rim of a thin
+ * plate seen edge on can be narrower than one on a high-density screen. Sized
+ * by the faces alone, the lift let that rim eat the outer half of the line
+ * beside it. The depth test is left to take away only something in front that
+ * the pass could not see by more than this.
+ */
+const TESTED_WIRE_LIFT_SLOPE = 64;
+
 /** Where the wire's extra attributes, and the slope it is lifted by, are declared. */
 const WIRE_SIDES_ANCHOR = 'attribute vec3 instanceEnd;';
 
 const WIRE_SIDES_GLSL = /* glsl */ `
 		attribute vec3 instanceSideA;
 		attribute vec3 instanceSideB;
+
+		uniform bool dotOcclusionActive;
 
 		// How far the face on one side of the wire climbs in depth per unit
 		// across the screen, seen along the ray: the tangent of the angle it is
@@ -139,6 +155,8 @@ const WIRE_SIDES_GLSL = /* glsl */ `
 		}
 
 		float wireSlope( vec3 at ) {
+
+			if ( dotOcclusionActive ) return ${TESTED_WIRE_LIFT_SLOPE.toFixed(1)};
 
 			vec3 ray = projectionMatrix[ 2 ][ 3 ] == - 1.0 ? normalize( at ) : vec3( 0.0, 0.0, - 1.0 );
 			float slope = max( wireSideSlope( instanceSideA, ray ), wireSideSlope( instanceSideB, ray ) );
@@ -209,23 +227,17 @@ const WIRE_LIFT_GLSL = /* glsl */ `
  * along the far rim wherever the far-side cull was not running. Lifted by what
  * its own faces need, a far-side edge's tick shrinks below a pixel.
  *
- * The lift is only owed to the wire's own surface, though, and it carried the
- * wire through any other object as well: a part modelled a few millimetres
- * inside another drew its edges across the outer one's faces once zoomed out
- * far enough for the gap to be a few pixels of depth. So in the viewport's own
- * frame, wherever another object's surface is the one drawn, the wire is
- * tested against it where the wire really lies, before the lift (see
- * `MARK_OCCLUSION_GLSL`). Each line material carries its object's
- * `surfaceTag` for that, and the occlusion pass records whose surface each
- * pixel is.
- *
- * Its own surface gets the same test, as `wireBehindOwn`, with the surface
- * carried to the wire's line and asked whether its face reaches that far.
- * Left to the lift, an edge running out from under a face it shares a vertex
- * with came through that face as a tip, as long as the lift over the gap
- * between them, wherever the far-side cull was not running: an open mesh, a
- * fold, one mesh in layers. The lift still keeps the wire whole on the faces
- * it lies on, which the test leaves alone.
+ * That is all a picture taken outside the viewport's frame gets. In the frame
+ * itself the occlusion pass is there to ask, and `wireHidden` asks it whether
+ * anything stands in front of the wire's line, carried to the line and put the
+ * same for every fragment across its width. A fragment of a line that shows is
+ * then put just in front of the surface the pass drew under it, so the depth
+ * test takes away only what the pass could not see. Left to the lift, the wire
+ * came through whatever stood in front of it by less: a part a few millimetres
+ * inside another, an edge running out from under a face it shares a vertex
+ * with, one mesh in layers. And held to `MARK_LIFT_SLOPE`, the lift let the
+ * fill eat the outer half of every line on a face seen nearly edge on, which on
+ * a thin plate turning in front of the camera is most of its lines.
  */
 function liftWire<T extends LineMaterial>(material: T): T {
   material.vertexShader = material.vertexShader
@@ -238,7 +250,6 @@ function liftWire<T extends LineMaterial>(material: T): T {
       MARK_OCCLUSION_DECLARATIONS_ANCHOR + WIRE_OCCLUSION_FRAGMENT,
     )
     .replace(MARK_OCCLUSION_ANCHOR, MARK_OCCLUSION_ANCHOR + WIRE_OCCLUSION_TEST);
-  material.uniforms.surfaceTag = { value: 0 };
   Object.assign(material.uniforms, DOT_OCCLUSION);
   return material;
 }
@@ -305,6 +316,15 @@ const EDGE_GLSL = {
   turn: (2 * Math.PI).toFixed(8),
 };
 
+/**
+ * Where three bits start, one for each of a pixel's three edges, set where that
+ * edge is no edge of the face but only where what the pass knows of it runs
+ * out: a diagonal with nothing known past it, or a side of the triangle across
+ * one that is a diagonal itself. Only the wire reads them, as ends of the face
+ * (see `wireHidden`). The dots go on taking the face to go on past them.
+ */
+const SOFT_END_SHIFT = 16;
+
 /** Set on every pixel the pass draws a face on, which an empty one never has. */
 const DRAWN_BIT = 1 << 19;
 
@@ -317,7 +337,7 @@ const TAG_SHIFT = 21;
 /**
  * How many objects the pass can tell apart, which is what the bits above
  * `OWN_BIT` hold. Two objects sharing a tag only lose each other's test (see
- * `liftWire`), so tags are handed out round the range rather than run out.
+ * `markOccluded`), so tags are handed out round the range rather than run out.
  */
 export const SURFACE_TAG_COUNT = 1 << (32 - TAG_SHIFT);
 
@@ -349,6 +369,7 @@ void main() {
 
 const DOT_OCCLUSION_FRAGMENT = /* glsl */ `
 uniform bool ownsDots;
+uniform bool farCorners;
 uniform int surfaceTag;
 uniform vec2 size;
 
@@ -360,9 +381,11 @@ flat varying vec4 vFarCornerB;
 layout( location = 0 ) out highp uvec4 occlusion;
 
 // The three edges of the face nearest this pixel's centre: how far off each
-// is, in pixels, and the way into the face.
+// is, in pixels, the way into the face, and whether it is only where what is
+// known of the face runs out.
 float edgeAway[ 3 ];
 vec2 edgeInward[ 3 ];
+bool edgeSoft[ 3 ];
 
 void keepEdge( float away, vec2 inward ) {
 
@@ -380,14 +403,32 @@ void keepEdge( float away, vec2 inward ) {
 
 }
 
-// The edge from a to b, from this pixel's centre, with the face on c's side.
-void keepEdgeThrough( vec2 a, vec2 b, vec2 c ) {
+// Where what is known of the face runs out, kept only in a slot no edge took,
+// so the dots, which pass over it, lose no edge to it.
+void keepSoftEnd( vec3 side ) {
+
+	if ( side.x >= ${EDGE_GLSL.reach} ) return;
+	for ( int i = 0; i < 3; i ++ ) {
+
+		if ( edgeAway[ i ] < ${EDGE_GLSL.reach} ) continue;
+		edgeAway[ i ] = side.x;
+		edgeInward[ i ] = side.yz;
+		edgeSoft[ i ] = true;
+		return;
+
+	}
+
+}
+
+// The side from a to b, from this pixel's centre, with the face on c's side:
+// how far off it is, then the way into the face.
+vec3 sideThrough( vec2 a, vec2 b, vec2 c ) {
 
 	vec2 along = b - a;
-	if ( dot( along, along ) == 0.0 ) return;
+	if ( dot( along, along ) == 0.0 ) return vec3( ${EDGE_GLSL.reach}, 1.0, 0.0 );
 	vec2 inward = normalize( vec2( - along.y, along.x ) );
 	if ( dot( inward, c - a ) < 0.0 ) inward = - inward;
-	keepEdge( - dot( inward, a ), inward );
+	return vec3( - dot( inward, a ), inward );
 
 }
 
@@ -417,47 +458,68 @@ void main() {
 
 		edgeAway[ i ] = ${EDGE_GLSL.reach};
 		edgeInward[ i ] = vec2( 1.0, 0.0 );
+		edgeSoft[ i ] = false;
 
 	}
+
+	// Where what is known of the face runs out, kept once the edges have all
+	// had their slots.
+	vec3 softEnds[ 6 ];
+	int softCount = 0;
 
 	int diagonal = 0;
 	for ( int k = 0; k < 3; k ++ ) {
 
-		// An edge of the face: a corner's weight is nothing along the side
+		// A side of the triangle: a corner's weight is nothing along the side
 		// facing it and climbs at one rate across the screen, so that side is
 		// the weight over the rate away, and lies across the way it climbs.
+		vec2 climb = vec2( weightsX[ k ], weightsY[ k ] );
+		float rate = length( climb );
+		vec3 side = rate > 0.0 ? vec3( weights[ k ] / rate, climb / rate ) : vec3( ${EDGE_GLSL.reach}, 1.0, 0.0 );
+
+		// An edge of the face.
 		if ( ( vFaceCode & ( 1 << k ) ) != 0 ) {
 
-			vec2 climb = vec2( weightsX[ k ], weightsY[ k ] );
-			float rate = length( climb );
-			if ( rate > 0.0 ) keepEdge( weights[ k ] / rate, climb / rate );
+			keepEdge( side.x, side.yz );
 			continue;
 
 		}
 
 		// A diagonal: the face goes on into the triangle across it, whose sides
-		// out to its far corner may be edges of the face. Past those it is
-		// taken to go on, as it does across a diagonal.
-		if ( diagonal > 1 ) continue;
+		// out to its far corner may be edges of the face. Past those, and past a
+		// diagonal with nothing known across it, it is taken to go on.
 		vec4 far = diagonal == 0 ? vFarCornerA : vFarCornerB;
 		int edges = ( vFaceCode >> ( 3 + 2 * diagonal ) ) & 3;
+		if ( diagonal > 1 || ! farCorners || far.w <= 0.0 ) {
+
+			softEnds[ softCount ++ ] = side;
+			diagonal ++;
+			continue;
+
+		}
 		diagonal ++;
-		if ( edges == 0 || far.w <= 0.0 ) continue;
 
 		vec2 farAt = ( far.xy / far.w * 0.5 + 0.5 ) * size - gl_FragCoord.xy;
 		vec2 first = cornerAt( ( k + 1 ) % 3, weights, weightsX, weightsY );
 		vec2 second = cornerAt( ( k + 2 ) % 3, weights, weightsX, weightsY );
-		if ( ( edges & 1 ) != 0 ) keepEdgeThrough( first, farAt, second );
-		if ( ( edges & 2 ) != 0 ) keepEdgeThrough( farAt, second, first );
+		vec3 toFar = sideThrough( first, farAt, second );
+		vec3 fromFar = sideThrough( farAt, second, first );
+		if ( ( edges & 1 ) != 0 ) keepEdge( toFar.x, toFar.yz );
+		else softEnds[ softCount ++ ] = toFar;
+		if ( ( edges & 2 ) != 0 ) keepEdge( fromFar.x, fromFar.yz );
+		else softEnds[ softCount ++ ] = fromFar;
 
 	}
+	for ( int s = 0; s < softCount; s ++ ) keepSoftEnd( softEnds[ s ] );
 
 	uvec3 packed;
+	uint soft = 0u;
 	for ( int i = 0; i < 3; i ++ ) {
 
 		uint awayStep = uint( clamp( edgeAway[ i ] / ${EDGE_GLSL.reach}, 0.0, 1.0 ) * 255.0 + 0.5 );
 		uint facingStep = uint( fract( atan( edgeInward[ i ].y, edgeInward[ i ].x ) / ${EDGE_GLSL.turn} ) * 256.0 + 0.5 ) & 255u;
 		packed[ i ] = awayStep | facingStep << 8;
+		if ( edgeSoft[ i ] ) soft |= 1u << i;
 
 	}
 
@@ -467,7 +529,7 @@ void main() {
 		floatBitsToUint( depth ),
 		packHalf2x16( isOrthographic ? slope : slope / depth ),
 		packed.x | packed.y << 16,
-		packed.z | ${DRAWN_BIT}u | ( ownsDots ? ${OWN_BIT}u : 0u ) | uint( surfaceTag ) << ${TAG_SHIFT}
+		packed.z | soft << ${SOFT_END_SHIFT} | ${DRAWN_BIT}u | ( ownsDots ? ${OWN_BIT}u : 0u ) | uint( surfaceTag ) << ${TAG_SHIFT}
 	);
 
 }
@@ -510,8 +572,13 @@ void main() {
  * front of it as far as their own edge.
  *
  * And which object the face is, as the tag its solid carries in
- * `userData.surfaceTag`, for the wire to tell its own surface from another's
- * (see `liftWire`).
+ * `userData.surfaceTag`, for a wash to tell its own surface from another's
+ * (see `markOccluded`).
+ *
+ * And, for the wire alone, where what it knows of a face runs out short of
+ * an edge (see `SOFT_END_SHIFT`), which needs to know whether the solid
+ * carries its far corners at all: `farCorners`, set per object as each is
+ * drawn.
  *
  * No depth offset: the test wants the faces where they are.
  */
@@ -520,6 +587,7 @@ export function createDotOcclusionMaterial(): THREE.ShaderMaterial {
     glslVersion: THREE.GLSL3,
     uniforms: {
       ownsDots: { value: false },
+      farCorners: { value: false },
       surfaceTag: { value: 0 },
       size: { value: new THREE.Vector2(1, 1) },
     },
@@ -528,8 +596,11 @@ export function createDotOcclusionMaterial(): THREE.ShaderMaterial {
   });
   // The pass draws every surface with this one material, so the flag is set
   // per object as each is drawn.
-  material.onBeforeRender = (_renderer, _scene, _camera, _geometry, object) => {
+  material.onBeforeRender = (_renderer, _scene, _camera, geometry, object) => {
     material.uniforms.ownsDots.value = object.userData.ownsDots === true;
+    // A solid built without them reads a corner of nothing for every far
+    // corner, which is the object's origin, not where its face goes.
+    material.uniforms.farCorners.value = geometry.getAttribute('farCornerA') !== undefined;
     material.uniforms.surfaceTag.value = (object.userData.surfaceTag as number | undefined) ?? 0;
     material.uniformsNeedUpdate = true;
   };
@@ -575,8 +646,24 @@ const RASTER_SNAP = 1 / 16;
  */
 const EDGE_SLACK = 1 / 48;
 
+/**
+ * How much nearer than the surface under it a wire fragment that shows is put,
+ * in the depth buffer's own units: four steps of a 24-bit buffer. The fill sits
+ * four steps behind its true depth already; this is for the rounding in working
+ * a buffer depth out from the pass's.
+ */
+const WIRE_DEPTH_BIAS = 4 / 2 ** 24;
+
 /** Reads the edges of a face as the occlusion pass packs them (see `EDGE_GLSL`). */
 const FACE_EDGE_GLSL = /* glsl */ `
+// Whether edge \`k\` of a pixel is only where what the pass knows of its face
+// runs out, read from the pixel's last word (see \`SOFT_END_SHIFT\`).
+bool faceEdgeSoft( uint word, int k ) {
+
+	return ( ( word >> ( ${SOFT_END_SHIFT} + k ) ) & 1u ) != 0u;
+
+}
+
 // The way into the face from one of its edges, as the occlusion pass packed it.
 vec2 faceEdgeInward( uint edge ) {
 
@@ -601,6 +688,8 @@ const WIRE_TRUE_DECLARATIONS = /* glsl */ `
 		varying vec3 vWireStart;
 		varying vec3 vWireEnd;
 		varying vec3 vWireAt;
+		varying float vWireDeep;
+		varying vec2 vWireDepthRange;
 
 		// Where a point lands on the occlusion map, in its pixels, and its depth
 		// in the units the map holds a surface's in.
@@ -638,6 +727,12 @@ const WIRE_TRUE_GLSL = /* glsl */ `
 
 			vWireStart = wireOnMap( projectionMatrix * wireStart );
 			vWireEnd = wireOnMap( projectionMatrix * wireEnd );
+			// Two pixels of depth, in the units the test compares depths in, as
+			// \`dotOccluded\` takes them.
+			vWireDeep = perspective ? 2.0 * wireSpan : wireSpan * abs( projectionMatrix[ 2 ][ 2 ] );
+			// What turns a 1 / w the map holds into the depth buffer's own depth,
+			// which the fragment shader has no projection to work out from.
+			vWireDepthRange = vec2( projectionMatrix[ 2 ][ 2 ], projectionMatrix[ 3 ][ 2 ] );
 			// Divided out in the fragment, which leaves the fragment's own place on
 			// the screen: the lift moves nothing across it.
 			vWireAt = clip.xyw;
@@ -655,8 +750,7 @@ const MARK_OCCLUSION_GLSL = /* glsl */ `
 		// Whether another object's surface stands in front of a mark on this
 		// one, \`at\` a spot on the occlusion map and \`own\` deep, in the units
 		// the map holds a depth in. The mark's own surface is not this test's:
-		// the wash leaves it to the depth test and its offset, and the wire
-		// asks \`wireBehindOwn\`.
+		// the wash leaves it to the depth test and its offset.
 		bool markOccluded( vec2 at, float own ) {
 
 			if ( ! dotOcclusionActive ) return false;
@@ -680,52 +774,111 @@ const MARK_OCCLUSION_GLSL = /* glsl */ `
 `;
 
 const WIRE_OCCLUSION_FRAGMENT = /* glsl */ `
-		${MARK_OCCLUSION_GLSL}
+		uniform bool dotOcclusionActive;
+		uniform highp usampler2D dotOcclusionMap;
+		uniform vec2 dotOcclusionSize;
 		${FACE_EDGE_GLSL}
 
 		varying vec3 vWireStart;
 		varying vec3 vWireEnd;
 		varying vec3 vWireAt;
+		varying float vWireDeep;
+		varying vec2 vWireDepthRange;
 
-		// Whether the wire's own object stands in front of it, \`onLine\` being
-		// the spot on the wire nearest the fragment at \`at\` and \`own\` the
-		// wire's depth there. The pixel's surface is carried to that spot rather
-		// than to the fragment, which puts the faces either side of the edge on
-		// the wire's own depth however far across the line the fragment lies:
-		// the climb across the line's width is what the lift is for. Any other
-		// face hides it only where the face reaches the spot. The faces round
-		// the wire's end vertex lean in front of it past their own edges.
-		bool wireBehindOwn( vec2 at, vec2 onLine, float own ) {
+		// Whether a surface stands in front of the wire where its line runs,
+		// \`onLine\` on the occlusion map and \`own\` deep there, asked of the four
+		// pixels round that spot as a dot asks of the four round its vertex. Each
+		// pixel's surface is carried to the line rather than to the fragment, so
+		// the faces either side of the edge land on its own depth, and every
+		// fragment across the line's width gets the same answer: the line is
+		// drawn whole or not at all. Any object's face hides it where the face
+		// is in front and reaches the line.
+		bool wireHidden( vec2 onLine, float own ) {
 
-			if ( ! dotOcclusionActive ) return false;
-
-			ivec2 texel = clamp( ivec2( floor( at ) ), ivec2( 0 ), ivec2( dotOcclusionSize ) - 1 );
-			uvec4 surface = texelFetch( dotOcclusionMap, texel, 0 );
-			if ( ( surface.a & ${DRAWN_BIT}u ) == 0u ) return false;
-			if ( surface.a >> ${TAG_SHIFT} != uint( surfaceTag ) ) return false;
-
-			float depth = uintBitsToFloat( surface.r );
-			vec2 slope = unpackHalf2x16( surface.g ) * ( isOrthographic ? 1.0 : depth );
-			vec2 offset = onLine - ( vec2( texel ) + 0.5 );
-			float there = depth + dot( slope, offset );
-			float slack = ${RASTER_SNAP.toFixed(4)} * length( slope );
-			float ahead = isOrthographic ? own - ( there + slack ) : ( there - slack ) / own - 1.0;
-			if ( ahead <= ( isOrthographic
+			ivec2 first = ivec2( floor( onLine - 0.5 ) );
+			ivec2 last = ivec2( dotOcclusionSize ) - 1;
+			float margin = isOrthographic
 				? ${DOT_OCCLUSION_MARGIN.orthographic.toExponential()}
-				: ${DOT_OCCLUSION_MARGIN.perspective.toExponential()} ) ) return false;
+				: ${DOT_OCCLUSION_MARGIN.perspective.toExponential()};
+			int deepInFront = 0;
 
-			uvec3 edges = uvec3( surface.b & 65535u, surface.b >> 16, surface.a & 65535u );
-			for ( int k = 0; k < 3; k ++ ) {
+			for ( int i = 0; i < 4; i ++ ) {
 
-				if ( faceEdgeReach( edges[ k ], offset ) <= ${EDGE_SLACK.toFixed(4)} ) return false;
+				ivec2 texel = clamp( first + ivec2( i & 1, i >> 1 ), ivec2( 0 ), last );
+				uvec4 surface = texelFetch( dotOcclusionMap, texel, 0 );
+				if ( ( surface.a & ${DRAWN_BIT}u ) == 0u ) continue;
+
+				float depth = uintBitsToFloat( surface.r );
+				vec2 slope = unpackHalf2x16( surface.g ) * ( isOrthographic ? 1.0 : depth );
+				vec2 offset = onLine - ( vec2( texel ) + 0.5 );
+				float there = depth + dot( slope, offset );
+				float slack = ${RASTER_SNAP.toFixed(4)} * length( slope );
+				float ahead = isOrthographic ? own - ( there + slack ) : ( there - slack ) / own - 1.0;
+				if ( ahead <= margin ) continue;
+				if ( ahead > vWireDeep ) deepInFront ++;
+
+				// Hidden where the face reaches the line, by more than the rounding
+				// in where its edges are. Short of it, the face stops there: the
+				// faces round the wire's end vertex lean in front of it past their
+				// own edges.
+				uvec3 edges = uvec3( surface.b & 65535u, surface.b >> 16, surface.a & 65535u );
+				bool reaches = true;
+				for ( int k = 0; k < 3; k ++ ) {
+
+					if ( faceEdgeReach( edges[ k ], offset ) <= ${EDGE_SLACK.toFixed(4)} ) reaches = false;
+
+				}
+				if ( reaches ) return true;
 
 			}
-			return true;
+
+			// A face smaller than a pixel may be the one over the line with none
+			// of the four landing on it. Surfaces two pixels of depth in front all
+			// round are something solid in front all the same.
+			return deepInFront == 4;
 
 		}
 
-		// The test at this fragment, for the wire where it really lies.
-		bool wireOccluded() {
+		// The depth buffer's own depth just in front of the nearest surface the
+		// pass drew round the fragment at \`at\`, each carried to it along its
+		// slope and brought nearer by its slack.
+		float wireInFront( vec2 at ) {
+
+			ivec2 first = ivec2( floor( at - 0.5 ) );
+			ivec2 last = ivec2( dotOcclusionSize ) - 1;
+			float nearest = 1.0;
+
+			for ( int i = 0; i < 4; i ++ ) {
+
+				ivec2 texel = clamp( first + ivec2( i & 1, i >> 1 ), ivec2( 0 ), last );
+				uvec4 surface = texelFetch( dotOcclusionMap, texel, 0 );
+				if ( ( surface.a & ${DRAWN_BIT}u ) == 0u ) continue;
+
+				float depth = uintBitsToFloat( surface.r );
+				vec2 slope = unpackHalf2x16( surface.g ) * ( isOrthographic ? 1.0 : depth );
+				float there = depth + dot( slope, at - ( vec2( texel ) + 0.5 ) );
+				float slack = ${RASTER_SNAP.toFixed(4)} * length( slope );
+				// Nearer is a smaller depth under an orthographic camera, where the
+				// map holds the buffer's own, and a larger 1 / w under perspective.
+				float window = isOrthographic
+					? there - slack
+					: 0.5 * ( vWireDepthRange.y * ( there + slack ) - vWireDepthRange.x ) + 0.5;
+				nearest = min( nearest, window );
+
+			}
+
+			return nearest - ${WIRE_DEPTH_BIAS.toExponential()};
+
+		}
+
+		// The test at this fragment, asked of the spot on the wire's line
+		// nearest it. Where the line shows, the fragment is given a depth in
+		// front of whatever surface the pass drew under it, whatever the lift
+		// made it, so the depth test takes away no more than the pass could
+		// not see: something in front thinner than its pixels.
+		bool wireOccluded( inout float depth ) {
+
+			if ( ! dotOcclusionActive ) return false;
 
 			vec2 at = ( vWireAt.xy / vWireAt.z * 0.5 + 0.5 ) * dotOcclusionSize;
 
@@ -733,9 +886,10 @@ const WIRE_OCCLUSION_FRAGMENT = /* glsl */ `
 			// along a line, so the wire's own is a blend of its ends'.
 			vec2 along = vWireEnd.xy - vWireStart.xy;
 			float t = clamp( dot( at - vWireStart.xy, along ) / max( dot( along, along ), 1e-12 ), 0.0, 1.0 );
-			vec2 onLine = mix( vWireStart.xy, vWireEnd.xy, t );
-			float own = mix( vWireStart.z, vWireEnd.z, t );
-			return markOccluded( at, own ) || wireBehindOwn( at, onLine, own );
+			if ( wireHidden( mix( vWireStart.xy, vWireEnd.xy, t ), mix( vWireStart.z, vWireEnd.z, t ) ) ) return true;
+
+			depth = min( depth, wireInFront( at ) );
+			return false;
 
 		}
 `;
@@ -745,7 +899,9 @@ const MARK_OCCLUSION_ANCHOR = '#include <clipping_planes_fragment>';
 
 const WIRE_OCCLUSION_TEST = /* glsl */ `
 
-			if ( wireOccluded() ) discard;
+			float wireDepth = gl_FragCoord.z;
+			if ( wireOccluded( wireDepth ) ) discard;
+			gl_FragDepth = wireDepth;
 `;
 
 const WASH_CLIP_DECLARATION = /* glsl */ `
@@ -829,6 +985,7 @@ bool dotOccluded( vec4 clip, float span ) {
 			vec2 nearest = offset;
 			for ( int k = 0; k < 3; k ++ ) {
 
+				if ( faceEdgeSoft( surface.a, k ) ) continue;
 				float reach = faceEdgeReach( edges[ k ], offset );
 				if ( reach < 0.0 ) nearest -= reach * faceEdgeInward( edges[ k ] );
 
@@ -849,6 +1006,7 @@ bool dotOccluded( vec4 clip, float span ) {
 		bool reaches = true;
 		for ( int k = 0; k < 3; k ++ ) {
 
+			if ( faceEdgeSoft( surface.a, k ) ) continue;
 			if ( faceEdgeReach( edges[ k ], offset ) <= ${EDGE_SLACK.toFixed(4)} ) reaches = false;
 
 		}
@@ -1336,8 +1494,8 @@ export function createOriginMaterial(): THREE.PointsMaterial {
  * The offset's slope term is pixels of depth on a face seen edge-on, and it
  * lifted the wash through another object standing that close in front: a part
  * inside another, picked whole, washed the outer one's faces red. So it is
- * tested against the other objects' surfaces where it really lies, as the wire
- * is (see `liftWire`), its object's tag in `userData.surfaceTag`.
+ * tested against the other objects' surfaces where it really lies (see
+ * `markOccluded`), its object's tag in `userData.surfaceTag`.
  */
 export function createSelectionOverlayMaterial(): THREE.Material {
   return createWashMaterial(VIEWPORT_COLORS.red, 0.45);

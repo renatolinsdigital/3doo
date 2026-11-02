@@ -4,7 +4,7 @@ import { chromium, type Browser, type Page } from 'playwright-core';
 import { createServer, type ViteDevServer } from 'vite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import type { Pose, PoseReport, SceneName } from './page';
+import type { MarkMode, Pose, PoseReport, SceneName } from './page';
 
 /**
  * Vertex dots and wire drawn through the surfaces in front of them, checked on
@@ -40,6 +40,16 @@ function sweep(
   }
   return poses;
 }
+
+const SQUARE_ON = sweep(
+  [3, 6],
+  [
+    [1.2, 0],
+    [1.57, 0],
+    [1.9, 0],
+  ],
+  [true],
+);
 
 const SCENES: [SceneName, Pose[]][] = [
   // Edge on and zoomed out is where a lift sized for the steepest face carried
@@ -131,6 +141,9 @@ const SCENES: [SceneName, Pose[]][] = [
       [false],
     ),
   ],
+  // Orthographic and square on, tilted up and down only, which keeps the
+  // cube's right edges a fraction of a pixel inside the plate's outline.
+  ['edge under an outline', SQUARE_ON],
 ];
 
 let server: ViteDevServer;
@@ -183,7 +196,7 @@ function label(pose: Pose) {
   return `${projection} r${pose.radius} phi${pose.phi} theta${pose.theta}`;
 }
 
-function describeFindings(kind: string, report: PoseReport['dots']) {
+function describeFindings(kind: string, report: PoseReport['dots'] | PoseReport['wire']) {
   const lines: string[] = [];
   const first = (findings: { x: number; y: number; gapPx: number }[]) =>
     findings
@@ -195,6 +208,11 @@ function describeFindings(kind: string, report: PoseReport['dots']) {
   }
   if (report.missing.length > 0) {
     lines.push(`${report.missing.length} visible ${kind} left off: ${first(report.missing)}`);
+  }
+  if ('thinned' in report && report.thinned.length > 0) {
+    lines.push(
+      `${report.thinned.length} pixels of visible wire taken off: ${first(report.thinned)}`,
+    );
   }
   return lines;
 }
@@ -226,6 +244,91 @@ describe('marks on the real GPU', () => {
       // A sweep that never put anything behind a surface could not have caught a
       // leak, however clean it came back.
       expect(hidden, `no mark was ever hidden in the ${name} sweep`).toBeGreaterThan(0);
+      expect(failures, `on ${gpu}`).toEqual([]);
+    },
+  );
+});
+
+// From above and below, where the triangles across the diagonals lean in front
+// of the long edges or fall behind them. Not much lower than twenty degrees
+// over the sheet: nearer edge on, the crests hide rows behind them by a few
+// pixels of depth, and some of that wire comes through, the same in every mode.
+const STRIP_POSES = sweep(
+  [3, 6],
+  [
+    [0.5, 0.2],
+    [1, 1.3],
+    [1.2, 2.6],
+    [1.95, 4],
+    [2.3, 5.2],
+  ],
+);
+
+// Down onto the cap at a slant from all round, where its triangles reach
+// across it to the rim.
+const CAP_POSES = sweep(
+  [2.5, 6],
+  [
+    [0.4, 0.3],
+    [0.8, 1.7],
+    [1.1, 3.1],
+    [0.6, 4.6],
+  ],
+);
+
+describe('wire over its own surface on the real GPU', () => {
+  it.each<MarkMode>(['object', 'edge', 'vertex'])(
+    'keeps every visible edge of twisted strips whole, in %s mode',
+    async (mode) => {
+      await page.evaluate(
+        ([scene, as]) => (window as unknown as CheckWindow).gpuCheck.build(scene, as),
+        ['twisted strips', mode] as [SceneName, MarkMode],
+      );
+      const failures: string[] = [];
+      let checked = 0;
+      for (const pose of STRIP_POSES) {
+        const report = await page.evaluate(
+          (at) => (window as unknown as CheckWindow).gpuCheck.check(at),
+          pose,
+        );
+        checked += report.wire.checked;
+        const found = describeFindings('wire samples', report.wire);
+        if (found.length > 0) failures.push(`${label(pose)}: ${found.join('; ')}`);
+      }
+      expect(checked, 'no wire was ever on screen').toBeGreaterThan(0);
+      // Outside vertex select mode the surface carried which of each triangle's
+      // sides were edges of its face, but not where the face went on to across
+      // a diagonal. The triangle across the diagonal from an edge, a little out
+      // of flat, was then taken to reach the edge and stand in front of it, and
+      // the wire beside it lost the half of its width over that triangle: a
+      // line broken into dashes, wherever a long quad was not quite flat.
+      expect(failures, `on ${gpu}`).toEqual([]);
+    },
+  );
+
+  it.each<MarkMode>(['object', 'vertex'])(
+    'keeps every visible edge round a cap not quite flat, in %s mode',
+    async (mode) => {
+      await page.evaluate(
+        ([scene, as]) => (window as unknown as CheckWindow).gpuCheck.build(scene, as),
+        ['bent cap', mode] as [SceneName, MarkMode],
+      );
+      const failures: string[] = [];
+      let checked = 0;
+      for (const pose of CAP_POSES) {
+        const report = await page.evaluate(
+          (at) => (window as unknown as CheckWindow).gpuCheck.check(at),
+          pose,
+        );
+        checked += report.wire.checked;
+        const found = describeFindings('wire samples', report.wire);
+        if (found.length > 0) failures.push(`${label(pose)}: ${found.join('; ')}`);
+      }
+      expect(checked, 'no wire was ever on screen').toBeGreaterThan(0);
+      // The pass knows a face of many corners only one triangle past each
+      // diagonal, and took it to go on from there. A triangle further across
+      // the cap, standing a hair proud, was taken to reach the rim and hid the
+      // rim's own edges there.
       expect(failures, `on ${gpu}`).toEqual([]);
     },
   );

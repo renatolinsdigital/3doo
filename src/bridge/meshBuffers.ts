@@ -86,7 +86,8 @@ export interface MeshBuffers {
  * How much the solid carries of where its faces end, for the dot occlusion
  * pass: which sides of each triangle are edges of its face (`'edges'`), or that
  * and the far corners across its diagonals (`'far'`). Each costs every rebuild
- * time, and only an object whose vertices are marked has its far corners read.
+ * time, and only an object whose own marks are tested against its faces, its
+ * dots or its wire, has its far corners read.
  */
 export type FaceEnds = 'edges' | 'far';
 

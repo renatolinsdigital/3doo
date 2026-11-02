@@ -560,8 +560,9 @@ describe('ObjectView vertex dots', () => {
     expect(geometry.getAttribute('farCornerB')).toBeUndefined();
   });
 
-  it('spares the surface those corners while no vertex is marked', () => {
-    // Rebuilding them costs every sync, and nothing reads them outside edit mode.
+  it('spares the surface those corners while no mark is tested against it', () => {
+    // Rebuilding them costs every sync, and outside edit mode only the wire
+    // reads them, which the solid shading leaves off.
     const { object, settings } = scene();
     const view = new ObjectView(object.id);
     view.update(object, evaluatedMesh(object), {
@@ -574,15 +575,44 @@ describe('ObjectView vertex dots', () => {
     expect(geometry.getAttribute('farCornerA')).toBeUndefined();
   });
 
-  it('gives the surface where its faces end while the wire is drawn over it', () => {
-    // The wire is tested against its own faces in object mode too, and with no
-    // ends to read every face reached as far as the test looked: a visible
-    // edge lost a pixel where a nearer part of the object's outline ran by.
+  it.each([
+    ['in object mode with the wire on', 'object', 'vertex', 'solidWire'],
+    ['in edge select mode', 'edit', 'edge', 'solid'],
+  ] as const)(
+    'gives the surface where its faces end, across diagonals too, %s',
+    (_, mode, selectMode, shading) => {
+      // The wire is tested against its own faces wherever it is drawn over them,
+      // and with no ends to read every face reached as far as the test looked: a
+      // visible edge lost a pixel where a nearer part of the object's outline ran
+      // by. These two used to get the edges of each triangle alone, which was
+      // reading too little: past a diagonal the face was taken to go on, so the
+      // triangle across one from an edge reached the edge itself, and on a quad a
+      // little out of flat it stood in front of the edge there. The wire lost
+      // half its width beside every long quad not quite flat.
+      const { object, settings } = scene();
+      const view = new ObjectView(object.id);
+      view.update(object, evaluatedMesh(object), {
+        ...editState(settings, shading),
+        mode,
+        selectMode,
+      });
+
+      const geometry = (view.group.getObjectByName(`${object.id}:solid`) as THREE.Mesh).geometry;
+      const corners = geometry.getAttribute('position').count;
+      expect(geometry.getAttribute('triangleCorner').count).toBe(corners);
+      expect(geometry.getAttribute('farCornerA').count).toBe(corners);
+    },
+  );
+
+  it('gives the other objects in edit mode only the edges of their faces', () => {
+    // Only the dots ask about another object's faces, and its edges answer
+    // them; the far corners would cost every sync for nothing.
     const { object, settings } = scene();
     const view = new ObjectView(object.id);
     view.update(object, evaluatedMesh(object), {
-      ...editState(settings, 'solidWire'),
-      mode: 'object',
+      ...editState(settings, 'solid'),
+      isActive: false,
+      isSelected: false,
     });
 
     const geometry = (view.group.getObjectByName(`${object.id}:solid`) as THREE.Mesh).geometry;
@@ -623,9 +653,9 @@ describe('ObjectView vertex dots', () => {
     expect(view.showsDots).toBe(true);
   });
 
-  it('tags its surface and the marks lying on it alike, and apart from other views', () => {
-    // How the wire tells its own surface, which its lift is for, from another
-    // object's, which the lift used to carry it through.
+  it('tags its surface and the washes lying on it alike, and apart from other views', () => {
+    // How a wash tells its own surface, which its offset is for, from another
+    // object's, which the offset used to carry it through.
     const { object } = scene();
     const view = new ObjectView(object.id);
     const other = new ObjectView('other');
@@ -637,12 +667,6 @@ describe('ObjectView vertex dots', () => {
       tag,
     );
 
-    const lines = view.group.children.filter((child) => child instanceof LineSegments2);
-    const outline = view.group.getObjectByName(`${object.id}:outline`);
-    for (const line of lines) {
-      if (line === outline) continue;
-      expect((line.material as LineMaterial).uniforms.surfaceTag.value).toBe(tag);
-    }
     // The selection's, the non-planar overlay's and the n-gon overlay's.
     const washes = view.group.children.filter(
       (child): child is THREE.Mesh =>
