@@ -263,6 +263,18 @@ export function TopologyPanel() {
           }
           onClick={() => exec('makePlanar', {}, 'Make planar')}
         />
+        <Button
+          label="RECALCULATE NORMALS"
+          disabled={selection.faces === 0}
+          hint={
+            selection.faces > 0
+              ? 'Point the selected faces outward, judged by the whole surface they belong to. Faces left unselected stay as they are, and Shift+N does every face'
+              : 'Select the faces to point outward. FACE ORIENT under OVERLAYS tints the inverted ones red'
+          }
+          onClick={() =>
+            exec('recalculateNormals', { outside: true, selected: true }, 'Recalculate normals')
+          }
+        />
       </FieldRow>
 
       <FieldRow legend="SELECTION" columns={1}>

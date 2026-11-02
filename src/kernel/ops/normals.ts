@@ -26,68 +26,79 @@ export function flipNormals(mesh: BMesh, faces: readonly Face[]): Face[] {
 
 /**
  * Makes winding consistent across each connected shell, then flips any shell
- * whose signed volume says it is inside out.
+ * whose signed volume says it is inside out. Returns how many faces it turned.
  *
  * The two-stage approach matters: consistency alone still allows a shell that
  * is uniformly inverted, which is exactly the case that ruins an export.
+ *
+ * Given `only`, it turns those faces and no others, but still judges them by
+ * the whole shell they sit in: a lone face's signed volume depends on where the
+ * origin is, so it cannot say which way is out on its own.
  */
-export function recalculateNormals(mesh: BMesh, outside = true): void {
+export function recalculateNormals(mesh: BMesh, outside = true, only?: readonly Face[]): number {
+  const allowed = only ? new Set(only.map((face) => face.id)) : null;
   const visited = new Set<number>();
+  const turning: Face[] = [];
 
-  for (const seed of [...mesh.faces.values()]) {
-    if (visited.has(seed.id)) continue;
+  for (const seed of only ?? [...mesh.faces.values()]) {
+    if (visited.has(seed.id) || !mesh.faces.has(seed.id)) continue;
 
-    const shell: Face[] = [];
+    // Whether each face of the shell winds against the seed. Nothing is flipped
+    // until every shell is decided, since a flip remakes the face.
+    const against = new Map<Face, boolean>([[seed, false]]);
     const queue: Face[] = [seed];
     visited.add(seed.id);
 
     while (queue.length > 0) {
       const current = queue.pop() as Face;
-      if (!mesh.faces.has(current.id)) continue;
-      shell.push(current);
+      const currentAgainst = against.get(current) as boolean;
 
       for (const loop of mesh.faceLoops(current)) {
         for (const neighbour of mesh.edgeFaces(loop.edge)) {
-          if (neighbour === current || visited.has(neighbour.id)) continue;
+          if (visited.has(neighbour.id)) continue;
           visited.add(neighbour.id);
 
           const neighbourLoop = loop.edge.loops.find((candidate) => candidate.face === neighbour);
           // Two consistently wound faces traverse a shared edge in opposite
           // directions; matching directions mean the neighbour is inverted.
           const inverted = neighbourLoop !== undefined && neighbourLoop.vert === loop.vert;
-          const resolved = inverted ? flipFace(mesh, neighbour) : neighbour;
-          visited.add(resolved.id);
-          queue.push(resolved);
+          against.set(neighbour, inverted !== currentAgainst);
+          queue.push(neighbour);
         }
       }
     }
 
-    const volume = signedVolume(mesh, shell);
+    const volume = signedVolume(mesh, against);
     const wrongWayRound = outside ? volume < 0 : volume > 0;
-    if (wrongWayRound && Math.abs(volume) > 1e-12) {
-      for (const face of shell) {
-        if (mesh.faces.has(face.id)) flipFace(mesh, face);
-      }
+    const flipShell = wrongWayRound && Math.abs(volume) > 1e-12;
+    for (const [face, wound] of against) {
+      if (wound !== flipShell && (!allowed || allowed.has(face.id))) turning.push(face);
     }
   }
 
+  for (const face of turning) flipFace(mesh, face);
   mesh.computeNormals();
+  return turning.length;
 }
 
-/** Six times the signed volume of the shell, via the divergence theorem. */
-function signedVolume(mesh: BMesh, faces: readonly Face[]): number {
+/**
+ * Six times the signed volume of the shell, via the divergence theorem, with
+ * each face counted the way it will wind once those marked are turned.
+ */
+function signedVolume(mesh: BMesh, shell: ReadonlyMap<Face, boolean>): number {
   let total = 0;
 
-  for (const face of faces) {
-    if (!mesh.faces.has(face.id)) continue;
+  for (const [face, turned] of shell) {
     const points = mesh.facePoints(face);
     const indices = triangulatePolygon(points, face.normal);
+    let part = 0;
     for (let i = 0; i < indices.length; i += 3) {
       const a = points[indices[i]];
       const b = points[indices[i + 1]];
       const c = points[indices[i + 2]];
-      total += dot(a, cross(b, c));
+      part += dot(a, cross(b, c));
     }
+    total += turned ? -part : part;
   }
 
   return total;

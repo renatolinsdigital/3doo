@@ -2,7 +2,7 @@ import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { type Vert, distance, dot, quadBend } from '@kernel/index';
+import { type Face, type Vert, distance, dot, quadBend } from '@kernel/index';
 import { useEditorStore } from '@store/index';
 
 import { TopologyPanel } from './TopologyPanel';
@@ -54,6 +54,7 @@ describe('TopologyPanel', () => {
       'VERTEX SLIDE',
       'EDGE SLIDE',
       'MAKE PLANAR',
+      'RECALCULATE NORMALS',
     ]) {
       expect(button(name)).toHaveAttribute('aria-disabled', 'true');
     }
@@ -127,6 +128,33 @@ describe('TopologyPanel', () => {
     });
 
     expect(button('MAKE PLANAR')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('turns the selected faces outward and leaves the rest, as one undo step', async () => {
+    render(<TopologyPanel />);
+    const facing = (y: number) =>
+      [...activeMesh().faces.values()].find(
+        (face) => Math.abs(activeMesh().faceCenter(face).y - y) < 1e-6,
+      );
+    act(() => {
+      const store = useEditorStore.getState();
+      store.exec('flipNormals', {}, 'Flip normals');
+      store.setSelectMode('face');
+      const mesh = activeMesh();
+      mesh.deselectAll();
+      (facing(0.5) as Face).selected = true;
+      mesh.flushSelection('face');
+      store.touchMesh();
+    });
+    const steps = useEditorStore.getState().historyUndo.length;
+
+    expect(button('RECALCULATE NORMALS')).not.toHaveAttribute('aria-disabled');
+    await userEvent.click(button('RECALCULATE NORMALS'));
+
+    expect(facing(0.5)?.normal.y).toBeCloseTo(1);
+    // The bottom was not selected, so it still faces up into the box.
+    expect(facing(-0.5)?.normal.y).toBeCloseTo(1);
+    expect(useEditorStore.getState().historyUndo).toHaveLength(steps + 1);
   });
 
   it('separates the selected faces into a new object', async () => {

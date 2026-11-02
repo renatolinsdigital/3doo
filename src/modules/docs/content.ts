@@ -804,6 +804,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         text: 'Normals say which way each face points. Recalculate them outward with Shift+N, or flip them. The face-orientation overlay draws backfaces in red: wherever red shows, you are looking at the inside of the surface, which is worth fixing before an export.',
       },
       {
+        kind: 'note',
+        text: 'To fix only some faces, select them and press RECALCULATE NORMALS in the CLEAN UP row of the TOPOLOGY panel. It stays unavailable until a face is selected. Which way is out is still judged by the whole surface the faces belong to, so a single red face turns to match its neighbours, and every face left unselected stays as it is. Shift+N and RECALC in the PROPERTIES panel do every face.',
+      },
+      {
         kind: 'prose',
         text: 'Smooth shading is the ◐ flag in the top bar, next to the orthographic one. It blends normals across faces instead of faceting them. In edit mode it applies to the selected faces only. It belongs to the object, so REMESH keeps whatever it was set to.',
       },

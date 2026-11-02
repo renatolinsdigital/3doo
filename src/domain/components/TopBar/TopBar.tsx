@@ -104,7 +104,7 @@ const OVERLAY_OPTIONS: readonly { key: keyof OverlaySettings; label: string; hin
   {
     key: 'faceOrientation',
     label: 'FACE ORIENT',
-    hint: 'Backfaces tinted red, so inverted normals are obvious',
+    hint: 'Backfaces tinted red, so inverted normals are obvious. RECALCULATE NORMALS in the TOPOLOGY panel turns the selected ones outward',
   },
   {
     key: 'nonPlanar',

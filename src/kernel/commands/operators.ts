@@ -663,8 +663,20 @@ export const OPERATORS: Record<string, OperatorHandler> = {
   },
 
   recalculateNormals: ({ mesh }, params) => {
-    recalculateNormals(mesh, readBoolean(params, 'outside', true));
-    return { status: 'Recalculated normals' };
+    const outside = readBoolean(params, 'outside', true);
+    if (!readBoolean(params, 'selected', false)) {
+      recalculateNormals(mesh, outside);
+      return { status: 'Recalculated normals' };
+    }
+
+    const faces = mesh.selectedFaces();
+    if (faces.length === 0) {
+      return { status: 'Select the faces to recalculate the normals of', refused: true };
+    }
+    const turned = recalculateNormals(mesh, outside, faces);
+    return {
+      status: `Recalculated the normals of ${faces.length} face(s), turning ${turned} round`,
+    };
   },
 
   flipNormals: ({ mesh }) => {

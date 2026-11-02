@@ -419,12 +419,18 @@ export const OPERATOR_SPECS: readonly OperatorSpec[] = [
   {
     name: 'recalculateNormals',
     group: 'topology',
-    summary: 'Turns every face to point the same way.',
+    summary: 'Turns every face, or the selected faces, to point the same way.',
     params: [
       {
         name: 'outside',
         value: boolean,
         description: 'Point them out of the shape rather than in. Default true.',
+      },
+      {
+        name: 'selected',
+        value: boolean,
+        description:
+          'Turn only the selected faces, judged by the whole surface they belong to. Refuses with none selected. Default false.',
       },
     ],
   },

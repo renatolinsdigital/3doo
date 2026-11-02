@@ -2404,6 +2404,66 @@ describe('normals', () => {
       expect(outward).toBeLessThan(0);
     }
   });
+
+  describe('of some faces only', () => {
+    /** A box moved off the origin, its -X and +Y faces turned inside out. */
+    function shiftedBox() {
+      const cube = createBox(2);
+      for (const vert of cube.verts.values()) vert.co = add(vert.co, vec3(10, 0, 0));
+      cube.computeNormals();
+      const [near] = flipNormals(cube, [faceAt(cube, vec3(-1, 0, 0))]);
+      flipNormals(cube, [faceAt(cube, vec3(0, 1, 0))]);
+      return { cube, near };
+    }
+
+    const faceCentredOn = (mesh: BMesh, center: Vec3) =>
+      [...mesh.faces.values()].find((face) => distance(mesh.faceCenter(face), center) < 1e-6);
+
+    it('turns only the faces given, judged by the whole shell round them', () => {
+      const { cube, near } = shiftedBox();
+
+      const turned = recalculateNormals(cube, true, [near]);
+
+      // Off the origin a lone face's own signed volume says nothing about which
+      // way is out: this one, facing into the box, would read as outward. Only
+      // the closed shell round it tells.
+      expect(turned).toBe(1);
+      expect(faceCentredOn(cube, vec3(9, 0, 0))?.normal.x).toBeCloseTo(-1);
+      expect(faceCentredOn(cube, vec3(10, 1, 0))?.normal.y).toBeCloseTo(-1);
+      expect(cube.validate()).toEqual([]);
+    });
+
+    it('keeps the faces it turns selected', () => {
+      const { cube, near } = shiftedBox();
+      near.selected = true;
+
+      recalculateNormals(cube, true, [near]);
+
+      expect(cube.selectedFaces()).toHaveLength(1);
+      expect(cube.selectedFaces()[0].normal.x).toBeCloseTo(-1);
+    });
+
+    describe('the operator', () => {
+      const run = (mesh: BMesh) =>
+        execOperator({ mesh, selectMode: 'face', cursor: vec3() }, 'recalculateNormals', {
+          selected: true,
+        });
+
+      it('refuses with no face selected', () => {
+        expect(run(shiftedBox().cube)).toMatchObject({ refused: true });
+      });
+
+      it('turns the selected faces and says how many', () => {
+        const { cube, near } = shiftedBox();
+        near.selected = true;
+
+        expect(run(cube)).toMatchObject({
+          status: 'Recalculated the normals of 1 face(s), turning 1 round',
+        });
+        expect(faceCentredOn(cube, vec3(10, 1, 0))?.normal.y).toBeCloseTo(-1);
+      });
+    });
+  });
 });
 
 describe('sharp edges', () => {

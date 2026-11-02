@@ -404,6 +404,12 @@ briefly orphaned.
    out. Consistency alone still permits a uniformly inverted shell, which is
    exactly the case that ruins an export.
 
+Both stages only decide which faces need turning; the flips happen once every
+shell is decided. Given a list of faces (the `selected` option of the
+operator), it walks the whole shell round each one but turns only the faces on
+the list. A lone face cannot be judged by itself: its share of the signed
+volume changes with where the origin is.
+
 ### Sharp edges (`normals.ts`, `BMesh.cornerNormals`)
 
 `edge.sharp` marks where smooth shading should break. It is Blender's Mark
