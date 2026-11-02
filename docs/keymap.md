@@ -47,6 +47,7 @@ object mode only. The rest work in both.
 | `K` | Knife: click points on the mesh to cut new edges through its faces (*edit*). Its own keys are under [During a knife cut](#during-a-knife-cut) |
 | `Ctrl+D` | Subdivide: split selected edges at their midpoint, or cut up faces (*edit*) |
 | `M` | Merge by distance (*edit*) |
+| `Shift+M` | Merge the selected vertices into one, at the MODE picked under MERGE in the TOPOLOGY panel: centre, 3D cursor, first or last (*edit*) |
 | `F` | Fill a boundary loop with a face (*edit*) |
 | `J` | Connect the selected vertices in order, cutting the faces between them (*edit*) |
 | `Alt+B` | Bridge two open edge loops with a band of quads (*edit*) |

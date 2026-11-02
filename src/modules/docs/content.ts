@@ -638,8 +638,8 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'Moves the selection along the geometry it sits on, adding nothing. In vertex select, each vertex runs down one of its edges. In edge select, the selection runs across the faces on either side, which is how you nudge a loop into place after a loop cut. Face select has no single rail to run along, so switch to 1 or 2 first. For an exact distance, use the SLIDE row of the TOPOLOGY panel.',
           ],
           [
-            'Merge and merge by distance (M)',
-            'MERGE, in the TOPOLOGY panel, welds the selected vertices onto one point: their centre, the 3D cursor, or the first or last one selected. MERGE BY DISTANCE (M) welds every pair closer than a threshold, with a live count of how many vertices will go.',
+            'Merge (Shift+M) and merge by distance (M)',
+            'MERGE, in the TOPOLOGY panel, welds the selected vertices onto one point: their centre, the 3D cursor, or the first or last one selected, whichever MODE beside it names. Shift+M runs the same merge at the same MODE without reaching for the panel. MERGE BY DISTANCE (M) welds every pair closer than a threshold, with a live count of how many vertices will go.',
           ],
           [
             'Delete menu (Del) and delete (X)',

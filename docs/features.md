@@ -224,7 +224,9 @@ Because the delete menu and <kbd>X</kbd> cover delete and dissolve, no panel
 has a button for them. The OBJECT panel has Recalculate Normals in that spot
 instead, since it is most often wanted right after a merge. Merge lives in the TOPOLOGY panel, welding the
 selected vertices at their centre, at the 3D cursor, or onto the first or last
-one selected.
+one selected. <kbd>Shift</kbd> + <kbd>M</kbd> runs the same merge at whichever
+of those the panel's MODE is set to. The mode lives in the store rather than in
+the panel, so the key reads it even while the panel is folded away.
 
 Every edit-mode button disables itself when the selection cannot feed it, and
 its hint says what to select instead:

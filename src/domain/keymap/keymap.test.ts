@@ -46,6 +46,11 @@ describe('keymap', () => {
     expect(matchBinding(keyEvent('m'), 'edit')?.label).toMatch(/by distance/);
   });
 
+  it('puts the TOPOLOGY panel merge on Shift+M, in edit mode only', () => {
+    expect(matchBinding(keyEvent('M', { shiftKey: true }), 'edit')?.id).toBe('mergeVertices');
+    expect(matchBinding(keyEvent('M', { shiftKey: true }), 'object')).toBeNull();
+  });
+
   it('binds the object operations that had no key of their own', () => {
     expect(matchBinding(keyEvent('p'), 'object')?.id).toBe('separate');
     expect(matchBinding(keyEvent('a', { ctrlKey: true }), 'object')?.id).toBe('applyTransform');

@@ -163,6 +163,11 @@ export function useKeymap(): void {
           if (state.mode === 'object') state.mergeSelected();
           else state.openDialog('merge');
           break;
+        // The panel's MERGE button with no panel open: the mode it welds at is
+        // the one picked there, so the key and the button always agree.
+        case 'mergeVertices':
+          state.exec('merge', { mode: state.mergeMode }, `Merge at ${state.mergeMode}`);
+          break;
         case 'fill':
           state.exec('fill', {}, 'Fill');
           break;

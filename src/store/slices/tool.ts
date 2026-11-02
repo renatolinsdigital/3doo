@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand';
 
-import type { BMesh, SelectMode } from '@kernel/index';
+import type { BMesh, MergeMode, SelectMode } from '@kernel/index';
 
 import type { EditorStore } from '../useEditorStore';
 import { CAGE_REFUSAL, activeObject } from './scene';
@@ -77,6 +77,8 @@ export interface ToolSlice {
   pivot: PivotMode;
   proportional: ProportionalSettings;
   autoMerge: AutoMergeSettings;
+  /** Where the TOPOLOGY panel's MERGE welds the selection, and Shift+M with it. */
+  mergeMode: MergeMode;
   modal: ModalTransform | null;
   slidePreview: SlidePreview | null;
   /**
@@ -95,6 +97,7 @@ export interface ToolSlice {
   setPivot: (pivot: PivotMode) => void;
   setProportional: (patch: Partial<ProportionalSettings>) => void;
   setAutoMerge: (patch: Partial<AutoMergeSettings>) => void;
+  setMergeMode: (mode: MergeMode) => void;
   setSlidePreview: (preview: SlidePreview | null) => void;
   beginSlide: () => void;
   beginOffset: (kind: keyof typeof OFFSET_OPERATORS) => void;
@@ -128,6 +131,7 @@ export const createToolSlice: StateCreator<
   // on: wide enough to catch a slide run all the way onto its neighbour,
   // narrow enough to leave detail the user modelled on purpose alone.
   autoMerge: { enabled: false, threshold: 0.01 },
+  mergeMode: 'center',
   modal: null,
   slidePreview: null,
   selectExtend: false,
@@ -210,6 +214,8 @@ export const createToolSlice: StateCreator<
     set((state) => ({ proportional: { ...state.proportional, ...patch } })),
 
   setAutoMerge: (patch) => set((state) => ({ autoMerge: { ...state.autoMerge, ...patch } })),
+
+  setMergeMode: (mergeMode) => set({ mergeMode }),
 
   /**
    * Publishes where the panel's numbered slide would leave the selection, for

@@ -1229,6 +1229,19 @@ describe('merge by distance', () => {
     expect(last.verts.has(lastClicks[lastClicks.length - 1].id)).toBe(true);
     expect(last.verts.has(lastClicks[0].id)).toBe(false);
   });
+
+  it('refuses a merge with fewer than two vertices selected', () => {
+    const cube = createBox(2);
+    cube.selectVert([...cube.verts.values()][0]);
+
+    const result = execOperator({ mesh: cube, selectMode: 'vertex', cursor: vec3() }, 'merge');
+
+    // A lone vertex used to come back as an ordinary result, so the store
+    // kept an undo step for a merge that never ran and raised "Select at least
+    // two vertices" as a success toast. Shift+M reaches it with any selection.
+    expect(result).toMatchObject({ refused: true, status: 'Select at least two vertices' });
+    expect(cube.verts.size).toBe(8);
+  });
 });
 
 describe('subdivide edges', () => {

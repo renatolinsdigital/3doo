@@ -94,6 +94,15 @@ export const DEFAULT_KEYMAP: KeyBinding[] = [
   },
   { id: 'merge', key: 'm', label: 'Merge by distance', mode: 'edit', group: 'Modelling' },
   {
+    id: 'mergeVertices',
+    key: 'm',
+    shift: true,
+    mode: 'edit',
+    label:
+      'Merge the selected vertices into one, at the MODE picked under MERGE in the TOPOLOGY panel',
+    group: 'Modelling',
+  },
+  {
     id: 'recalculateNormals',
     key: 'n',
     shift: true,

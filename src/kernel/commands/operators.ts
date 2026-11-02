@@ -495,7 +495,7 @@ export const OPERATORS: Record<string, OperatorHandler> = {
 
   merge: ({ mesh, cursor, selectMode }, params) => {
     const verts = mesh.selectedVerts();
-    if (verts.length < 2) return { status: 'Select at least two vertices' };
+    if (verts.length < 2) return { status: 'Select at least two vertices', refused: true };
 
     const mode = readString<MergeMode>(
       params,

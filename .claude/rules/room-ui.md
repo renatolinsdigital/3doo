@@ -49,7 +49,9 @@ it inherits light ink in dark mode. Table: `docs/design-system.md`.
 Bindings live in `src/domain/keymap/keymap.ts`. A shifted punctuation key
 never arrives as itself, so bind the physical key; camera keys answer on the
 number row and the numpad alike; Meta counts as Ctrl. Ctrl+A and the reload
-keys are taken from the browser on purpose.
+keys are taken from the browser on purpose. A panel setting a key also reads
+(MERGE's MODE for Shift+M) lives in the tool slice, not in the panel's
+`useState`: a panel hidden from preferences unmounts and holds nothing.
 
 ## Controls
 

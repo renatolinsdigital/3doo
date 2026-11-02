@@ -36,6 +36,10 @@ the caller. Depth: `docs/mesh-kernel.md`, `docs/scripting.md` (operators).
 `OPERATOR_SPECS` in `src/domain/scripting/reference.ts` (a test fails until
 both lists match), then a button or key through `store.exec`.
 
+An operator that declines returns `refused: true`. Without it `exec` keeps an
+empty undo step and toasts the refusal as a success: merge did, hidden behind a
+disabled button, until Shift+M reached it.
+
 ## Hot spots, by bug history
 
 - `ops/boolean.ts`, the most fixed op: re-tiling faces the cut never touched,

@@ -912,6 +912,37 @@ describe('App shell', () => {
     expect(screen.queryByRole('menu', { name: 'DELETE MENU' })).toBeNull();
   });
 
+  it('merges on Shift+M at the mode picked in the TOPOLOGY panel', async () => {
+    // The mode outlives resetScene, so the test before may have left it anywhere.
+    useEditorStore.getState().setMergeMode('center');
+    render(<App />);
+    act(() => {
+      useEditorStore.getState().addPrimitive('cube');
+      useEditorStore.getState().setMode('edit');
+      useEditorStore.getState().setSelectMode('vertex');
+    });
+    const mesh = useEditorStore.getState().objects[0].mesh;
+    const [a, b] = [...mesh.verts.values()];
+    // Picked newest first, so the first one picked is not the first in the mesh.
+    act(() => {
+      mesh.selectVert(b);
+      mesh.selectVert(a);
+      useEditorStore.getState().touchMesh();
+    });
+    const expected = { ...b.co };
+
+    const topology = screen.getByRole('region', { name: 'TOPOLOGY' });
+    await userEvent.selectOptions(
+      within(topology).getByRole('combobox', { name: 'MODE' }),
+      'first',
+    );
+    fireEvent.keyDown(window, { key: 'M', shiftKey: true });
+
+    expect(mesh.verts.size).toBe(7);
+    expect(mesh.selectedVerts()).toHaveLength(1);
+    expect(mesh.selectedVerts()[0].co).toEqual(expected);
+  });
+
   it('still deletes the selected object on Delete in object mode', () => {
     render(<App />);
     act(() => useEditorStore.getState().addPrimitive('cube'));

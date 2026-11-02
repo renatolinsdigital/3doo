@@ -94,7 +94,8 @@ export function TopologyPanel() {
   const edgeLoopAvailable = useEdgeLoopAvailable();
   const quadSelected = useSelectedQuadAvailable();
 
-  const [mergeMode, setMergeMode] = useState<(typeof MERGE_MODES)[number]['value']>('center');
+  const mergeMode = useEditorStore((state) => state.mergeMode);
+  const setMergeMode = useEditorStore((state) => state.setMergeMode);
 
   // A slide travels along geometry that is already there, so where it may go is
   // read off the mesh rather than typed: one numbered way per edge leaving the
@@ -213,7 +214,7 @@ export function TopologyPanel() {
           value={mergeMode}
           options={MERGE_MODES}
           disabled={!vertexMode}
-          hint="Which vertex the others collapse onto"
+          hint="Which vertex the others collapse onto, for MERGE and for Shift+M"
           onChange={setMergeMode}
         />
         <Button
@@ -223,8 +224,8 @@ export function TopologyPanel() {
             !vertexMode
               ? 'Merging joins vertices, so switch to vertex select mode (1)'
               : selection.verts < 2
-                ? 'Select at least two vertices to weld into one'
-                : 'Weld the selected vertices into one'
+                ? 'Select at least two vertices to weld into one (Shift+M)'
+                : 'Weld the selected vertices into one (Shift+M)'
           }
           onClick={() => exec('merge', { mode: mergeMode }, `Merge at ${mergeMode}`)}
         />
