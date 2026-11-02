@@ -480,6 +480,72 @@ describe('leaning the zoom toward the pointer', () => {
     expect(depthOf(camera, surface)).toBeLessThan(1);
   });
 
+  /** Zooms in over `surface` until the camera is close, and says how far the last notch went. */
+  function closeIn(camera: THREE.Camera, controls: CameraController, surface: THREE.Vector3) {
+    let standing = camera.position.clone();
+    for (let notch = 0; notch < 20; notch += 1) {
+      standing = camera.position.clone();
+      controls.onWheel(
+        new WheelEvent('wheel', { deltaY: -100, clientX: WIDTH / 2, clientY: HEIGHT / 2 }),
+        surface,
+      );
+    }
+    return camera.position.distanceTo(standing);
+  }
+
+  it('picks up pace gradually when the pointer slides off a near surface onto a far one', () => {
+    const { camera, controls } = sized(false);
+    const model = surfaceAt(camera, WIDTH / 2, HEIGHT / 2, 2);
+    const lastStep = closeIn(camera, controls, model);
+
+    const backdrop = surfaceAt(camera, WIDTH / 2 + 10, HEIGHT / 2, 40);
+    const standing = camera.position.clone();
+    controls.onWheel(
+      new WheelEvent('wheel', { deltaY: -100, clientX: WIDTH / 2 + 10, clientY: HEIGHT / 2 }),
+      backdrop,
+    );
+
+    // The first notch over the backdrop used to cover a twentieth of the
+    // backdrop's depth in one go: fifty times the notch before it, straight
+    // through the model the zoom had been closing in on.
+    expect(camera.position.distanceTo(standing)).toBeLessThanOrEqual(lastStep * 2);
+    expect(depthOf(camera, model)).toBeGreaterThan(0);
+  });
+
+  it('picks up pace no faster from a run of touchpad deltas than from the notch they add up to', () => {
+    const { camera, controls } = sized(false);
+    const lastStep = closeIn(camera, controls, surfaceAt(camera, WIDTH / 2, HEIGHT / 2, 2));
+
+    const backdrop = surfaceAt(camera, WIDTH / 2, HEIGHT / 2, 40);
+    const standing = camera.position.clone();
+    for (let delta = 0; delta < 10; delta += 1) {
+      controls.onWheel(
+        new WheelEvent('wheel', { deltaY: -10, clientX: WIDTH / 2, clientY: HEIGHT / 2 }),
+        backdrop,
+      );
+    }
+
+    expect(camera.position.distanceTo(standing)).toBeLessThanOrEqual(lastStep * 2);
+  });
+
+  it.each([0.5, 40])(
+    'backs out at the pace of the orbit over a surface at depth %s',
+    (depth) => {
+      const { camera, controls } = sized(false);
+
+      controls.onWheel(
+        new WheelEvent('wheel', { deltaY: 100, clientX: WIDTH / 2, clientY: HEIGHT / 2 }),
+        surfaceAt(camera, WIDTH / 2, HEIGHT / 2, depth),
+      );
+
+      // Backing out used to measure the notch against whatever was under the
+      // pointer: over a backdrop it threw the camera back by a twentieth of
+      // the backdrop's depth and the model shrank to a speck at once, and over
+      // something close it crawled.
+      expect(controls.distance).toBeCloseTo(5 / (1 - controls.zoomStep), 10);
+    },
+  );
+
   it('zooms into the middle when set to centred, whatever the pointer is over', () => {
     const { camera, controls } = sized(false);
     controls.wheelZoom = 'centred';

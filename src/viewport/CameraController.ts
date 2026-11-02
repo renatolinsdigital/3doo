@@ -113,6 +113,19 @@ export const WHEEL_POINTER_LEAN = 0.3;
 export const WHEEL_NOTCH = 100;
 
 /**
+ * How much deeper one notch of the wheel may carry the pivot than the orbit
+ * already reaches, and so how much faster one notch may go than the last.
+ *
+ * Double. The step is a share of the depth under the pointer, and that depth
+ * leaps whenever the pointer slides off a near part onto something far behind
+ * it: taken at once, the next notch covered a twentieth of the far depth and
+ * flew through the near part. Doubled per notch, the zoom still reaches a
+ * surface well behind the pivot in a handful of notches, and the speed-up
+ * reads as the zoom gathering pace rather than as a jump.
+ */
+const PIVOT_REACH = 2;
+
+/**
  * How far a drag turns the orbit at 100% on the ORBIT sliders in PREFS, in
  * radians per pixel: about 29 degrees for every hundred pixels.
  */
@@ -546,18 +559,19 @@ export class CameraController {
   }
 
   /**
-   * Slides the pivot along the line of sight to the depth of `point`, with the
-   * camera left exactly where it stands, so nothing on screen moves.
+   * Slides the pivot along the line of sight to the depth of `point`, or to
+   * `deepest` if that is nearer, with the camera left exactly where it stands,
+   * so nothing on screen moves.
    *
    * Not for an orthographic camera: there the radius is how much of the scene
    * the view spans, so changing it would change the picture, and depth has no
    * say in which pixel a point lands on anyway.
    */
-  private pivotAtDepthOf(point: THREE.Vector3): void {
+  private pivotAtDepthOf(point: THREE.Vector3, deepest: number): void {
     if (this.camera instanceof THREE.OrthographicCamera) return;
     const forward = this.camera.getWorldDirection(new THREE.Vector3());
     const depth = THREE.MathUtils.clamp(
-      forward.dot(point.clone().sub(this.camera.position)),
+      Math.min(forward.dot(point.clone().sub(this.camera.position)), deepest),
       MIN_ORBIT_DISTANCE,
       MAX_ORBIT_DISTANCE,
     );
@@ -574,11 +588,16 @@ export class CameraController {
    * and drifts toward what the pointer is over rather than chasing it.
    *
    * `surface` is the point of the scene under the pointer, when it is over
-   * anything. The pivot is moved to its depth first, so the zoom closes in at
-   * that depth rather than on a plane through wherever the pivot was left.
-   * Each notch then covers a share of the real distance: the camera slows as
-   * it arrives instead of passing through a model nearer than the pivot, and
-   * keeps coming on one behind it instead of stalling short.
+   * anything. Zooming in, the pivot is moved to its depth first, so the zoom
+   * closes in at that depth rather than on a plane through wherever the pivot
+   * was left. Each notch then covers a share of the real distance: the camera
+   * slows as it arrives instead of passing through a model nearer than the
+   * pivot, and keeps coming on one behind it instead of stalling short. A
+   * surface behind the pivot is reached at most `PIVOT_REACH` deeper a notch.
+   *
+   * Backing out has nothing in front of it to stop short of, so it leaves the
+   * pivot where it is and goes at the pace of the orbit: measured against the
+   * surface, it threw the camera back over a far one and crawled over a near.
    *
    * Over empty space there is no depth to read, and the pivot's plane serves.
    * Centred, neither the pointer nor the surface has any say.
@@ -593,7 +612,12 @@ export class CameraController {
       return;
     }
 
-    if (surface) this.pivotAtDepthOf(surface);
+    if (surface && event.deltaY <= 0) {
+      // Scaled by the delta like the zoom itself, so a touchpad's run of small
+      // deltas gathers pace no faster than the notch they add up to.
+      const reach = Math.pow(PIVOT_REACH, -event.deltaY / WHEEL_NOTCH);
+      this.pivotAtDepthOf(surface, this.spherical.radius * reach);
+    }
     const rect = this.element.getBoundingClientRect();
     this.zoomAbout(
       factor,

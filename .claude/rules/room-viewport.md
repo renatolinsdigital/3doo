@@ -55,3 +55,6 @@ by React. Depth: `docs/rendering.md` (camera, gizmo, picking).
 - Scale drags are measured on screen, since three's ratio flips across the
   pivot. Rotate drags unwrap `atan2` with `shortestAngle`.
 - `updatePointerCursor` is the canvas cursor's only writer.
+- The wheel's step is a share of the depth under the pointer, which leaps at
+  every silhouette: `PIVOT_REACH` caps how far deeper a notch may push the
+  pivot, and zooming out never reads the surface. Taken raw, both jumped.
