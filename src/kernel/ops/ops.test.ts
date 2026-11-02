@@ -1954,6 +1954,100 @@ describe('delete and dissolve', () => {
     expect(cube.validate()).toEqual([]);
   });
 
+  describe('a row of edges', () => {
+    it('dissolves every edge of a row running past a junction', () => {
+      const grid = createGrid(2, 2);
+      const upper = [...grid.edges.values()].find(
+        (edge) => edge.v0.co.x === 0 && edge.v1.co.x === 0 && edge.v0.co.z + edge.v1.co.z > 0,
+      ) as Edge;
+      dissolveEdges(grid, [upper]);
+      const row = [...grid.edges.values()].filter(
+        (edge) => edge.v0.co.z === 0 && edge.v1.co.z === 0,
+      );
+      expect(row).toHaveLength(2);
+      expect(grid.faces.size).toBe(3);
+
+      dissolveEdges(grid, row);
+
+      // Once the first merge joined the n-gon above the row to one quad below,
+      // that face and the other quad shared the second edge and the one hanging
+      // down from the junction. A merge across one of them alone visits a vertex
+      // twice, so the second edge was refused, and dropping the junction then
+      // turned the two into a diagonal left across the merged face.
+      for (const edge of row) expect(grid.edges.has(edge.id)).toBe(false);
+      expect(grid.faces.size).toBe(1);
+      expect(grid.verts.size).toBe(4);
+      expect(grid.edges.size).toBe(4);
+      expect(grid.validate()).toEqual([]);
+    });
+
+    it('dissolves a whole selected loop, however sharply its faces meet', () => {
+      const sphere = createUVSphere(1, 8, 6);
+      const meridian = [...sphere.edges.values()].filter(
+        (edge) => [edge.v0, edge.v1].every((vert) => Math.abs(vert.co.z) < 1e-9 && vert.co.x > -1e-9),
+      );
+      expect(meridian).toHaveLength(6);
+      expect(meridian.filter((edge) => !isDissolvableEdge(sphere, edge))).toHaveLength(2);
+      sphere.deselectAll();
+      for (const edge of meridian) edge.selected = true;
+      sphere.flushSelection('edge');
+
+      const result = execOperator(
+        { mesh: sphere, selectMode: 'edge', cursor: vec3() },
+        'dissolve',
+        { mode: 'edges' },
+      );
+
+      // The two edges either side of the equator, whose faces meet at 43°, used
+      // to be skipped as too sharp to merge, so a loop the user had picked out
+      // whole came back with a gap in it.
+      for (const edge of meridian) expect(sphere.edges.has(edge.id)).toBe(false);
+      expect(result.status).not.toMatch(/too sharp/);
+      expect(sphere.verts.size).toBe(37);
+      expect(sphere.edges.size).toBe(77);
+      expect(sphere.faces.size).toBe(42);
+      expect(isClosed(sphere)).toBe(true);
+      expect(sphere.validate()).toEqual([]);
+    });
+
+    it('still holds back a fold sharper than an angle a script asks for', () => {
+      const sphere = createUVSphere(1, 8, 6);
+      for (const edge of sphere.edges.values()) {
+        edge.selected = [edge.v0, edge.v1].every(
+          (vert) => Math.abs(vert.co.z) < 1e-9 && vert.co.x > -1e-9,
+        );
+      }
+      sphere.flushSelection('edge');
+
+      const result = execOperator(
+        { mesh: sphere, selectMode: 'edge', cursor: vec3() },
+        'dissolve',
+        { mode: 'edges', angle: 40 },
+      );
+
+      expect(result.status).toMatch(/2 too sharp to merge/);
+    });
+
+    it('closes a whole fan into one face', () => {
+      const sphere = createUVSphere(1, 8, 6);
+      const pole = [...sphere.verts.values()].find((vert) => vert.co.y > 0.999) as Vert;
+      const spokes = [...pole.edges];
+      expect(spokes).toHaveLength(8);
+
+      dissolveEdges(sphere, spokes);
+
+      // The last two spokes used to stay: by then every other triangle was one
+      // face, sharing both of them with the last triangle.
+      for (const spoke of spokes) expect(sphere.edges.has(spoke.id)).toBe(false);
+      expect(sphere.verts.has(pole.id)).toBe(false);
+      expect(sphere.verts.size).toBe(41);
+      expect(sphere.edges.size).toBe(80);
+      expect(sphere.faces.size).toBe(41);
+      expect(isClosed(sphere)).toBe(true);
+      expect(sphere.validate()).toEqual([]);
+    });
+  });
+
   describe('an edge cut across a face', () => {
     /** A cube whose top is split in two by an edge between two edge midpoints. */
     function cutCube() {

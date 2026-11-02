@@ -293,9 +293,9 @@ to `dissolve`. The entry names the type, so the select mode plays no part.
 `useDeleteActions` disables the entries that would change nothing: one with no
 element of its type selected, a face dissolve without two selected faces that
 share an edge or whose faces close off a solid (`hasDissolvableRegion`), an
-edge dissolve whose edges all lie on an open border, and a vertex or edge
-dissolve whose whole selection fails the 40° fold rule. A selection that fails
-the rule only in part stays enabled, and the operator reports what it skipped.
+edge dissolve whose edges all lie on an open border, and a vertex dissolve
+whose whole selection fails the 40° fold rule. A selection that fails the rule
+only in part stays enabled, and the operator reports what it skipped.
 
 <kbd>X</kbd> is the quick path and asks nothing. `useKeymap` maps the active
 select mode onto the operator's `mode` param (vertex → `verts`, edge →
@@ -335,21 +335,21 @@ makes a **folded** face, which nothing downstream can represent:
 - ear clipping projects it onto a plane it does not lie near,
 - OBJ and FBX record it as one flat polygon.
 
-Dissolving a cube edge, unguarded, gives exactly that: a valid but folded
-six-vertex face whose shading looks broken. A vertex folds even more easily,
-since a corner gathers three or more faces at once: a cube corner's three
-perpendicular faces collapse into one badly folded n-gon.
+A vertex folds most easily, since a corner gathers three or more faces at
+once: a cube corner's three perpendicular faces collapse into one badly folded
+n-gon. So the operator filters a vertex selection first, through
+`isDissolvableVert`, which checks every pair of faces in the vertex's fan.
+Anything folding past `DISSOLVE_ANGLE_LIMIT_DEGREES` (40°, or the `angle`
+param) is skipped, and the status line says how many. Gentle curvature still
+passes: the interior vertex of a flat grid, or of a gently curved sheet,
+dissolves fine, which is what the operation is for.
 
-So the operator filters the selection first:
-
-- edges through `isDissolvableEdge`,
-- vertices through `isDissolvableVert`, which checks every pair of faces in the
-  vertex's fan.
-
-Anything whose faces fold past `DISSOLVE_ANGLE_LIMIT_DEGREES` (40°, or the
-`angle` param) is skipped, and the status line says how many. Gentle curvature
-still passes: a 24-segment cylinder's 15° side seams dissolve fine, which is
-what the operation is for.
+Edges are not filtered. A selected edge names exactly the two faces to merge,
+so the fold is the user's choice, as it is in Blender's Dissolve Edges. The
+edge dissolve once applied the same 40° rule, and an edge loop selected across
+a model kept every edge that crossed a sharper fold, leaving gaps the user had
+to find and dissolve again. Only a script passing `angle` holds folded edges
+back (`isDissolvableEdge`).
 
 The limit lives at the operator boundary, not in the kernel, on purpose. The
 kernel primitives must merge whatever they are handed, since removing a vertex
@@ -369,10 +369,16 @@ each face's ring instead of merging the faces.
 
 #### Implementation
 
-- **`dissolveEdge`** merges the two faces sharing an edge by rotating both rings
-  and splicing them. `dissolveEdges` then drops each end left with two edges,
-  rebuilding the faces on either side without it, the way Blender's Dissolve
-  Edges dissolves the vertices it leaves behind. Left in place, such a point
+- **`dissolveEdge`** merges the two faces sharing an edge by chaining the loops
+  of both that lie on no edge they share, so every edge the two faces share
+  goes with it, as Blender's face join does. A row dissolved one edge at a time
+  needs this: a face spanning two of the row's edges, or a fan's last
+  triangle, comes to share a run of edges with the face already merged, and
+  splicing across one of them alone would visit a vertex twice. Shared edges
+  that are not one run (the last two of a ring round a tube) would leave a
+  hole, so the merge is refused. `dissolveEdges` then drops each end left
+  with two edges, rebuilding the faces on either side without it, the way
+  Blender's Dissolve Edges dissolves the vertices it leaves behind. Left in place, such a point
   on a straight side shapes nothing, yet extrude walls each side of it
   separately and the dissolved edge reappears along the walls; on a curve (a
   sphere's ring) it stays as a kink in every merged face's side. An end on an

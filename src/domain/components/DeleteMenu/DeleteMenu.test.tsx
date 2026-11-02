@@ -89,7 +89,7 @@ describe('DeleteMenu', () => {
     for (const name of ENTRIES) expect(entry(name)).not.toHaveAttribute('aria-disabled');
   });
 
-  it('holds back every dissolve on a whole cube, where nothing can merge', () => {
+  it('holds back the corner and face dissolves on a whole cube, where they cannot merge', () => {
     editing('cube');
     act(() => store().exec('selectAll', {}, 'Select all'));
     openMenu();
@@ -99,11 +99,14 @@ describe('DeleteMenu', () => {
       expect(entry(name)).not.toHaveAttribute('aria-disabled');
     }
 
-    // Every corner and edge folds 90°, and the six faces close off a solid.
+    // Every corner folds 90°, and the six faces close off a solid.
     expect(entry('DISSOLVE VERTICES')).toHaveAttribute('aria-disabled', 'true');
     expect(hintFor('DISSOLVE VERTICES')).toContain('more than 40°');
-    expect(entry('DISSOLVE EDGES')).toHaveAttribute('aria-disabled', 'true');
-    expect(hintFor('DISSOLVE EDGES')).toContain('more than 40°');
+    // This used to grey edge dissolve out too, reading a 90° fold as a reason
+    // to refuse. Selected edges now dissolve however their faces meet, since
+    // skipping folded ones left gaps in loops picked out whole.
+    expect(entry('DISSOLVE EDGES')).not.toHaveAttribute('aria-disabled');
+    expect(hintFor('DISSOLVE EDGES')).not.toContain('40°');
     expect(entry('DISSOLVE FACES')).toHaveAttribute('aria-disabled', 'true');
     expect(hintFor('DISSOLVE FACES')).toContain('close off a solid');
   });

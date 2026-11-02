@@ -7,7 +7,6 @@ import {
   hasAdjacentFaces,
   hasConnectedEdges,
   hasDissolvableRegion,
-  isDissolvableEdge,
   isDissolvableVert,
 } from '@kernel/index';
 
@@ -357,8 +356,6 @@ export interface DeleteActions {
   flatVert: boolean;
   /** Whether a selected edge has a face on each side, the only kind that dissolves. */
   innerEdge: boolean;
-  /** Whether one of those inner edges also passes the 40° fold rule. */
-  flatEdge: boolean;
   /** Whether two selected faces share an edge, which is what dissolving faces merges. */
   touchingFaces: boolean;
   /** Whether touching faces leave an outline to merge into, rather than closing off a solid. */
@@ -371,7 +368,6 @@ const NOTHING_TO_DELETE: DeleteActions = {
   faces: 0,
   flatVert: false,
   innerEdge: false,
-  flatEdge: false,
   touchingFaces: false,
   openFaces: false,
 };
@@ -381,9 +377,10 @@ const NOTHING_TO_DELETE: DeleteActions = {
  *
  * The refusals the delete and dissolve operators make, asked before the click
  * rather than after it, so an entry that would report nothing to do sits
- * disabled instead. That includes the 40° fold rule when it would skip the
- * whole selection. When it skips only part, the entry stays enabled: the
- * operator dissolves the rest and the status bar counts what it skipped.
+ * disabled instead. That includes the vertex dissolve's 40° fold rule when it
+ * would skip the whole selection. When it skips only part, the entry stays
+ * enabled: the operator dissolves the rest and the status bar counts what it
+ * skipped.
  *
  * Only worked out while the menu is open. The adjacency walk is cheap, but not
  * worth running on every store change for a menu nobody is looking at.
@@ -407,7 +404,6 @@ export function useDeleteActions(): DeleteActions {
         faces: faces.length,
         flatVert: verts.some((vert) => isDissolvableVert(mesh, vert)),
         innerEdge: edges.some((edge) => mesh.edgeFaces(edge).length === 2),
-        flatEdge: edges.some((edge) => isDissolvableEdge(mesh, edge)),
         touchingFaces,
         openFaces: touchingFaces && hasDissolvableRegion(mesh, faces),
       };

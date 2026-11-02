@@ -350,7 +350,7 @@ export const OPERATOR_SPECS: readonly OperatorSpec[] = [
         name: 'angle',
         value: number(0, 180),
         description:
-          'The sharpest fold, in degrees, still dissolved. Default 40, or 5 for "limited".',
+          'The sharpest fold, in degrees, still dissolved. Default 40 for "verts", 5 for "limited", and no limit for "edges".',
       },
     ],
   },

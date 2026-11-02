@@ -48,11 +48,15 @@ disabled button, until Shift+M reached it.
   measure faces and area, and a cost ratio rather than a time.
 - `ops/subdivide.ts`: `cuts` once compounded to 2 to the N; a neighbour left
   carrying a row of vertices refused the next cut.
-- `ops/dissolve.ts`: the 40 degree fold limit (`isDissolvableEdge`,
-  `isDissolvableVert`) lives at the operator boundary on purpose; the
-  primitives merge unconditionally. A dissolved edge's ends go once two edges
-  are left at them, bent or not (a sphere ring once left all its points);
-  only an open boundary's corners stay.
+- `ops/dissolve.ts`: the 40 degree fold limit lives at the operator boundary
+  on purpose, and only vertices meet it by default (`isDissolvableVert`); the
+  primitives merge unconditionally. Edges once met it too, and a selected loop
+  crossing a fold kept those edges; `isDissolvableEdge` now runs only for a
+  script's `angle`. A dissolved edge's ends go once two edges are left at
+  them, bent or not (a sphere ring once left all its points); only an open
+  boundary's corners stay. `dissolveEdge` merges across every
+  edge its two faces share: a row past a junction once stalled on its second
+  edge, which then came back as a diagonal.
 - Cleanup after an op is scoped to what it removed (`removeLooseEnds`), never
   `removeWireEdges()` or `removeLooseVerts()` bare: dissolving one vertex once
   swept every wire edge and lone point in the mesh. Bevel, subdivide and

@@ -63,7 +63,8 @@ A few behaviours the parameter list does not show:
   a point it cannot read on its own; a script's points are checked first
   ([below](#a-script-is-checked-not-coerced)).
 - `dissolve` reads `angle` as the sharpest fold it still dissolves: 40
-  degrees for edges, 5 for `limited`.
+  degrees for vertices, 5 for `limited`. Edges dissolve however sharply their
+  faces meet unless `angle` is given.
 - `vertexSlide` numbers the edges leaving the first selected vertex from 1.
   `edgeSlide` takes side 1 or 2, and a border offers the one side it has.
   Both measure `distance` in world metres.

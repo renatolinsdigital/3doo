@@ -550,15 +550,15 @@ export const OPERATORS: Record<string, OperatorHandler> = {
 
     const before = { verts: mesh.verts.size, edges: mesh.edges.size, faces: mesh.faces.size };
 
-    // Vertex and edge dissolve both merge the faces around what they remove, so
-    // both can silently fold one. They are filtered here rather than in the
-    // kernel: the kernel's dissolveVerts has to merge a whole fan whatever its
-    // curvature (that is what removing a vertex means), and a script calling
-    // either directly keeps the unconditional behaviour.
-    const limit = readNumber(params, 'angle', DISSOLVE_ANGLE_LIMIT_DEGREES);
+    // A vertex dissolve merges every face round the vertex, so a corner the
+    // user picked can silently fold three faces into one. It is filtered here
+    // rather than in the kernel: dissolveVerts has to merge a whole fan
+    // whatever its curvature (that is what removing a vertex means), and a
+    // script calling it directly keeps the unconditional behaviour.
     let skipped = 0;
 
     if (mode === 'verts') {
+      const limit = readNumber(params, 'angle', DISSOLVE_ANGLE_LIMIT_DEGREES);
       const flat = verts.filter((vert) => isDissolvableVert(mesh, vert, limit));
       skipped = verts.length - flat.length;
       dissolveVerts(mesh, flat);
@@ -566,9 +566,17 @@ export const OPERATORS: Record<string, OperatorHandler> = {
     else if (mode === 'limited') limitedDissolve(mesh, readNumber(params, 'angle', 5));
     else {
       // Boundary edges have no second face and were never dissolvable, so they
-      // are dropped quietly; only genuinely folded ones are worth reporting.
+      // are dropped quietly. A selected edge names the two faces to merge, so
+      // it goes however sharply they meet: skipping folded ones left gaps in
+      // loops the user had picked out whole. Only a script's `angle` holds
+      // folds back.
       const interior = edges.filter((edge) => mesh.edgeFaces(edge).length === 2);
-      const flat = interior.filter((edge) => isDissolvableEdge(mesh, edge, limit));
+      const flat =
+        params.angle === undefined
+          ? interior
+          : interior.filter((edge) =>
+              isDissolvableEdge(mesh, edge, readNumber(params, 'angle', 180)),
+            );
       skipped = interior.length - flat.length;
       dissolveEdges(mesh, flat);
     }

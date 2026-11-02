@@ -159,15 +159,17 @@ the removed element into one. That has consequences, so it follows three rules:
   faces. A lone face has nothing to merge with, so the menu greys the entry
   out until a second one is selected beside it.
 - **Edges** need a face on each side, so an edge on an open border never
-  dissolves. They are also skipped when their two faces meet at more than 40°.
-  Merging two faces that steep makes a folded face, which shades badly:
-  dissolving a cube edge would look broken. An edge cut across a face takes
-  its ends with it when they sit along a straight side, much like Blender's
-  Dissolve Vertices option does, so extruding the merged face later gives
-  whole walls rather than walls split where the edge used to end.
-- **Vertices** at a corner follow the same 40° rule across their faces. A
-  vertex lying along a path, such as the midpoint left by subdividing an edge,
-  merges nothing and always dissolves.
+  dissolves. Every other selected edge goes, however sharply its two faces
+  meet, so a loop selected across a model dissolves whole. Merging two steep
+  faces makes a folded face, which may shade unevenly; that is the user's call,
+  as in Blender. An edge cut across a face takes its ends with it when they sit
+  along a straight side, much like Blender's Dissolve Vertices option does, so
+  extruding the merged face later gives whole walls rather than walls split
+  where the edge used to end.
+- **Vertices** at a corner are skipped when their faces meet at more than 40°,
+  since one vertex would fold every face around it into one: a cube corner
+  would collapse three sides. A vertex lying along a path, such as the
+  midpoint left by subdividing an edge, merges nothing and always dissolves.
 
 When the 40° rule would skip the whole selection, as with a cube corner, the
 entry is greyed out rather than offering a click that changes nothing. So is

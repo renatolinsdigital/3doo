@@ -77,12 +77,10 @@ export function DeleteMenu() {
     dissolve(
       'edges',
       'DISSOLVE EDGES',
-      'Remove the selected edges and merge the faces on either side, keeping the surface closed. An edge whose faces meet at more than 40° is left alone',
-      !can.innerEdge
-        ? 'Only an edge with a face on each side can dissolve, and the selected ones all lie on an open border'
-        : can.flatEdge
-          ? null
-          : 'Every selected edge joins faces that meet at more than 40°, too sharp to merge into one face',
+      'Remove the selected edges and merge the faces on either side, keeping the surface closed',
+      can.innerEdge
+        ? null
+        : 'Only an edge with a face on each side can dissolve, and the selected ones all lie on an open border',
     ),
     dissolve(
       'faces',

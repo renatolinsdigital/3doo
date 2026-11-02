@@ -519,7 +519,7 @@ describe('editor store', () => {
     expect(store().status).toMatch(/edit mode/i);
   });
 
-  it('refuses to fold a face when dissolving a sharp cube edge', () => {
+  it('dissolves a selected cube edge, however sharply its faces meet', () => {
     store().addPrimitive('cube');
     store().setMode('edit');
     store().setSelectMode('edge');
@@ -531,8 +531,11 @@ describe('editor store', () => {
 
     store().exec('dissolve', { mode: 'edges' }, 'Dissolve');
 
-    expect(activeObject().mesh.faces.size).toBe(6);
-    expect(store().status).toMatch(/too sharp/i);
+    // This used to expect the edge refused as too sharp, the same skip that
+    // left a gap in any loop crossing a fold of more than 40°.
+    expect(activeObject().mesh.faces.size).toBe(5);
+    expect(activeObject().mesh.validate()).toEqual([]);
+    expect(store().status).not.toMatch(/too sharp/i);
   });
 
   it('still merges coplanar faces, which is what edge dissolve is for', () => {

@@ -6,32 +6,55 @@ import { dedupeRing } from './region';
 
 /**
  * Removes an edge shared by exactly two faces, merging them into one n-gon.
- * Returns the merged face, or null when the merge would produce a face that
- * visits a vertex twice.
+ *
+ * Every other edge the two faces share goes with it. Dissolving a row merges
+ * its faces one edge at a time, so a face can come to share a run of edges
+ * with the next one (both sides of a junction, a fan's last two spokes), and
+ * merging across one of them alone would visit a vertex twice.
+ *
+ * Returns the merged face and the edges removed, or null when the shared edges
+ * are not one run, which would leave a hole the face cannot represent.
  */
-function dissolveEdge(mesh: BMesh, edge: Edge): Face | null {
+function dissolveEdge(mesh: BMesh, edge: Edge): { face: Face; removed: Edge[] } | null {
   if (!mesh.edges.has(edge.id) || edge.loops.length !== 2) return null;
 
-  const [loopA, loopB] = edge.loops;
-  const faceA = loopA.face;
-  const faceB = loopB.face;
+  const [faceA, faceB] = edge.loops.map((loop) => loop.face);
   if (faceA === faceB) return null;
 
-  const ringA = rotateToVert(mesh.faceVerts(faceA), loopA.next.vert);
-  const ringB = rotateToVert(mesh.faceVerts(faceB), loopA.vert);
-  const merged = [...ringA, ...ringB.slice(1, -1)];
+  const shared: Edge[] = [];
+  const outline = new Map<number, Loop>();
+  for (const loop of [...mesh.faceLoops(faceA), ...mesh.faceLoops(faceB)]) {
+    const faces = loop.edge.loops.map((other) => other.face);
+    if (faces.length === 2 && faces.includes(faceA) && faces.includes(faceB)) {
+      if (loop.face === faceA) shared.push(loop.edge);
+    } else if (outline.has(loop.vert.id)) {
+      return null;
+    } else {
+      outline.set(loop.vert.id, loop);
+    }
+  }
 
-  if (new Set(merged.map((vert) => vert.id)).size !== merged.length) return null;
-  if (merged.length < 3) return null;
+  const first = outline.values().next().value;
+  if (!first) return null;
+  const ring: Vert[] = [];
+  let loop = first;
+  do {
+    ring.push(loop.vert);
+    const next = outline.get(loop.next.vert.id);
+    if (!next || ring.length > outline.size) return null;
+    loop = next;
+  } while (loop !== first);
+  if (ring.length !== outline.size || ring.length < 3) return null;
 
   const { materialIndex, smooth } = faceA;
   mesh.removeFace(faceA);
   mesh.removeFace(faceB);
-  mesh.removeEdge(edge);
+  for (const removed of shared) mesh.removeEdge(removed);
+  mesh.removeLooseEnds(shared);
 
-  const face = mesh.addFace(merged, { materialIndex, smooth });
+  const face = mesh.addFace(ring, { materialIndex, smooth });
   face.selected = true;
-  return face;
+  return { face, removed: shared };
 }
 
 /**
@@ -44,6 +67,9 @@ function dissolveEdge(mesh: BMesh, edge: Edge): Face | null {
  * plane it does not lie near, and OBJ/FBX record it as a single flat polygon.
  * Gentle curvature (a cylinder's 15° side seams) is fine and useful to merge;
  * a cube's 90° corner is not.
+ *
+ * The dissolve operator holds vertices to it. A selected edge names the two
+ * faces to merge, so edges are held to it only when a script asks.
  */
 export const DISSOLVE_ANGLE_LIMIT_DEGREES = 40;
 
@@ -112,11 +138,13 @@ export function dissolveEdges(mesh: BMesh, edges: readonly Edge[]): Face[] {
   const merged: Face[] = [];
   const ends = new Set<Vert>();
   for (const edge of edges) {
-    const face = dissolveEdge(mesh, edge);
-    if (!face) continue;
-    merged.push(face);
-    ends.add(edge.v0);
-    ends.add(edge.v1);
+    const result = dissolveEdge(mesh, edge);
+    if (!result) continue;
+    merged.push(result.face);
+    for (const removed of result.removed) {
+      ends.add(removed.v0);
+      ends.add(removed.v1);
+    }
   }
 
   // The ends outlive the edge as points part-way along the lines it crossed.
@@ -131,7 +159,7 @@ export function dissolveEdges(mesh: BMesh, edges: readonly Edge[]): Face[] {
   }
 
   mesh.computeNormals();
-  return merged;
+  return merged.filter((face) => mesh.faces.has(face.id));
 }
 
 /**
@@ -370,10 +398,4 @@ export function limitedDissolve(mesh: BMesh, angleLimitDegrees = 5): Face[] {
   }
 
   return dissolveEdges(mesh, candidates);
-}
-
-function rotateToVert(ring: readonly Vert[], start: Vert): Vert[] {
-  const index = ring.indexOf(start);
-  if (index <= 0) return [...ring];
-  return [...ring.slice(index), ...ring.slice(0, index)];
 }
