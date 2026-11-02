@@ -163,6 +163,18 @@ export class BMesh {
     return removed;
   }
 
+  /**
+   * Drops the ends of `edges` left belonging to no edge: the debris of removing
+   * them. Unlike `removeLooseVerts`, lone points elsewhere in the mesh stay.
+   */
+  removeLooseEnds(edges: Iterable<Edge>): void {
+    for (const edge of edges) {
+      for (const vert of [edge.v0, edge.v1]) {
+        if (vert.edges.length === 0) this.verts.delete(vert.id);
+      }
+    }
+  }
+
   /** Drops edges that no longer border any face, sparing the ids in `keep`. */
   removeWireEdges(keep?: ReadonlySet<number>): number {
     let removed = 0;

@@ -1798,6 +1798,77 @@ describe('delete and dissolve', () => {
     expect(cube.validate()).toEqual([]);
   });
 
+  describe('leaves what the selection never touched', () => {
+    // A 2 by 2 grid, with a wire edge between two opposite corners and a stray
+    // point off to the side: neither touches the centre vertex or its fan.
+    function gridWithExtras() {
+      const grid = createGrid(2, 2);
+      const verts = [...grid.verts.values()];
+      const wire = grid.addEdge(verts[0], verts[8]);
+      const stray = grid.addVert(vec3(5, 5, 5));
+      return { grid, centre: verts[4], wire, stray };
+    }
+
+    it('keeps faceless edges and stray points when dissolving a vertex', () => {
+      const { grid, centre, wire, stray } = gridWithExtras();
+
+      dissolveVerts(grid, [centre]);
+
+      // The cleanup after a vertex dissolve used to sweep the whole mesh, so
+      // every edge without a face and every lone point went with the vertex,
+      // however far from it they were.
+      expect(grid.edges.has(wire.id)).toBe(true);
+      expect(grid.verts.has(stray.id)).toBe(true);
+      expect(grid.faces.size).toBe(1);
+      expect(grid.edges.size).toBe(9);
+      expect(grid.verts.size).toBe(9);
+      expect(grid.validate()).toEqual([]);
+    });
+
+    it('keeps stray points when dissolving faces', () => {
+      const { grid, wire, stray } = gridWithExtras();
+
+      dissolveFaces(grid, [...grid.faces.values()]);
+
+      // Merging a region used to drop every isolated point in the mesh along
+      // with the vertices the merge left inside it.
+      expect(grid.verts.has(stray.id)).toBe(true);
+      expect(grid.edges.has(wire.id)).toBe(true);
+      expect(grid.verts.size).toBe(9);
+      expect(grid.validate()).toEqual([]);
+    });
+
+    it('keeps stray points when deleting edges, and drops the ends it orphans', () => {
+      const cube = createBox(2);
+      const stray = cube.addVert(vec3(9, 9, 9));
+      const a = cube.addVert(vec3(5, 0, 0));
+      const b = cube.addVert(vec3(6, 0, 0));
+      const wire = cube.addEdge(a, b);
+
+      deleteGeometry(cube, { verts: [], edges: [wire], faces: [] }, 'edges');
+
+      // Deleting edges used to sweep every isolated point in the mesh, not only
+      // the ends of the edges it removed.
+      expect(cube.verts.has(stray.id)).toBe(true);
+      expect(cube.verts.has(a.id)).toBe(false);
+      expect(cube.verts.has(b.id)).toBe(false);
+      expect(cube.verts.size).toBe(9);
+      expect(cube.validate()).toEqual([]);
+    });
+
+    it('keeps stray points when deleting faces', () => {
+      const cube = createBox(2);
+      const stray = cube.addVert(vec3(9, 9, 9));
+
+      deleteGeometry(cube, { verts: [], edges: [], faces: [faceAt(cube, vec3(0, 1, 0))] }, 'faces');
+
+      // The same whole-mesh sweep ran after deleting faces.
+      expect(cube.verts.has(stray.id)).toBe(true);
+      expect(cube.verts.size).toBe(9);
+      expect(cube.validate()).toEqual([]);
+    });
+  });
+
   describe('delete loose', () => {
     it('keeps the main piece and deletes a stray vertex, a wire edge and a floating face', () => {
       const cube = createBox(2);

@@ -48,6 +48,10 @@ both lists match), then a button or key through `store.exec`.
   `isDissolvableVert`) lives at the operator boundary on purpose; the
   primitives merge unconditionally. Dissolved edge ends must not linger as
   points on a straight side, or extrude walls round them.
+- Cleanup after an op is scoped to what it removed (`removeLooseEnds`), never
+  `removeWireEdges()` or `removeLooseVerts()` bare: dissolving one vertex once
+  swept every wire edge and lone point in the mesh. Bevel, subdivide and
+  `detachRegion` still sweep loose verts mesh-wide.
 - `ops/fill.ts`: a fill round a sheet's whole outline once folded a face back
   over the mesh. A new face's winding comes from its vertex order, never from
   `addFace`: bridge once took it from the loop walk's direction, built walls

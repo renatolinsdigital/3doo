@@ -240,8 +240,7 @@ export function dissolveFaces(mesh: BMesh, faces: readonly Face[]): Face[] {
     face.selected = true;
     created.push(face);
 
-    // After the face exists, so the ring's vertices are never briefly orphaned.
-    mesh.removeLooseVerts();
+    mesh.removeLooseEnds(interiorEdges);
   }
 
   mesh.computeNormals();
@@ -284,8 +283,14 @@ export function connectedRegions(mesh: BMesh, faces: readonly Face[]): Face[][] 
  * into one face.
  */
 export function dissolveVerts(mesh: BMesh, verts: readonly Vert[]): void {
+  // A dissolve strands nothing but the far ends of the vertices' own edges.
+  // Sweeping the whole mesh instead deleted every faceless edge and lone point
+  // the user had left anywhere else.
+  const removed = new Set<Edge>();
+
   for (const vert of verts) {
     if (!mesh.verts.has(vert.id)) continue;
+    for (const edge of vert.edges) removed.add(edge);
 
     const faces = mesh.vertFaces(vert);
     if (faces.length === 0) {
@@ -322,8 +327,7 @@ export function dissolveVerts(mesh: BMesh, verts: readonly Vert[]): void {
     if (mesh.verts.has(vert.id) && mesh.vertFaces(vert).length === 0) mesh.removeVert(vert);
   }
 
-  mesh.removeWireEdges();
-  mesh.removeLooseVerts();
+  mesh.removeLooseEnds(removed);
   mesh.computeNormals();
 }
 
