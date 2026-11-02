@@ -50,8 +50,9 @@ disabled button, until Shift+M reached it.
   carrying a row of vertices refused the next cut.
 - `ops/dissolve.ts`: the 40 degree fold limit (`isDissolvableEdge`,
   `isDissolvableVert`) lives at the operator boundary on purpose; the
-  primitives merge unconditionally. Dissolved edge ends must not linger as
-  points on a straight side, or extrude walls round them.
+  primitives merge unconditionally. A dissolved edge's ends go once two edges
+  are left at them, bent or not (a sphere ring once left all its points);
+  only an open boundary's corners stay.
 - Cleanup after an op is scoped to what it removed (`removeLooseEnds`), never
   `removeWireEdges()` or `removeLooseVerts()` bare: dissolving one vertex once
   swept every wire edge and lone point in the mesh. Bevel, subdivide and

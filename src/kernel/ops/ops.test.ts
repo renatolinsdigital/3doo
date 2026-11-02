@@ -1936,12 +1936,21 @@ describe('delete and dissolve', () => {
     const top = faceAt(cube, vec3(0, 1, 0));
     const shared = cube.faceEdges(top)[0];
 
+    const ends = [shared.v0, shared.v1];
+
     const merged = dissolveEdges(cube, [shared]);
 
+    // This used to expect a six-sided face folded over the edge, reading the
+    // two corners the edge ran between as staying. They are its ends, left with
+    // two edges each, so they go too and the merged face runs straight across
+    // as a ramp.
     expect(merged).toHaveLength(1);
-    expect(cube.faceLoops(merged[0])).toHaveLength(6);
+    expect(cube.faceLoops(merged[0])).toHaveLength(4);
+    for (const end of ends) expect(cube.verts.has(end.id)).toBe(false);
+    expect(cube.verts.size).toBe(6);
     expect(cube.faces.size).toBe(5);
-    expect(cube.edges.size).toBe(11);
+    expect(cube.edges.size).toBe(9);
+    expect(isClosed(cube)).toBe(true);
     expect(cube.validate()).toEqual([]);
   });
 
@@ -1997,6 +2006,27 @@ describe('delete and dissolve', () => {
       for (const loop of cube.faceLoops(after)) {
         expect(loop.uv).toEqual({ u: loop.vert.co.x, v: loop.vert.co.y });
       }
+    });
+
+    it('takes the ends it leaves along a curve with it', () => {
+      const sphere = createUVSphere(1, 8, 6);
+      const equator = [...sphere.edges.values()].filter(
+        (edge) => Math.abs(edge.v0.co.y) < 1e-9 && Math.abs(edge.v1.co.y) < 1e-9,
+      );
+      const ends = new Set(equator.flatMap((edge) => [edge.v0, edge.v1]));
+      expect(equator).toHaveLength(8);
+
+      dissolveEdges(sphere, equator);
+
+      // Only ends on a straight line used to go, so every equator vertex stayed
+      // behind as a kink in its meridian: eight points the user had just
+      // dissolved the edges of, still splitting the merged faces' sides.
+      for (const end of ends) expect(sphere.verts.has(end.id)).toBe(false);
+      expect(sphere.verts.size).toBe(34);
+      expect(sphere.edges.size).toBe(72);
+      expect(sphere.faces.size).toBe(40);
+      expect(isClosed(sphere)).toBe(true);
+      expect(sphere.validate()).toEqual([]);
     });
 
     it('keeps an end the outline turns at', () => {

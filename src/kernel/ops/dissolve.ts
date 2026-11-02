@@ -119,11 +119,12 @@ export function dissolveEdges(mesh: BMesh, edges: readonly Edge[]): Face[] {
     ends.add(edge.v1);
   }
 
-  // An edge cut across a face ends part-way along its sides, and those ends
-  // outlive it as points on a straight line. They shape nothing, but extrude
-  // walls each side of them separately, drawing the edge back in on the walls.
+  // The ends outlive the edge as points part-way along the lines it crossed.
+  // On a straight side they shape nothing, but extrude walls each side of them
+  // separately, drawing the edge back in on the walls; on a curve they stay as
+  // kinks splitting the merged faces' sides.
   for (const vert of ends) {
-    for (const [old, rebuilt] of dropStraightVert(mesh, vert)) {
+    for (const [old, rebuilt] of dropEnd(mesh, vert)) {
       const at = merged.indexOf(old);
       if (at >= 0) merged[at] = rebuilt;
     }
@@ -141,28 +142,36 @@ export function dissolveEdges(mesh: BMesh, edges: readonly Edge[]): Face[] {
 const STRAIGHT_EPSILON = 5e-6;
 
 /**
- * Removes `vert` when it is only a point part-way along a straight edge,
- * joining its two edges into one.
+ * Removes a dissolved edge's end once only two edges are left at it, joining
+ * them into one.
+ *
+ * Between two faces the end only marks where the edge crossed, so it goes even
+ * where the line bends, as dissolving the vertex itself would. On an open
+ * boundary it is a corner of the outline, so it goes only where the outline
+ * runs straight through it.
  *
  * The faces using it are rebuilt without it but otherwise as they were, since
  * the one across the edge is not part of what the user selected. Returns each
  * rebuilt face keyed by the face it replaced.
  */
-function dropStraightVert(mesh: BMesh, vert: Vert): Map<Face, Face> {
+function dropEnd(mesh: BMesh, vert: Vert): Map<Face, Face> {
   const rebuilt = new Map<Face, Face>();
   if (!mesh.verts.has(vert.id) || vert.edges.length !== 2) return rebuilt;
 
   const [a, b] = vert.edges.map((edge) => mesh.edgeOther(edge, vert));
-  const left = sub(a.co, vert.co);
-  const right = sub(b.co, vert.co);
-  const span = Math.sqrt(lengthSq(left) * lengthSq(right));
-  if (span === 0 || dot(left, right) / span > -1 + STRAIGHT_EPSILON) return rebuilt;
 
   // A triangle would be left with two corners, and an existing edge between
   // the neighbours would end up carrying a third face.
   const faces = mesh.vertFaces(vert);
   if (faces.length === 0 || mesh.findEdge(a, b)) return rebuilt;
   if (faces.some((face) => mesh.faceLoopCount(face) < 4)) return rebuilt;
+
+  if (faces.length === 1) {
+    const left = sub(a.co, vert.co);
+    const right = sub(b.co, vert.co);
+    const span = Math.sqrt(lengthSq(left) * lengthSq(right));
+    if (span === 0 || dot(left, right) / span > -1 + STRAIGHT_EPSILON) return rebuilt;
+  }
 
   const sharp = vert.edges.some((edge) => edge.sharp);
 
