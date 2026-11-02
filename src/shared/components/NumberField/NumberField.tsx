@@ -200,7 +200,11 @@ export function NumberField({
             if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
               event.preventDefault();
               const direction = event.key === 'ArrowUp' ? 1 : -1;
-              onChange(quantize(value + resolvedStep * direction));
+              const next = quantize(value + resolvedStep * direction);
+              // The draft is not synced from the prop while focused, and blur
+              // commits the draft, so a step left out of it is undone on blur.
+              setDraft(formatValue(next, resolvedPrecision));
+              onChange(next);
             }
           }}
         />

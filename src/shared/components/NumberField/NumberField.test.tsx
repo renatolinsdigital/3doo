@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { NumberField } from './NumberField';
@@ -39,6 +40,24 @@ describe('NumberField', () => {
     await userEvent.type(screen.getByLabelText('DEPTH'), '{ArrowUp}');
 
     expect(onChange).toHaveBeenLastCalledWith(1.5);
+  });
+
+  it('shows and keeps the value the arrow keys stepped to', async () => {
+    function Controlled() {
+      const [value, setValue] = useState(1);
+      return <NumberField label="DEPTH" value={value} step={0.5} onChange={setValue} />;
+    }
+    render(<Controlled />);
+    const input = screen.getByLabelText('DEPTH');
+
+    await userEvent.type(input, '{ArrowUp}{ArrowUp}');
+    expect(input).toHaveValue('2');
+    await userEvent.tab();
+
+    // The text in the box used to stay on the value from before the arrows,
+    // and leaving the field committed that text, so every step was undone the
+    // moment focus moved on.
+    expect(input).toHaveValue('2');
   });
 
   it('rounds a typed fraction when the field is an integer', async () => {

@@ -18,7 +18,7 @@ export function MergeDialog() {
   const exec = useEditorStore((state) => state.exec);
   const object = useActiveObject();
 
-  const [threshold, setThreshold] = useState(0.001);
+  const [threshold, setThreshold] = useState(0.0005);
   const [removed, setRemoved] = useState(0);
 
   useEffect(() => {
@@ -56,7 +56,7 @@ export function MergeDialog() {
       <NumberField
         label="DISTANCE"
         value={threshold}
-        step={0.001}
+        step={0.0001}
         min={0}
         precision={5}
         onChange={setThreshold}
