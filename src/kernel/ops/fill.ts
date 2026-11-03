@@ -98,7 +98,7 @@ function edgeLoopsFrom(mesh: BMesh, edges: readonly Edge[]): EdgeRing[] {
  * round it into one.
  */
 function selectedRings(mesh: BMesh, edges: readonly Edge[]): Vert[][] {
-  const open = edges.filter((edge) => mesh.edges.has(edge.id) && edge.loops.length < 2);
+  const open = edges.filter((edge) => mesh.edges.has(edge.id) && openOnOneSide(mesh, edge));
   const around = new Map<Vert, Edge[]>();
   for (const edge of open) {
     for (const vert of [edge.v0, edge.v1]) {
@@ -147,7 +147,10 @@ function selectedRings(mesh: BMesh, edges: readonly Edge[]): Vert[][] {
  * Any ring the selected open edges still close after that gets a face too,
  * unless it winds against the faces along it the way an outline does. The
  * walk can lose its way, round faces flipped against each other for one, and
- * a ring plainly selected should not be refused for it.
+ * a ring plainly selected should not be refused for it. Here an edge whose
+ * second face is doubled flat back over its first still counts as open, as
+ * nothing lies on its other side. The ring needs one edge with no second face
+ * at all, or the outline of a card doubled all over would get a third layer.
  *
  * With `fromFaces`, the edges are those of the selected faces. A loose edge
  * across a hole belongs to no face, so it divides the hole without having to
@@ -195,10 +198,12 @@ export function fillHole(
   for (const face of inTheWay) mesh.removeFace(face);
 
   for (const ring of selectedRings(mesh, edges)) {
-    const open = ring.every(
-      (vert, i) => (mesh.findEdge(vert, ring[(i + 1) % ring.length]) as Edge).loops.length < 2,
+    const along = ring.map(
+      (vert, i) => mesh.findEdge(vert, ring[(i + 1) % ring.length]) as Edge,
     );
-    if (!open || mesh.findFace(ring)) continue;
+    const open = along.every((edge) => openOnOneSide(mesh, edge));
+    const gap = along.some((edge) => edge.loops.length < 2);
+    if (!open || !gap || mesh.findFace(ring)) continue;
     const wound = orientAgainstNeighbours(mesh, ring);
     const normalAt = (vert: Vert) => averageNormal(mesh, mesh.vertFaces(vert), scale);
     if (fillable(wound, normalAt, scale)) make(wound);
@@ -237,8 +242,7 @@ function foldedOver(mesh: BMesh, selected: ReadonlySet<Edge>): Set<Face> {
     }
     return normal;
   };
-  // A face lies to the left of each of its edges, walked its own way round.
-  const inward = (loop: Loop) => cross(normalOf(loop.face), sub(loop.next.vert.co, loop.vert.co));
+  const inward = (loop: Loop) => inwardAt(loop, normalOf(loop.face));
 
   const folded = new Set<Face>();
   for (const face of mesh.faces.values()) {
@@ -259,6 +263,25 @@ function foldedOver(mesh: BMesh, selected: ReadonlySet<Edge>): Set<Face> {
     if (everywhere && under.size > 1) folded.add(face);
   }
   return folded;
+}
+
+/** A face lies to the left of each of its edges, walked its own way round. */
+function inwardAt(loop: Loop, normal: Vec3): Vec3 {
+  return cross(normal, sub(loop.next.vert.co, loop.vert.co));
+}
+
+/**
+ * Whether nothing covers one side of an edge: it has one face or none, or its
+ * two lie flat back to back on the same side, one doubled over the other.
+ */
+function openOnOneSide(mesh: BMesh, edge: Edge): boolean {
+  if (edge.loops.length < 2) return true;
+  if (edge.loops.length > 2) return false;
+  const [a, b] = edge.loops.map((loop) => {
+    const normal = polygonNormal(mesh.facePoints(loop.face));
+    return { normal, inward: inwardAt(loop, normal) };
+  });
+  return dot(a.normal, b.normal) <= BACK_TO_BACK && dot(a.inward, b.inward) > 0;
 }
 
 interface Region {

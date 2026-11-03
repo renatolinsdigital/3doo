@@ -75,6 +75,9 @@ disabled button, until Shift+M reached it.
   facing into the solid, and the far-side cull hid their edges. The outline
   test (`fillable`) runs at the operator's `objectScale`: unscaled, a hole at
   a tip of an object squashed to 0.18 in y leaned like an outline and refused.
+  Scenes still carry such folded faces, unselected and spanning a split wall,
+  so a selected ring's edge counts as open when its second face lies back to
+  back over its first (`openOnOneSide`); one such edge once refused the hole.
 - `detachRegion` (`ops/region.ts`) duplicates only vertices touching the
   outside, so interior ones are moved in place by the same `offsetFor`; once
   they were not, and every region extrude and inset depth sagged to them.

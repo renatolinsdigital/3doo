@@ -2263,6 +2263,73 @@ describe('fill and bridge', () => {
     expect(isClosed(cube)).toBe(true);
   });
 
+  describe('beside a face doubled back over the mesh', () => {
+    const at = (mesh: BMesh, x: number, z: number) =>
+      [...mesh.verts.values()].find((vert) => distance(vert.co, vec3(x, 0, z)) < 1e-6) as Vert;
+    // Wound to face down, back to back with the grid's faces under it.
+    const doubleBack = (mesh: BMesh, corners: [number, number][]) => {
+      const face = mesh.addFace(corners.map(([x, z]) => at(mesh, x, z)));
+      mesh.computeNormals();
+      expect(face.normal.y).toBeCloseTo(-1);
+      return face;
+    };
+
+    it('fills the hole its edge runs along', () => {
+      const grid = createGrid(3, 3);
+      const hole = faceAtCenter(grid, vec3(0, 0, 0));
+      const ring = grid.faceEdges(hole);
+      deleteGeometry(grid, { verts: [], edges: [], faces: [hole] }, 'onlyFaces');
+      // Over two cells beside the hole, sharing its right edge.
+      const doubled = doubleBack(grid, [
+        [0.5, -0.5],
+        [1.5, -0.5],
+        [1.5, 1.5],
+        [0.5, 1.5],
+        [0.5, 0.5],
+      ]);
+      for (const edge of ring) edge.selected = true;
+      grid.flushSelection('edge');
+
+      const result = execOperator({ mesh: grid, selectMode: 'edge', cursor: vec3() }, 'fill');
+
+      // The doubled face put a second face on the hole's right edge, so the
+      // ring read as one running across the surface rather than round a hole,
+      // and the fill refused a hole that stood plainly open on screen.
+      expect(result.refused).toBeUndefined();
+      expect(grid.faces.size).toBe(10);
+      expect(faceAtCenter(grid, vec3(0, 0, 0)).normal.y).toBeCloseTo(1);
+      expect(grid.faces.has(doubled.id)).toBe(true);
+      expect(grid.validate()).toEqual([]);
+    });
+
+    it('refuses the outline of a card doubled all over', () => {
+      const card = createGrid(2, 2);
+      doubleBack(card, [
+        [-1, -1],
+        [0, -1],
+        [1, -1],
+        [1, 0],
+        [0, 0],
+        [-1, 0],
+      ]);
+      doubleBack(card, [
+        [-1, 0],
+        [0, 0],
+        [1, 0],
+        [1, 1],
+        [0, 1],
+        [-1, 1],
+      ]);
+      card.selectAll();
+      card.flushSelection('edge');
+
+      const result = execOperator({ mesh: card, selectMode: 'edge', cursor: vec3() }, 'fill');
+
+      expect(result.refused).toBe(true);
+      expect(card.faces.size).toBe(6);
+    });
+  });
+
   it('judges a hole at the scale the object is drawn at', () => {
     // The rim pulled out wide: a shallow dish in the mesh's own space, a tall
     // flared cup once the object stretches it upright.
