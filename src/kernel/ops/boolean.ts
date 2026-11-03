@@ -67,6 +67,16 @@ const QUAD_PAIR_LIMIT_DEGREES = 1;
 const AREA_EPSILON = 1e-6;
 
 /**
+ * How far a face may stand off its own plane, as a fraction of its width, and
+ * still be put back together as one face after the cut.
+ *
+ * A face moved by hand is seldom exactly flat, and one only a few degrees out
+ * is still the one face the user sees. Anything bent further is left as the
+ * triangles it was cut as; see `meshToPolys`.
+ */
+const WARP_LIMIT = 0.05;
+
+/**
  * How the work of one boolean divides up, measured on a cut dense enough to be
  * worth a progress bar at all. The remainder after these two is `resolve`.
  */
@@ -633,12 +643,19 @@ function isClosed(mesh: BMesh): boolean {
 const OPENING_LIMIT = 0.01;
 
 /**
- * Whether a mesh encloses something, rather than being a surface with no inside.
+ * How far a mesh with open rims may lean and still be cut as the solid it
+ * nearly is, with its rims closed for the length of the cut; see `capRims`.
  *
- * A tube with no caps passes, its two open ends cancelling, and is cut as a
- * solid tube.
+ * A part separated off a model is left open where it was cut away, and leans
+ * by the area of that opening: a pillar parted from its cap, by about a
+ * seventh. Read as a surface it had no inside, so a union kept all of what was
+ * stuck into it, walls buried in the pillar included. A sheet leans by all of
+ * itself and a bowl by half, and both stay surfaces.
  */
-function isSolid(mesh: BMesh): boolean {
+const RIM_LIMIT = 0.4;
+
+/** How far a mesh's faces lean one way, as `OPENING_LIMIT` measures it. */
+function leanOf(mesh: BMesh): number {
   let lean = vec3();
   let total = 0;
   for (const face of mesh.faces.values()) {
@@ -647,7 +664,87 @@ function isSolid(mesh: BMesh): boolean {
     lean = addScaled(lean, polygonNormal(points), area);
     total += area;
   }
-  return length(lean) <= total * OPENING_LIMIT;
+  return total > 0 ? length(lean) / total : 0;
+}
+
+/**
+ * Closes the open rims of a mesh for the length of a cut, or null where they
+ * do not trace as clean loops.
+ *
+ * A rim is walked the way the faces beside it run, so reversed it runs the way
+ * a face across the gap would, and the closed shell faces one way all round.
+ * Each lid is a source of its own, listed in `caps`, so whatever the cut keeps
+ * of it can be taken away again; see `dropCaps`.
+ */
+function capRims(
+  mesh: BMesh,
+  toTarget: (point: Vec3) => Vec3,
+  base: number,
+  caps: Set<number>,
+): Poly[] | null {
+  const rims = boundaryCycles(mesh, [...mesh.faces.values()]);
+  if (!rims || rims.length === 0) return null;
+
+  const lids: Poly[] = [];
+  let source = base + caps.size;
+  for (const rim of rims) {
+    const points = rim.map((vert) => toTarget(vert.co)).reverse();
+    source += 1;
+    caps.add(source);
+
+    const indices = triangulatePolygon(points, polygonNormal(points));
+    for (let i = 0; i < indices.length; i += 3) {
+      const tri = [points[indices[i]], points[indices[i + 1]], points[indices[i + 2]]];
+      const plane = planeFrom(tri);
+      if (usablePlane(plane)) lids.push({ points: tri, plane, materialIndex: 0, source });
+    }
+  }
+  return lids;
+}
+
+/**
+ * An operand as the cut takes it: its polygons, and whether it has an inside.
+ *
+ * A tube with no caps counts as solid as it stands, its two open ends
+ * cancelling. One open further than that has its rims closed, which is what
+ * keeps the space past an opening outside it: read straight off the walls,
+ * everything over a topless box's footprint lies behind every one of them.
+ * Closed, it comes out facing outward as `meshToPolys` leaves a closed solid.
+ */
+function operand(
+  mesh: BMesh,
+  polys: Poly[],
+  toTarget: (point: Vec3) => Vec3,
+  base: number,
+  caps: Set<number>,
+): { polys: Poly[]; solid: boolean } {
+  const lean = leanOf(mesh);
+  if (lean <= OPENING_LIMIT) return { polys, solid: true };
+  if (lean > RIM_LIMIT) return { polys, solid: false };
+
+  const lids = capRims(mesh, toTarget, base, caps);
+  if (!lids) return { polys, solid: false };
+  const closed = [...polys, ...lids];
+  return { polys: sixVolume(closed) < 0 ? closed.map(flipPoly) : closed, solid: true };
+}
+
+/**
+ * Takes away what the cut kept of the lids `capRims` laid, so a rim closed only
+ * to give the cut an inside to read comes back the opening it was.
+ */
+function dropCaps(mesh: BMesh, sourceOf: Map<number, number>, caps: ReadonlySet<number>): void {
+  const bared = new Set<Edge>();
+  for (const face of [...mesh.faces.values()]) {
+    const source = sourceOf.get(face.id);
+    if (source === undefined || !caps.has(source)) continue;
+    for (const edge of mesh.faceEdges(face)) bared.add(edge);
+    mesh.removeFace(face);
+    sourceOf.delete(face.id);
+  }
+
+  const loose = [...bared].filter((edge) => edge.loops.length === 0);
+  for (const edge of loose) mesh.removeEdge(edge);
+  mesh.removeLooseEnds(loose);
 }
 
 /**
@@ -705,7 +802,10 @@ function meshToPolys(
     // stitching their pieces back into one ring after a cut bends it across
     // all of them. Drawn flat, a ring like that folds over the hole the cut
     // left and paints a flap across it, so each triangle is a source of its own.
-    const flat = isFlat(points, normal, epsilon);
+    // Only once it is bent well out of true, though: one a few degrees off is
+    // one face to the user, and cut as triangles of their own, it kept the
+    // diagonal between them wherever the tool landed on it.
+    const flat = isFlat(points, normal, Math.max(epsilon, WARP_LIMIT * extentOf([{ points }])));
     if (flat) {
       source += 1;
       areaOf?.set(source, polygonArea(points));
@@ -1389,9 +1489,13 @@ function splitAcrossHole(mesh: BMesh, region: readonly Face[]): Vert[][] | null 
 
   // What the halves cover has to be what the fragments covered. A ring put
   // together the wrong way round, or one that doubles back over itself, comes
-  // out with the wrong area and is dropped rather than drawn.
-  const covered = halves.reduce((sum, half) => sum + polygonArea(half.map((vert) => vert.co)), 0);
-  const before = region.reduce((sum, face) => sum + mesh.faceArea(face), 0);
+  // out with the wrong area and is dropped rather than drawn. Measured on the
+  // plane the seams were laid out on, because the fragments of a face bent a
+  // degree off flat tilt either way of it and their own areas never add up.
+  const flatArea = (verts: readonly Vert[]) =>
+    Math.abs(signedArea(verts.map((vert) => ({ x: dot(vert.co, u), y: dot(vert.co, v) }))));
+  const covered = halves.reduce((sum, half) => sum + flatArea(half), 0);
+  const before = region.reduce((sum, face) => sum + flatArea(mesh.faceVerts(face)), 0);
   if (before <= 0 || Math.abs(covered - before) > before * 1e-6) return null;
 
   return halves;
@@ -1776,11 +1880,17 @@ export function* booleanMeshStaged(
   const base = a.reduce((last, poly) => Math.max(last, poly.source), 0);
   const b = meshToPolys(tool, toTarget, toolSlot, base, areaOf, warped, epsilon);
 
+  // Lids take ids past both operands' own.
+  const last = b.reduce((most, poly) => Math.max(most, poly.source), base);
+  const caps = new Set<number>();
+  const left = operand(target, a, (point) => point, last, caps);
+  const right = operand(tool, b, toTarget, last, caps);
+
   // The CSG carries most of the cost, so its own stages are passed straight
   // through; rebuilding the mesh and resolving it share what is left.
-  const steps = csgStaged(op, a, b, epsilon, {
-    a: isSolid(target),
-    b: isSolid(tool),
+  const steps = csgStaged(op, left.polys, right.polys, epsilon, {
+    a: left.solid,
+    b: right.solid,
   });
   let step = steps.next();
   while (!step.done) {
@@ -1789,6 +1899,7 @@ export function* booleanMeshStaged(
   }
 
   const { mesh, sourceOf } = polysToMesh(step.value, WELD_EPSILON * scale);
+  dropCaps(mesh, sourceOf, caps);
   yield CSG_SHARE + REBUILD_SHARE;
 
   resolve(mesh, PLANE_EPSILON, sourceOf, areaOf, warped);

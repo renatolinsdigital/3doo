@@ -4,6 +4,7 @@ import {
   type Vec3,
   add,
   basisFromNormal,
+  centroid,
   dot,
   normalize,
   polygonArea,
@@ -11,7 +12,7 @@ import {
   vec3,
 } from '../math';
 import { BMesh } from '../mesh';
-import type { Vert } from '../mesh/types';
+import type { Face, Vert } from '../mesh/types';
 import { triangulatePolygon } from '../mesh/triangulate';
 import {
   createBox,
@@ -623,6 +624,37 @@ describe('mesh booleans', () => {
     expect(warped.map(shapeOf)).toContain(shapeOf(far));
   });
 
+  it('puts a face bent a hair off flat back together after the cut', () => {
+    // One corner of the top lifted a centimetre, as a face moved by hand seldom
+    // ends up exactly flat. Anything off its plane by more than the cut's own
+    // tolerance went in as triangles of its own, so the face the tool landed on
+    // came back halved along a diagonal it never showed: a pillar with a row of
+    // ribs stuck to it came back slashed corner to corner.
+    const target = createBox(2);
+    const corner = [...target.verts.values()].find(
+      (vert) => vert.co.x > 0 && vert.co.y > 0 && vert.co.z > 0,
+    ) as Vert;
+    corner.co = add(corner.co, vec3(0, 0.02, 0));
+    target.computeNormals();
+
+    const top = (mesh: BMesh) =>
+      [...mesh.faces.values()].filter((face) =>
+        mesh.facePoints(face).every((point) => point.y > 1 - 1e-9 && point.y < 1.02 + 1e-9),
+      );
+
+    // Notched where the tool crosses its edge, the top is still one face.
+    const notched = booleanMesh('union', target, createBox(0.5), offsetBy(vec3(0.3, 1, 1)));
+    expect(top(notched).length).toBe(1);
+
+    // Bored through, it is the two halves a flat top would be, split along seams
+    // from corner to corner. Its fragments tilt either way of the plane, so
+    // their areas never matched the halves' and the split fell back on growing
+    // pieces, which pinned points part-way along the outline.
+    const bored = booleanMesh('union', target, createBox(0.5), offsetBy(vec3(0.3, 1, 0.3)));
+    const corners = top(bored).map((face) => bored.faceLoops(face).length);
+    expect(corners).toEqual([6, 6]);
+  });
+
   it('welds the cut so the result has edges to work with, not loose triangles', () => {
     const result = booleanMesh('union', createBox(2), createBox(2), offsetBy(vec3(1, 0, 0)));
 
@@ -1087,5 +1119,54 @@ describe('operands that are surfaces rather than solids', () => {
 
     expect(isClosed(result)).toBe(true);
     expect(volume(result)).toBeCloseTo(4, 2);
+  });
+
+  /** The 2 m box with its top taken away, as a part separated off a model is left open. */
+  function topless(): BMesh {
+    const mesh = createBox(2);
+    const top = [...mesh.faces.values()].find((face) =>
+      mesh.facePoints(face).every((point) => point.y === 1),
+    ) as Face;
+    mesh.removeFace(top);
+    mesh.computeNormals();
+    return mesh;
+  }
+
+  it('cuts a part left open where it was separated as the solid it is', () => {
+    // Open at the top, the box leans by the face it lacks, and read as a
+    // surface it had no inside: a union kept the whole of the tool, the half
+    // buried in the box included. Ribs stuck into a pillar separated off a
+    // sword came back with their walls running on inside it, and a line along
+    // each rib where the pillar passed through.
+    for (const [target, tool, shift, centre] of [
+      [topless(), createBox(1), vec3(1, 0, 0), vec3()],
+      [createBox(1), topless(), vec3(-1, 0, 0), vec3(-1, 0, 0)],
+    ] as const) {
+      const result = booleanMesh('union', target, tool, offsetBy(shift));
+
+      const buried = [...result.faces.values()].filter((face) => {
+        const at = centroid(result.facePoints(face));
+        const reach = Math.max(
+          Math.abs(at.x - centre.x),
+          Math.abs(at.y - centre.y),
+          Math.abs(at.z - centre.z),
+        );
+        return reach < 1 - 1e-9;
+      });
+      expect(buried.length).toBe(0);
+      expect([...result.edges.values()].filter((edge) => edge.loops.length > 2).length).toBe(0);
+
+      // The top stays open: whatever closed it for the cut is gone again.
+      expect([...result.edges.values()].filter((edge) => edge.loops.length === 1).length).toBe(4);
+    }
+  });
+
+  it('reads nothing past the opening of an open part as inside it', () => {
+    // Read straight off the walls, everything over the box's footprint lies
+    // behind every one of them, so a union with anything sitting above the
+    // opening would throw it away. Closing the rim for the cut is what stops it.
+    const result = booleanMesh('union', topless(), createBox(1), offsetBy(vec3(0, 2, 0)));
+
+    expect(result.faces.size).toBe(5 + 6);
   });
 });

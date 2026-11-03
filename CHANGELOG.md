@@ -10,15 +10,6 @@ All notable changes to 3DOO are recorded here. Versions follow
 New entries go under `Unreleased` until a version is cut. Group them under
 `Added`, `Changed`, `Fixed` or `Removed`.
 
-## [Unreleased]
-
-### Added
-
-- RECALCULATE NORMALS in the TOPOLOGY panel points only the selected faces
-  outward, judged by the whole surface they belong to. It stays unavailable
-  until a face is selected. Scripts reach it as the `selected` option of
-  `recalculateNormals`.
-
 ## [1.0.0] - 2026-10-05
 
 First tracked release. It marks the state of the project at this point,

@@ -45,7 +45,11 @@ disabled button, until Shift+M reached it.
 - `ops/boolean.ts`, the most fixed op: re-tiling faces the cut never touched,
   faces round a hole shredded into strips, a mirrored cutter arriving inside
   out, quadratic cost, a grey slot per cut, coplanar sheets lost. Its tests
-  measure faces and area, and a cost ratio rather than a time.
+  measure faces and area, and a cost ratio rather than a time. A part left
+  open by SEPARATE once read as a sheet and kept the tool's buried walls; its
+  rims are now closed for the cut by `capRims` and the lids taken away after
+  by `dropCaps`. A face only a few degrees off flat (`WARP_LIMIT`) is one
+  source, not one per triangle, or the cut keeps its diagonal.
 - `ops/subdivide.ts`: `cuts` once compounded to 2 to the N; a neighbour left
   carrying a row of vertices refused the next cut.
 - `ops/dissolve.ts`: the 40 degree fold limit lives at the operator boundary
