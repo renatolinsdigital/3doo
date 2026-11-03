@@ -11,6 +11,7 @@ import {
   dot,
   length,
   lerp,
+  mul,
   mulVec,
   normalize,
   sub,
@@ -27,8 +28,10 @@ import {
   createCone,
   createCylinder,
   createGrid,
+  createIcoSphere,
   createImagePlane,
   createPlane,
+  createTorus,
   createUVSphere,
 } from '../primitives';
 
@@ -2327,6 +2330,340 @@ describe('fill and bridge', () => {
 
       expect(result.refused).toBe(true);
       expect(card.faces.size).toBe(6);
+    });
+  });
+
+  describe('beside a face collapsed onto a line', () => {
+    const at = (mesh: BMesh, x: number, z: number) =>
+      [...mesh.verts.values()].find((vert) => distance(vert.co, vec3(x, 0, z)) < 1e-6) as Vert;
+    // The middle cell of a 3 by 3 grid taken out, and a face with no area laid
+    // along the line x = 0.5, the hole's right edge among its own.
+    const holeBesideCollapsed = () => {
+      const grid = createGrid(3, 3);
+      const hole = faceAtCenter(grid, vec3(0, 0, 0));
+      const ring = grid.faceEdges(hole);
+      deleteGeometry(grid, { verts: [], edges: [], faces: [hole] }, 'onlyFaces');
+      const collapsed = grid.addFace([1.5, 0.5, -0.5, -1.5].map((z) => at(grid, 0.5, z)));
+      grid.computeNormals();
+      return { grid, ring, collapsed };
+    };
+
+    it('fills the hole it shares an edge with', () => {
+      const { grid, ring, collapsed } = holeBesideCollapsed();
+      for (const edge of ring) edge.selected = true;
+      grid.flushSelection('edge');
+
+      const result = execOperator({ mesh: grid, selectMode: 'edge', cursor: vec3() }, 'fill');
+
+      // The face with no area counted as a second face on the hole's right
+      // edge, so the ring read as closed and the fill refused a hole that
+      // stood plainly open on screen.
+      expect(result.refused).toBeUndefined();
+      expect(grid.faces.size).toBe(10);
+      expect(faceAtCenter(grid, vec3(0, 0, 0)).normal.y).toBeCloseTo(1);
+      expect(grid.faces.has(collapsed.id)).toBe(true);
+      expect(grid.validate()).toEqual([]);
+    });
+
+    it('fills the hole with everything selected', () => {
+      const { grid, collapsed } = holeBesideCollapsed();
+      grid.selectAll();
+
+      const result = execOperator({ mesh: grid, selectMode: 'vertex', cursor: vec3() }, 'fill');
+
+      expect(result.status).toBe('Created 1 face(s)');
+      expect(grid.faces.size).toBe(10);
+      expect(faceAtCenter(grid, vec3(0, 0, 0)).normal.y).toBeCloseTo(1);
+      expect(grid.faces.has(collapsed.id)).toBe(true);
+    });
+
+    it('fills a hole whose edge also carries a face doubled back over it', () => {
+      const { grid, ring } = holeBesideCollapsed();
+      const doubled = grid.addFace(
+        [
+          [0.5, -0.5],
+          [1.5, -0.5],
+          [1.5, 1.5],
+          [0.5, 1.5],
+          [0.5, 0.5],
+        ].map(([x, z]) => at(grid, x, z)),
+      );
+      grid.computeNormals();
+      expect(doubled.normal.y).toBeCloseTo(-1);
+      for (const edge of ring) edge.selected = true;
+      grid.flushSelection('edge');
+
+      const result = execOperator({ mesh: grid, selectMode: 'edge', cursor: vec3() }, 'fill');
+
+      // Three faces on the hole's right edge, one doubled over another and one
+      // with no area, read as a wall on both sides of it.
+      expect(result.refused).toBeUndefined();
+      expect(grid.faces.size).toBe(11);
+      expect(faceAtCenter(grid, vec3(0, 0, 0)).normal.y).toBeCloseTo(1);
+      expect(grid.validate()).toEqual([]);
+    });
+
+    // Cut from a user's scene, object scale and all: a wall doubled back over
+    // itself, a face with no area along its edge, and a triangle left open at
+    // either end of that edge.
+    const scenePoints: [number, number, number][] = [
+      [0.3549905964195469, 0.3226889138774148, -0.25],
+      [0.3549905964195469, 0.3226889138774148, 0.25],
+      [0.304110386882253, 0.20329010431314332, -0.25],
+      [0.304110386882253, 0.20329010431314332, 0.25],
+      [0.1554112099675261, 0.09427647486286272, -0.25],
+      [0.1554112099675261, 0.09427647486286272, 0.25],
+      [0.6387553864968157, 0.36747694542446374, -0.25],
+      [0.6387553864968157, 0.36747694542446374, 0.25],
+      [1.3222608510525469, 0.4530470783738079, 0.25],
+      [1.3222608510525469, 0.4530470783738079, -0.25],
+      [0.547094380301746, 0.005191771230477484, 0.25],
+      [0.547094380301746, 0.005191771230477484, 0.125],
+      [0.9366318692686944, 0.14937511798913866, 0.125],
+      [0.547094380301746, 0.005191771230477484, 0],
+      [0.9366318692686944, 0.14937511798913866, 0],
+      [0.547094380301746, 0.005191771230477484, -0.125],
+      [0.9366318692686944, 0.14937511798913866, -0.125],
+      [0.547094380301746, 0.005191771230477484, -0.25],
+      [1.1995635463327172, 0.30641442518693895, 0.25],
+      [0.6387891202008769, 0.22022360081160766, 0.25],
+      [0.6387891202008769, 0.22022360081160766, -0.25],
+      [1.1995635463327172, 0.30641442518693895, -0.25],
+      [1.1995635463327172, 0.30641442518693895, -0.125],
+      [0.3351719283150115, 0.052854853637168575, 0.25000000000000044],
+      [0.3351719283150115, 0.052854853637168575, -0.24999999999999956],
+      [0.3909895765650725, -0.06377400808120581, 0.25000000000000067],
+      [0.3909895765650725, -0.06377400808120581, -0.24999999999999933],
+      [0.3873208458976346, -0.14757325147299516, 0.12500000000000067],
+      [0.3873208458976346, -0.14757325147299516, 0.25000000000000067],
+      [0.3873208458976346, -0.14757325147299516, 6.661338147750939e-16],
+      [0.3873208458976346, -0.14757325147299516, -0.12499999999999933],
+      [0.3873208458976346, -0.14757325147299516, -0.24999999999999933],
+    ];
+    const sceneFaces = [
+      [12, 11, 13, 14],
+      [14, 13, 15, 16],
+      [18, 8, 7, 19],
+      [20, 6, 9, 21],
+      // No area: every corner lies on the wall's edge.
+      [17, 15, 13, 11, 10],
+      [31, 30, 15, 17],
+      [30, 29, 13, 15],
+      [29, 27, 11, 13],
+      [27, 28, 10, 11],
+      // Doubled back over the four faces before it.
+      [28, 31, 17, 10],
+      [3, 5, 23, 19],
+      [3, 19, 7, 1],
+      [0, 6, 20, 2],
+      [2, 20, 24, 4],
+      [19, 23, 25, 10],
+      [17, 26, 24, 20],
+      [25, 28, 10],
+      [17, 31, 26],
+      [11, 12, 18, 19],
+      [15, 20, 21, 22, 16],
+    ];
+
+    it.each([
+      ['near', [10, 19, 11]],
+      ['far', [17, 20, 15]],
+    ])('fills the %s triangle at the end of a wall cut from a scene', (_, corners) => {
+      const mesh = new BMesh();
+      const verts = scenePoints.map(([x, y, z]) => mesh.addVert(vec3(x, y, z)));
+      for (const face of sceneFaces) mesh.addFace(face.map((index) => verts[index]));
+      mesh.computeNormals();
+      const ring = corners.map((index) => verts[index]);
+      const along = ring.map((vert, i) => mesh.findEdge(vert, ring[(i + 1) % 3]) as Edge);
+      for (const edge of along) edge.selected = true;
+      mesh.flushSelection('edge');
+      const context = {
+        mesh,
+        selectMode: 'edge' as const,
+        cursor: vec3(),
+        objectScale: vec3(0.03129, 0.083106, 0.033384),
+      };
+
+      const result = execOperator(context, 'fill');
+
+      // The wall's edge carried the face with no area as well as its own, so
+      // it read as covered on both sides, and the triangle open on screen
+      // beside it was refused: "No holes in the selection to fill".
+      expect(result.refused).toBeUndefined();
+      expect(mesh.findFace(ring) !== null).toBe(true);
+      // Facing out with the faces beyond its two open edges.
+      for (const edge of along.slice(0, 2)) {
+        expect(edge.loops).toHaveLength(2);
+        expect(edge.loops[0].vert === edge.loops[1].vert).toBe(false);
+      }
+      expect(mesh.validate()).toEqual([]);
+    });
+  });
+
+  // Every face of each shape in turn: taken out, then filled from its ring
+  // alone and from everything selected. Each must come back, facing the way
+  // the one taken out did.
+  describe('gives back any one face taken out', () => {
+    const subdividedBox = () => {
+      const box = createBox(2);
+      subdivideFaces(box, [...box.faces.values()], { cuts: 1 });
+      return box;
+    };
+    const shapes: [string, () => BMesh][] = [
+      ['a box', () => createBox(2)],
+      ['a subdivided box', subdividedBox],
+      ['a cylinder', () => createCylinder(0.5, 1, 8)],
+      ['a cone', () => createCone(0.5, 1, 8)],
+      ['a UV sphere', () => createUVSphere(1, 8, 6)],
+      ['an ico sphere', () => createIcoSphere(1, 1)],
+      ['a torus', () => createTorus(0.5, 0.2, 8, 6)],
+      ['a grid', () => createGrid(3, 3)],
+    ];
+
+    const takeOut = (mesh: BMesh, index: number) => {
+      const face = [...mesh.faces.values()][index];
+      const hole = {
+        corners: mesh.faceVerts(face),
+        ring: mesh.faceEdges(face),
+        normal: face.normal,
+        faces: mesh.faces.size,
+      };
+      deleteGeometry(mesh, { verts: [], edges: [], faces: [face] }, 'onlyFaces');
+      return hole;
+    };
+    const fill = (mesh: BMesh, ring: Edge[] | 'everything') => {
+      if (ring === 'everything') mesh.selectAll();
+      else for (const edge of ring) edge.selected = true;
+      mesh.flushSelection('edge');
+      return execOperator({ mesh, selectMode: 'edge', cursor: vec3() }, 'fill');
+    };
+    const expectBack = (
+      mesh: BMesh,
+      hole: ReturnType<typeof takeOut>,
+      faces: number,
+      label: string,
+    ) => {
+      const back = mesh.findFace(hole.corners);
+      expect(back !== null, label).toBe(true);
+      expect(dot((back as Face).normal, hole.normal), label).toBeGreaterThan(0.99);
+      expect(mesh.faces.size, label).toBe(faces);
+      expect(mesh.validate(), label).toEqual([]);
+    };
+
+    describe.each(shapes)('of %s', (_, make) => {
+      const count = make().faces.size;
+
+      it.each(['the ring', 'everything'] as const)('with %s selected', (selection) => {
+        for (let index = 0; index < count; index++) {
+          const mesh = make();
+          const hole = takeOut(mesh, index);
+
+          const result = fill(mesh, selection === 'the ring' ? hole.ring : 'everything');
+
+          const label = `face ${index}`;
+          expect(result.refused, label).toBeUndefined();
+          expectBack(mesh, hole, hole.faces, label);
+        }
+      });
+    });
+
+    // Lays a face with no area along an edge: a triangle through the next
+    // vertex on from one of its ends, on the same straight line.
+    const collapseAlong = (mesh: BMesh, edge: Edge) => {
+      for (const [from, to] of [
+        [edge.v0, edge.v1],
+        [edge.v1, edge.v0],
+      ]) {
+        const ahead = normalize(sub(to.co, from.co));
+        for (const next of to.edges) {
+          const beyond = mesh.edgeOther(next, to);
+          if (beyond === from) continue;
+          if (dot(normalize(sub(beyond.co, to.co)), ahead) < 1 - 1e-9) continue;
+          const face = mesh.addFace([from, to, beyond]);
+          mesh.computeNormals();
+          return face;
+        }
+      }
+      throw new Error('No vertex on along the edge');
+    };
+
+    it.each(['the ring', 'everything'] as const)(
+      'past a face with no area along any edge of the hole, with %s selected',
+      (selection) => {
+        const count = subdividedBox().faces.size;
+        for (let index = 0; index < count; index++) {
+          for (let side = 0; side < 4; side++) {
+            const box = subdividedBox();
+            const hole = takeOut(box, index);
+            const collapsed = collapseAlong(box, hole.ring[side]);
+
+            const result = fill(box, selection === 'the ring' ? hole.ring : 'everything');
+
+            const label = `face ${index}, side ${side}`;
+            expect(result.refused, label).toBeUndefined();
+            expectBack(box, hole, hole.faces + 1, label);
+            expect(box.faces.has(collapsed.id), label).toBe(true);
+          }
+        }
+      },
+    );
+
+    // A 4 by 4 grid, each of its middle four cells the hole in turn, with a
+    // face doubled back over the two cells beyond one of its edges, a face with
+    // no area along that edge, or both.
+    it.each([
+      ['a face doubled back over the cells beyond', 'doubled'],
+      ['a face with no area', 'collapsed'],
+      ['both at once', 'both'],
+    ] as const)('past %s along any edge of a hole in a sheet', (_, clutter) => {
+      const at = (mesh: BMesh, co: Vec3) =>
+        [...mesh.verts.values()].find((vert) => distance(vert.co, co) < 1e-6) as Vert;
+      for (const center of [
+        vec3(-0.5, 0, -0.5),
+        vec3(0.5, 0, -0.5),
+        vec3(-0.5, 0, 0.5),
+        vec3(0.5, 0, 0.5),
+      ]) {
+        for (let side = 0; side < 4; side++) {
+          const grid = createGrid(4, 4);
+          const hole = takeOut(grid, [...grid.faces.values()].indexOf(faceAtCenter(grid, center)));
+          const edge = hole.ring[side];
+          const extra: Face[] = [];
+          if (clutter !== 'collapsed') {
+            const middle = lerp(edge.v0.co, edge.v1.co, 0.5);
+            const out = normalize(sub(middle, center));
+            const along = normalize(sub(edge.v1.co, edge.v0.co));
+            // Two cells long, reaching back towards the grid's middle.
+            const reach = dot(middle, along) > 0 ? -1 : 1;
+            const point = (p: number, q: number) =>
+              at(grid, add(middle, add(mul(out, p), mul(along, q * reach))));
+            const corners = [
+              point(0, -0.5),
+              point(1, -0.5),
+              point(1, 0.5),
+              point(1, 1.5),
+              point(0, 1.5),
+              point(0, 0.5),
+            ];
+            let face = grid.addFace(corners);
+            grid.computeNormals();
+            if (face.normal.y > 0) {
+              grid.removeFace(face);
+              face = grid.addFace([...corners].reverse());
+              grid.computeNormals();
+            }
+            extra.push(face);
+          }
+          if (clutter !== 'doubled') extra.push(collapseAlong(grid, edge));
+
+          const result = fill(grid, hole.ring);
+
+          const label = `hole at ${center.x}, ${center.z}, side ${side}`;
+          expect(result.refused, label).toBeUndefined();
+          expectBack(grid, hole, hole.faces + extra.length, label);
+          for (const face of extra) expect(grid.faces.has(face.id), label).toBe(true);
+        }
+      }
     });
   });
 

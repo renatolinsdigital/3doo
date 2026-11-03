@@ -58,6 +58,15 @@ export const TWIST_RATIO = 0.05;
 /** A face with less area than this, over its longest side squared, is a sliver. */
 const SLIVER_RATIO = 1e-6;
 
+/** Whether a polygon has next to no area for the length of its longest side. */
+export function isSliver(points: readonly Vec3[]): boolean {
+  let longest = 0;
+  for (let i = 0; i < points.length; i++) {
+    longest = Math.max(longest, length(sub(points[(i + 1) % points.length], points[i])));
+  }
+  return polygonArea(points) <= SLIVER_RATIO * longest * longest;
+}
+
 /** Counts what `MeshInspection` describes. Reads the mesh and changes nothing. */
 export function inspectMesh(mesh: BMesh): MeshInspection {
   let tris = 0;
@@ -81,11 +90,7 @@ export function inspectMesh(mesh: BMesh): MeshInspection {
     if (face.smooth) smoothFaces++;
     materials.add(face.materialIndex);
 
-    let longest = 0;
-    for (let i = 0; i < sides; i++) {
-      longest = Math.max(longest, length(sub(points[(i + 1) % sides], points[i])));
-    }
-    if (polygonArea(points) <= SLIVER_RATIO * longest * longest) degenerateFaces++;
+    if (isSliver(points)) degenerateFaces++;
     if (sides === 4 && isTwisted(points)) twistedQuads++;
   }
 

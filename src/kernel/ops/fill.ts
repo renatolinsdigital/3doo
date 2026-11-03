@@ -12,7 +12,7 @@ import {
   sub,
   vec3,
 } from '../math';
-import type { BMesh } from '../mesh';
+import { type BMesh, isSliver } from '../mesh';
 import type { Edge, Face, Loop, Vert } from '../mesh/types';
 
 interface EdgeRing {
@@ -97,8 +97,8 @@ function edgeLoopsFrom(mesh: BMesh, edges: readonly Edge[]): EdgeRing[] {
  * edge between two holes ends the ring of each rather than both being strung
  * round it into one.
  */
-function selectedRings(mesh: BMesh, edges: readonly Edge[]): Vert[][] {
-  const open = edges.filter((edge) => mesh.edges.has(edge.id) && openOnOneSide(mesh, edge));
+function selectedRings(mesh: BMesh, edges: readonly Edge[], flat: ReadonlySet<Face>): Vert[][] {
+  const open = edges.filter((edge) => mesh.edges.has(edge.id) && openOnOneSide(mesh, edge, flat));
   const around = new Map<Vert, Edge[]>();
   for (const edge of open) {
     for (const vert of [edge.v0, edge.v1]) {
@@ -148,9 +148,10 @@ function selectedRings(mesh: BMesh, edges: readonly Edge[]): Vert[][] {
  * unless it winds against the faces along it the way an outline does. The
  * walk can lose its way, round faces flipped against each other for one, and
  * a ring plainly selected should not be refused for it. Here an edge whose
- * second face is doubled flat back over its first still counts as open, as
- * nothing lies on its other side. The ring needs one edge with no second face
- * at all, or the outline of a card doubled all over would get a third layer.
+ * faces all lie on one side of it, doubled flat over one another, still counts
+ * as open, as nothing lies on its other side. The ring needs one edge with no
+ * second face at all, or the outline of a card doubled all over would get a
+ * third layer.
  *
  * With `fromFaces`, the edges are those of the selected faces. A loose edge
  * across a hole belongs to no face, so it divides the hole without having to
@@ -167,6 +168,9 @@ function selectedRings(mesh: BMesh, edges: readonly Edge[]): Vert[][] {
  * but it puts a second face on the edges of the holes it runs round, and to
  * the walk they would look closed. The walk looks past it, and the fill
  * replaces it wherever it was in a hole's way. One in the way of none stays.
+ *
+ * A face with no area, collapsed onto a line, covers nothing either, selected
+ * or not. A selected ring's edge counts as open past it, and it stays.
  */
 export function fillHole(
   mesh: BMesh,
@@ -175,6 +179,7 @@ export function fillHole(
 ): Face[] {
   const selected = new Set(edges);
   const folded = foldedOver(mesh, selected);
+  const flat = slivers(mesh, scale);
   const inTheWay = new Set<Face>();
   const created: Face[] = [];
   const make = (ring: Vert[]) => {
@@ -197,11 +202,9 @@ export function fillHole(
   }
   for (const face of inTheWay) mesh.removeFace(face);
 
-  for (const ring of selectedRings(mesh, edges)) {
-    const along = ring.map(
-      (vert, i) => mesh.findEdge(vert, ring[(i + 1) % ring.length]) as Edge,
-    );
-    const open = along.every((edge) => openOnOneSide(mesh, edge));
+  for (const ring of selectedRings(mesh, edges, flat)) {
+    const along = ring.map((vert, i) => mesh.findEdge(vert, ring[(i + 1) % ring.length]) as Edge);
+    const open = along.every((edge) => openOnOneSide(mesh, edge, flat));
     const gap = along.some((edge) => edge.loops.length < 2);
     if (!open || !gap || mesh.findFace(ring)) continue;
     const wound = orientAgainstNeighbours(mesh, ring);
@@ -270,18 +273,31 @@ function inwardAt(loop: Loop, normal: Vec3): Vec3 {
   return cross(normal, sub(loop.next.vert.co, loop.vert.co));
 }
 
+/** Faces with next to no area at the object's scale, collapsed onto a line or a point. */
+function slivers(mesh: BMesh, scale: Vec3): Set<Face> {
+  const found = new Set<Face>();
+  for (const face of mesh.faces.values()) {
+    if (isSliver(mesh.facePoints(face).map((point) => mulVec(point, scale)))) found.add(face);
+  }
+  return found;
+}
+
+/** How nearly two faces must reach the same way from an edge to lie one over the other. */
+const SAME_SIDE = 0.99;
+
 /**
- * Whether nothing covers one side of an edge: it has one face or none, or its
- * two lie flat back to back on the same side, one doubled over the other.
+ * Whether nothing covers one side of an edge: every face along it with an
+ * area lies on the same side, flat over the others there, whichever way each
+ * is wound. A face whose plane is unknown counts as a side of its own.
  */
-function openOnOneSide(mesh: BMesh, edge: Edge): boolean {
-  if (edge.loops.length < 2) return true;
-  if (edge.loops.length > 2) return false;
-  const [a, b] = edge.loops.map((loop) => {
-    const normal = polygonNormal(mesh.facePoints(loop.face));
-    return { normal, inward: inwardAt(loop, normal) };
-  });
-  return dot(a.normal, b.normal) <= BACK_TO_BACK && dot(a.inward, b.inward) > 0;
+function openOnOneSide(mesh: BMesh, edge: Edge, flat: ReadonlySet<Face>): boolean {
+  const sides: Vec3[] = [];
+  for (const loop of edge.loops) {
+    if (flat.has(loop.face)) continue;
+    const side = normalize(inwardAt(loop, polygonNormal(mesh.facePoints(loop.face))));
+    if (sides.every((other) => dot(other, side) < SAME_SIDE)) sides.push(side);
+  }
+  return sides.length < 2;
 }
 
 interface Region {

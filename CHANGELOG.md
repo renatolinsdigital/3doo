@@ -16,6 +16,9 @@ New entries go under `Unreleased` until a version is cut. Group them under
 
 - Fill no longer refuses a selected hole when one of its edges also borders a
   face folded flat back over the faces beside it.
+- Fill no longer refuses a selected hole when one of its edges also borders a
+  face collapsed onto a straight line, with no area to cover anything, or
+  such a face and a folded one together.
 
 ## [1.0.0] - 2026-10-05
 

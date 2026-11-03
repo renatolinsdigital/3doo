@@ -76,8 +76,11 @@ disabled button, until Shift+M reached it.
   test (`fillable`) runs at the operator's `objectScale`: unscaled, a hole at
   a tip of an object squashed to 0.18 in y leaned like an outline and refused.
   Scenes still carry such folded faces, unselected and spanning a split wall,
-  so a selected ring's edge counts as open when its second face lies back to
-  back over its first (`openOnOneSide`); one such edge once refused the hole.
+  so a selected ring's edge counts as open while every face on it with an
+  area lies on one side of it (`openOnOneSide`). A face collapsed onto a line
+  (`isSliver`) counts for nothing there: one along a wall's edge refused the
+  triangle holes at both its ends. New traps go into the clutter sweeps of
+  `gives back any one face taken out` in `ops.test.ts`.
 - `detachRegion` (`ops/region.ts`) duplicates only vertices touching the
   outside, so interior ones are moved in place by the same `offsetFor`; once
   they were not, and every region extrude and inset depth sagged to them.
