@@ -655,6 +655,71 @@ describe('mesh booleans', () => {
     expect(corners).toEqual([6, 6]);
   });
 
+  /** The 1 m box's side at x = -0.5, which a tool one along X buries in the 2 m box. */
+  function buriedSide(tool: BMesh): Face {
+    return [...tool.faces.values()].find((face) =>
+      tool.facePoints(face).every((point) => point.x === -0.5),
+    ) as Face;
+  }
+
+  /** The floor that side leaves in the 2 m box, at x = 0.5. */
+  function notchFloor(mesh: BMesh): number[] {
+    return [...mesh.faces.values()]
+      .filter((face) => mesh.facePoints(face).every((point) => Math.abs(point.x - 0.5) < 1e-6))
+      .map((face) => mesh.faceLoops(face).length);
+  }
+
+  it('lines a hole with one face for each flat side of the cutter', () => {
+    const tool = createBox(1);
+    const side = buriedSide(tool);
+    const ring = tool.faceVerts(side);
+    tool.removeFace(side);
+    const hub = tool.addVert(vec3(-0.5, 0.1, -0.2));
+    for (let i = 0; i < ring.length; i++) {
+      tool.addFace([ring[i], ring[(i + 1) % ring.length], hub]);
+    }
+    tool.computeNormals();
+
+    const result = booleanMesh('difference', createBox(2), tool, offsetBy(vec3(1, 0, 0)));
+
+    // The side was a fan of triangles, and the floor of the notch came through
+    // as the same fan: a row of ribs cut into a pillar left one notch with its
+    // floor slashed by diagonals where the others had a single face.
+    expect(notchFloor(result)).toEqual([4]);
+    expect(isClosed(result)).toBe(true);
+  });
+
+  it('closes a crack in the cutter before cutting with it', () => {
+    // The buried side split along a diagonal whose far end is two corners a
+    // tenth of a millimetre apart, each face round it holding its own.
+    const tool = createBox(1);
+    const side = buriedSide(tool);
+    const [a, b, c, d] = tool.faceVerts(side);
+    const twin = tool.addVert(add(c.co, vec3(0, 0, c.co.z > 0 ? -1e-4 : 1e-4)));
+    const beside = [...tool.faces.values()].find((face) => {
+      const verts = tool.faceVerts(face);
+      return face !== side && verts.includes(c) && verts.includes(d);
+    }) as Face;
+    const besideRing = tool.faceVerts(beside).map((vert) => (vert === c ? twin : vert));
+
+    tool.removeFace(side);
+    tool.removeFace(beside);
+    tool.removeEdge(tool.findEdge(c, d) as NonNullable<ReturnType<BMesh['findEdge']>>);
+    tool.addFace([a, b, c]);
+    tool.addFace([a, twin, d]);
+    tool.addFace(besideRing);
+    tool.computeNormals();
+    expect([...tool.edges.values()].filter((edge) => edge.loops.length === 1).length).toBe(4);
+
+    const result = booleanMesh('difference', createBox(2), tool, offsetBy(vec3(1, 0, 0)));
+
+    // The crack came through into the notch, open along the floor's diagonal
+    // and up the corner beside it, and the floor stayed in two halves.
+    expect(isClosed(result)).toBe(true);
+    expect(result.validate()).toEqual([]);
+    expect(notchFloor(result)).toEqual([4]);
+  });
+
   it('welds the cut so the result has edges to work with, not loose triangles', () => {
     const result = booleanMesh('union', createBox(2), createBox(2), offsetBy(vec3(1, 0, 0)));
 

@@ -16,10 +16,11 @@ import {
   sub,
   vec3,
 } from '../math';
-import { BMesh, triangulatePolygon } from '../mesh';
+import { BMesh, cloneMesh, triangulatePolygon } from '../mesh';
 import type { Edge, Face, Loop, Vert } from '../mesh/types';
 
 import { connectedRegions, dissolveVerts } from './dissolve';
+import { weldVerts } from './merge';
 import { trisToQuads } from './subdivide';
 
 export type BooleanOp = 'union' | 'difference' | 'intersect';
@@ -75,6 +76,19 @@ const AREA_EPSILON = 1e-6;
  * triangles it was cut as; see `meshToPolys`.
  */
 const WARP_LIMIT = 0.05;
+
+/**
+ * How close two corners of a broken cutter may sit, and how thin one of its
+ * faces may be, as a fraction of the cutter's size, before they are taken for
+ * one corner and for no face at all. See `flattenCutter`.
+ */
+const COLLAPSE_LIMIT = 2e-3;
+
+/**
+ * How far a face of a cutter may lean from the first face of its flat run and
+ * still line the hole as one face with it. See `flattenCutter`.
+ */
+const FLAT_WALL_DEGREES = 1;
 
 /**
  * How the work of one boolean divides up, measured on a cut dense enough to be
@@ -745,6 +759,149 @@ function dropCaps(mesh: BMesh, sourceOf: Map<number, number>, caps: ReadonlySet<
   const loose = [...bared].filter((edge) => edge.loops.length === 0);
   for (const edge of loose) mesh.removeEdge(edge);
   mesh.removeLooseEnds(loose);
+}
+
+/** Whether a face passes a corner twice, or has an edge torn open or shared by three faces. */
+function isBroken(mesh: BMesh, face: Face): boolean {
+  const loops = mesh.faceLoops(face);
+  if (new Set(loops.map((loop) => loop.vert.id)).size !== loops.length) return true;
+  return loops.some((loop) => loop.edge.loops.length !== 2);
+}
+
+/** Whether a face is no wider than `limit` across the line between its furthest corners. */
+function isSliver(mesh: BMesh, face: Face, limit: number): boolean {
+  const points = mesh.facePoints(face);
+  let span = 0;
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      span = Math.max(span, distanceSq(points[i], points[j]));
+    }
+  }
+  return span === 0 || (2 * polygonArea(points)) / Math.sqrt(span) <= limit;
+}
+
+/** How far moving the rest of `cluster` onto `kept` lifts the faces they leave off their planes. */
+function bendOf(mesh: BMesh, kept: Vert, cluster: readonly Vert[]): number {
+  let bend = 0;
+  for (const moved of cluster) {
+    if (moved === kept) continue;
+    const shift = sub(kept.co, moved.co);
+    for (const face of mesh.vertFaces(moved)) {
+      if (!mesh.faceVerts(face).includes(kept)) bend += Math.abs(dot(face.normal, shift));
+    }
+  }
+  return bend;
+}
+
+/**
+ * Welds the corners within `limit` of each other round the broken faces of a
+ * mesh, each cluster onto the corner whose move bends the faces round it least.
+ *
+ * A face bent by a hair goes into the cut as triangles in planes a hair apart,
+ * and the two lines they cut across the target leave a sliver between them
+ * that never rejoins it. Welding a rib's corner onto its twin one way left a
+ * scrap of the pillar hanging off the notch; the other way left nothing.
+ */
+function weldBroken(mesh: BMesh, limit: number): void {
+  const broken = new Set<Vert>();
+  for (const face of mesh.faces.values()) {
+    if (isBroken(mesh, face)) for (const vert of mesh.faceVerts(face)) broken.add(vert);
+  }
+  if (broken.size < 2) return;
+
+  const verts = [...broken];
+  const root = new Map(verts.map((vert) => [vert.id, vert.id]));
+  const find = (id: number): number => {
+    let at = id;
+    while (root.get(at) !== at) at = root.get(at) as number;
+    root.set(id, at);
+    return at;
+  };
+
+  const index = grid(verts, 32);
+  for (const vert of verts) {
+    for (const other of index.near(vert.co, vert.co, limit)) {
+      if (other !== vert && distanceSq(other.co, vert.co) <= limit * limit) {
+        root.set(find(other.id), find(vert.id));
+      }
+    }
+  }
+
+  const clusters = new Map<number, Vert[]>();
+  for (const vert of verts) {
+    const cluster = clusters.get(find(vert.id));
+    if (cluster) cluster.push(vert);
+    else clusters.set(find(vert.id), [vert]);
+  }
+
+  const mapping = new Map<number, Vert>();
+  for (const cluster of clusters.values()) {
+    if (cluster.length < 2) continue;
+    const bends = cluster.map((vert) => bendOf(mesh, vert, cluster));
+    const kept = cluster[bends.indexOf(Math.min(...bends))];
+    for (const vert of cluster) if (vert !== kept) mapping.set(vert.id, kept);
+  }
+  weldVerts(mesh, mapping);
+}
+
+/**
+ * The cutter of a difference as the cut takes it: each flat side one face.
+ *
+ * The cutter's faces that end up inside the target are the walls of the hole,
+ * and they came through as the cutter carried them. A rib whose buried side
+ * had been left as a fan of triangles notched a pillar with the fan's
+ * diagonals across the floor, where the other ribs left one face. Nobody sees
+ * a cutter's buried side before the cut, so its tiling is nothing to keep.
+ *
+ * That rib was broken as well, and a broken cutter is mended first: corners a
+ * hair apart round a face that passes a corner twice, or sits on a torn or
+ * overfilled edge, are welded, which closes a crack the notch would otherwise
+ * carry. A face with no width left between two flat ones joins their run, so
+ * the run is one piece to merge. All of it on a copy: the cutter keeps its mesh.
+ */
+function flattenCutter(tool: BMesh): BMesh {
+  const mesh = cloneMesh(tool);
+  const limit =
+    COLLAPSE_LIMIT * extentOf([{ points: [...mesh.verts.values()].map((vert) => vert.co) }]);
+
+  weldBroken(mesh, limit);
+
+  const slivers = new Set<number>();
+  for (const face of mesh.faces.values()) {
+    if (isSliver(mesh, face, limit)) slivers.add(face.id);
+  }
+
+  const flat = Math.cos(degToRad(FLAT_WALL_DEGREES));
+  const claimed = new Set<number>();
+  const runs: Face[][] = [];
+  for (const seed of mesh.faces.values()) {
+    if (claimed.has(seed.id) || slivers.has(seed.id)) continue;
+    claimed.add(seed.id);
+
+    // Measured against the seed rather than from face to face, or a run could
+    // creep round a dense curve a degree at a time.
+    const run = [seed];
+    for (let i = 0; i < run.length; i++) {
+      for (const edge of mesh.faceEdges(run[i])) {
+        for (const next of mesh.edgeFaces(edge)) {
+          if (claimed.has(next.id) || next.materialIndex !== seed.materialIndex) continue;
+          if (!slivers.has(next.id) && dot(next.normal, seed.normal) < flat) continue;
+          claimed.add(next.id);
+          run.push(next);
+        }
+      }
+    }
+    if (run.length > 1) runs.push(run);
+  }
+
+  for (const run of runs) {
+    const edges = run.flatMap((face) => mesh.faceEdges(face));
+    mergeRegionGreedy(mesh, run);
+    mesh.removeLooseEnds(edges);
+  }
+
+  mesh.computeNormals();
+  return mesh;
 }
 
 /**
@@ -1860,6 +2017,8 @@ export function* booleanMeshStaged(
   toTarget: (point: Vec3) => Vec3,
   toolSlot: (face: Face) => number = (face) => face.materialIndex,
 ): Generator<number, BMesh> {
+  const cutter = op === 'difference' ? flattenCutter(tool) : tool;
+
   // One scale for the whole operation, taken from both solids together: a
   // small tool cutting a large target has to be measured against the pair,
   // not against whichever of them happens to be under the tolerance first.
@@ -1867,7 +2026,7 @@ export function* booleanMeshStaged(
   // the same measure the tree sorts it with.
   const scale = extentOf([
     { points: [...target.verts.values()].map((vert) => vert.co) },
-    { points: [...tool.verts.values()].map((vert) => toTarget(vert.co)) },
+    { points: [...cutter.verts.values()].map((vert) => toTarget(vert.co)) },
   ]);
   const epsilon = PLANE_EPSILON * scale;
 
@@ -1878,13 +2037,13 @@ export function* booleanMeshStaged(
   // for a face of the other. Not its face count: a warped face takes an id per
   // triangle.
   const base = a.reduce((last, poly) => Math.max(last, poly.source), 0);
-  const b = meshToPolys(tool, toTarget, toolSlot, base, areaOf, warped, epsilon);
+  const b = meshToPolys(cutter, toTarget, toolSlot, base, areaOf, warped, epsilon);
 
   // Lids take ids past both operands' own.
   const last = b.reduce((most, poly) => Math.max(most, poly.source), base);
   const caps = new Set<number>();
   const left = operand(target, a, (point) => point, last, caps);
-  const right = operand(tool, b, toTarget, last, caps);
+  const right = operand(cutter, b, toTarget, last, caps);
 
   // The CSG carries most of the cost, so its own stages are passed straight
   // through; rebuilding the mesh and resolving it share what is left.

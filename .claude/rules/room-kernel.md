@@ -49,7 +49,11 @@ disabled button, until Shift+M reached it.
   open by SEPARATE once read as a sheet and kept the tool's buried walls; its
   rims are now closed for the cut by `capRims` and the lids taken away after
   by `dropCaps`. A face only a few degrees off flat (`WARP_LIMIT`) is one
-  source, not one per triangle, or the cut keeps its diagonal.
+  source, not one per triangle, or the cut keeps its diagonal. A difference
+  cuts with a copy of the tool from `flattenCutter`: each flat run one face,
+  or a tiled buried side lines the hole with its diagonals. Its weld keeps the
+  corner that bends the faces round it least (`weldBroken`): kept the other
+  way, a wall bent by a hair split the target twice and left a scrap.
 - `ops/subdivide.ts`: `cuts` once compounded to 2 to the N; a neighbour left
   carrying a row of vertices refused the next cut.
 - `ops/dissolve.ts`: the 40 degree fold limit lives at the operator boundary
