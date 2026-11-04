@@ -66,17 +66,8 @@ An assistant is quick at a first draft, and the editor is quick at the details,
 so the smoothest way to work is to use both:
 
 1. **Start with a request.** Describe the model to the assistant, such as: "Using 3DOO bring me a stylized interior scene with low poly game-ready assets: table, chairs, bottles and some viking decoration. I want to be able to see the scene online". Then let it build a first version through the MCP server.
-2. **Refine it in the browser.** Ask the assistant to open it in 3DOO. It saves
-   a page whose OPEN IN 3DOO button opens the model in the editor, with every
-   object and modifier still editable. Shape the rest by hand from there.
-3. **Bring the assistant back for a specific part.** The assistant works in a
-   copy of 3DOO of its own and might not control your browser's tab, so give it
-   the project itself. Save a copy as a `.3doo` file (FILE > SAVE AS, or
-   Ctrl+Shift+S) and ask it to edit that file directly. 
-4. **Or let the assistant edit .3doo files directly.** If you would rather do most of the
-   work through the assistant, keep the `.3doo` file in a working folder, tell
-   the assistant its path, and ask it to save each change back to that file.
-   Reopen it in the editor (FILE > OPEN) to see the result. 
+2. **Bring the assistant back for a specific part.** The assistant works in a copy of 3DOO of its own and might not control your browser's tab, so give it the project itself. Save a copy as a `.3doo` file (FILE > SAVE AS, or Ctrl+Shift+S) and ask it to edit that file directly. 
+3. **Or let the assistant edit .3doo files directly.** If you would rather do most of the work through the assistant, keep the `.3doo` file in a working folder, tell the assistant its path, and ask it to save each change back to that file. 
 
    Extra tips:
 
