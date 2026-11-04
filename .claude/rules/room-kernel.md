@@ -45,7 +45,14 @@ disabled button, until Shift+M reached it.
 - `ops/boolean.ts`, the most fixed op: re-tiling faces the cut never touched,
   faces round a hole shredded into strips, a mirrored cutter arriving inside
   out, quadratic cost, a grey slot per cut, coplanar sheets lost. Its tests
-  measure faces and area, and a cost ratio rather than a time. A part left
+  measure faces and area, and a cost ratio rather than a time. A face within
+  `TOUCH_REACH` of nothing skips the BSP's verdict: `settleUntouched` throws its
+  pieces away and asks the winding number once per patch, because the merge left
+  n-gons far from the cut and the BSP read parts of far faces as inside, mostly
+  in a difference. `slideStrays` takes the cut's points back off those faces; a
+  modelled corner is never moved (`corners`), and one extra corner stays beside a
+  touched face when sliding would fold the surface. Only `APART_PAIR` in its tests
+  shows the BSP misreading: no primitive pair does. A part left
   open by SEPARATE once read as a sheet and kept the tool's buried walls; its
   rims are now closed for the cut by `capRims` and the lids taken away after
   by `dropCaps`. A face only a few degrees off flat (`WARP_LIMIT`) is one

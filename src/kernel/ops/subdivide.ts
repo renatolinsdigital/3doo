@@ -1197,8 +1197,18 @@ export function triangulateFaces(mesh: BMesh, faces: readonly Face[]): Face[] {
   return created;
 }
 
-/** Merges adjacent, near-coplanar triangle pairs back into quads. */
-export function trisToQuads(mesh: BMesh, faces: readonly Face[], angleLimit = 40): Face[] {
+/**
+ * Merges adjacent, near-coplanar triangle pairs back into quads.
+ *
+ * A pair needs only one of its two in `faces`. A face `leave` answers true for
+ * is not taken as the other one.
+ */
+export function trisToQuads(
+  mesh: BMesh,
+  faces: readonly Face[],
+  angleLimit = 40,
+  leave?: (face: Face) => boolean,
+): Face[] {
   const limit = Math.cos(degToRad(angleLimit));
   const candidates = faces.filter(
     (face) => mesh.faces.has(face.id) && mesh.faceLoops(face).length === 3,
@@ -1213,7 +1223,7 @@ export function trisToQuads(mesh: BMesh, faces: readonly Face[], angleLimit = 40
       // A third face on the edge would be left hanging off the inside of the quad.
       if (loop.edge.loops.length !== 2) continue;
       const partner = mesh.edgeFaces(loop.edge).find((other) => other !== face);
-      if (!partner || consumed.has(partner.id)) continue;
+      if (!partner || consumed.has(partner.id) || leave?.(partner)) continue;
       if (mesh.faceLoops(partner).length !== 3) continue;
       if (dot(face.normal, partner.normal) < limit) continue;
 

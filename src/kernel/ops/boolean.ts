@@ -21,6 +21,7 @@ import type { Edge, Face, Loop, Vert } from '../mesh/types';
 
 import { connectedRegions, dissolveVerts } from './dissolve';
 import { weldVerts } from './merge';
+import { dedupeRing } from './region';
 import { trisToQuads } from './subdivide';
 
 export type BooleanOp = 'union' | 'difference' | 'intersect';
@@ -66,6 +67,16 @@ const QUAD_PAIR_LIMIT_DEGREES = 1;
  * enough that any real cut is seen.
  */
 const AREA_EPSILON = 1e-6;
+
+/**
+ * How near the other operand a face may come and still count as clear of it, in
+ * plane tolerances. Past that the tree cannot take the two for one surface, so
+ * nothing but a plane running on past what it bounds can cut the face.
+ */
+const TOUCH_REACH = 2;
+
+/** How many polygons a leaf of a `BoxTree` holds; each is tested by hand. */
+const BOX_LEAF_SIZE = 8;
 
 /**
  * How far a face may stand off its own plane, as a fraction of its width, and
@@ -143,6 +154,25 @@ interface Poly {
    * `mergeSourceFragments`.
    */
   source: number;
+}
+
+/** An input face as it was modelled, and the sources its pieces will carry. */
+interface InputFace {
+  /** Wound the way its polygons are, which is not always the way the mesh has it. */
+  points: Vec3[];
+  materialIndex: number;
+  sources: number[];
+  /** The ids of its vertices, which tie it to the faces beside it. */
+  verts: number[];
+  /** A point on the face itself, where a concave ring's middle may not be. */
+  inner: Vec3;
+}
+
+/** One side of a cut: its polygons, its faces as modelled, whether it has an inside. */
+interface Operand {
+  polys: Poly[];
+  faces: InputFace[];
+  solid: boolean;
 }
 
 const COPLANAR = 0;
@@ -431,7 +461,12 @@ function outside(poly: Poly, over: Poly, epsilon: number): Poly[] {
   return rest.length === 0 ? [poly] : kept;
 }
 
-function boxOf(poly: Poly): { min: Vec3; max: Vec3 } {
+interface Box {
+  min: Vec3;
+  max: Vec3;
+}
+
+function boxOf(poly: Poly): Box {
   const xs = poly.points.map((point) => point.x);
   const ys = poly.points.map((point) => point.y);
   const zs = poly.points.map((point) => point.z);
@@ -439,6 +474,18 @@ function boxOf(poly: Poly): { min: Vec3; max: Vec3 } {
     min: { x: Math.min(...xs), y: Math.min(...ys), z: Math.min(...zs) },
     max: { x: Math.max(...xs), y: Math.max(...ys), z: Math.max(...zs) },
   };
+}
+
+/** Whether two boxes stand more than `reach` apart along some axis. */
+function boxesApart(a: Box, b: Box, reach: number): boolean {
+  return (
+    a.max.x < b.min.x - reach ||
+    a.max.y < b.min.y - reach ||
+    a.max.z < b.min.z - reach ||
+    b.max.x < a.min.x - reach ||
+    b.max.y < a.min.y - reach ||
+    b.max.z < a.min.z - reach
+  );
 }
 
 /**
@@ -453,25 +500,274 @@ function boxOf(poly: Poly): { min: Vec3; max: Vec3 } {
  */
 function uncovered(polys: readonly Poly[], cover: readonly Poly[], epsilon: number): Poly[] {
   const boxes = cover.map(boxOf);
-  const apart = (a: { min: Vec3; max: Vec3 }, b: { min: Vec3; max: Vec3 }) =>
-    a.max.x < b.min.x - epsilon ||
-    a.max.y < b.min.y - epsilon ||
-    a.max.z < b.min.z - epsilon ||
-    b.max.x < a.min.x - epsilon ||
-    b.max.y < a.min.y - epsilon ||
-    b.max.z < a.min.z - epsilon;
 
   return polys.flatMap((poly) => {
     const box = boxOf(poly);
     let pieces = [poly];
     cover.forEach((over, i) => {
-      if (apart(box, boxes[i])) return;
+      if (boxesApart(box, boxes[i], epsilon)) return;
       const { normal, w } = over.plane;
       if (poly.points.some((point) => Math.abs(dot(normal, point) - w) > epsilon)) return;
       pieces = pieces.flatMap((piece) => outside(piece, over, epsilon));
     });
     return pieces;
   });
+}
+
+/**
+ * Whether two polygons come within `reach` of each other.
+ *
+ * Separating axes: any line along which the two project more than `reach` apart
+ * proves they are, so a polygon that is not quite convex can only read as nearer
+ * than it is, and that errs the safe way. Axes in each polygon's own plane are
+ * what tell apart two lying side by side in one plane, which edge crossed with
+ * edge cannot.
+ */
+function polysReach(a: Poly, b: Poly, reach: number): boolean {
+  const apartAlong = (axis: Vec3) => {
+    const size = length(axis);
+    if (size === 0) return false;
+    let [aLow, aHigh, bLow, bHigh] = [Infinity, -Infinity, Infinity, -Infinity];
+    for (const point of a.points) {
+      const at = dot(point, axis) / size;
+      aLow = Math.min(aLow, at);
+      aHigh = Math.max(aHigh, at);
+    }
+    for (const point of b.points) {
+      const at = dot(point, axis) / size;
+      bLow = Math.min(bLow, at);
+      bHigh = Math.max(bHigh, at);
+    }
+    return aHigh < bLow - reach || bHigh < aLow - reach;
+  };
+
+  const edges = (poly: Poly) =>
+    poly.points.map((point, i) => sub(poly.points[(i + 1) % poly.points.length], point));
+  const aEdges = edges(a);
+  const bEdges = edges(b);
+
+  if (apartAlong(a.plane.normal) || apartAlong(b.plane.normal)) return false;
+  for (const edge of aEdges) if (apartAlong(cross(a.plane.normal, edge))) return false;
+  for (const edge of bEdges) if (apartAlong(cross(b.plane.normal, edge))) return false;
+  for (const aEdge of aEdges) {
+    for (const bEdge of bEdges) if (apartAlong(cross(aEdge, bEdge))) return false;
+  }
+  return true;
+}
+
+/** Boxes within boxes over a set of polygons, for "what could this one reach". */
+interface BoxTree {
+  box: Box;
+  /** Empty except at a leaf. */
+  items: readonly { poly: Poly; box: Box }[];
+  kids: [BoxTree, BoxTree] | null;
+}
+
+function boxTreeOf(items: readonly { poly: Poly; box: Box }[]): BoxTree {
+  const box: Box = {
+    min: { x: Infinity, y: Infinity, z: Infinity },
+    max: { x: -Infinity, y: -Infinity, z: -Infinity },
+  };
+  // A loop rather than `Math.min(...all)`: spread over a dense mesh overflows.
+  for (const { box: each } of items) {
+    box.min = {
+      x: Math.min(box.min.x, each.min.x),
+      y: Math.min(box.min.y, each.min.y),
+      z: Math.min(box.min.z, each.min.z),
+    };
+    box.max = {
+      x: Math.max(box.max.x, each.max.x),
+      y: Math.max(box.max.y, each.max.y),
+      z: Math.max(box.max.z, each.max.z),
+    };
+  }
+  if (items.length <= BOX_LEAF_SIZE) return { box, items, kids: null };
+
+  const spans = { x: box.max.x - box.min.x, y: box.max.y - box.min.y, z: box.max.z - box.min.z };
+  const axis = spans.x >= spans.y && spans.x >= spans.z ? 'x' : spans.y >= spans.z ? 'y' : 'z';
+  const sorted = [...items].sort(
+    (a, b) => a.box.min[axis] + a.box.max[axis] - b.box.min[axis] - b.box.max[axis],
+  );
+  const half = sorted.length >> 1;
+  return {
+    box,
+    items: [],
+    kids: [boxTreeOf(sorted.slice(0, half)), boxTreeOf(sorted.slice(half))],
+  };
+}
+
+function reachesTree(poly: Poly, box: Box, tree: BoxTree, reach: number): boolean {
+  if (boxesApart(box, tree.box, reach)) return false;
+  if (tree.kids) {
+    return (
+      reachesTree(poly, box, tree.kids[0], reach) || reachesTree(poly, box, tree.kids[1], reach)
+    );
+  }
+  return tree.items.some(
+    (item) => !boxesApart(box, item.box, reach) && polysReach(poly, item.poly, reach),
+  );
+}
+
+/**
+ * The sources with a polygon within `reach` of the other operand.
+ *
+ * Measured against what the cut itself will see, so a lid `capRims` laid counts:
+ * that is a surface the other operand gets cut along, even though it goes again
+ * afterwards.
+ */
+function touchingSources(a: readonly Poly[], b: readonly Poly[], reach: number): Set<number> {
+  const touched = new Set<number>();
+  const mark = (polys: readonly Poly[], others: readonly Poly[]) => {
+    if (others.length === 0) return;
+    const tree = boxTreeOf(others.map((poly) => ({ poly, box: boxOf(poly) })));
+    for (const poly of polys) {
+      if (touched.has(poly.source)) continue;
+      if (reachesTree(poly, boxOf(poly), tree, reach)) touched.add(poly.source);
+    }
+  };
+  mark(a, b);
+  mark(b, a);
+  return touched;
+}
+
+/**
+ * How many times a surface winds round a point: its solid angle, in whole spheres.
+ *
+ * About one inside a closed solid and nought outside, and unlike reading a BSP
+ * it does not lose its way over shells overlapping in one object, or over a
+ * small crack, which each cost it only the fraction they leave open.
+ */
+function windingOf(point: Vec3, polys: readonly Poly[]): number {
+  let total = 0;
+  for (const { points } of polys) {
+    const a = sub(points[0], point);
+    const la = length(a);
+    for (let i = 1; i + 1 < points.length; i++) {
+      const b = sub(points[i], point);
+      const c = sub(points[i + 1], point);
+      const [lb, lc] = [length(b), length(c)];
+      total += Math.atan2(
+        dot(a, cross(b, c)),
+        la * lb * lc + dot(a, b) * lc + dot(b, c) * la + dot(c, a) * lb,
+      );
+    }
+  }
+  return total / (2 * Math.PI);
+}
+
+/**
+ * The faces touching nothing, in patches joined by the vertices they share.
+ *
+ * A patch cannot cross the other operand's surface without some face in it
+ * touching that surface, so all of it lies on one side, whatever its size.
+ */
+function untouchedPatches(
+  faces: readonly InputFace[],
+  touched: ReadonlySet<number>,
+): InputFace[][] {
+  const free = faces.filter(
+    (face) => face.sources.length > 0 && !face.sources.some((source) => touched.has(source)),
+  );
+
+  const root = new Map<number, number>();
+  const find = (id: number): number => {
+    let at = id;
+    while (root.get(at) !== at) at = root.get(at) as number;
+    root.set(id, at);
+    return at;
+  };
+  for (const face of free) {
+    for (const vert of face.verts) {
+      if (!root.has(vert)) root.set(vert, vert);
+      root.set(find(vert), find(face.verts[0]));
+    }
+  }
+
+  const patches = new Map<number, InputFace[]>();
+  for (const face of free) {
+    const id = find(face.verts[0]);
+    const patch = patches.get(id);
+    if (patch) patch.push(face);
+    else patches.set(id, [face]);
+  }
+  return [...patches.values()];
+}
+
+/**
+ * What a cut does with a face lying wholly on one side of the other operand.
+ * `claimed` says the face lies inside it, which takes a solid: a surface has no
+ * inside to put anything in.
+ */
+function keepsUntouched(
+  op: BooleanOp,
+  isTool: boolean,
+  claimed: boolean,
+  ownSolid: boolean,
+): boolean {
+  if (op === 'intersect') return claimed;
+  // The tool's surface only ever comes back as the wall of the cavity it made.
+  if (op === 'difference' && isTool) return ownSolid && claimed;
+  return !claimed;
+}
+
+/**
+ * Settles every input face that touches nothing, in place of what the BSP did.
+ *
+ * Such a face lies wholly inside the other operand or wholly outside it, so a
+ * cut has one thing to say about it: stay or go. Asking the BSP is no good for
+ * either half of that. Whatever it cuts the face into is a plane running on past
+ * what it bounds, and merging those pieces back is not reliable: a quad a hair
+ * off flat goes in as two triangles in two planes, and pieces that would not fit
+ * back together stayed, as n-gons a long way from anything the boolean touched.
+ * And its answer is not reliable either: on a real model it can read part of a
+ * face that touches nothing as inside, which left holes there. So its pieces are
+ * thrown away, the winding number settles it once for each patch, and the face
+ * goes back as it was modelled.
+ *
+ * Comes first in the list because the weld keeps the first position it sees of
+ * a point, and these are the ones the user modelled.
+ */
+function settleUntouched(
+  op: BooleanOp,
+  output: readonly Poly[],
+  target: Operand,
+  tool: Operand,
+  touched: ReadonlySet<number>,
+  areaOf: Map<number, number>,
+): { polys: Poly[]; untouched: Set<number> } {
+  const settled = new Set<number>();
+  const whole: Poly[] = [];
+  const untouched = new Set<number>();
+
+  for (const [own, other, isTool] of [
+    [target, tool, false],
+    [tool, target, true],
+  ] as const) {
+    for (const patch of untouchedPatches(own.faces, touched)) {
+      const claimed = other.solid && Math.abs(windingOf(patch[0].inner, other.polys)) > 0.5;
+      const keeps = keepsUntouched(op, isTool, claimed, own.solid);
+
+      for (const face of patch) {
+        for (const source of face.sources) settled.add(source);
+        if (!keeps) continue;
+
+        // A cavity's walls are the tool's faces turned inside out.
+        const points = op === 'difference' && isTool ? [...face.points].reverse() : face.points;
+        const source = face.sources[0];
+        // One source now, however many triangles it went in as.
+        areaOf.set(source, polygonArea(points));
+        untouched.add(source);
+        whole.push({
+          points,
+          plane: planeFrom(points),
+          materialIndex: face.materialIndex,
+          source,
+        });
+      }
+    }
+  }
+
+  return { polys: [...whole, ...output.filter((poly) => !settled.has(poly.source))], untouched };
 }
 
 function allPolys(root: Node): Poly[] {
@@ -728,18 +1024,26 @@ function capRims(
 function operand(
   mesh: BMesh,
   polys: Poly[],
+  faces: InputFace[],
   toTarget: (point: Vec3) => Vec3,
   base: number,
   caps: Set<number>,
-): { polys: Poly[]; solid: boolean } {
+): Operand {
   const lean = leanOf(mesh);
-  if (lean <= OPENING_LIMIT) return { polys, solid: true };
-  if (lean > RIM_LIMIT) return { polys, solid: false };
+  if (lean <= OPENING_LIMIT) return { polys, faces, solid: true };
+  if (lean > RIM_LIMIT) return { polys, faces, solid: false };
 
   const lids = capRims(mesh, toTarget, base, caps);
-  if (!lids) return { polys, solid: false };
+  if (!lids) return { polys, faces, solid: false };
   const closed = [...polys, ...lids];
-  return { polys: sixVolume(closed) < 0 ? closed.map(flipPoly) : closed, solid: true };
+  if (sixVolume(closed) >= 0) return { polys: closed, faces, solid: true };
+  flipFaces(faces);
+  return { polys: closed.map(flipPoly), faces, solid: true };
+}
+
+/** Rewinds faces to match polygons that `flipPoly` turned over. */
+function flipFaces(faces: InputFace[]): void {
+  for (const face of faces) face.points = [...face.points].reverse();
 }
 
 /**
@@ -928,8 +1232,8 @@ function meshToPolys(
   base = 0,
   /** Filled with the area each input face came in with; see `untouchedSources`. */
   areaOf?: Map<number, number>,
-  /** Filled with the triangle sources of each face that is not flat; see `restoreWarped`. */
-  warped?: number[][],
+  /** Filled with each face as it came in; see `settleUntouched`. */
+  inputs?: InputFace[],
   epsilon = PLANE_EPSILON,
 ): Poly[] {
   const polys: Poly[] = [];
@@ -941,6 +1245,7 @@ function meshToPolys(
 
     const normal = polygonNormal(points);
     const slot = slotFor(face);
+    const verts = mesh.faceVerts(face).map((vert) => vert.id);
 
     // A face the boolean never touches should come out the far side as the
     // same face. Triangulating everything on the way in is what left a plain
@@ -951,6 +1256,13 @@ function meshToPolys(
         source += 1;
         areaOf?.set(source, polygonArea(points));
         polys.push({ points, plane, materialIndex: slot, source });
+        inputs?.push({
+          points,
+          materialIndex: slot,
+          sources: [source],
+          verts,
+          inner: centroid(points),
+        });
         continue;
       }
     }
@@ -963,13 +1275,15 @@ function meshToPolys(
     // one face to the user, and cut as triangles of their own, it kept the
     // diagonal between them wherever the tool landed on it.
     const flat = isFlat(points, normal, Math.max(epsilon, WARP_LIMIT * extentOf([{ points }])));
+    const parts: number[] = [];
     if (flat) {
       source += 1;
       areaOf?.set(source, polygonArea(points));
+      parts.push(source);
     }
 
-    const parts: number[] = [];
     const indices = triangulatePolygon(points, normal);
+    let inner: Vec3 | null = null;
     for (let i = 0; i < indices.length; i += 3) {
       const tri = [points[indices[i]], points[indices[i + 1]], points[indices[i + 2]]];
       const plane = planeFrom(tri);
@@ -981,16 +1295,19 @@ function meshToPolys(
         areaOf?.set(source, polygonArea(tri));
         parts.push(source);
       }
+      inner ??= centroid(tri);
       polys.push({ points: tri, plane, materialIndex: slot, source });
     }
-    if (parts.length > 1) warped?.push(parts);
+    // With no triangle to its name it never reached the cut, so it has no say.
+    if (inner) inputs?.push({ points, materialIndex: slot, sources: parts, verts, inner });
   }
 
   // Only for a closed mesh: an open shell encloses nothing, so the sign of its
   // volume is an accident of where it sits relative to the origin and reversing
   // it on that evidence would be worse than leaving it alone.
-  if (!isClosed(mesh)) return polys;
-  return sixVolume(polys) < 0 ? polys.map(flipPoly) : polys;
+  if (!isClosed(mesh) || sixVolume(polys) >= 0) return polys;
+  if (inputs) flipFaces(inputs);
+  return polys.map(flipPoly);
 }
 
 /** A uniform grid over a point set, for "what is near this box" lookups. */
@@ -1066,13 +1383,22 @@ function grid(verts: readonly Vert[], resolution: number) {
  * Geometrically the surface is already sealed; topologically that edge has a
  * single face on it, which reads as a crack to everything downstream. Adding
  * the point to the ring that is missing it makes the two share an edge again.
+ *
+ * A face in `untouched` takes such a point only from what the cut made. A
+ * modelled corner sitting on its edge is a crack the user's mesh already had,
+ * and closing it would hand a quad back with five corners. What is left on such
+ * a face is therefore always the cut's own, and free to move; see `slideStrays`.
+ * The vertices standing where `inputs` had a corner come back as `corners`.
  */
 function polysToMesh(
   polys: readonly Poly[],
   tolerance = WELD_EPSILON * extentOf(polys),
-): { mesh: BMesh; sourceOf: Map<number, number> } {
+  untouched: ReadonlySet<number> = new Set(),
+  inputs: readonly InputFace[] = [],
+): { mesh: BMesh; sourceOf: Map<number, number>; corners: Set<Vert> } {
   const mesh = new BMesh();
   const sourceOf = new Map<number, number>();
+  const corners = new Set<Vert>();
   const cell = Math.max(tolerance, Number.EPSILON) * 2;
   const buckets = new Map<string, Vert[]>();
   const limitSq = tolerance * tolerance;
@@ -1081,7 +1407,7 @@ function polysToMesh(
 
   // Neighbouring cells are searched too: quantising alone drops the weld
   // whenever two points a hair apart fall either side of a cell boundary.
-  const weld = (point: Vec3): Vert => {
+  const welded = (point: Vec3): Vert | null => {
     const cx = Math.floor(point.x / cell);
     const cy = Math.floor(point.y / cell);
     const cz = Math.floor(point.z / cell);
@@ -1096,6 +1422,12 @@ function polysToMesh(
         }
       }
     }
+    return null;
+  };
+
+  const weld = (point: Vec3): Vert => {
+    const found = welded(point);
+    if (found) return found;
 
     const vert = mesh.addVert(point);
     const id = bucketKey(point);
@@ -1114,11 +1446,19 @@ function polysToMesh(
     rings.push({ verts: ring, materialIndex: poly.materialIndex, source: poly.source });
   }
 
+  for (const input of inputs) {
+    for (const point of input.points) {
+      const vert = welded(point);
+      if (vert) corners.add(vert);
+    }
+  }
+
   const all = [...mesh.verts.values()];
   const index = grid(all, 32);
 
   for (const ring of rings) {
     const expanded: Vert[] = [];
+    const asModelled = untouched.has(ring.source);
 
     for (let i = 0; i < ring.verts.length; i++) {
       const a = ring.verts[i];
@@ -1136,6 +1476,7 @@ function polysToMesh(
 
       for (const candidate of index.near(a.co, b.co, tolerance)) {
         if (candidate === a || candidate === b) continue;
+        if (asModelled && corners.has(candidate)) continue;
         const t = dot(sub(candidate.co, a.co), along) / spanSq;
         if (t <= margin || t >= 1 - margin) continue;
         if (distanceSq(candidate.co, lerp(a.co, b.co, t)) > limitSq) continue;
@@ -1154,7 +1495,7 @@ function polysToMesh(
   }
 
   mesh.computeNormals();
-  return { mesh, sourceOf };
+  return { mesh, sourceOf, corners };
 }
 
 /**
@@ -1887,43 +2228,122 @@ function untouchedSources(
   return whole;
 }
 
-/**
- * Puts back together each face that is not flat and that the cut never reached.
- *
- * Such a face went in as triangles, each a source of its own, so the merge pass
- * leaves it as triangles. That is right for one the cut went through and wrong
- * for one it missed: the user modelled a quad, and a boolean on the far side
- * of the mesh has no business handing it back as two triangles.
- *
- * Judged after the merge pass rather than on the raw output, because the BSP
- * also splits along planes that bound nothing, and a triangle carved up that
- * way and put back together is as untouched as one that was never split.
- */
-function restoreWarped(
-  mesh: BMesh,
-  sourceOf: Map<number, number>,
-  areaOf: Map<number, number>,
-  warped: readonly (readonly number[])[],
-): void {
-  const intact = untouchedSources(mesh, sourceOf, areaOf);
-  const faceOf = new Map<number, Face>();
-  for (const face of mesh.faces.values()) {
-    const source = sourceOf.get(face.id);
-    if (source !== undefined && intact.has(source)) faceOf.set(source, face);
+/** Whether a ring runs over itself once flattened onto its own plane. */
+function ringCrosses(points: readonly Vec3[]): boolean {
+  const { u, v } = basisFromNormal(normalize(polygonNormal(points)));
+  const flat = points.map((point) => ({ x: dot(point, u), y: dot(point, v) }));
+  const count = flat.length;
+  for (let i = 0; i < count; i++) {
+    for (let j = i + 1; j < count; j++) {
+      if (segmentsCross(flat[i], flat[(i + 1) % count], flat[j], flat[(j + 1) % count])) {
+        return true;
+      }
+    }
   }
+  return false;
+}
 
-  let restored = 0;
-  for (const parts of warped) {
-    const faces = parts.map((part) => faceOf.get(part));
-    if (faces.some((face) => face === undefined)) continue;
-    for (const face of mergeRegionGreedy(mesh, faces as Face[])) {
-      sourceOf.set(face.id, parts[0]);
-      restored += 1;
+/**
+ * A ring cut apart at each vertex it passes twice, one simple ring to a piece.
+ * Anything too short to enclose ground is dropped.
+ */
+function lobesOf(ring: readonly Vert[]): Vert[][] {
+  const lobes: Vert[][] = [];
+  let open: Vert[] = [];
+  for (const vert of ring) {
+    const at = open.indexOf(vert);
+    if (at >= 0) {
+      lobes.push(open.slice(at));
+      open = open.slice(0, at);
+    }
+    open.push(vert);
+  }
+  lobes.push(open);
+  return lobes.filter((lobe) => lobe.length >= 3);
+}
+
+/**
+ * Moves a cut point along a straight edge into `onto`, if the surface stays put.
+ *
+ * The point is one the cut made, so the faces round it are pieces of one input
+ * face and running it along the edge moves only the line between them. That is
+ * safe only if each ring still runs the way it did and not over itself, or the
+ * pieces end up overlapping. A piece that now passes `onto` twice comes apart
+ * there into two; a triangle lying on the edge closes up and goes.
+ */
+function slideInto(mesh: BMesh, vert: Vert, onto: Vert, sourceOf: Map<number, number>): boolean {
+  const rebuilt = mesh.vertFaces(vert).map((face) => ({
+    face,
+    lobes: lobesOf(dedupeRing(mesh.faceVerts(face).map((each) => (each === vert ? onto : each)))),
+  }));
+
+  for (const { face, lobes } of rebuilt) {
+    const was = polygonNormal(mesh.facePoints(face));
+    for (const lobe of lobes) {
+      const now = lobe.map((each) => each.co);
+      if (!(dot(was, polygonNormal(now)) > 0) || ringCrosses(now)) return false;
     }
   }
 
-  // A point the split left on a diagonal that is now gone.
-  if (restored > 0) mesh.removeLooseVerts();
+  const touching = vert.edges.map((edge) => mesh.edgeOther(edge, vert));
+  for (const { face } of rebuilt) mesh.removeFace(face);
+  mesh.removeVert(vert);
+  for (const { face, lobes } of rebuilt) {
+    const { materialIndex, smooth } = face;
+    const source = sourceOf.get(face.id);
+    for (const lobe of lobes) {
+      const made = mesh.addFace(lobe, { materialIndex, smooth });
+      if (source !== undefined) sourceOf.set(made.id, source);
+    }
+  }
+  // Only a triangle that closed up can leave an edge with nothing on it.
+  for (const other of touching) {
+    const edge = mesh.findEdge(onto, other);
+    if (edge && edge.loops.length === 0) mesh.removeEdge(edge);
+  }
+  return true;
+}
+
+/**
+ * Takes the cut's stray points back off the faces that touched nothing.
+ *
+ * Where the cut leaves a face in two pieces, the line between them can end
+ * part-way along the edge it shares with an untouched face, which has to carry
+ * that point to stay sealed: a quad with five corners and nothing touching it.
+ * The edge is straight, so the point can run along it into a corner, and only
+ * the end of the line moves. A modelled corner never gets this far: see
+ * `polysToMesh`.
+ */
+function slideStrays(
+  mesh: BMesh,
+  sourceOf: Map<number, number>,
+  untouched: ReadonlySet<number>,
+  corners: ReadonlySet<Vert>,
+): void {
+  const isUntouched = (face: Face) => {
+    const source = sourceOf.get(face.id);
+    return source !== undefined && untouched.has(source);
+  };
+
+  let slid = false;
+  for (const vert of [...mesh.verts.values()]) {
+    if (corners.has(vert) || !mesh.verts.has(vert.id)) continue;
+    const own = mesh.vertFaces(vert).find(isUntouched);
+    if (!own) continue;
+
+    const ring = mesh.faceVerts(own);
+    const at = ring.indexOf(vert);
+    const ends = [ring[(at + ring.length - 1) % ring.length], ring[(at + 1) % ring.length]].sort(
+      (a, b) => distanceSq(a.co, vert.co) - distanceSq(b.co, vert.co),
+    );
+    for (const end of ends) {
+      if (slideInto(mesh, vert, end, sourceOf)) {
+        slid = true;
+        break;
+      }
+    }
+  }
+  if (slid) mesh.computeNormals();
 }
 
 /**
@@ -1934,7 +2354,8 @@ function restoreWarped(
  * the finished shape has no reason to show. Putting each input face back
  * together out of its own fragments undoes exactly that and nothing else; the
  * vertices left stranded mid-edge by it are then no longer holding anything,
- * and go too.
+ * and go too. A modelled corner stays even when it bends nothing: it is the
+ * user's, not the split's.
  *
  * Every operation is treated alike. What a boolean owes the user is the shape,
  * plus as much of the two surfaces they modelled as the shape allows, and that
@@ -1945,7 +2366,8 @@ function resolve(
   epsilon: number,
   sourceOf: Map<number, number>,
   areaOf: Map<number, number>,
-  warped: readonly (readonly number[])[],
+  untouched: ReadonlySet<number>,
+  corners: ReadonlySet<Vert>,
 ): void {
   const whole = untouchedSources(mesh, sourceOf, areaOf);
 
@@ -1956,28 +2378,32 @@ function resolve(
   for (let pass = 0; pass < RESOLVE_PASSES; pass++) {
     const merged = mergeSourceFragments(mesh, sourceOf);
 
-    const stranded = [...mesh.verts.values()].filter((vert) => isRedundant(mesh, vert, epsilon));
+    const stranded = [...mesh.verts.values()].filter(
+      (vert) => !corners.has(vert) && isRedundant(mesh, vert, epsilon),
+    );
     if (stranded.length > 0) dissolveStranded(mesh, stranded, sourceOf);
 
     if (merged === 0 && stranded.length === 0) break;
   }
 
-  // After the merge pass, so nothing dissolves a vertex of the face restored.
-  restoreWarped(mesh, sourceOf, areaOf, warped);
+  // After the merge, so only what the merge could not take away is left to move.
+  slideStrays(mesh, sourceOf, untouched, corners);
 
   // What the cut actually broke. A face that came through whole is left out of
-  // the pass below entirely: it is the face the user modelled, down to its
-  // winding, and the boolean has no business touching it.
-  const reshaped = [...mesh.faces.values()].filter((face) => {
+  // the pass below entirely, as the one it might pair with as well as the one
+  // doing the pairing: it is the face the user modelled, down to its winding,
+  // and the boolean has no business touching it.
+  const leftAlone = (face: Face) => {
     const source = sourceOf.get(face.id);
-    return source === undefined || !whole.has(source);
-  });
+    return source !== undefined && whole.has(source);
+  };
+  const reshaped = [...mesh.faces.values()].filter((face) => !leftAlone(face));
   // Only the seam is left to tidy, and only ever by merging: pairing two
   // coplanar triangles into a quad removes a face, it never adds one. Nothing
   // splits a ring any more: a face this boolean put back together is the face
   // the user modelled, and cutting it up again to chase quads is what turned
   // one face of a cube into three hundred.
-  trisToQuads(mesh, reshaped, QUAD_PAIR_LIMIT_DEGREES);
+  trisToQuads(mesh, reshaped, QUAD_PAIR_LIMIT_DEGREES, leftAlone);
 }
 
 /**
@@ -2031,19 +2457,21 @@ export function* booleanMeshStaged(
   const epsilon = PLANE_EPSILON * scale;
 
   const areaOf = new Map<number, number>();
-  const warped: number[][] = [];
-  const a = meshToPolys(target, (point) => point, undefined, 0, areaOf, warped, epsilon);
+  const targetFaces: InputFace[] = [];
+  const toolFaces: InputFace[] = [];
+  const a = meshToPolys(target, (point) => point, undefined, 0, areaOf, targetFaces, epsilon);
   // Past every id the target used, so a face of one operand is never mistaken
   // for a face of the other. Not its face count: a warped face takes an id per
   // triangle.
   const base = a.reduce((last, poly) => Math.max(last, poly.source), 0);
-  const b = meshToPolys(cutter, toTarget, toolSlot, base, areaOf, warped, epsilon);
+  const b = meshToPolys(cutter, toTarget, toolSlot, base, areaOf, toolFaces, epsilon);
 
   // Lids take ids past both operands' own.
   const last = b.reduce((most, poly) => Math.max(most, poly.source), base);
   const caps = new Set<number>();
-  const left = operand(target, a, (point) => point, last, caps);
-  const right = operand(cutter, b, toTarget, last, caps);
+  const left = operand(target, a, targetFaces, (point) => point, last, caps);
+  const right = operand(cutter, b, toolFaces, toTarget, last, caps);
+  const touched = touchingSources(left.polys, right.polys, TOUCH_REACH * epsilon);
 
   // The CSG carries most of the cost, so its own stages are passed straight
   // through; rebuilding the mesh and resolving it share what is left.
@@ -2057,11 +2485,15 @@ export function* booleanMeshStaged(
     step = steps.next();
   }
 
-  const { mesh, sourceOf } = polysToMesh(step.value, WELD_EPSILON * scale);
+  const { polys, untouched } = settleUntouched(op, step.value, left, right, touched, areaOf);
+  const { mesh, sourceOf, corners } = polysToMesh(polys, WELD_EPSILON * scale, untouched, [
+    ...targetFaces,
+    ...toolFaces,
+  ]);
   dropCaps(mesh, sourceOf, caps);
   yield CSG_SHARE + REBUILD_SHARE;
 
-  resolve(mesh, PLANE_EPSILON, sourceOf, areaOf, warped);
+  resolve(mesh, PLANE_EPSILON, sourceOf, areaOf, untouched, corners);
   mesh.computeNormals();
   return mesh;
 }

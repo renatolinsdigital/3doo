@@ -76,6 +76,17 @@ function faceSizes(mesh: BMesh): Map<number, number> {
   return sizes;
 }
 
+/** A copy of `mesh` with every vertex carried by `move`, faces and all. */
+function mapped(mesh: BMesh, move: (point: Vec3) => Vec3): BMesh {
+  const copy = new BMesh();
+  const verts = new Map<number, Vert>();
+  for (const vert of mesh.verts.values()) verts.set(vert.id, copy.addVert(move(vert.co)));
+  for (const face of mesh.faces.values()) {
+    copy.addFace(mesh.faceVerts(face).map((vert) => verts.get(vert.id) as Vert));
+  }
+  return copy;
+}
+
 function ngonCount(mesh: BMesh): number {
   let ngons = 0;
   for (const [corners, count] of faceSizes(mesh)) {
@@ -730,6 +741,148 @@ describe('mesh booleans', () => {
   });
 });
 
+/**
+ * Two small parts of a real model, inside each other's boxes without touching.
+ *
+ * Nothing but a real model has shown what these do, so they are kept as data:
+ * the BSP reads scraps of faces that touch nothing as lying inside the other.
+ */
+const APART_PAIR = {
+  diamond: {
+    verts: [
+      -0.01235, 0.33827, -0.0155, -0.01348, 0.33598, -0.0155, -0.01348, 0.33598, 0.0155, -0.01235,
+      0.33827, 0.0155, -0.01198, 0.33563, 0.017, -0.01229, 0.33596, 0.017, -0.01229, 0.33596,
+      -0.017, -0.01198, 0.33563, -0.017, -0.01348, 0.32252, -0.0155, -0.01348, 0.32252, 0.0155,
+      -0.01198, 0.32262, 0.017, -0.01198, 0.32262, -0.017, -0.01148, 0.30652, -0.0155, -0.01148,
+      0.30652, 0.0155, -0.01004, 0.30705, 0.017, -0.01004, 0.30705, -0.017, 0.00352, 0.28402,
+      -0.0155, 0.00352, 0.28402, 0.0155, 0.00458, 0.28512, 0.017, 0.00458, 0.28512, -0.017, 0.00562,
+      0.2827, -0.0155, 0.00562, 0.2827, 0.0155, 0.005, 0.28486, 0.017, 0.005, 0.28486, -0.017,
+      0.00748, 0.28652, -0.0155, 0.00748, 0.28652, 0.0155, 0.00597, 0.28686, 0.017, 0.00597,
+      0.28686, -0.017, 0.00734, 0.30284, -0.0155, 0.00734, 0.30284, 0.0155, 0.00584, 0.30244, 0.017,
+      0.00584, 0.30244, -0.017,
+    ],
+    faces: [
+      [0, 1, 2, 3],
+      [3, 2, 4, 5],
+      [6, 7, 1, 0],
+      [1, 8, 9, 2],
+      [2, 9, 10, 4],
+      [7, 11, 8, 1],
+      [8, 12, 13, 9],
+      [9, 13, 14, 10],
+      [11, 15, 12, 8],
+      [12, 16, 17, 13],
+      [13, 17, 18, 14],
+      [15, 19, 16, 12],
+      [16, 20, 21, 17],
+      [17, 21, 22, 18],
+      [19, 23, 20, 16],
+      [20, 24, 25, 21],
+      [21, 25, 26, 22],
+      [23, 27, 24, 20],
+      [24, 28, 29, 25],
+      [25, 29, 30, 26],
+      [27, 31, 28, 24],
+      [28, 0, 3, 29],
+      [29, 3, 5, 30],
+      [31, 6, 0, 28],
+      [4, 10, 14],
+      [15, 11, 7],
+      [4, 14, 18],
+      [19, 15, 7],
+      [4, 18, 22],
+      [23, 19, 7],
+      [4, 22, 26],
+      [27, 23, 7],
+      [4, 26, 30],
+      [31, 27, 7],
+      [5, 4, 30],
+      [31, 7, 6],
+    ],
+  },
+  hook: {
+    verts: [
+      -0.01985, 0.29927, -0.0145, -0.021, 0.2955, -0.0145, -0.021, 0.2955, 0.0145, -0.01985,
+      0.29927, 0.0145, -0.01947, 0.29537, 0.016, -0.01945, 0.29703, 0.016, -0.01945, 0.29703,
+      -0.016, -0.01947, 0.29537, -0.016, -0.01985, 0.28615, -0.0145, -0.01985, 0.28615, 0.0145,
+      -0.01843, 0.28688, 0.016, -0.01843, 0.28688, -0.016, -0.00187, 0.26963, -0.0145, -0.00187,
+      0.26963, 0.0145, -0.00081, 0.27068, 0.016, -0.00081, 0.27068, -0.016, 0.02217, 0.24267,
+      -0.0145, 0.02217, 0.24267, 0.0145, 0.0231, 0.24388, 0.016, 0.0231, 0.24388, -0.016, 0.02414,
+      0.24169, -0.0145, 0.02414, 0.24169, 0.0145, 0.02428, 0.24329, 0.016, 0.02428, 0.24329, -0.016,
+      0.02735, 0.24265, -0.0145, 0.02735, 0.24265, 0.0145, 0.02643, 0.24394, 0.016, 0.02643,
+      0.24394, -0.016, 0.03363, 0.25146, -0.0145, 0.03363, 0.25146, 0.0145, 0.0318, 0.25042, 0.016,
+      0.0318, 0.25042, -0.016, 0.02414, 0.25069, -0.0145, 0.02414, 0.25069, 0.0145, 0.02378,
+      0.24915, 0.016, 0.02378, 0.24915, -0.016, 0.01765, 0.25465, -0.0145, 0.01765, 0.25465, 0.0145,
+      0.01669, 0.25348, 0.016, 0.01669, 0.25348, -0.016, -0.00185, 0.27565, -0.0145, -0.00185,
+      0.27565, 0.0145, -0.003, 0.27468, 0.016, -0.003, 0.27468, -0.016,
+    ],
+    faces: [
+      [0, 1, 2, 3],
+      [3, 2, 4, 5],
+      [6, 7, 1, 0],
+      [1, 8, 9, 2],
+      [2, 9, 10, 4],
+      [7, 11, 8, 1],
+      [8, 12, 13, 9],
+      [9, 13, 14, 10],
+      [11, 15, 12, 8],
+      [12, 16, 17, 13],
+      [13, 17, 18, 14],
+      [15, 19, 16, 12],
+      [16, 20, 21, 17],
+      [17, 21, 22, 18],
+      [19, 23, 20, 16],
+      [20, 24, 25, 21],
+      [21, 25, 26, 22],
+      [23, 27, 24, 20],
+      [24, 28, 29, 25],
+      [25, 29, 30, 26],
+      [27, 31, 28, 24],
+      [28, 32, 33, 29],
+      [29, 33, 34, 30],
+      [31, 35, 32, 28],
+      [32, 36, 37, 33],
+      [33, 37, 38, 34],
+      [35, 39, 36, 32],
+      [36, 40, 41, 37],
+      [37, 41, 42, 38],
+      [39, 43, 40, 36],
+      [40, 0, 3, 41],
+      [41, 3, 5, 42],
+      [43, 6, 0, 40],
+      [42, 5, 4],
+      [7, 6, 43],
+      [42, 4, 10],
+      [11, 7, 43],
+      [42, 10, 14],
+      [15, 11, 43],
+      [42, 14, 18],
+      [19, 15, 43],
+      [42, 18, 22],
+      [23, 19, 43],
+      [22, 26, 30],
+      [31, 27, 23],
+      [22, 30, 34],
+      [35, 31, 23],
+      [22, 34, 38],
+      [39, 35, 23],
+      [22, 38, 42],
+      [43, 39, 23],
+    ],
+  },
+};
+
+function meshFrom(data: { verts: number[]; faces: number[][] }): BMesh {
+  const mesh = new BMesh();
+  const verts: Vert[] = [];
+  for (let i = 0; i < data.verts.length; i += 3) {
+    verts.push(mesh.addVert(vec3(data.verts[i], data.verts[i + 1], data.verts[i + 2])));
+  }
+  for (const ring of data.faces) mesh.addFace(ring.map((at) => verts[at]));
+  mesh.computeNormals();
+  return mesh;
+}
+
 describe('what a boolean must not touch', () => {
   /** A face as a position-keyed string, so "the very same face" is testable. */
   const shapeOf = (points: readonly Vec3[]) =>
@@ -826,6 +979,527 @@ describe('what a boolean must not touch', () => {
 
     expect(onTop.length).toBeGreaterThan(0);
     expect(onTop.length).toBeLessThan(40);
+  });
+
+  /** A face's ring starting from its lowest corner: same shape, same winding. */
+  const ringOf = (points: readonly Vec3[]) => {
+    const corners = points.map(
+      (point) => `${point.x.toFixed(6)},${point.y.toFixed(6)},${point.z.toFixed(6)}`,
+    );
+    const first = corners.indexOf([...corners].sort()[0]);
+    return [...corners.slice(first), ...corners.slice(0, first)].join('|');
+  };
+
+  /**
+   * A long ridged column of quads a hair off flat, the way a modelled part is.
+   *
+   * The jitter is what matters: every quad is cut as two triangles in planes of
+   * their own, so a plane running past from the far end of the other operand
+   * leaves pieces the merge cannot always fit back together.
+   */
+  function ridgedColumn(seed: number, amount = 0.002): BMesh {
+    const mesh = new BMesh();
+    const segments = 10;
+    const rings = 24;
+    let state = seed;
+    const next = () => {
+      state = (state * 1103515245 + 12345) % 2147483648;
+      return (state / 2147483648 - 0.5) * amount;
+    };
+
+    const grid: Vert[][] = [];
+    for (let r = 0; r <= rings; r++) {
+      const radius = r % 2 ? 0.34 : 0.42;
+      const row: Vert[] = [];
+      for (let s = 0; s < segments; s++) {
+        const angle = (s / segments) * Math.PI * 2;
+        row.push(
+          mesh.addVert(
+            vec3(
+              Math.cos(angle) * radius + next(),
+              (r / rings) * 6 - 3 + next(),
+              Math.sin(angle) * radius + next(),
+            ),
+          ),
+        );
+      }
+      grid.push(row);
+    }
+
+    for (let r = 0; r < rings; r++) {
+      for (let s = 0; s < segments; s++) {
+        const t = (s + 1) % segments;
+        mesh.addFace([grid[r][s], grid[r + 1][s], grid[r + 1][t], grid[r][t]]);
+      }
+    }
+    mesh.addFace([...grid[0]]);
+    mesh.addFace([...grid[rings]].reverse());
+    mesh.computeNormals();
+    return mesh;
+  }
+
+  /** A box turned off every axis, its planes running on down the whole column. */
+  const turnedBoxAt = (y: number) => (point: Vec3) => {
+    const [c, s, c2, s2] = [Math.cos(0.7), Math.sin(0.7), Math.cos(0.4), Math.sin(0.4)];
+    const x = point.x * c - point.y * s;
+    return vec3(x * c2 + point.z * s2, point.x * s + point.y * c + y, -x * s2 + point.z * c2);
+  };
+
+  /** Whether a point stands clear of the box round everything `move` puts down. */
+  const clearOf = (tool: BMesh, move: (point: Vec3) => Vec3, margin: number) => {
+    const moved = [...tool.verts.values()].map((vert) => move(vert.co));
+    const reach = (pick: (point: Vec3) => number) => {
+      const values = moved.map(pick);
+      return [Math.min(...values) - margin, Math.max(...values) + margin];
+    };
+    const [[x0, x1], [y0, y1], [z0, z1]] = [
+      reach((point) => point.x),
+      reach((point) => point.y),
+      reach((point) => point.z),
+    ];
+    return (point: Vec3) =>
+      point.x < x0 || point.x > x1 || point.y < y0 || point.y > y1 || point.z < z0 || point.z > z1;
+  };
+
+  /** Every face of `part` standing clear, as a ring in `move`d space. */
+  const clearRings = (part: BMesh, clear: (point: Vec3) => boolean) =>
+    [...part.faces.values()]
+      .map((face) => part.facePoints(face))
+      .filter((points) => points.every(clear))
+      .map(ringOf);
+
+  // A plane of the tool running on past it used to cut these faces, and where
+  // the pieces would not merge back they stayed: quads handed back with five,
+  // six, nine corners a long way from anything the union touched.
+  it.each([1, 21])('hands back a long part as it came in, away from the contact (%i)', (seed) => {
+    const column = ridgedColumn(seed);
+    const tool = createBox(1.2);
+    const move = turnedBoxAt(-3);
+    const clear = clearOf(tool, move, 0.05);
+    const expected = clearRings(column, clear);
+
+    const result = booleanMesh('union', column, tool, move);
+    const rings = new Set(
+      [...result.faces.values()].map((face) => ringOf(result.facePoints(face))),
+    );
+
+    expect(expected.length).toBeGreaterThan(150);
+    expect(expected.filter((ring) => !rings.has(ring))).toEqual([]);
+  });
+
+  it.each([1, 21])('makes no new n-gons away from the contact, from either side (%i)', (seed) => {
+    const column = ridgedColumn(seed);
+    const box = createBox(1.2);
+    const move = turnedBoxAt(-3);
+    const clear = clearOf(box, move, 0.05);
+    // One end cap of the column is clear of the box and was an n-gon already.
+    const farNgons = (mesh: BMesh) =>
+      [...mesh.faces.values()].filter((face) => {
+        const points = mesh.facePoints(face);
+        return points.length > 4 && points.every(clear);
+      }).length;
+
+    expect(farNgons(booleanMesh('union', column, box, move))).toBe(1);
+
+    // The same pair with the operands the other way round: the far faces now
+    // belong to the tool, and they go through the same cut.
+    const back = (point: Vec3) => {
+      const [c, s, c2, s2] = [Math.cos(0.7), Math.sin(0.7), Math.cos(0.4), Math.sin(0.4)];
+      const y = point.y + 3;
+      const x = point.x * c2 - point.z * s2;
+      const z = point.x * s2 + point.z * c2;
+      return vec3(x * c + y * s, -x * s + y * c, z);
+    };
+    expect(farNgons(mapped(booleanMesh('union', box, column, back), move))).toBe(1);
+  });
+
+  // The face the tool bites can stay in two pieces, and the line between them
+  // ended part-way along the edge it shares with the next face over, which
+  // carried the point to stay sealed: a quad with five corners and nothing
+  // touching it. Only the exact pairs below ever showed it, so they are named.
+  it.each([
+    { amount: 0.002, seed: 5, size: 0.05, at: vec3(-0.36, -1.2, -0.1) },
+    { amount: 0.002, seed: 6, size: 0.12, at: vec3(0.38, 0.1, 0.02) },
+    { amount: 0.002, seed: 5, size: 0.3, at: vec3(0.38, 0.1, 0.02) },
+    { amount: 0.01, seed: 8, size: 0.12, at: vec3(0.4, 0.02, 0) },
+    { amount: 0.01, seed: 8, size: 0.3, at: vec3(0.05, 1.5, 0.38) },
+  ])('hands back the face beside the one it cut (seed $seed, size $size)', (trial) => {
+    const column = ridgedColumn(trial.seed, trial.amount);
+    const tool = createBox(trial.size);
+    const move = offsetBy(trial.at);
+    const reach = trial.size / 2 + 1e-3;
+    // Boxes apart along an axis: such a face cannot be touching the tool, even
+    // standing right beside the faces that are.
+    const clearOfTool = (points: readonly Vec3[]) =>
+      (['x', 'y', 'z'] as const).some(
+        (axis) =>
+          points.every((point) => point[axis] < trial.at[axis] - reach) ||
+          points.every((point) => point[axis] > trial.at[axis] + reach),
+      );
+    const expected = [...column.faces.values()]
+      .map((face) => column.facePoints(face))
+      .filter(clearOfTool)
+      .map(ringOf);
+
+    const result = booleanMesh('union', column, tool, move);
+    const rings = new Set(
+      [...result.faces.values()].map((face) => ringOf(result.facePoints(face))),
+    );
+
+    expect(expected.filter((ring) => !rings.has(ring))).toEqual([]);
+
+    // Taking those points back must leave the surface where it was: what the
+    // union and the intersect hold between them is what the two held to begin.
+    // Close rather than exact, because the faces the tool does cut lose a sliver.
+    const moved = mapped(tool, move);
+    const between = volume(result) + volume(booleanMesh('intersect', column, tool, move));
+    expect(between).toBeCloseTo(volume(column) + volume(moved), 3);
+  });
+
+  // Running a stray point along an edge moves the line between two pieces of the
+  // cut face, and a line moved too far folds a piece back over its neighbour, or
+  // runs a ring over itself, or leaves one passing a corner twice. None of that
+  // can be seen from the ring of the clear face, which comes out right regardless.
+  it.each([
+    { amount: 0.01, seed: 8, tool: () => createIcoSphere(0.08, 1), at: vec3(-0.25, 0.9, 0.3) },
+    { amount: 0.002, seed: 6, tool: () => createIcoSphere(0.08, 1), at: vec3(0.4, 0.02, 0) },
+    { amount: 0.01, seed: 25, tool: () => createBox(0.3), at: vec3(0.2, 0.4, -0.33) },
+  ])('leaves the cut face sound when it clears its neighbour (seed $seed)', (trial) => {
+    const column = ridgedColumn(trial.seed, trial.amount);
+    const tool = trial.tool();
+    const move = offsetBy(trial.at);
+    const area = (mesh: BMesh) =>
+      [...mesh.faces.values()].reduce((sum, face) => sum + polygonArea(mesh.facePoints(face)), 0);
+
+    const union = booleanMesh('union', column, tool, move);
+    const intersect = booleanMesh('intersect', column, tool, move);
+
+    expect(union.validate()).toEqual([]);
+    expect(
+      [...union.faces.values()].filter((f) => crossesItself(union.facePoints(f))),
+    ).toHaveLength(0);
+    // Every stretch of either surface is on the outside of one of the two results,
+    // so a piece folded over another shows up as ground counted twice.
+    expect(area(union) + area(intersect)).toBeCloseTo(area(column) + area(tool), 2);
+  });
+
+  // Two that never meet still cut each other along every plane either has, and
+  // the union of a part with something beside it used to come back with quads
+  // of five and six corners and less volume than the two held between them.
+  it.each([1, 21])('hands back both operands whole when they never touch (%i)', (seed) => {
+    const column = ridgedColumn(seed);
+    const tool = createBox(1.2);
+    const move = (point: Vec3) => add(turnedBoxAt(0)(point), vec3(4, 0, 0));
+    const expected = [...column.faces.values()].map((face) => ringOf(column.facePoints(face)));
+    const moved = mapped(tool, move);
+    for (const face of moved.faces.values()) expected.push(ringOf(moved.facePoints(face)));
+
+    const result = booleanMesh('union', column, tool, move);
+    const rings = new Set(
+      [...result.faces.values()].map((face) => ringOf(result.facePoints(face))),
+    );
+
+    expect(expected.filter((ring) => !rings.has(ring))).toEqual([]);
+    expect(result.faces.size).toBe(column.faces.size + tool.faces.size);
+    expect(volume(result)).toBeCloseTo(volume(column) + volume(moved), 9);
+  });
+
+  // The BSP reads scraps of these faces as lying inside the other part, though
+  // neither touches the other. A union used to carve eighteen extra faces out of
+  // them and an intersect returned five faces of nothing at all; on another pair
+  // a difference lost half a face from a part the tool never came near.
+  it('takes no notice of what the cut reads into faces that touch nothing', () => {
+    const diamond = meshFrom(APART_PAIR.diamond);
+    const hook = meshFrom(APART_PAIR.hook);
+    const same = (point: Vec3) => point;
+    const ringsOf = (mesh: BMesh) =>
+      [...mesh.faces.values()].map((f) => ringOf(mesh.facePoints(f)));
+
+    const union = new Set(ringsOf(booleanMesh('union', diamond, hook, same)));
+    expect(union.size).toBe(diamond.faces.size + hook.faces.size);
+    expect([...ringsOf(diamond), ...ringsOf(hook)].filter((ring) => !union.has(ring))).toEqual([]);
+
+    expect(booleanMesh('intersect', diamond, hook, same).faces.size).toBe(0);
+
+    const left = new Set(ringsOf(booleanMesh('difference', diamond, hook, same)));
+    expect(left.size).toBe(diamond.faces.size);
+    expect(ringsOf(diamond).filter((ring) => !left.has(ring))).toEqual([]);
+  });
+
+  // Asked at its middle, a C-shaped face reads as lying inside whatever sits in
+  // its notch, though no part of the face comes near it.
+  it('asks whether a face is inside at a point on the face', () => {
+    const notched = new BMesh();
+    const outline: [number, number][] = [
+      [0, 0],
+      [3, 0],
+      [3, 3],
+      [0, 3],
+      [0, 2.5],
+      [2.5, 2.5],
+      [2.5, 0.5],
+      [0, 0.5],
+    ];
+    const low = outline.map(([x, z]) => notched.addVert(vec3(x, 0, z)));
+    const high = outline.map(([x, z]) => notched.addVert(vec3(x, 1, z)));
+    notched.addFace([...low]);
+    notched.addFace([...high].reverse());
+    outline.forEach((_, i) => {
+      const j = (i + 1) % outline.length;
+      notched.addFace([low[j], low[i], high[i], high[j]]);
+    });
+    notched.computeNormals();
+
+    // Tall enough to stand through the plane of the C, in the middle of its notch.
+    const pillar = (point: Vec3) => vec3(point.x + 1.5, point.y * 3 + 0.5, point.z + 1.5);
+    const result = booleanMesh('union', notched, createBox(1), pillar);
+
+    expect(result.faces.size).toBe(notched.faces.size + 6);
+  });
+
+  // A sheet makes no cavity, so there is nothing for it to line, and it holds
+  // no inside for anything to be kept in. Only a solid can claim a face.
+  it('takes nothing away with a sheet buried in a solid, and keeps it on an intersect', () => {
+    const target = createBox(4);
+    const sheet = createPlane(1);
+    const move = turnedBoxAt(0);
+
+    const left = booleanMesh('difference', target, sheet, move);
+    expect(left.faces.size).toBe(target.faces.size);
+    expect(volume(left)).toBeCloseTo(volume(target), 9);
+
+    expect(booleanMesh('intersect', target, sheet, move).faces.size).toBe(sheet.faces.size);
+  });
+
+  // A bowl wraps most of the way round what sits in it, so it winds round that
+  // point far enough to pass for a solid. It is still a surface, and a surface
+  // has no inside to swallow anything with.
+  it('does not let a bowl swallow what sits in it without touching', () => {
+    const sphere = createUVSphere(2, 16, 8);
+    const bowl = new BMesh();
+    const verts = new Map<number, Vert>();
+    for (const vert of sphere.verts.values()) verts.set(vert.id, bowl.addVert(vert.co));
+    for (const face of sphere.faces.values()) {
+      if (sphere.facePoints(face).every((point) => point.y >= -1e-9)) continue;
+      bowl.addFace(sphere.faceVerts(face).map((vert) => verts.get(vert.id) as Vert));
+    }
+    bowl.computeNormals();
+
+    const result = booleanMesh('union', bowl, createBox(0.5), offsetBy(vec3(0, -1.2, 0)));
+
+    expect(result.faces.size).toBe(bowl.faces.size + 6);
+  });
+
+  // An open part wound inward is turned over along with the lids that close it
+  // for the cut, and its faces have to turn with it: handed back as they came,
+  // the far side of the part faced into it while the side that was cut faced out.
+  it('turns an open part wound inward the same way all round, away from the cut', () => {
+    const box = createBox(2);
+    const open = new BMesh();
+    const verts = new Map<number, Vert>();
+    for (const vert of box.verts.values()) verts.set(vert.id, open.addVert(vert.co));
+    for (const face of box.faces.values()) {
+      if (box.facePoints(face).every((point) => point.y === 1)) continue;
+      open.addFace(
+        box
+          .faceVerts(face)
+          .map((vert) => verts.get(vert.id) as Vert)
+          .reverse(),
+      );
+    }
+    open.computeNormals();
+
+    const farWall = [...box.faces.values()]
+      .map((face) => box.facePoints(face))
+      .find((points) => points.every((point) => point.x === -1)) as Vec3[];
+
+    // Bites the wall at x = 1, leaving the one at x = -1 well clear.
+    const result = booleanMesh('union', open, createBox(0.5), offsetBy(vec3(1, -0.5, 0)));
+    const rings = new Set(
+      [...result.faces.values()].map((face) => ringOf(result.facePoints(face))),
+    );
+
+    expect(rings.has(ringOf(farWall))).toBe(true);
+  });
+
+  // Two shells in one object can stand on either side of the other operand's
+  // surface, so one's answer is no answer for the other.
+  it('settles separate shells of one object each on its own', () => {
+    const shells = mapped(createBox(1), (point) => point);
+    const beside = mapped(createBox(1), offsetBy(vec3(5, 0, 0)));
+    const verts = new Map<number, Vert>();
+    for (const vert of beside.verts.values()) verts.set(vert.id, shells.addVert(vert.co));
+    for (const face of beside.faces.values()) {
+      shells.addFace(beside.faceVerts(face).map((vert) => verts.get(vert.id) as Vert));
+    }
+    shells.computeNormals();
+
+    // Swallows the first shell whole and comes nowhere near the second.
+    const result = booleanMesh('union', shells, createBox(3), (point) => point);
+
+    expect(result.faces.size).toBe(12);
+    expect(volume(result)).toBeCloseTo(28, 9);
+  });
+
+  // The walls of a cavity are the tool's faces turned inside out, and they come
+  // back whole from a tool that never reaches the surface: facing out of the
+  // tool they would seal the cavity off as a second solid inside the first.
+  it('hands back a buried tool as the cut needs it, wound as the cut left it', () => {
+    const target = createBox(4);
+    const tool = createBox(1);
+    const move = (point: Vec3) => turnedBoxAt(0)(point);
+    const moved = mapped(tool, move);
+    const toolRings = [...moved.faces.values()].map((face) => moved.facePoints(face));
+
+    const ringsOf = (mesh: BMesh) =>
+      new Set([...mesh.faces.values()].map((face) => ringOf(mesh.facePoints(face))));
+
+    const cavity = booleanMesh('difference', target, tool, move);
+    const walls = ringsOf(cavity);
+    expect(toolRings.every((ring) => walls.has(ringOf([...ring].reverse())))).toBe(true);
+    expect(volume(cavity)).toBeCloseTo(volume(target) - volume(moved), 9);
+
+    const kept = ringsOf(booleanMesh('intersect', target, tool, move));
+    expect(kept.size).toBe(toolRings.length);
+    expect(toolRings.every((ring) => kept.has(ringOf(ring)))).toBe(true);
+
+    const swallowed = booleanMesh('union', target, tool, move);
+    expect(swallowed.faces.size).toBe(target.faces.size);
+    expect(volume(swallowed)).toBeCloseTo(volume(target), 9);
+  });
+
+  // A vertex of one face lying on the edge of the next, with no edge of its own
+  // there, is a crack the model already had. Closing it handed the wide quad back
+  // with five corners, however far away the cut was. Running the vertex along
+  // the edge to a corner to get it off the quad would be worse: the ridge ending
+  // on it would move, and the model with it. So it stays, whichever of the faces
+  // beside the crack the tool reaches.
+  it.each([
+    { reached: 'nothing beside the crack', tool: vec3(5, 0.5, 0) },
+    { reached: 'the faces beside the crack', tool: vec3(2, 1.5, 0) },
+  ])('leaves a crack the mesh already had as it was, with $reached cut', ({ tool }) => {
+    const mesh = new BMesh();
+    const add3 = (x: number, y: number, z: number) => mesh.addVert(vec3(x, y, z));
+    // A slab whose top is one wide quad butted against a two-faced roof, whose
+    // ridge runs from `mid` down to a vertex part-way along the wide quad's edge.
+    const [a, b, c, d] = [add3(-2, 1, -1), add3(0, 1, -1), add3(0, 1, 1), add3(-2, 1, 1)];
+    const [e, f, ridge, mid] = [add3(2, 1, -1), add3(2, 1, 1), add3(0, 1, 0), add3(2, 1.5, 0)];
+    const [h, i, j, k] = [add3(-2, 0, -1), add3(2, 0, -1), add3(2, 0, 1), add3(-2, 0, 1)];
+    mesh.addFace([a, d, c, b]);
+    mesh.addFace([b, ridge, mid, e]);
+    mesh.addFace([ridge, c, f, mid]);
+    mesh.addFace([h, i, j, k]);
+    mesh.addFace([a, b, e, i, h]);
+    mesh.addFace([e, mid, f, j, i]);
+    mesh.addFace([f, c, d, k, j]);
+    mesh.addFace([d, a, h, k]);
+    mesh.computeNormals();
+
+    const result = booleanMesh('union', mesh, createBox(0.4), offsetBy(tool));
+    const rings = new Set(
+      [...result.faces.values()].map((face) => ringOf(result.facePoints(face))),
+    );
+    const points = [...result.verts.values()].map((vert) => vert.co);
+
+    expect(rings.has(ringOf([a, d, c, b].map((vert) => vert.co)))).toBe(true);
+    expect(points.some((point) => point.x === 0 && point.y === 1 && point.z === 0)).toBe(true);
+  });
+
+  // A corner on a straight edge bends nothing, so it looked like one of the
+  // split's own stray points, and went: from both faces it belonged to, on a
+  // stretch of the model the cut never came near.
+  it('keeps a corner left on a straight edge, far from the cut', () => {
+    const mesh = createBox(2);
+    const [top] = [...mesh.faces.values()].filter((face) =>
+      mesh.facePoints(face).every((point) => point.y === 1),
+    );
+    const beside = [...mesh.faces.values()].find(
+      (face) =>
+        face !== top &&
+        mesh.faceVerts(face).filter((vert) => mesh.faceVerts(top).includes(vert)).length === 2,
+    ) as Face;
+    const shared = mesh.faceVerts(top).filter((vert) => mesh.faceVerts(beside).includes(vert));
+    const halfway = mesh.addVert(
+      vec3(
+        (shared[0].co.x + shared[1].co.x) / 2,
+        (shared[0].co.y + shared[1].co.y) / 2,
+        (shared[0].co.z + shared[1].co.z) / 2,
+      ),
+    );
+    const widen = (face: Face) => {
+      const ring = mesh.faceVerts(face);
+      const at = ring.findIndex(
+        (vert, index) => shared.includes(vert) && shared.includes(ring[(index + 1) % ring.length]),
+      );
+      ring.splice(at + 1, 0, halfway);
+      mesh.removeFace(face);
+      return ring;
+    };
+    const rings = [widen(top), widen(beside)];
+    for (const ring of rings) mesh.addFace(ring);
+    mesh.computeNormals();
+
+    // Under the box, away from both of the faces carrying the corner.
+    const result = booleanMesh('union', mesh, createBox(0.5), offsetBy(vec3(0, -1, 0)));
+    const out = new Set([...result.faces.values()].map((face) => ringOf(result.facePoints(face))));
+
+    for (const ring of rings) expect(out.has(ringOf(ring.map((vert) => vert.co)))).toBe(true);
+  });
+
+  // The tidying pass pairs a seam triangle with the coplanar triangle beside it,
+  // and only asked whether the first of the two was its to change. A triangle
+  // the cut never reshaped was taken as the second and came back part of a quad.
+  it('does not pair a triangle the cut left alone into a quad with one it cut', () => {
+    const mesh = new BMesh();
+    const add3 = (x: number, y: number, z: number) => mesh.addVert(vec3(x, y, z));
+    const [a, b, c, d] = [add3(-1, 1, -1), add3(1, 1, -1), add3(1, 1, 1), add3(-1, 1, 1)];
+    const [e, f, g, h] = [add3(-1, -1, -1), add3(1, -1, -1), add3(1, -1, 1), add3(-1, -1, 1)];
+    mesh.addFace([a, c, b]);
+    mesh.addFace([a, d, c]);
+    mesh.addFace([e, f, g, h]);
+    mesh.addFace([a, b, f, e]);
+    mesh.addFace([b, c, g, f]);
+    mesh.addFace([c, d, h, g]);
+    mesh.addFace([d, a, e, h]);
+    mesh.computeNormals();
+
+    // A wedge with its point on corner `a`, biting the far corner of one top
+    // triangle along a line from `a`, so what is left of it is still a triangle.
+    const tool = new BMesh();
+    const wedge = (y: number) => [
+      tool.addVert(vec3(-1, y, -1)),
+      tool.addVert(vec3(2, y, -2)),
+      tool.addVert(vec3(4, y, 1.5)),
+    ];
+    const [low, high] = [wedge(0.5), wedge(1.5)];
+    tool.addFace([low[0], low[1], low[2]]);
+    tool.addFace([high[2], high[1], high[0]]);
+    tool.addFace([low[1], low[0], high[0], high[1]]);
+    tool.addFace([low[2], low[1], high[1], high[2]]);
+    tool.addFace([low[0], low[2], high[2], high[0]]);
+    tool.computeNormals();
+
+    const result = booleanMesh('union', mesh, tool, (point) => point);
+    const rings = new Set(
+      [...result.faces.values()].map((face) => ringOf(result.facePoints(face))),
+    );
+
+    expect(rings.has(ringOf([a, d, c].map((vert) => vert.co)))).toBe(true);
+  });
+
+  it.each([1, 21])('leaves a long part as it came in when a cut bites its end (%i)', (seed) => {
+    const column = ridgedColumn(seed);
+    const tool = createBox(1.2);
+    const move = turnedBoxAt(-3);
+    const clear = clearOf(tool, move, 0.05);
+    const expected = clearRings(column, clear);
+
+    const result = booleanMesh('difference', column, tool, move);
+    const rings = new Set(
+      [...result.faces.values()].map((face) => ringOf(result.facePoints(face))),
+    );
+
+    expect(expected.filter((ring) => !rings.has(ring))).toEqual([]);
   });
 });
 

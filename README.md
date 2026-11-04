@@ -2,6 +2,8 @@
 
 3DOO is a 3D mesh editor that runs in the browser. You model with the operations of a desktop package (extrude, inset, bevel, loop cut, knife, dissolve and the rest) and export the result as OBJ or FBX, ready for a game engine.
 
+![Software Interface](docs/images/interface_print.png)
+
 ## Some things you can do with this software
 
 ### Proportional Editing for Organic modeling

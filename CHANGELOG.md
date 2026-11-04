@@ -10,16 +10,6 @@ All notable changes to 3DOO are recorded here. Versions follow
 New entries go under `Unreleased` until a version is cut. Group them under
 `Added`, `Changed`, `Fixed` or `Removed`.
 
-## [Unreleased]
-
-### Fixed
-
-- Fill no longer refuses a selected hole when one of its edges also borders a
-  face folded flat back over the faces beside it.
-- Fill no longer refuses a selected hole when one of its edges also borders a
-  face collapsed onto a straight line, with no area to cover anything, or
-  such a face and a folded one together.
-
 ## [1.0.0] - 2026-10-05
 
 First tracked release. It marks the state of the project at this point,
