@@ -33,7 +33,7 @@ export type ToolId =
   'select' | 'move' | 'rotate' | 'scale' | 'knife' | 'extrude' | 'inset' | 'loopcut';
 
 /** What snapping measures against: the grid square itself, or a step you set. */
-export type SnapMode = 'grid' | 'custom';
+export type SnapMode = 'grid' | 'location' | 'rotation' | 'scale';
 
 /** Where the wheel zooms: dead into the middle of the view, or leaning toward the pointer. */
 export type WheelZoom = 'centred' | 'pointer';
@@ -338,23 +338,34 @@ export interface Preferences {
    * Snapping: a move, a turn and a scale land on whole steps instead of
    * wherever the pointer left them.
    *
-   * Kept here beside `gridScale` rather than with the tools, because the step
-   * below is measured against it: they are one setting, and the top bar and the
+   * Kept here beside `gridScale` rather than with the tools, because the grid
+   * steps are measured against it: they are one setting, and the top bar and the
    * preferences dialog are two views of it.
    */
   snapEnabled: boolean;
-  /** Whether the steps are grid squares, or `snapStep` of one. */
+  /**
+   * What the snap list is on. On the grid the steps come from the grid. Any of
+   * the other three puts all three figures below in force, and says which of
+   * them the field beside the list is showing: a turn with the list on LOCATION
+   * still lands on the rotation step.
+   */
   snapMode: SnapMode;
   /**
-   * The custom step, as a multiple of `gridScale`, used while `snapMode` is
-   * custom. 1 is one whole square, 0.1 a tenth of one.
+   * What a move lands on multiples of while `snapMode` is not grid, in metres.
    *
-   * Kept while the mode is grid rather than reset to 1, so switching to the
-   * grid and back does not cost the figure that was typed. Unlike the plane it
-   * is named against it does not rescale with the zoom: a step that changed by
-   * ten every time the camera pulled back could not place anything.
+   * All three figures are kept while the mode is grid, so switching to the grid
+   * and back does not cost what was typed. None of them follows the zoom: a step
+   * that changed by ten every time the camera pulled back could not place
+   * anything.
    */
-  snapStep: number;
+  snapLocation: number;
+  /** What a turn goes up in while `snapMode` is not grid, in degrees. */
+  snapRotation: number;
+  /**
+   * What a scale adds to the size of the selection while `snapMode` is not grid,
+   * in metres, counted from the size the drag began at.
+   */
+  snapScale: number;
   /**
    * How many steps undo keeps, from `MIN_HISTORY_SIZE` to `MAX_HISTORY_SIZE`.
    *

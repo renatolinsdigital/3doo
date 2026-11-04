@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { cx } from '@shared/utils/cx';
-import { snapStepLabel, useEditorStore, useSceneStats } from '@store/index';
+import { DEFAULT_PIVOTS, snapLabel, useEditorStore, useSceneStats } from '@store/index';
 import type { ModalTransform, OperationProgress } from '@store/types';
 
 import './StatusBar.scss';
@@ -108,7 +108,9 @@ export function StatusBar() {
   const selectMode = useEditorStore((state) => state.selectMode);
   const snapEnabled = useEditorStore((state) => state.snapEnabled);
   const snapMode = useEditorStore((state) => state.snapMode);
-  const snapStep = useEditorStore((state) => state.snapStep);
+  const snapLocation = useEditorStore((state) => state.snapLocation);
+  const snapRotation = useEditorStore((state) => state.snapRotation);
+  const snapScale = useEditorStore((state) => state.snapScale);
   const proportional = useEditorStore((state) => state.proportional);
   const autoMerge = useEditorStore((state) => state.autoMerge);
   const pivot = useEditorStore((state) => state.pivot);
@@ -153,10 +155,13 @@ export function StatusBar() {
         <Flag on={mode === 'edit'}>
           {mode === 'edit' ? `EDIT / ${selectMode.toUpperCase()}` : 'OBJECT'}
         </Flag>
-        {/* Lit whenever the pivot is off the default, the way the flags beside
-            it light when their setting is on. */}
-        <Flag on={pivot !== 'median'}>PIVOT {pivot.toUpperCase()}</Flag>
-        <Flag on={snapEnabled}>SNAP {snapEnabled ? snapStepLabel(snapMode, snapStep) : 'OFF'}</Flag>
+        {/* Lit whenever the pivot is off what this mode opens on, the way the
+            flags beside it light when their setting is on. */}
+        <Flag on={pivot !== DEFAULT_PIVOTS[mode]}>PIVOT {pivot.toUpperCase()}</Flag>
+        <Flag on={snapEnabled}>
+          SNAP{' '}
+          {snapEnabled ? snapLabel({ snapMode, snapLocation, snapRotation, snapScale }) : 'OFF'}
+        </Flag>
         <Flag on={proportional.enabled}>
           PROP {proportional.enabled ? proportional.falloff.toUpperCase() : 'OFF'}
         </Flag>

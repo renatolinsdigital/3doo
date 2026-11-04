@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 
 import { AXIS_COLORS } from '@bridge/index';
+import type { Vec3 } from '@kernel/index';
 import { DEFAULT_PREFERENCES } from '@store/index';
+import type { Preferences } from '@store/types';
 
 /** What the ground plane is drawn from, out of the user's preferences. */
 export interface GridSettings {
@@ -109,37 +111,119 @@ export const SNAP_ROTATE_STEP = Math.PI / 12;
 /** The ratio one whole grid step of snapping means for a scale, for the same reason. */
 export const SNAP_SCALE_STEP = 0.1;
 
+/** The preferences snapping is worked out from. */
+export type SnapSettings = Pick<
+  Preferences,
+  'snapEnabled' | 'snapMode' | 'snapLocation' | 'snapRotation' | 'snapScale' | 'gridScale'
+>;
+
 /** What each kind of transform lands on multiples of while snapping is on. */
 export interface SnapAmounts {
-  /** World units, for a move. */
+  /** World units, which are metres, for a move. */
   translate: number;
   /** Radians, for a turn. */
   rotate: number;
-  /** Ratio, for a scale. */
-  scale: number;
+  /** A step of the factor itself, or of the size of what is being scaled. */
+  scale: { step: number; unit: 'ratio' | 'metres' };
 }
 
 /**
  * What snapping quantises to, or null when it is off.
  *
- * The move is `step` grid scales, taken straight from the preference and not
- * from the plane on screen. The plane rescales itself by ten as the camera
+ * On the grid the move is one square, taken straight from the preference and
+ * not from the plane on screen. The plane rescales itself by ten as the camera
  * pulls back, and a snap that followed it would silently change what it lands
  * on between one zoom and the next, which is no use for placing anything.
  */
-export function snapAmounts(enabled: boolean, step: number, gridScale: number): SnapAmounts | null {
-  if (!enabled || !(step > 0) || !(gridScale > 0)) return null;
+export function snapAmounts({
+  snapEnabled,
+  snapMode,
+  snapLocation,
+  snapRotation,
+  snapScale,
+  gridScale,
+}: SnapSettings): SnapAmounts | null {
+  if (!snapEnabled) return null;
 
+  if (snapMode === 'grid') {
+    if (!(gridScale > 0)) return null;
+    return {
+      translate: gridScale,
+      rotate: SNAP_ROTATE_STEP,
+      scale: { step: SNAP_SCALE_STEP, unit: 'ratio' },
+    };
+  }
+
+  if (!(snapLocation > 0) || !(snapRotation > 0) || !(snapScale > 0)) return null;
   return {
-    translate: gridScale * step,
-    rotate: SNAP_ROTATE_STEP * step,
-    scale: SNAP_SCALE_STEP * step,
+    translate: snapLocation,
+    rotate: THREE.MathUtils.degToRad(snapRotation),
+    scale: { step: snapScale, unit: 'metres' },
   };
 }
 
 /** `value` rounded onto the nearest multiple of `step`. */
 export function snapTo(value: number, step: number): number {
   return step > 0 ? Math.round(value / step) * step : value;
+}
+
+/** How far a selection reaches along each axis of the handles, in metres. */
+export type AxisSpans = Record<'X' | 'Y' | 'Z', number>;
+
+/** How far `points` reach along the three axes of handles turned by `turn`. */
+export function axisSpans(points: readonly Vec3[], turn: THREE.Quaternion): AxisSpans {
+  const back = turn.clone().invert();
+  const low = new THREE.Vector3(Infinity, Infinity, Infinity);
+  const high = new THREE.Vector3(-Infinity, -Infinity, -Infinity);
+  const local = new THREE.Vector3();
+
+  for (const point of points) {
+    local.set(point.x, point.y, point.z).applyQuaternion(back);
+    low.min(local);
+    high.max(local);
+  }
+
+  return points.length === 0
+    ? { X: 0, Y: 0, Z: 0 }
+    : { X: high.x - low.x, Y: high.y - low.y, Z: high.z - low.z };
+}
+
+/**
+ * The size a scale along `axis` is measured by: the longest of the sides it runs
+ * along, since one factor lands on all of them and only one can be a whole step.
+ */
+export function spanAlong(spans: AxisSpans, axis: string): number {
+  return Math.max(
+    ...(['X', 'Y', 'Z'] as const).filter((name) => axis.includes(name)).map((name) => spans[name]),
+  );
+}
+
+/** Below this a selection has no size along an axis to count steps of. */
+const SMALLEST_SPAN = 1e-6;
+
+/**
+ * The factor a dragged scale lands on, given the size it began at in metres.
+ *
+ * Metres count whole steps away from that size rather than rounding onto the
+ * metre, as a snapped turn counts from where it began, so the factor is exactly
+ * one until the pointer has gone half a step. Both units stop short of zero: a
+ * factor of nothing flattens the selection to a point, and dragging back out
+ * cannot bring its shape back.
+ */
+export function snapScaleFactor(
+  dragged: number,
+  scale: SnapAmounts['scale'],
+  size: number,
+): number {
+  if (scale.unit === 'ratio') return Math.max(scale.step, snapTo(dragged, scale.step));
+
+  // A lone vertex or a flat face has no size along the axis, and still moves
+  // away from a pivot it is not on, so it counts as one metre.
+  const step = scale.step / (size > SMALLEST_SPAN ? size : 1);
+  // The slack keeps a step that divides the size exactly from reaching zero on
+  // the rounding of the division.
+  const fewest = 1 - Math.ceil(1 / step - 1e-9);
+  return 1 + Math.max(fewest, Math.round((dragged - 1) / step)) * step;
 }
 
 /**

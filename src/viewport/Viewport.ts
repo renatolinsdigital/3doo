@@ -34,6 +34,7 @@ import {
   axisVector,
   centroid,
   cloneMesh,
+  composeMatrix,
   dot,
   execOperator,
   faceLoopAtClick,
@@ -47,6 +48,7 @@ import {
   planVertexSlide,
   selectEdgeLoop,
   sub,
+  transformPoint,
   vec3,
 } from '@kernel/index';
 import {
@@ -54,7 +56,6 @@ import {
   activeObject,
   displayCenter,
   evaluatedMesh,
-  snapStepFor,
   useEditorStore,
 } from '@store/index';
 import type {
@@ -69,7 +70,17 @@ import type {
 
 import { CameraController, ORBIT_SPEED, VIEW_TWEEN_MS, viewLostReason } from './CameraController';
 import { type EditMove, EditMoveDrag } from './editMove';
-import { GRID_REACH, type SnapAmounts, ViewportGrid, snapAmounts, snapTo } from './grid';
+import {
+  type AxisSpans,
+  GRID_REACH,
+  type SnapAmounts,
+  ViewportGrid,
+  axisSpans,
+  snapAmounts,
+  snapScaleFactor,
+  snapTo,
+  spanAlong,
+} from './grid';
 import {
   type KnifeAnchor,
   type KnifeStep,
@@ -700,6 +711,11 @@ export class Viewport {
     reference: number;
     /** Which axes are being scaled: 'X', 'XY', 'XYZ', … */
     axis: string;
+    /**
+     * How far the selection reached along each handle when the drag began. All
+     * three, since X, Y or Z can pin a different axis partway through a modal.
+     */
+    spans: AxisSpans;
     /** Set for a keyboard-started scale, which can be cancelled; null for a handle drag. */
     modal: { restore: () => void; seeded: boolean } | null;
   } | null = null;
@@ -1304,7 +1320,14 @@ export class Viewport {
         { fireImmediately: true },
       ),
       store.subscribe(
-        (state) => [state.snapEnabled, state.snapMode, state.snapStep, state.gridScale] as const,
+        (state) =>
+          [
+            state.snapEnabled,
+            state.snapMode,
+            state.snapLocation,
+            state.snapRotation,
+            state.gridScale,
+          ] as const,
         () => this.syncGizmoSnap(),
         { equalityFn: shallowArrayEqual, fireImmediately: true },
       ),
@@ -2059,8 +2082,7 @@ export class Viewport {
    * expects it to rather than at the next drag.
    */
   private snapping(): SnapAmounts | null {
-    const { snapEnabled, snapMode, snapStep, gridScale } = useEditorStore.getState();
-    return snapAmounts(snapEnabled, snapStepFor(snapMode, snapStep), gridScale);
+    return snapAmounts(useEditorStore.getState());
   }
 
   /**
@@ -2101,6 +2123,7 @@ export class Viewport {
       pivotPixels,
       reference: this.pointerPixels.distanceTo(pivotPixels),
       axis,
+      spans: axisSpans(this.selectionExtent(), this.gizmoProxy.quaternion),
       modal,
     };
 
@@ -2121,6 +2144,38 @@ export class Viewport {
   private endScaleDrag(): void {
     this.scaleDrag = null;
     this.modalLine.visible = false;
+  }
+
+  /**
+   * World points that bound what a transform is about to act on: the selected
+   * vertices in edit mode, the corners of what each object draws in object mode.
+   */
+  private selectionExtent(): Vec3[] {
+    const state = useEditorStore.getState();
+
+    if (state.mode === 'edit') {
+      const object = activeObject(state);
+      if (!object) return [];
+      const frame = composeMatrix(object.transform);
+      return object.mesh.selectedVerts().map((vert) => transformPoint(frame, vert.co));
+    }
+
+    return state.objects
+      .filter((object) => this.transformGroup.includes(object.id))
+      .flatMap((object) => {
+        const { min, max } = evaluatedMesh(
+          object,
+          state.cursor,
+          state.meshVersion,
+          state.objects,
+        ).boundingBox();
+        const frame = composeMatrix(object.transform);
+        return [min.x, max.x].flatMap((x) =>
+          [min.y, max.y].flatMap((y) =>
+            [min.z, max.z].map((z) => transformPoint(frame, vec3(x, y, z))),
+          ),
+        );
+      });
   }
 
   /** Pointer bearing around a screen point, counter-clockwise from the +X axis. */
@@ -2733,10 +2788,10 @@ export class Viewport {
       this.pointerPixels.distanceTo(drag.pivotPixels),
       drag.reference,
     );
-    // Held off zero at the smallest notch: a factor of nothing flattens the
-    // selection to a point, and dragging back out cannot bring its shape back.
     const snap = this.snapping();
-    const factor = snap ? Math.max(snap.scale, snapTo(dragged, snap.scale)) : dragged;
+    const factor = snap
+      ? snapScaleFactor(dragged, snap.scale, spanAlong(drag.spans, drag.axis))
+      : dragged;
 
     const state = useEditorStore.getState();
     const along = (axis: string) => (drag.axis.includes(axis) ? factor : 1);

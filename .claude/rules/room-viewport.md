@@ -36,6 +36,9 @@ by React. Depth: `docs/rendering.md` (camera, gizmo, picking).
   before drawing.
 - State that changes the gizmo without touching geometry or selection needs
   a subscription of its own (the lock had none).
+- A custom scale snap counts metres from the size the drag began at, so
+  `startScaleDrag` reads `axisSpans` before anything moves; `snapScaleFactor`
+  needs that size, and a modal's axis can change, so all three spans are kept.
 - `handleLostPointerCapture` ends a drag three would leave latched;
   `deferGizmoGrab` lets a click reach geometry under a handle;
   `aimGizmoRays` aims from the orthographic near plane.

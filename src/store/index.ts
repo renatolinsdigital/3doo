@@ -8,7 +8,7 @@ export {
   displayCenter,
   evaluatedMesh,
 } from './slices/scene';
-export { SELECT_SHAPES } from './slices/tool';
+export { DEFAULT_PIVOTS, SELECT_SHAPES } from './slices/tool';
 export { axisViewName } from './slices/viewport';
 export {
   AUTOSAVE_INTERVALS,
@@ -18,6 +18,7 @@ export {
   MAX_HISTORY_SIZE,
   MAX_ORBIT_SPEED,
   MAX_SELECTION_LINE_WIDTH,
+  MAX_SNAP_ROTATION,
   MAX_SNAP_STEP,
   MAX_WHEEL_ZOOM_STEP,
   MIN_GRID_SCALE,
@@ -27,8 +28,9 @@ export {
   MIN_SELECTION_LINE_WIDTH,
   MIN_SNAP_STEP,
   MIN_WHEEL_ZOOM_STEP,
+  SNAP_OPTIONS,
+  SNAP_STEPS,
   autosaveIntervalLabel,
   coercePreferences,
-  snapStepFor,
-  snapStepLabel,
+  snapLabel,
 } from './slices/preferences';

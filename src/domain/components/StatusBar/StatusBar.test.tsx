@@ -146,9 +146,39 @@ describe('StatusBar', () => {
 
     expect(screen.getByText('SNAP GRID')).toBeInTheDocument();
 
-    act(() => useEditorStore.getState().setPreferences({ snapMode: 'custom', snapStep: 0.03 }));
+    act(() =>
+      useEditorStore.getState().setPreferences({
+        snapMode: 'rotation',
+        snapLocation: 0.03,
+        snapRotation: 30,
+        snapScale: 2,
+      }),
+    );
 
-    expect(screen.getByText('SNAP 0.03 GRID')).toBeInTheDocument();
+    expect(screen.getByText('SNAP 0.03 M / 30° / 2 M')).toBeInTheDocument();
+  });
+
+  it('lights the pivot flag only off what the mode opens on', () => {
+    useEditorStore.setState({ pivot: 'origin', idlePivot: 'median' });
+    const flag = (name: string) => screen.getByText(name).className;
+    useEditorStore.getState().addPrimitive('cube');
+    render(<StatusBar />);
+
+    // Median was the one default, so ORIGIN stayed lit through the whole of
+    // object mode, reporting a setting nobody had changed.
+    expect(flag('PIVOT ORIGIN')).not.toContain('--on');
+
+    act(() => useEditorStore.getState().setMode('edit'));
+    expect(flag('PIVOT MEDIAN')).not.toContain('--on');
+
+    act(() => useEditorStore.getState().setPivot('origin'));
+    expect(flag('PIVOT ORIGIN')).toContain('--on');
+
+    act(() => {
+      useEditorStore.getState().setPivot('median');
+      useEditorStore.getState().setMode('object');
+    });
+    expect(flag('PIVOT ORIGIN')).not.toContain('--on');
   });
 });
 

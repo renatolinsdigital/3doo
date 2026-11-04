@@ -47,6 +47,8 @@ preferences. Depth: `docs/state-management.md`.
   (a cylinder's caps selecting the whole cylinder).
 - Linked duplicates share one mesh instance; the link is saved as an id and
   must survive save and undo. Origin moves refuse a shared mesh.
+- `pivot` is always the current mode's and `idlePivot` the other's: anything
+  that changes `mode` swaps them. `setMode` and `resetScene` are the two that do.
 
 ## Tests
 

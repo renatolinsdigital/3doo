@@ -425,6 +425,10 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
             'G picks the move tool: drag the gizmo handles. R and S start a rotate or scale straight away, following the pointer. Press X, Y or Z during a rotate or scale to lock it to that axis.',
           ],
           [
+            'Snap to steps',
+            'The grid button in the top bar makes a move, a turn and a scale land on whole steps, and the list beside it says which steps. GRID uses one grid square for a move, 15 degrees for a turn and a tenth of the starting size for a scale. Pick LOCATION, ROTATION or SCALE to type a step of your own for that transform: metres for location and scale, degrees for rotation. All three are used together, whichever one the list is showing, until you go back to GRID. A scale step is what the scale adds to the size, so at 0.5 a 2 m box goes to 2.5 m, then 3 m. A scale over several axes measures the longest side. The same list is under SNAPPING in PREFS, and the steps are kept with your preferences.',
+          ],
+          [
             'Duplicate',
             'Shift+D makes an independent copy. Alt+D makes a linked copy that shares the same mesh data.',
           ],
@@ -930,18 +934,18 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
         rows: [
           [
             'Origin',
-            "The object's own origin, so it turns and scales in place. With several objects, the active one's origin (the one you clicked last). In edit mode, the origin of the object being edited.",
+            "The object's own origin, so it turns and scales in place and its LOCATION holds still. With several objects, the active one's origin (the one you clicked last). In edit mode, the origin of the object being edited. Object mode opens on this one.",
           ],
           [
             'Median',
-            'The middle of the selection: the selected vertices in edit mode, the shape itself in object mode. If an origin has been left away from its geometry, this one still turns about the shape. This is the default.',
+            'The middle of the selection: the selected vertices in edit mode, the shape itself in object mode. If an origin has been left away from its geometry, this one still turns about the shape. Edit mode opens on this one.',
           ],
           ['3D cursor', 'Wherever you placed the cursor.'],
         ],
       },
       {
         kind: 'note',
-        text: 'Pick the pivot in the PIVOT box in the top bar, or press Ctrl+. to step through the three in order. The gizmo always sits on the pivot in force, so the point you grab a turn by is the point it turns about.',
+        text: 'Pick the pivot in the PIVOT box in the top bar, or press Ctrl+. to step through the three in order. Object mode and edit mode each keep their own choice, so turning a face about its own middle never changes what the whole object turns about. The gizmo always sits on the pivot in force, so the point you grab a turn by is the point it turns about.',
       },
       {
         kind: 'table',

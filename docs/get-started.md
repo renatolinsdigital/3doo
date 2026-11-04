@@ -166,7 +166,8 @@ Deeper: [rendering.md](rendering.md).
 - The **3D cursor** is where new primitives appear, and can serve as a pivot or
   a mirror plane.
 - The **pivot** setting picks what rotate and scale turn around: the origin,
-  the selection's median, or the cursor.
+  the selection's median, or the cursor. Object mode opens on the origin and
+  edit mode on the median, and each keeps its own choice.
 
 Deeper: [features.md](features.md).
 

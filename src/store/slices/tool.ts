@@ -69,12 +69,28 @@ const OFFSET_OPERATORS = {
 /** The order V steps through, and the order the select tool's menu lists. */
 export const SELECT_SHAPES: readonly SelectShape[] = ['box', 'circle', 'lasso'];
 
+/**
+ * What each mode opens on.
+ *
+ * An object is placed by its origin, so that is what it turns about: its
+ * LOCATION holds still under a rotation. A part of a mesh has no origin of its
+ * own, and turning a selected face about the middle of the whole object would
+ * throw it across the model, so edit mode works about the selection.
+ */
+export const DEFAULT_PIVOTS: Readonly<Record<EditorMode, PivotMode>> = {
+  object: 'origin',
+  edit: 'median',
+};
+
 export interface ToolSlice {
   mode: EditorMode;
   selectMode: SelectMode;
   activeTool: ToolId;
   selectShape: SelectShape;
+  /** The pivot in force, which is the current mode's. */
   pivot: PivotMode;
+  /** The other mode's pivot, waiting for the switch that swaps it with `pivot`. */
+  idlePivot: PivotMode;
   proportional: ProportionalSettings;
   autoMerge: AutoMergeSettings;
   /** Where the TOPOLOGY panel's MERGE welds the selection, and Shift+M with it. */
@@ -121,7 +137,8 @@ export const createToolSlice: StateCreator<
   selectMode: 'vertex',
   activeTool: 'select',
   selectShape: 'box',
-  pivot: 'median',
+  pivot: DEFAULT_PIVOTS.object,
+  idlePivot: DEFAULT_PIVOTS.edit,
   // Half the height of a fresh primitive. A turned loop round the middle of a
   // cylinder then bends the walls and leaves the caps where they are; at 1.5
   // the falloff reached the caps at three quarters strength and the whole
@@ -155,6 +172,7 @@ export const createToolSlice: StateCreator<
     // the knife, which cuts faces and has nothing to cut in object mode.
     set((state) => ({
       mode,
+      ...(mode === state.mode ? {} : { pivot: state.idlePivot, idlePivot: state.pivot }),
       modal: null,
       deleteMenu: null,
       activeTool: mode === 'object' && state.activeTool === 'knife' ? 'select' : state.activeTool,

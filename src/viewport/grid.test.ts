@@ -1,14 +1,19 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 
-import type { GridSettings } from './grid';
+import { vec3 } from '@kernel/index';
+
+import type { GridSettings, SnapSettings } from './grid';
 import {
   SNAP_ROTATE_STEP,
   SNAP_SCALE_STEP,
   ViewportGrid,
+  axisSpans,
   gridLevel,
   snapAmounts,
+  snapScaleFactor,
   snapTo,
+  spanAlong,
 } from './grid';
 
 /** The grid plane and the centre lines, the two coplanar objects that make up the ground. */
@@ -384,37 +389,61 @@ describe('centre lines through a zoom', () => {
 });
 
 describe('what snapping quantises to', () => {
+  const settings = (patch: Partial<SnapSettings> = {}): SnapSettings => ({
+    snapEnabled: true,
+    snapMode: 'grid',
+    snapLocation: 0.25,
+    snapRotation: 30,
+    snapScale: 0.5,
+    gridScale: 1,
+    ...patch,
+  });
+
   it('hands back nothing at all while it is switched off', () => {
-    expect(snapAmounts(false, 1, 1)).toBeNull();
+    expect(snapAmounts(settings({ snapEnabled: false }))).toBeNull();
+    expect(snapAmounts(settings({ snapEnabled: false, snapMode: 'location' }))).toBeNull();
   });
 
   it('refuses a step of nothing rather than rounding every value to zero', () => {
     // Nothing in the UI offers one, but a preferences file or a hand-edited
     // storage blob can, and a step of zero would pin every transform in place.
-    expect(snapAmounts(true, 0, 1)).toBeNull();
-    expect(snapAmounts(true, -1, 1)).toBeNull();
-    expect(snapAmounts(true, 1, 0)).toBeNull();
+    expect(snapAmounts(settings({ gridScale: 0 }))).toBeNull();
+    for (const bad of [{ snapLocation: 0 }, { snapRotation: -1 }, { snapScale: 0 }]) {
+      expect(snapAmounts(settings({ snapMode: 'location', ...bad }))).toBeNull();
+    }
   });
 
-  it('lands a move on one whole grid scale at a step of 1', () => {
-    expect(snapAmounts(true, 1, 1)?.translate).toBeCloseTo(1);
-    expect(snapAmounts(true, 1, 2)?.translate).toBeCloseTo(2);
+  it('lands a move on one whole grid square on the grid', () => {
+    expect(snapAmounts(settings())?.translate).toBeCloseTo(1);
+    expect(snapAmounts(settings({ gridScale: 2 }))?.translate).toBeCloseTo(2);
   });
 
-  it('multiplies that scale by the step asked for, preset or typed', () => {
-    expect(snapAmounts(true, 0.1, 1)?.translate).toBeCloseTo(0.1);
-    expect(snapAmounts(true, 0.25, 1)?.translate).toBeCloseTo(0.25);
-    expect(snapAmounts(true, 0.03, 1)?.translate).toBeCloseTo(0.03);
-    expect(snapAmounts(true, 0.1, 2)?.translate).toBeCloseTo(0.2);
+  it('turns and scales by the modelling increments on the grid', () => {
+    // Neither is a distance, so no grid square sets them, and the figures typed
+    // for CUSTOM are kept aside rather than used.
+    expect(snapAmounts(settings())?.rotate).toBeCloseTo(SNAP_ROTATE_STEP);
+    expect(snapAmounts(settings())?.scale).toEqual({ step: SNAP_SCALE_STEP, unit: 'ratio' });
   });
 
-  it('scales the turn and the scale by that same step', () => {
-    // Neither is a distance, so no grid square sets them: what the step divides
-    // is the modelling increment itself.
-    const half = snapAmounts(true, 0.5, 1);
+  it('takes each step as typed, whichever one the picker is showing', () => {
+    // The pick says which figure is being edited, not which transforms snap: a
+    // turn with the list on LOCATION still lands on the rotation step.
+    for (const snapMode of ['location', 'rotation', 'scale'] as const) {
+      const amounts = snapAmounts(settings({ snapMode }));
 
-    expect(half?.rotate).toBeCloseTo(SNAP_ROTATE_STEP / 2);
-    expect(half?.scale).toBeCloseTo(SNAP_SCALE_STEP / 2);
+      expect(amounts?.translate).toBeCloseTo(0.25);
+      expect(amounts?.rotate).toBeCloseTo(Math.PI / 6);
+      expect(amounts?.scale).toEqual({ step: 0.5, unit: 'metres' });
+    }
+  });
+
+  it('measures the custom location in metres, whatever the grid is set to', () => {
+    // One figure used to do for all three, as a multiple of the grid square: a
+    // turn could not be set without moving the location step with it, and the
+    // same figure placed things differently under a different grid.
+    const amounts = snapAmounts(settings({ snapMode: 'location', gridScale: 4 }));
+
+    expect(amounts?.translate).toBeCloseTo(0.25);
   });
 
   it('leaves every amount alone when the camera moves', () => {
@@ -422,7 +451,7 @@ describe('what snapping quantises to', () => {
     // does not follow it: a step that changed by ten as you pulled back could
     // not be relied on to put anything anywhere.
     expect(gridLevel(10).step).not.toBe(gridLevel(1000).step);
-    expect(snapAmounts(true, 1, 1)?.translate).toBeCloseTo(1);
+    expect(snapAmounts(settings())?.translate).toBeCloseTo(1);
   });
 
   it('puts a whole turn on the round angles a modeller reaches for', () => {
@@ -430,6 +459,73 @@ describe('what snapping quantises to', () => {
       const angle = (degrees * Math.PI) / 180;
       expect(snapTo(angle, SNAP_ROTATE_STEP)).toBeCloseTo(angle);
     }
+  });
+});
+
+describe('the factor a snapped scale lands on', () => {
+  const metres = (step: number) => ({ step, unit: 'metres' }) as const;
+  const ratio = (step: number) => ({ step, unit: 'ratio' }) as const;
+
+  it('lands a ratio on its own multiples, held off zero', () => {
+    expect(snapScaleFactor(1.26, ratio(0.1), 2)).toBeCloseTo(1.3);
+    expect(snapScaleFactor(0.01, ratio(0.1), 2)).toBeCloseTo(0.1);
+  });
+
+  it('adds whole metres to the size the drag began at', () => {
+    // A 2 m side and a 0.5 m step: 2.5 m is a factor of 1.25, 3 m one of 1.5.
+    expect(snapScaleFactor(1.2, metres(0.5), 2) * 2).toBeCloseTo(2.5);
+    expect(snapScaleFactor(1.45, metres(0.5), 2) * 2).toBeCloseTo(3);
+    expect(snapScaleFactor(0.7, metres(0.5), 2) * 2).toBeCloseTo(1.5);
+  });
+
+  it('holds still until the pointer has gone half a step', () => {
+    // Counted from where it began rather than rounded onto the metre: a side of
+    // 1.1 m would otherwise jump to 1 m on the first pixel of the drag.
+    expect(snapScaleFactor(1.01, metres(0.25), 1.1)).toBe(1);
+  });
+
+  it('stops at the last step that still leaves a size', () => {
+    // A factor of nothing flattens the selection to a point, and dragging back
+    // out cannot bring its shape back.
+    expect(snapScaleFactor(0.01, metres(0.25), 1) * 1).toBeCloseTo(0.25);
+    expect(snapScaleFactor(0.01, metres(0.1), 0.3) * 0.3).toBeCloseTo(0.1);
+    // Bigger than the whole side: there is no step down to take.
+    expect(snapScaleFactor(0.2, metres(2), 0.5)).toBe(1);
+  });
+
+  it('takes a selection with no size along the axis as one metre', () => {
+    // A lone vertex or a flat face: dividing by its size would make the step
+    // infinite, and a scale away from the pivot still moves it.
+    expect(snapScaleFactor(1.3, metres(0.25), 0)).toBeCloseTo(1.25);
+  });
+});
+
+describe('how far a selection reaches along the handles', () => {
+  const points = [vec3(0, 0, 0), vec3(2, 1, 0.5)];
+
+  it('reads each axis on its own', () => {
+    const spans = axisSpans(points, new THREE.Quaternion());
+
+    expect(spans.X).toBeCloseTo(2);
+    expect(spans.Y).toBeCloseTo(1);
+    expect(spans.Z).toBeCloseTo(0.5);
+  });
+
+  it('reads them along handles that have been turned', () => {
+    // A quarter turn about Y takes the handles' X onto world -Z.
+    const turn = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
+    const spans = axisSpans(points, turn);
+
+    expect(spans.X).toBeCloseTo(0.5);
+    expect(spans.Z).toBeCloseTo(2);
+  });
+
+  it('takes the longest of the axes a scale runs along', () => {
+    const spans = { X: 2, Y: 1, Z: 0.5 };
+
+    expect(spanAlong(spans, 'X')).toBe(2);
+    expect(spanAlong(spans, 'YZ')).toBe(1);
+    expect(spanAlong(spans, 'XYZ')).toBe(2);
   });
 });
 

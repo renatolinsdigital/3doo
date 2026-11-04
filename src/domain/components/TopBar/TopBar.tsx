@@ -14,8 +14,9 @@ import {
 } from '@shared/components';
 import { cx } from '@shared/utils/cx';
 import {
-  MAX_SNAP_STEP,
   MIN_SNAP_STEP,
+  SNAP_OPTIONS,
+  SNAP_STEPS,
   useActiveObject,
   useActiveShadingSmooth,
   useEditorStore,
@@ -56,11 +57,6 @@ const SHADING_OPTIONS: readonly { value: ShadingMode; label: string; hint: strin
     hint: 'See-through surfaces, so box-select reaches what is behind',
   },
   { value: 'matcap', label: 'MATCAP', hint: 'Flat, high-contrast shading that reads form' },
-];
-
-const SNAP_OPTIONS: readonly { value: SnapMode; label: string }[] = [
-  { value: 'grid', label: 'GRID' },
-  { value: 'custom', label: 'CUSTOM' },
 ];
 
 /**
@@ -144,7 +140,10 @@ export function TopBar({ brand }: TopBarProps) {
   // views of one setting rather than two settings that have to be kept in step.
   const snapEnabled = useEditorStore((state) => state.snapEnabled);
   const snapMode = useEditorStore((state) => state.snapMode);
-  const snapStep = useEditorStore((state) => state.snapStep);
+  const snapLocation = useEditorStore((state) => state.snapLocation);
+  const snapRotation = useEditorStore((state) => state.snapRotation);
+  const snapScale = useEditorStore((state) => state.snapScale);
+  const snapStep = snapMode === 'grid' ? null : SNAP_STEPS[snapMode];
   const setPreferences = useEditorStore((state) => state.setPreferences);
   const proportional = useEditorStore((state) => state.proportional);
   const setProportional = useEditorStore((state) => state.setProportional);
@@ -173,7 +172,7 @@ export function TopBar({ brand }: TopBarProps) {
   const snapHint =
     snapMode === 'grid'
       ? 'Snap: a move, a turn and a scale land on the grid instead of wherever the pointer left them'
-      : `Snap: a move, a turn and a scale land on steps of ${snapStep} of the grid square set in preferences, instead of wherever the pointer left them`;
+      : `Snap: a move lands on steps of ${snapLocation} m, a turn on steps of ${snapRotation} degrees and a scale on steps of ${snapScale} m, instead of wherever the pointer left them`;
 
   const shadingLabel = SHADING_OPTIONS.find((option) => option.value === shading)?.label ?? 'SOLID';
   const shadingEntries: ContextMenuEntry[] = SHADING_OPTIONS.map((option) => ({
@@ -291,23 +290,24 @@ export function TopBar({ brand }: TopBarProps) {
             onChange={(enabled) => setPreferences({ snapEnabled: enabled })}
           />
           <Select<SnapMode>
-            label="Snap to"
+            label="Snap step"
             hideLabel
             value={snapMode}
             options={SNAP_OPTIONS}
-            hint="What the steps are measured in: GRID lands on the squares themselves, CUSTOM opens a field for a step of your own"
+            hint="GRID lands on the squares themselves. LOCATION, ROTATION and SCALE each open a step of your own for that transform, and all three are used together until you go back to GRID"
             onChange={(mode) => setPreferences({ snapMode: mode })}
           />
-          {snapMode === 'custom' ? (
+          {snapStep ? (
             <NumberField
-              label="Snap step"
+              label={`Snap ${snapMode} step`}
               hideLabel
-              value={snapStep}
+              value={{ snapLocation, snapRotation, snapScale }[snapStep.preference]}
               min={MIN_SNAP_STEP}
-              max={MAX_SNAP_STEP}
-              step={0.01}
-              hint="The step, as a multiple of the grid SCALE set in preferences: 1 is one whole square, 0.03 three hundredths of one. This adjustment is saved with your preferences."
-              onChange={(step) => setPreferences({ snapStep: step })}
+              max={snapStep.max}
+              step={snapStep.nudge}
+              suffix={snapStep.suffix}
+              hint={snapStep.hint}
+              onChange={(step) => setPreferences({ [snapStep.preference]: step })}
             />
           ) : null}
         </span>
@@ -363,7 +363,7 @@ export function TopBar({ brand }: TopBarProps) {
             label="PIVOT"
             options={PIVOT_OPTIONS}
             value={pivot}
-            hint="What a turn or a scale happens around (Ctrl + . toggles through the three)"
+            hint="What a turn or a scale happens around. Object mode opens on ORIGIN and edit mode on MEDIAN, and each keeps its own choice (Ctrl + . toggles through the three)"
             onChange={setPivot}
           />
         </span>

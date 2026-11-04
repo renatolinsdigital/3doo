@@ -7,7 +7,7 @@ import { MIN_OBJECT_SIZE } from '@kernel/index';
 import { useEditorStore } from '@store/index';
 
 import { MAX_ORBIT_DISTANCE, MIN_ORBIT_DISTANCE } from './CameraController';
-import { Viewport } from './Viewport';
+import { Viewport, gizmoScaleRatio } from './Viewport';
 
 // The one part of the viewport jsdom cannot build: there is no WebGL context to
 // hand a real renderer. Everything else (the camera, the gizmo, the store
@@ -181,6 +181,143 @@ describe('Viewport', () => {
     // by the frame, before anything reaches the screen.
     frame(view);
     expect(helper.visible).toBe(false);
+  });
+
+  describe('the handles on an object whose origin has left its shape', () => {
+    /** A box whose vertices have been carried off along X, leaving its origin behind. */
+    function boxOffItsOrigin() {
+      store().addPrimitive('cube');
+      const object = store().objects[0];
+      store().setObjectTransform(object.id, { position: { x: 1, y: 2, z: 3 } });
+      for (const vert of object.mesh.verts.values()) vert.co = { ...vert.co, x: vert.co.x + 5 };
+      store().touchMesh();
+      // After the add, which picks up the move tool. The R key picks this one up
+      // itself before it starts a turn.
+      store().setActiveTool('rotate');
+      return object.id;
+    }
+
+    const proxyOf = (view: Viewport) =>
+      (view as unknown as { gizmoProxy: THREE.Object3D }).gizmoProxy;
+
+    beforeEach(() => useEditorStore.setState({ pivot: 'origin', idlePivot: 'median' }));
+
+    afterEach(() => {
+      useEditorStore.setState({ pivot: 'origin', idlePivot: 'median' });
+      store().setActiveTool('select');
+    });
+
+    it('stands the rotate handles on the origin and leaves the location alone', () => {
+      boxOffItsOrigin();
+      poseAt(30);
+      const view = mount();
+
+      const seat = proxyOf(view).position;
+      expect([seat.x, seat.y, seat.z]).toEqual([1, 2, 3]);
+
+      const canvas = (view as unknown as { canvas: HTMLCanvasElement }).canvas;
+      const move = (x: number, y: number) =>
+        canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: x, clientY: y }));
+      move(SIZE / 2 + 100, SIZE / 2);
+      store().beginModal('rotate');
+      move(SIZE / 2 + 100, SIZE / 2);
+      move(SIZE / 2, SIZE / 2 - 100);
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+      // The handles used to stand on the middle of the shape, five metres out,
+      // and the object swung round them with its LOCATION changing as it went.
+      const { position, rotation } = store().objects[0].transform;
+      expect(Math.hypot(rotation.x, rotation.y, rotation.z)).toBeGreaterThan(0.5);
+      expect(position).toEqual({ x: 1, y: 2, z: 3 });
+    });
+
+    it('still takes them to the middle of the shape on the median pivot', () => {
+      boxOffItsOrigin();
+      store().setPivot('median');
+      const seat = proxyOf(mount()).position;
+
+      expect(seat.x).toBeCloseTo(6);
+      expect(seat.y).toBeCloseTo(2);
+      expect(seat.z).toBeCloseTo(3);
+    });
+
+    it('turns a selection about its own middle in edit mode, not the origin', () => {
+      boxOffItsOrigin();
+      store().setMode('edit');
+      const mesh = store().objects[0].mesh;
+      mesh.deselectAll();
+      for (const face of mesh.faces.values()) face.selected = face.normal.y > 0.99;
+      mesh.flushSelection('face');
+      store().touchMesh();
+
+      const seat = proxyOf(mount()).position;
+
+      expect(store().pivot).toBe('median');
+      expect(seat.x).toBeCloseTo(6);
+      expect(seat.y).toBeGreaterThan(2);
+    });
+  });
+
+  describe('custom snap steps', () => {
+    afterEach(() => store().setPreferences({ snapEnabled: false, snapMode: 'grid' }));
+
+    it('hands the gizmo the location in metres and the rotation in degrees', () => {
+      store().addPrimitive('cube');
+      store().setActiveTool('move');
+      const { gizmo } = gizmoOf(mount());
+
+      store().setPreferences({
+        snapEnabled: true,
+        snapMode: 'scale',
+        snapLocation: 0.25,
+        snapRotation: 30,
+      });
+
+      // Both handles used to read the one figure: the location as a multiple of
+      // the grid square, the turn as that much of fifteen degrees.
+      expect(gizmo.translationSnap).toBeCloseTo(0.25);
+      expect(gizmo.rotationSnap).toBeCloseTo(Math.PI / 6);
+
+      // A step typed with the switch already on reaches the handles at once.
+      store().setPreferences({ snapRotation: 45 });
+      expect(gizmo.rotationSnap).toBeCloseTo(Math.PI / 4);
+      store().setActiveTool('select');
+    });
+
+    it('scales a side in whole metres of the custom scale step', () => {
+      store().addPrimitive('cube');
+      const { id, mesh } = store().objects[0];
+      const width = () => {
+        const xs = [...mesh.verts.values()].map((vert) => vert.co.x);
+        return Math.max(...xs) - Math.min(...xs);
+      };
+      store().setObjectTransform(id, { scale: { x: 2 / width(), y: 1, z: 1 } });
+      store().setPreferences({ snapEnabled: true, snapMode: 'location', snapScale: 0.25 });
+      store().setActiveTool('scale');
+      poseAt(30);
+      const view = mount();
+      const canvas = (view as unknown as { canvas: HTMLCanvasElement }).canvas;
+      const move = (x: number) =>
+        canvas.dispatchEvent(new MouseEvent('pointermove', { clientX: x, clientY: SIZE / 2 }));
+
+      move(SIZE / 2 + 100);
+      store().beginModal('scale');
+      move(SIZE / 2 + 100);
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'x' }));
+      move(SIZE / 2 + 133);
+      const dragged = gizmoScaleRatio(133, 100);
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+
+      // Unsnapped this is not a whole step of the 2 m side, so landing on one
+      // is the snap's doing.
+      expect((((dragged - 1) * 2) / 0.25) % 1).not.toBeCloseTo(0);
+      // The step was a ratio of the scale, so the side landed on tenths of its
+      // own length and no figure could ask for a size in metres.
+      const side = store().objects[0].transform.scale.x * width();
+      expect(side).toBeCloseTo(2 + Math.round(((dragged - 1) * 2) / 0.25) * 0.25);
+      expect(side).toBeGreaterThan(2);
+      expect(store().objects[0].transform.scale.y).toBe(1);
+    });
   });
 
   it('calls off a modal scale when it is disposed partway through', () => {

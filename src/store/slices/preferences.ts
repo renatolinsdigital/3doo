@@ -38,7 +38,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   wheelZoomStep: 5,
   snapEnabled: false,
   snapMode: 'grid',
-  snapStep: 0.1,
+  snapLocation: 0.1,
+  snapRotation: 15,
+  snapScale: 0.1,
   historySize: 100,
   autosaveEnabled: false,
   autosaveInterval: 180,
@@ -75,9 +77,60 @@ export const MAX_ORBIT_SPEED = 200;
 export const MIN_WHEEL_ZOOM_STEP = 1;
 export const MAX_WHEEL_ZOOM_STEP = 25;
 
-/** The same range as the grid scale it multiplies: past useful either way. */
+/** The same range as the grid scale, in metres: past useful either way. */
 export const MIN_SNAP_STEP = MIN_GRID_SCALE;
 export const MAX_SNAP_STEP = MAX_GRID_SCALE;
+/** In degrees. A whole turn is the coarsest step that still means anything. */
+export const MAX_SNAP_ROTATION = 360;
+
+/** What the snap list offers, one under the other, in the top bar and in preferences. */
+export const SNAP_OPTIONS: readonly { value: SnapMode; label: string }[] = [
+  { value: 'grid', label: 'GRID' },
+  { value: 'location', label: 'LOCATION' },
+  { value: 'rotation', label: 'ROTATION' },
+  { value: 'scale', label: 'SCALE' },
+];
+
+/** The field each entry but the grid opens, the same in both of those places. */
+export const SNAP_STEPS: Readonly<
+  Record<
+    Exclude<SnapMode, 'grid'>,
+    {
+      preference: 'snapLocation' | 'snapRotation' | 'snapScale';
+      label: string;
+      suffix: string;
+      /** What one arrow press or one pixel of scrub moves it by. */
+      nudge: number;
+      max: number;
+      hint: string;
+    }
+  >
+> = {
+  location: {
+    preference: 'snapLocation',
+    label: 'LOCATION STEP',
+    suffix: 'm',
+    nudge: 0.01,
+    max: MAX_SNAP_STEP,
+    hint: 'In metres: a move lands on multiples of it. Saved with your preferences',
+  },
+  rotation: {
+    preference: 'snapRotation',
+    label: 'ROTATION STEP',
+    suffix: '°',
+    nudge: 1,
+    max: MAX_SNAP_ROTATION,
+    hint: 'In degrees: a turn goes up in it from where it began. Saved with your preferences',
+  },
+  scale: {
+    preference: 'snapScale',
+    label: 'SCALE STEP',
+    suffix: 'm',
+    nudge: 0.01,
+    max: MAX_SNAP_STEP,
+    hint: 'In metres: what a scale adds to the size. At 0.5 a 2 m box goes to 2.5 m, then 3 m. Over several axes it measures the longest side. Saved with your preferences',
+  },
+};
 
 /**
  * How many steps undo keeps.
@@ -106,20 +159,14 @@ export function autosaveIntervalLabel(seconds: number): string {
   return minutes === 1 ? '1 MINUTE' : `${minutes} MINUTES`;
 }
 
-/**
- * The multiple of the grid scale actually in force.
- *
- * The grid is a step of one, by definition. The custom figure is kept aside
- * while the grid is chosen, so this is the one place that decides which of the
- * two the viewport and the status bar are looking at.
- */
-export function snapStepFor(mode: SnapMode, step: number): number {
-  return mode === 'grid' ? 1 : step;
-}
-
-/** What the snap in force is called, on the status bar. */
-export function snapStepLabel(mode: SnapMode, step: number): string {
-  return mode === 'grid' || step === 1 ? 'GRID' : `${step} GRID`;
+/** What the snap in force is called on the status bar: location, rotation, scale. */
+export function snapLabel({
+  snapMode,
+  snapLocation,
+  snapRotation,
+  snapScale,
+}: Pick<Preferences, 'snapMode' | 'snapLocation' | 'snapRotation' | 'snapScale'>): string {
+  return snapMode === 'grid' ? 'GRID' : `${snapLocation} M / ${snapRotation}° / ${snapScale} M`;
 }
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
@@ -138,6 +185,17 @@ function coerceColor(raw: unknown, fallback: string): string {
 
 function coerceBoolean(raw: unknown, fallback: boolean): boolean {
   return typeof raw === 'boolean' ? raw : fallback;
+}
+
+/**
+ * An entry the snap list offers, or the default.
+ *
+ * Older builds stored `custom` for the steps of your own, which are in force
+ * under any of the three entries that replaced it, so it opens on the first.
+ */
+function coerceSnapMode(raw: unknown): SnapMode {
+  if (raw === 'custom') return 'location';
+  return SNAP_OPTIONS.find((option) => option.value === raw)?.value ?? DEFAULT_PREFERENCES.snapMode;
 }
 
 /**
@@ -167,7 +225,13 @@ function coercePanels(raw: unknown): PanelVisibility {
  * range cannot reach the renderer as a hairline or a slab.
  */
 export function coercePreferences(raw: unknown): Preferences {
-  const source = (raw ?? {}) as Partial<Record<keyof Preferences, unknown>>;
+  const source = (raw ?? {}) as Partial<Record<keyof Preferences | 'snapStep', unknown>>;
+  const gridScale = coerceNumber(
+    source.gridScale,
+    MIN_GRID_SCALE,
+    MAX_GRID_SCALE,
+    DEFAULT_PREFERENCES.gridScale,
+  );
 
   return {
     tooltipsEnabled: coerceBoolean(source.tooltipsEnabled, DEFAULT_PREFERENCES.tooltipsEnabled),
@@ -187,12 +251,7 @@ export function coercePreferences(raw: unknown): Preferences {
       source.viewportBackground,
       DEFAULT_PREFERENCES.viewportBackground,
     ),
-    gridScale: coerceNumber(
-      source.gridScale,
-      MIN_GRID_SCALE,
-      MAX_GRID_SCALE,
-      DEFAULT_PREFERENCES.gridScale,
-    ),
+    gridScale,
     // Rounded: half a subdivision is a line the grid cannot draw.
     gridSubdivisions: Math.round(
       coerceNumber(
@@ -234,12 +293,26 @@ export function coercePreferences(raw: unknown): Preferences {
       ),
     ),
     snapEnabled: coerceBoolean(source.snapEnabled, DEFAULT_PREFERENCES.snapEnabled),
-    snapMode: source.snapMode === 'custom' ? 'custom' : DEFAULT_PREFERENCES.snapMode,
-    snapStep: coerceNumber(
-      source.snapStep,
+    snapMode: coerceSnapMode(source.snapMode),
+    // Older builds stored one `snapStep`, a multiple of the grid scale, and worked
+    // the turn and the scale out from it. Only the distance it named carries over.
+    snapLocation: coerceNumber(
+      source.snapLocation ?? Number(source.snapStep ?? Number.NaN) * gridScale,
       MIN_SNAP_STEP,
       MAX_SNAP_STEP,
-      DEFAULT_PREFERENCES.snapStep,
+      DEFAULT_PREFERENCES.snapLocation,
+    ),
+    snapRotation: coerceNumber(
+      source.snapRotation,
+      MIN_SNAP_STEP,
+      MAX_SNAP_ROTATION,
+      DEFAULT_PREFERENCES.snapRotation,
+    ),
+    snapScale: coerceNumber(
+      source.snapScale,
+      MIN_SNAP_STEP,
+      MAX_SNAP_STEP,
+      DEFAULT_PREFERENCES.snapScale,
     ),
     // Rounded: half a step is not a state anything can be restored to.
     historySize: Math.round(
@@ -338,7 +411,9 @@ export const createPreferencesSlice: StateCreator<
         gridSubdivisions,
         snapEnabled,
         snapMode,
-        snapStep,
+        snapLocation,
+        snapRotation,
+        snapScale,
         historySize,
         autosaveEnabled,
         autosaveInterval,
@@ -363,7 +438,9 @@ export const createPreferencesSlice: StateCreator<
         gridSubdivisions,
         snapEnabled,
         snapMode,
-        snapStep,
+        snapLocation,
+        snapRotation,
+        snapScale,
         historySize,
         autosaveEnabled,
         autosaveInterval,

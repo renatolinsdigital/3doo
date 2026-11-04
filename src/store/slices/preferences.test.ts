@@ -4,12 +4,15 @@ import {
   DEFAULT_PREFERENCES,
   MAX_HISTORY_SIZE,
   MAX_ORBIT_SPEED,
+  MAX_SNAP_ROTATION,
   MAX_WHEEL_ZOOM_STEP,
   MIN_HISTORY_SIZE,
   MIN_ORBIT_SPEED,
+  MIN_SNAP_STEP,
   MIN_WHEEL_ZOOM_STEP,
   autosaveIntervalLabel,
   coercePreferences,
+  snapLabel,
 } from './preferences';
 
 const STORAGE_KEY = '3doo:preferences';
@@ -147,6 +150,53 @@ describe('coercePreferences', () => {
     expect(coercePreferences({ gridSubdivisions: 5000 }).gridSubdivisions).toBe(100);
     expect(coercePreferences({ gridOpacity: -1 }).gridOpacity).toBe(0);
     expect(coercePreferences({ gridMajorOpacity: 5 }).gridMajorOpacity).toBe(1);
+  });
+
+  it('keeps a snap step each for location, rotation and scale, inside their ranges', () => {
+    expect(DEFAULT_PREFERENCES).toMatchObject({
+      snapLocation: 0.1,
+      snapRotation: 15,
+      snapScale: 0.1,
+    });
+    expect(
+      coercePreferences({ snapLocation: 0.25, snapRotation: 30, snapScale: 0.5 }),
+    ).toMatchObject({ snapLocation: 0.25, snapRotation: 30, snapScale: 0.5 });
+
+    // A step of nothing would pin every transform where it stands.
+    expect(coercePreferences({ snapLocation: 0 }).snapLocation).toBe(MIN_SNAP_STEP);
+    expect(coercePreferences({ snapScale: -2 }).snapScale).toBe(MIN_SNAP_STEP);
+    expect(coercePreferences({ snapRotation: 0 }).snapRotation).toBe(MIN_SNAP_STEP);
+    expect(coercePreferences({ snapRotation: 720 }).snapRotation).toBe(MAX_SNAP_ROTATION);
+  });
+
+  it('carries the one step an older build saved over as the location step', () => {
+    // It was a multiple of the grid scale, so 0.055 of a two metre square is
+    // 0.11 m. Dropping it with the key would cost the figure somebody typed.
+    expect(coercePreferences({ snapStep: 0.055, gridScale: 2 }).snapLocation).toBeCloseTo(0.11);
+    expect(coercePreferences({ snapStep: 'lots' }).snapLocation).toBe(
+      DEFAULT_PREFERENCES.snapLocation,
+    );
+    expect(coercePreferences({ snapStep: 0.055, snapLocation: 0.2 }).snapLocation).toBe(0.2);
+  });
+
+  it('names the snap in force for the status bar', () => {
+    const custom = { snapLocation: 0.25, snapRotation: 30, snapScale: 0.5 };
+
+    expect(snapLabel({ snapMode: 'grid', ...custom })).toBe('GRID');
+    // All three whichever is picked: a move still uses the location step while
+    // the list is showing the rotation.
+    for (const snapMode of ['location', 'rotation', 'scale'] as const) {
+      expect(snapLabel({ snapMode, ...custom })).toBe('0.25 M / 30° / 0.5 M');
+    }
+  });
+
+  it('takes a step the picker offers, and reads an older CUSTOM as the first of them', () => {
+    for (const snapMode of ['grid', 'location', 'rotation', 'scale']) {
+      expect(coercePreferences({ snapMode }).snapMode).toBe(snapMode);
+    }
+    // Falling back to the default would have switched somebody's own steps off.
+    expect(coercePreferences({ snapMode: 'custom' }).snapMode).toBe('location');
+    expect(coercePreferences({ snapMode: 'sideways' }).snapMode).toBe('grid');
   });
 
   it('rounds a subdivision count to a line the grid can actually draw', () => {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useEditorStore } from '../useEditorStore';
 
@@ -160,6 +160,79 @@ describe('progress on a long operation', () => {
     stop();
 
     expect(label).toBe('DIFFERENCE');
+  });
+});
+
+describe('the pivot each mode works on', () => {
+  beforeEach(() => {
+    useEditorStore.getState().resetScene();
+    useEditorStore.setState({ pivot: 'origin', idlePivot: 'median' });
+    useEditorStore.getState().addPrimitive('cube');
+  });
+
+  it('opens object mode on the origin and edit mode on the median', async () => {
+    // A store nothing has touched, since the pivot outlives resetScene.
+    vi.resetModules();
+    const { useEditorStore: fresh } = await import('../useEditorStore');
+
+    // Object mode opened on the median, so anything whose origin had been left
+    // off its shape turned about the shape, its LOCATION swinging round with
+    // it. The origin cannot simply be the one default either: edit mode on it
+    // would turn a selected face about the middle of the object.
+    expect(fresh.getState().pivot).toBe('origin');
+
+    fresh.getState().addPrimitive('cube');
+    fresh.getState().setMode('edit');
+    expect(fresh.getState().pivot).toBe('median');
+  });
+
+  it('remembers what was picked in each mode across a switch', () => {
+    const store = useEditorStore.getState();
+
+    store.setPivot('cursor');
+    store.setMode('edit');
+    expect(useEditorStore.getState().pivot).toBe('median');
+
+    store.setPivot('origin');
+    store.setMode('object');
+    expect(useEditorStore.getState().pivot).toBe('cursor');
+
+    store.setMode('edit');
+    expect(useEditorStore.getState().pivot).toBe('origin');
+  });
+
+  it('keeps the pivot when asked for the mode it is already in', () => {
+    const store = useEditorStore.getState();
+
+    store.setPivot('cursor');
+    store.setMode('object');
+
+    expect(useEditorStore.getState().pivot).toBe('cursor');
+  });
+
+  it('does not swap the pivots when edit mode is refused', () => {
+    const store = useEditorStore.getState();
+    store.setPivot('cursor');
+    store.deleteSelected();
+
+    useEditorStore.getState().setMode('edit');
+
+    expect(useEditorStore.getState().mode).toBe('object');
+    expect(useEditorStore.getState().pivot).toBe('cursor');
+  });
+
+  it('hands object mode its own pivot back when a new scene ends edit mode', () => {
+    const store = useEditorStore.getState();
+    store.setPivot('cursor');
+    store.setMode('edit');
+
+    // A new scene drops back to object mode without going through setMode, and
+    // left to itself would have object mode wearing edit mode's pivot.
+    store.resetScene();
+
+    expect(useEditorStore.getState().mode).toBe('object');
+    expect(useEditorStore.getState().pivot).toBe('cursor');
+    expect(useEditorStore.getState().idlePivot).toBe('median');
   });
 });
 

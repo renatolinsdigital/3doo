@@ -16,7 +16,6 @@ import {
   MAX_HISTORY_SIZE,
   MAX_ORBIT_SPEED,
   MAX_SELECTION_LINE_WIDTH,
-  MAX_SNAP_STEP,
   MAX_WHEEL_ZOOM_STEP,
   MIN_GRID_SCALE,
   MIN_GRID_SUBDIVISIONS,
@@ -25,6 +24,8 @@ import {
   MIN_SELECTION_LINE_WIDTH,
   MIN_SNAP_STEP,
   MIN_WHEEL_ZOOM_STEP,
+  SNAP_OPTIONS,
+  SNAP_STEPS,
   autosaveIntervalLabel,
   useEditorStore,
 } from '@store/index';
@@ -53,11 +54,6 @@ const AUTOSAVE_INTERVAL_OPTIONS = AUTOSAVE_INTERVALS.map((seconds) => ({
   value: String(seconds),
   label: autosaveIntervalLabel(seconds),
 }));
-
-const SNAP_OPTIONS: readonly { value: SnapMode; label: string }[] = [
-  { value: 'grid', label: 'GRID' },
-  { value: 'custom', label: 'CUSTOM' },
-];
 
 const WHEEL_ZOOM_OPTIONS: readonly { value: WheelZoom; label: string }[] = [
   { value: 'pointer', label: 'FOLLOW POINTER' },
@@ -145,7 +141,8 @@ export function PreferencesDialog() {
   const gridSubdivisions = useEditorStore((state) => state.gridSubdivisions);
   const snapEnabled = useEditorStore((state) => state.snapEnabled);
   const snapMode = useEditorStore((state) => state.snapMode);
-  const snapStep = useEditorStore((state) => state.snapStep);
+  const snapStep = snapMode === 'grid' ? null : SNAP_STEPS[snapMode];
+  const snapValue = useEditorStore((state) => (snapStep ? state[snapStep.preference] : 0));
   const historySize = useEditorStore((state) => state.historySize);
   const autosaveEnabled = useEditorStore((state) => state.autosaveEnabled);
   const autosaveInterval = useEditorStore((state) => state.autosaveInterval);
@@ -383,27 +380,24 @@ export function PreferencesDialog() {
           onChange={(enabled) => setPreferences({ snapEnabled: enabled })}
         />
         <Select<SnapMode>
-          label="SNAP TO"
+          label="SNAP STEP"
           value={snapMode}
           options={SNAP_OPTIONS}
-          hint="What the steps are measured in: GRID lands on the squares themselves, CUSTOM on the step below. The same picker as the one in the top bar"
+          hint="GRID lands on the squares themselves. LOCATION, ROTATION and SCALE each open a step of your own for that transform, and all three are used together until you go back to GRID. The same list as the one in the top bar"
           onChange={(mode) => setPreferences({ snapMode: mode })}
         />
-        <NumberField
-          label="CUSTOM STEP"
-          value={snapStep}
-          min={MIN_SNAP_STEP}
-          max={MAX_SNAP_STEP}
-          step={0.05}
-          suffix="×"
-          disabled={snapMode === 'grid'}
-          hint={
-            snapMode === 'grid'
-              ? 'The step CUSTOM uses, as a multiple of the SCALE above. Set SNAP TO to CUSTOM to use it'
-              : 'How far apart the steps are, as a multiple of the SCALE above: 1 is one whole square, 0.1 a tenth of one.'
-          }
-          onChange={(step) => setPreferences({ snapStep: step })}
-        />
+        {snapStep ? (
+          <NumberField
+            label={snapStep.label}
+            value={snapValue}
+            min={MIN_SNAP_STEP}
+            max={snapStep.max}
+            step={snapStep.nudge}
+            suffix={snapStep.suffix}
+            hint={snapStep.hint}
+            onChange={(step) => setPreferences({ [snapStep.preference]: step })}
+          />
+        ) : null}
       </Accordion>
 
       <Accordion title="AUTOSAVE">

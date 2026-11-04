@@ -3021,8 +3021,10 @@ export const createSceneSlice: StateCreator<
       recentVerts: null,
       meshVersion: get().meshVersion + 1,
       // Edit mode with no object is not a reachable state, so a new scene has
-      // to drop back to object mode along with the tool that was active.
+      // to drop back to object mode along with the tool that was active, and
+      // with object mode's own pivot rather than edit mode's.
       mode: 'object',
+      ...(get().mode === 'edit' ? { pivot: get().idlePivot, idlePivot: get().pivot } : {}),
       activeTool: 'select',
       modal: null,
       deleteMenu: null,

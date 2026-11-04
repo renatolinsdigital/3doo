@@ -654,46 +654,86 @@ describe('App shell', () => {
     expect(screen.getByText('SNAP GRID')).toBeInTheDocument();
   });
 
-  it('types a step of its own once CUSTOM is picked, and saves it', async () => {
+  it('picks location, rotation or scale from one list, and takes a figure for the one picked', async () => {
     // Snapping is a preference, so it outlives a scene reset: put back by hand.
     act(() =>
-      useEditorStore
-        .getState()
-        .setPreferences({ snapEnabled: true, snapMode: 'grid', snapStep: 0.1 }),
+      useEditorStore.getState().setPreferences({
+        snapEnabled: true,
+        snapMode: 'grid',
+        snapLocation: 0.1,
+        snapRotation: 15,
+        snapScale: 0.1,
+      }),
     );
     render(<App />);
 
+    const picker = screen.getByLabelText('Snap step');
+    const steps = ['location', 'rotation', 'scale'];
+    const shown = () =>
+      steps.filter((step) => screen.queryByLabelText(`Snap ${step} step`) !== null);
+
+    // A CUSTOM entry used to open three abbreviated fields side by side.
+    expect(
+      within(picker)
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toEqual(['GRID', 'LOCATION', 'ROTATION', 'SCALE']);
+
     // Nothing to type into while the grid is what the steps are measured in.
-    expect(screen.queryByLabelText('Snap step')).not.toBeInTheDocument();
+    expect(shown()).toEqual([]);
     expect(screen.getByText('SNAP GRID')).toBeInTheDocument();
 
-    await userEvent.selectOptions(screen.getByLabelText('Snap to'), 'custom');
-    const field = screen.getByLabelText('Snap step');
-
-    await userEvent.clear(field);
-    await userEvent.type(field, '0.03');
-    fireEvent.blur(field);
+    const type = async (step: string, figure: string) => {
+      await userEvent.selectOptions(picker, step);
+      // Only the one picked is on show.
+      expect(shown()).toEqual([step]);
+      const field = screen.getByLabelText(`Snap ${step} step`);
+      await userEvent.clear(field);
+      await userEvent.type(field, figure);
+      fireEvent.blur(field);
+    };
+    await type('location', '0.03');
+    await type('rotation', '30');
+    await type('scale', '0.5');
 
     // Saved as a preference, not just held on the bar: it is what the export
     // writes out and what the next session reads back.
     expect(useEditorStore.getState().currentPreferences()).toMatchObject({
       snapEnabled: true,
-      snapMode: 'custom',
-      snapStep: 0.03,
+      snapMode: 'scale',
+      snapLocation: 0.03,
+      snapRotation: 30,
+      snapScale: 0.5,
     });
-    expect(screen.getByText('SNAP 0.03 GRID')).toBeInTheDocument();
+    // All three stay in force whichever one the list is showing.
+    expect(screen.getByText('SNAP 0.03 M / 30° / 0.5 M')).toBeInTheDocument();
 
-    // Back to the grid and the figure is kept, not thrown away.
-    await userEvent.selectOptions(screen.getByLabelText('Snap to'), 'grid');
+    // Picked again, each shows what was typed for it.
+    await userEvent.selectOptions(picker, 'location');
+    expect(screen.getByLabelText('Snap location step')).toHaveValue('0.03');
+    await userEvent.selectOptions(picker, 'rotation');
+    expect(screen.getByLabelText('Snap rotation step')).toHaveValue('30');
+
+    // Back to the grid and the figures are kept, not thrown away.
+    await userEvent.selectOptions(picker, 'grid');
+    expect(shown()).toEqual([]);
     expect(screen.getByText('SNAP GRID')).toBeInTheDocument();
-    expect(useEditorStore.getState().snapStep).toBe(0.03);
+    expect(useEditorStore.getState()).toMatchObject({
+      snapLocation: 0.03,
+      snapRotation: 30,
+      snapScale: 0.5,
+    });
   });
 
   it('holds the same snap setting in the top bar and in preferences', async () => {
     act(() =>
-      useEditorStore
-        .getState()
-        .setPreferences({ snapEnabled: false, snapMode: 'grid', snapStep: 0.1 }),
+      useEditorStore.getState().setPreferences({
+        snapEnabled: false,
+        snapMode: 'grid',
+        snapLocation: 0.1,
+        snapRotation: 15,
+        snapScale: 0.1,
+      }),
     );
     render(<App />);
 
@@ -706,18 +746,27 @@ describe('App shell', () => {
     expect(useEditorStore.getState().snapEnabled).toBe(true);
     expect(screen.getByRole('button', { name: 'SNAP' })).toHaveAttribute('aria-pressed', 'true');
 
-    // The step has no effect until the mode says to use it, so the field says
-    // so rather than taking a figure that would change nothing.
-    expect(within(dialog).getByLabelText('CUSTOM STEP')).toBeDisabled();
+    // Nothing to fill in under the grid, the same as in the bar.
+    for (const label of ['LOCATION STEP', 'ROTATION STEP', 'SCALE STEP']) {
+      expect(within(dialog).queryByLabelText(label)).not.toBeInTheDocument();
+    }
 
-    await userEvent.selectOptions(within(dialog).getByLabelText('SNAP TO'), 'custom');
-    const step = within(dialog).getByLabelText('CUSTOM STEP');
+    const picker = within(dialog).getByLabelText('SNAP STEP');
+    await userEvent.selectOptions(picker, 'rotation');
+    expect(within(dialog).queryByLabelText('LOCATION STEP')).not.toBeInTheDocument();
+
+    const step = within(dialog).getByLabelText('ROTATION STEP');
     await userEvent.clear(step);
-    await userEvent.type(step, '0.03');
+    await userEvent.type(step, '30');
     fireEvent.blur(step);
 
-    expect(screen.getByLabelText('Snap to')).toHaveValue('custom');
-    expect(screen.getByLabelText('Snap step')).toHaveValue('0.03');
+    expect(screen.getByLabelText('Snap step')).toHaveValue('rotation');
+    expect(screen.getByLabelText('Snap rotation step')).toHaveValue('30');
+
+    // And back the other way: the bar's list moves the dialog's.
+    await userEvent.selectOptions(screen.getByLabelText('Snap step'), 'scale');
+    expect(picker).toHaveValue('scale');
+    expect(within(dialog).getByLabelText('SCALE STEP')).toBeInTheDocument();
   });
 
   it('takes a panel, the tool rail and the status bar off the screen from preferences', async () => {
@@ -834,11 +883,16 @@ describe('App shell', () => {
   it('switches the transform pivot from the top bar', async () => {
     render(<App />);
     const pivot = screen.getByRole('combobox', { name: 'PIVOT' });
-    expect(pivot).toHaveValue('median');
+    // Read as median while that was what object mode opened on.
+    expect(pivot).toHaveValue('origin');
 
     await userEvent.selectOptions(pivot, 'cursor');
     expect(useEditorStore.getState().pivot).toBe('cursor');
 
+    await userEvent.selectOptions(pivot, 'median');
+    expect(useEditorStore.getState().pivot).toBe('median');
+
+    // The pivot outlives a scene reset: left as this test found it.
     await userEvent.selectOptions(pivot, 'origin');
     expect(useEditorStore.getState().pivot).toBe('origin');
   });
