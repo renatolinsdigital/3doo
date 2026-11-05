@@ -1,8 +1,10 @@
 # 3DOO
 
-3DOO is a 3D mesh editor that runs in the browser. You model with the operations of a desktop package (extrude, inset, bevel, loop cut, knife, dissolve and the rest) and export the result as OBJ or FBX, ready for a game engine.
+3DOO is a 3D mesh editor that runs in the browser. You model with the operations of a desktop package and export the result as OBJ or FBX, ready for a game engine. Below you can see how the software looks like:
 
 ![Software Interface](docs/images/print.png)
+
+If you are a creative, you can start using 3DOO @ [3doo.vercel.app](http://3doo.vercel.app)
 
 ## Some things you can do with this software
 
@@ -14,15 +16,15 @@
 
 ![Centered Origin + Custom Angle Snapping](docs/gifs/snapping.gif)
 
-### Essential Modeling Tools: Extrude, Inset, Bridge, Knife, Merge, Loop Cut, Mirror Modifier, Subdivide, Dissolve, Snap, Relax, Duplicate, Booleans, etc
+### Create Game assets using essential Modeling Tools such as Extrude, Inset, Bridge, Knife, Merge, Loop Cut, Mirror Modifier, Subdivide, Dissolve, Snap, Relax, Duplicate, Booleans, etc
 
 ![Emsar Sword Modeling - Part 1](docs/gifs/emsar_01.gif)
 ![Emsar Sword Modeling - Part 2](docs/gifs/emsar_02.gif)
 
 
-*Full 3D game asset modeling using 3DOO's interface. Check the model <a href="https://skfb.ly/pPToU" target="_blank">here</a>*.
+*To see this full 3D game asset modeled in 3DOO's interface. Check the model [here](https://skfb.ly/pPToU)*.
 
-## Quick start
+## For Developers here is a Quick start
 
 ```bash
 npm install
