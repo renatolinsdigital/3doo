@@ -1,10 +1,13 @@
 # 3DOO
 
-3DOO is a 3D mesh editor that runs in the browser. You model with the operations of a desktop package and export the result as OBJ or FBX, ready for a game engine. Below you can see how the software looks like:
+3DOO is a 3D mesh editor that runs in the browser. You model with the operations of a desktop package and export the result as OBJ or FBX, ready for a game engine. 3DOO includes an **MCP server**, allowing Claude and other AI assistants to build models directly in the program through its scripting API. Models can be delivered as editable files, multi-angle renders, or shareable pages that open the result directly in the editor. Below you can see how the software looks like:
 
 ![Software Interface](docs/images/print.png)
 
 If you are a creative, you can start using 3DOO @ [3doo.vercel.app](http://3doo.vercel.app)
+
+If you want to jump straight into AI-powered modeling, check out 3DOO’s built-in MCP server @ [npmjs.com/package/3doo-mcp](https://www.npmjs.com/package/3doo-mcp)
+
 
 ## Some things you can do with this software
 
@@ -24,7 +27,7 @@ If you are a creative, you can start using 3DOO @ [3doo.vercel.app](http://3doo.
 
 *To see this full 3D game asset modeled in 3DOO's interface. Check the model [here](https://skfb.ly/pPToU)*.
 
-## For Developers here is a Quick start
+## Developers Quick start
 
 ```bash
 npm install
