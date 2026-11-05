@@ -1,4 +1,5 @@
 import type {
+  Axis,
   BMesh,
   FalloffCurve,
   LatticeResolution,
@@ -15,6 +16,9 @@ import type {
 export type EditorMode = 'object' | 'edit';
 
 export type ShadingMode = 'solid' | 'wireframe' | 'solidWire' | 'xray' | 'matcap';
+
+/** A `#rrggbb` for each axis. */
+export type AxisColors = Readonly<Record<Axis, string>>;
 
 /** What a selection drag draws: the region it sweeps is what gets picked. */
 export type SelectShape = 'box' | 'circle' | 'lasso';
@@ -399,6 +403,11 @@ export interface Preferences {
   /** `#rrggbb` of the heavy line every `gridSubdivisions` divisions, and its solidity. */
   gridMajorColor: string;
   gridMajorOpacity: number;
+  /**
+   * One colour per axis, shared by the world centre lines, the gizmo, the guide
+   * lines and the corner widget, so an axis is the same colour wherever it shows up.
+   */
+  axisColors: AxisColors;
 }
 
 /**

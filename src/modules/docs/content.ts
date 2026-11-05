@@ -1194,7 +1194,7 @@ export const DOCS_SECTIONS: readonly DocsSection[] = [
       },
       {
         kind: 'prose',
-        text: 'COLORS holds every colour you can change, in one place: the viewport background, the fine and heavy lines of the grid with how solid each is drawn, and the outline around selected objects.',
+        text: 'COLORS holds every colour you can change, in one place: the viewport background, the fine and heavy lines of the grid with how solid each is drawn, the outline around selected objects, and the X, Y and Z axes. An axis keeps its colour everywhere it shows: the centre lines on the ground, the gizmo and its guide lines, and the widget in the corner.',
       },
       {
         kind: 'prose',

@@ -5,7 +5,6 @@ import { LineSegments2 } from 'three/examples/jsm/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/examples/jsm/lines/LineSegmentsGeometry.js';
 
 import {
-  AXIS_COLORS,
   DOT_OCCLUSION,
   NO_OCCLUSION_MAP,
   OCCLUDER_LAYER,
@@ -52,6 +51,7 @@ import {
   vec3,
 } from '@kernel/index';
 import {
+  DEFAULT_PREFERENCES,
   type EditorStore,
   activeObject,
   displayCenter,
@@ -59,6 +59,7 @@ import {
   useEditorStore,
 } from '@store/index';
 import type {
+  AxisColors,
   CursorSnapKind,
   CursorSnapTargets,
   ModalCommand,
@@ -684,6 +685,7 @@ export class Viewport {
   private readonly controls: CameraController;
   private readonly gizmo: TransformControls;
   private readonly gizmoHelper: THREE.Object3D;
+  private readonly paintGizmo: (colors: AxisColors) => void;
   private readonly gizmoProxy = new THREE.Object3D();
   private readonly grid = new ViewportGrid();
   private readonly cursor: THREE.Object3D;
@@ -930,7 +932,7 @@ export class Viewport {
     this.gizmo.size = this.fingerSized ? TOUCH_GIZMO_SIZE : GIZMO_SIZE;
     this.gizmoHelper = resolveGizmoHelper(this.gizmo);
     aimGizmoRays(this.gizmo);
-    paintGizmoAxes(this.gizmoHelper, this.gizmo);
+    this.paintGizmo = paintGizmoAxes(this.gizmoHelper, this.gizmo);
     trimGizmoGuides(this.gizmoHelper, this.gizmo);
     this.scene.add(this.gizmoHelper);
     this.gizmo.enabled = false;
@@ -1348,6 +1350,14 @@ export class Viewport {
           ] as const,
         ([scale, subdivisions, color, opacity, majorColor, majorOpacity]) =>
           this.grid.setGrid({ scale, subdivisions, color, opacity, majorColor, majorOpacity }),
+        { equalityFn: shallowArrayEqual, fireImmediately: true },
+      ),
+      store.subscribe(
+        (state) => [state.axisColors.x, state.axisColors.y, state.axisColors.z] as const,
+        ([x, y, z]) => {
+          this.paintGizmo({ x, y, z });
+          this.grid.setAxisColors({ x, y, z });
+        },
         { equalityFn: shallowArrayEqual, fireImmediately: true },
       ),
       store.subscribe(
@@ -3154,7 +3164,8 @@ export class Viewport {
 
     const material = this.modalLine.material as THREE.LineDashedMaterial;
     // A pinned axis is drawn in its own colour, the one the corner widget lights.
-    material.color.setHex(pinned ? AXIS_COLORS[pinned] : VIEWPORT_COLORS.bone);
+    const { axisColors } = useEditorStore.getState();
+    material.color.set(pinned ? axisColors[pinned] : VIEWPORT_COLORS.bone);
     // Guarded: a zero dash size divides by zero in the dash shader, and the
     // line vanishes the moment the pointer sits on the pivot.
     const length = Math.max(from.distanceTo(to), 1e-4);
@@ -5286,23 +5297,24 @@ const GIZMO_HIGHLIGHT_MIX = 0.4;
 const WHITE = new THREE.Color(0xffffff);
 
 /** The colour a drag on one axis is narrated in, or null where it spans more than one. */
-function axisTint(axis: string | null): number | null {
-  if (axis === 'X') return AXIS_COLORS.x;
-  if (axis === 'Y') return AXIS_COLORS.y;
-  if (axis === 'Z') return AXIS_COLORS.z;
+function axisTint(axis: string | null, tints: Readonly<Record<Axis, number>>): number | null {
+  if (axis === 'X') return tints.x;
+  if (axis === 'Y') return tints.y;
+  if (axis === 'Z') return tints.z;
   return null;
 }
 
 /**
- * Repaints the gizmo onto the app's axis colours, and keeps it there.
+ * Repaints the gizmo onto the axis colours, and keeps it there. Starts on the
+ * defaults and returns the way to paint it in others.
  *
  * Three colours the gizmo three ways, and only the first is set once. The base
  * handles are pure red, green and blue; each material's colour is cached as
  * `_color` the first time it updates so it can be restored after a highlight,
- * so the cache is written too and one pass at construction holds. Matched on
- * the colour rather than the handle name so the plane handles come along for
- * free: three shares each axis material with the plane facing it, so red covers
- * X and YZ, green covers Y and XZ, blue covers Z and XY.
+ * so the cache is written too and a repaint holds. Matched on the colour rather
+ * than the handle name so the plane handles come along for free: three shares
+ * each axis material with the plane facing it, so red covers X and YZ, green
+ * covers Y and XZ, blue covers Z and XY.
  *
  * The other two are rewritten every frame, from inside three's own
  * `updateMatrixWorld`, which is why this hangs off it:
@@ -5315,15 +5327,20 @@ function axisTint(axis: string | null): number | null {
  *   so it is tinted to match, as Blender's is. Only a drag spanning more than
  *   one axis keeps them neutral, having no single colour to claim.
  */
-export function paintGizmoAxes(helper: THREE.Object3D, controls: TransformControls): void {
-  const remap = new Map<number, number>([
-    [0xff0000, AXIS_COLORS.x],
-    [0x00ff00, AXIS_COLORS.y],
-    [0x0000ff, AXIS_COLORS.z],
+export function paintGizmoAxes(
+  helper: THREE.Object3D,
+  controls: TransformControls,
+): (colors: AxisColors) => void {
+  const threeColors = new Map<number, Axis>([
+    [0xff0000, 'x'],
+    [0x00ff00, 'y'],
+    [0x0000ff, 'z'],
   ]);
 
   const handles: GizmoMaterial[] = [];
+  const axisHandles: { material: GizmoMaterial; axis: Axis }[] = [];
   const guides: { material: GizmoMaterial; base: THREE.Color }[] = [];
+  const tints: Record<Axis, number> = { x: 0, y: 0, z: 0 };
 
   helper.traverse((child) => {
     const material = (child as Partial<THREE.Mesh>).material as GizmoMaterial | undefined;
@@ -5338,12 +5355,11 @@ export function paintGizmoAxes(helper: THREE.Object3D, controls: TransformContro
       return;
     }
 
-    const replacement = remap.get(material.color.getHex());
-    if (replacement !== undefined) {
-      material.color.setHex(replacement);
-      material._color?.setHex(replacement);
-    }
-    if (!handles.includes(material)) handles.push(material);
+    if (handles.includes(material)) return;
+    handles.push(material);
+
+    const axis = threeColors.get(material.color.getHex());
+    if (axis) axisHandles.push({ material, axis });
   });
 
   const update = helper.updateMatrixWorld.bind(helper);
@@ -5355,12 +5371,28 @@ export function paintGizmoAxes(helper: THREE.Object3D, controls: TransformContro
       material.color.copy(material._color ?? material.color).lerp(WHITE, GIZMO_HIGHLIGHT_MIX);
     }
 
-    const tint = axisTint(controls.axis ?? null);
+    const tint = axisTint(controls.axis ?? null, tints);
     for (const guide of guides) {
       if (tint === null) guide.material.color.copy(guide.base);
       else guide.material.color.setHex(tint);
     }
   };
+
+  const paint = (colors: AxisColors) => {
+    for (const axis of ['x', 'y', 'z'] as const) {
+      const hex = new THREE.Color(colors[axis]).getHex();
+      // One step off the exact yellow the loop above takes for three's highlight,
+      // or an axis set to it would show as lit up the whole time.
+      tints[axis] = hex === GIZMO_HIGHLIGHT ? GIZMO_HIGHLIGHT - 0x100 : hex;
+    }
+    for (const { material, axis } of axisHandles) {
+      material.color.setHex(tints[axis]);
+      material._color?.setHex(tints[axis]);
+    }
+  };
+
+  paint(DEFAULT_PREFERENCES.axisColors);
+  return paint;
 }
 
 /** Infinite lines along each axis the drag names: what it is locked to. */

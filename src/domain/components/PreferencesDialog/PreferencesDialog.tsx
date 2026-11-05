@@ -152,6 +152,7 @@ export function PreferencesDialog() {
   const gridOpacity = useEditorStore((state) => state.gridOpacity);
   const gridMajorColor = useEditorStore((state) => state.gridMajorColor);
   const gridMajorOpacity = useEditorStore((state) => state.gridMajorOpacity);
+  const axisColors = useEditorStore((state) => state.axisColors);
   const setPreferences = useEditorStore((state) => state.setPreferences);
   const resetPreferences = useEditorStore((state) => state.resetPreferences);
 
@@ -304,6 +305,24 @@ export function PreferencesDialog() {
           value={selectionLineColor}
           hint="The outline around selected objects in object mode. The active one wears this colour, the rest a darker mix"
           onChange={(color) => setPreferences({ selectionLineColor: color })}
+        />
+        <ColorField
+          label="X AXIS"
+          value={axisColors.x}
+          hint="The X axis everywhere it shows: the centre line on the ground, the gizmo's handles and guide lines, and the widget in the corner"
+          onChange={(color) => setPreferences({ axisColors: { ...axisColors, x: color } })}
+        />
+        <ColorField
+          label="Y AXIS"
+          value={axisColors.y}
+          hint="The Y axis everywhere it shows: the gizmo's handles and guide lines, and the widget in the corner. It stands straight up, so it has no line on the ground"
+          onChange={(color) => setPreferences({ axisColors: { ...axisColors, y: color } })}
+        />
+        <ColorField
+          label="Z AXIS"
+          value={axisColors.z}
+          hint="The Z axis everywhere it shows: the centre line on the ground, the gizmo's handles and guide lines, and the widget in the corner"
+          onChange={(color) => setPreferences({ axisColors: { ...axisColors, z: color } })}
         />
       </Accordion>
 

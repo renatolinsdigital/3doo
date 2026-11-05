@@ -1,9 +1,8 @@
 import * as THREE from 'three';
 
-import { AXIS_COLORS } from '@bridge/index';
 import type { Vec3 } from '@kernel/index';
 import { DEFAULT_PREFERENCES } from '@store/index';
-import type { Preferences } from '@store/types';
+import type { AxisColors, Preferences } from '@store/types';
 
 /** What the ground plane is drawn from, out of the user's preferences. */
 export interface GridSettings {
@@ -366,6 +365,7 @@ export class ViewportGrid {
       }),
     );
     this.buildAxes();
+    this.setAxisColors(DEFAULT_PREFERENCES.axisColors);
 
     this.setGrid(settings);
     this.update(0, { x: 0, z: 0 });
@@ -400,6 +400,22 @@ export class ViewportGrid {
     uniforms.majorOpacity.value = settings.majorOpacity;
     uniforms.subdivisions.value = settings.subdivisions;
     this.applyOpacity();
+  }
+
+  /** Paints the two centre lines. Y has no line on the ground, so its colour goes unused. */
+  setAxisColors(colors: AxisColors): void {
+    const attribute = this.axes.geometry.getAttribute('color') as THREE.BufferAttribute;
+    // Run through THREE.Color rather than written out as raw channels: with
+    // colour management on, that is the same sRGB-to-working conversion the
+    // gizmo's materials get. Hand-written values would land in a different
+    // space and the two would not match on screen.
+    const x = new THREE.Color(colors.x);
+    const z = new THREE.Color(colors.z);
+    attribute.setXYZ(0, x.r, x.g, x.b);
+    attribute.setXYZ(1, x.r, x.g, x.b);
+    attribute.setXYZ(2, z.r, z.g, z.b);
+    attribute.setXYZ(3, z.r, z.g, z.b);
+    attribute.needsUpdate = true;
   }
 
   /** The one writer of the fine lines' alpha, since two things set it. */
@@ -447,22 +463,14 @@ export class ViewportGrid {
   /**
    * The two world centre lines, as a unit cross for `update` to size.
    *
-   * Built once: nothing in the preferences reaches them. How far they run is
-   * the zoom's business and the colours are the app's own, the same two the
-   * gizmo paints its X and Z handles with.
+   * Built once: how far they run is the zoom's business, and `setAxisColors`
+   * writes their colours, the same two the gizmo paints its X and Z handles with.
    */
   private buildAxes(): void {
     const positions = new Float32Array([-1, 0, 0, 1, 0, 0, 0, 0, -1, 0, 0, 1]);
-    // Run through THREE.Color rather than written out as raw channels: with
-    // colour management on, that is the same sRGB-to-working conversion the
-    // gizmo's materials get from `setHex`. Hand-written values would land in a
-    // different space and the two would not match on screen.
-    const x = new THREE.Color(AXIS_COLORS.x);
-    const z = new THREE.Color(AXIS_COLORS.z);
-    const colors = new Float32Array([x.r, x.g, x.b, x.r, x.g, x.b, z.r, z.g, z.b, z.r, z.g, z.b]);
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(12), 3));
 
     this.axes.geometry.dispose();
     this.axes.geometry = geometry;

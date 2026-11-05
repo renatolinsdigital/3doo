@@ -322,6 +322,7 @@ export async function renderSnapshots(
     majorColor: state.gridMajorColor,
     majorOpacity: state.gridMajorOpacity,
   });
+  grid.setAxisColors(state.axisColors);
   grid.setVisibility(showGrid, showGrid);
   scene.add(grid.group);
 

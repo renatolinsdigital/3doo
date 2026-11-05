@@ -1,7 +1,7 @@
 import type { StateCreator } from 'zustand';
 
 import type { EditorStore } from '../useEditorStore';
-import type { PanelId, PanelVisibility, Preferences, SnapMode } from '../types';
+import type { AxisColors, PanelId, PanelVisibility, Preferences, SnapMode } from '../types';
 
 const STORAGE_KEY = '3doo:preferences';
 
@@ -50,6 +50,9 @@ export const DEFAULT_PREFERENCES: Preferences = {
   gridOpacity: 0.3,
   gridMajorColor: '#b8452f',
   gridMajorOpacity: 0.65,
+  // Blender's scheme with this palette's hues standing in for raw RGB: X keeps
+  // red, Y takes amber where Blender uses green, Z takes cyan where it uses blue.
+  axisColors: { x: '#e5342a', y: '#f2a03d', z: '#3de0d0' },
 };
 
 export const MIN_SELECTION_LINE_WIDTH = 1;
@@ -216,6 +219,18 @@ function coercePanels(raw: unknown): PanelVisibility {
   return panels;
 }
 
+/** Each axis falls back on its own, so one bad colour cannot cost the other two. */
+function coerceAxisColors(raw: unknown): AxisColors {
+  const source = (raw ?? {}) as Partial<Record<keyof AxisColors, unknown>>;
+  const fallback = DEFAULT_PREFERENCES.axisColors;
+
+  return {
+    x: coerceColor(source.x, fallback.x),
+    y: coerceColor(source.y, fallback.y),
+    z: coerceColor(source.z, fallback.z),
+  };
+}
+
 /**
  * Rebuilds a complete preference set from anything shaped roughly like one: a
  * storage blob, an imported file, a build that stored fewer keys.
@@ -340,6 +355,7 @@ export function coercePreferences(raw: unknown): Preferences {
       1,
       DEFAULT_PREFERENCES.gridMajorOpacity,
     ),
+    axisColors: coerceAxisColors(source.axisColors),
   };
 }
 
@@ -421,6 +437,7 @@ export const createPreferencesSlice: StateCreator<
         gridOpacity,
         gridMajorColor,
         gridMajorOpacity,
+        axisColors,
       } = get();
       return {
         tooltipsEnabled,
@@ -448,6 +465,7 @@ export const createPreferencesSlice: StateCreator<
         gridOpacity,
         gridMajorColor,
         gridMajorOpacity,
+        axisColors,
       };
     },
 

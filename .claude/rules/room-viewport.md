@@ -28,6 +28,8 @@ by React. Depth: `docs/rendering.md` (camera, gizmo, picking).
 
 ## The gizmo
 
+- `paintGizmoAxes` spots three's highlight by its exact yellow, which also lights
+  an axis the user set to `#ffff00`, so that colour is painted one step off it.
 - `updateGizmo` never re-seats mid-drag (the `gizmoDragging` guard). Each
   drag tick bumps `meshVersion` and resyncs; re-seating there took a new
   baseline every tick and the object stuttered.

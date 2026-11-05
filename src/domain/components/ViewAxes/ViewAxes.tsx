@@ -1,4 +1,9 @@
-import { type PointerEvent as ReactPointerEvent, useLayoutEffect, useRef } from 'react';
+import {
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+  useLayoutEffect,
+  useRef,
+} from 'react';
 
 import type { Axis } from '@kernel/index';
 import { useTooltipTrigger } from '@shared/hooks/useTooltipTrigger';
@@ -85,6 +90,9 @@ const keyOf = (axis: Axis, negative: boolean) => `${negative ? '-' : ''}${axis}`
  * per-frame path everywhere else.
  */
 export function ViewAxes() {
+  const axisX = useEditorStore((state) => state.axisColors.x);
+  const axisY = useEditorStore((state) => state.axisColors.y);
+  const axisZ = useEditorStore((state) => state.axisColors.z);
   const svgRef = useRef<SVGSVGElement>(null);
   const groups = useRef(new Map<string, SVGGElement>());
   const spokes = useRef(new Map<Axis, SVGLineElement>());
@@ -163,7 +171,10 @@ export function ViewAxes() {
     // the camera any way at all, over the top included. The corners of the
     // box outside the disc are still viewport, and a drag there reaches the
     // canvas underneath.
-    <div className="view-axes">
+    <div
+      className="view-axes"
+      style={{ '--axis-x': axisX, '--axis-y': axisY, '--axis-z': axisZ } as CSSProperties}
+    >
       <svg
         className="view-axes__plate"
         viewBox="0 0 100 100"

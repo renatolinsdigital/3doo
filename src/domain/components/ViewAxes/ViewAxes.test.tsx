@@ -37,6 +37,42 @@ describe('ViewAxes', () => {
     expect(ballFor('TOP')).toHaveAttribute('transform', expect.stringContaining('translate(50 20'));
   });
 
+  it('wears the axis colours from the preferences, and follows a change', () => {
+    useEditorStore.getState().resetPreferences();
+    const { container } = render(<ViewAxes />);
+    const root = container.querySelector<HTMLElement>('.view-axes');
+    const { x, y, z } = useEditorStore.getState().axisColors;
+
+    expect(root?.style.getPropertyValue('--axis-x')).toBe(x);
+    expect(root?.style.getPropertyValue('--axis-y')).toBe(y);
+    expect(root?.style.getPropertyValue('--axis-z')).toBe(z);
+
+    act(() =>
+      useEditorStore.getState().setPreferences({ axisColors: { x, y: '#102030', z } }),
+    );
+    expect(root?.style.getPropertyValue('--axis-y')).toBe('#102030');
+
+    act(() => useEditorStore.getState().resetPreferences());
+  });
+
+  it('keeps the camera placing the ends after the colours change', () => {
+    useEditorStore.getState().resetPreferences();
+    render(<ViewAxes />);
+    publish();
+    const placed = ballFor('RIGHT').getAttribute('transform');
+    const { x, z } = useEditorStore.getState().axisColors;
+
+    // The ends are placed from the frame channel, outside React, so a render
+    // for a new colour must not put them back in the corner of the box.
+    act(() =>
+      useEditorStore.getState().setPreferences({ axisColors: { x, y: '#102030', z } }),
+    );
+
+    expect(ballFor('RIGHT').getAttribute('transform')).toBe(placed);
+
+    act(() => useEditorStore.getState().resetPreferences());
+  });
+
   it('paints the near end over the far one', () => {
     render(<ViewAxes />);
     publish();

@@ -78,6 +78,21 @@ function gizmoOf(view: Viewport) {
   return { gizmo, helper: inside.gizmoHelper };
 }
 
+/** The colour of a drawn gizmo handle: not its guide line, nor its invisible picker. */
+function gizmoHandleColor(helper: THREE.Object3D, name: string) {
+  let color = '';
+  helper.traverse((child) => {
+    const { material, tag } = child as THREE.Object3D & {
+      material?: THREE.Material & { color?: THREE.Color };
+      tag?: string;
+    };
+    if (child.name === name && tag !== 'helper' && child.parent?.visible && material?.color) {
+      color = material.color.getHexString();
+    }
+  });
+  return color;
+}
+
 /** Runs the render loop once, which is where the viewport settles what a frame draws. */
 function frame(view: Viewport) {
   (view as unknown as { renderLoop: () => void }).renderLoop();
@@ -118,6 +133,36 @@ describe('Viewport', () => {
     // texture to their unsigned integer sampler and WebGL2 dropped every wire.
     expect(DOT_OCCLUSION.dotOcclusionMap.value).toBe(NO_OCCLUSION_MAP);
     expect(DOT_OCCLUSION.dotOcclusionActive.value).toBe(false);
+  });
+
+  it('repaints the gizmo and the centre lines when an axis colour changes', () => {
+    store().resetPreferences();
+    const view = mount();
+    const { helper } = gizmoOf(view);
+    const axes = (view as unknown as { grid: { group: THREE.Group } }).grid.group
+      .children[1] as THREE.LineSegments;
+    const line = axes.geometry.getAttribute('color');
+
+    const { y, z } = store().axisColors;
+    store().setPreferences({ axisColors: { x: '#102030', y, z } });
+    frame(view);
+
+    expect(gizmoHandleColor(helper, 'X')).toBe('102030');
+    expect(new THREE.Color(line.getX(0), line.getY(0), line.getZ(0)).getHexString()).toBe('102030');
+
+    store().resetPreferences();
+  });
+
+  it('opens on the axis colours already in the preferences', () => {
+    store().resetPreferences();
+    const { x, y } = store().axisColors;
+    store().setPreferences({ axisColors: { x, y, z: '#102030' } });
+
+    const { helper } = gizmoOf(mount());
+
+    expect(gizmoHandleColor(helper, 'Z')).toBe('102030');
+
+    store().resetPreferences();
   });
 
   it('carries a dragged object step for step with the pointer, through the store updates it causes', () => {

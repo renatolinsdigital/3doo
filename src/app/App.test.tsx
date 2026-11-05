@@ -808,11 +808,12 @@ describe('App shell', () => {
 
     // With every section open, no swatch is left outside COLORS: the
     // background, both grid lines and the selection outline used to sit in
-    // three different sections, each found only by opening the right one.
+    // three different sections, each found only by opening the right one. The
+    // three axes make it seven.
     const colors = within(dialog).getByRole('button', { name: 'COLORS' }).closest('section');
     if (!colors) throw new Error('COLORS has no section');
     const swatches = dialog.querySelectorAll<HTMLElement>('input[type="color"]');
-    expect(swatches).toHaveLength(4);
+    expect(swatches).toHaveLength(7);
     for (const swatch of swatches) expect(colors).toContainElement(swatch);
 
     fireEvent.change(within(colors).getByLabelText('GRID SQUARES'), {

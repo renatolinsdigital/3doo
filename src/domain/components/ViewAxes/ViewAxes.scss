@@ -58,15 +58,15 @@
     stroke-linecap: round;
 
     &--x {
-      stroke: var(--red);
+      stroke: var(--axis-x);
     }
 
     &--y {
-      stroke: var(--amber);
+      stroke: var(--axis-y);
     }
 
     &--z {
-      stroke: var(--cyan);
+      stroke: var(--axis-z);
     }
   }
 
@@ -93,15 +93,15 @@
     }
 
     &--x circle {
-      fill: var(--red);
+      fill: var(--axis-x);
     }
 
     &--y circle {
-      fill: var(--amber);
+      fill: var(--axis-y);
     }
 
     &--z circle {
-      fill: var(--cyan);
+      fill: var(--axis-z);
     }
 
     // A negative end is the axis in outline: filled with the viewport's own
@@ -114,27 +114,27 @@
     }
 
     &--negative.view-axes__ball--x circle {
-      stroke: var(--red);
+      stroke: var(--axis-x);
     }
 
     &--negative.view-axes__ball--y circle {
-      stroke: var(--amber);
+      stroke: var(--axis-y);
     }
 
     &--negative.view-axes__ball--z circle {
-      stroke: var(--cyan);
+      stroke: var(--axis-z);
     }
 
     &--negative:hover.view-axes__ball--x circle {
-      fill: var(--red);
+      fill: var(--axis-x);
     }
 
     &--negative:hover.view-axes__ball--y circle {
-      fill: var(--amber);
+      fill: var(--axis-y);
     }
 
     &--negative:hover.view-axes__ball--z circle {
-      fill: var(--cyan);
+      fill: var(--axis-z);
     }
 
     &:hover circle {

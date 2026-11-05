@@ -208,6 +208,24 @@ describe('coercePreferences', () => {
     expect(coercePreferences({ gridMajorColor: '#B8452F' }).gridMajorColor).toBe('#b8452f');
   });
 
+  it('falls back on each axis colour alone', () => {
+    expect(coercePreferences({ axisColors: { x: '#102030', y: 'green' } }).axisColors).toEqual({
+      x: '#102030',
+      y: DEFAULT_PREFERENCES.axisColors.y,
+      z: DEFAULT_PREFERENCES.axisColors.z,
+    });
+    expect(coercePreferences({ axisColors: { z: '#3DE0D0' } }).axisColors.z).toBe('#3de0d0');
+  });
+
+  it('gives a blob saved before the axis colours had a preference the defaults', () => {
+    expect(coercePreferences({ gridColor: '#000000' }).axisColors).toEqual(
+      DEFAULT_PREFERENCES.axisColors,
+    );
+    expect(coercePreferences({ axisColors: 'red' }).axisColors).toEqual(
+      DEFAULT_PREFERENCES.axisColors,
+    );
+  });
+
   it('only takes an autosave interval the picker can show back', () => {
     expect(coercePreferences({ autosaveInterval: 30 }).autosaveInterval).toBe(30);
     expect(coercePreferences({ autosaveInterval: 900 }).autosaveInterval).toBe(900);
