@@ -14,6 +14,13 @@
 
 ![Centered Origin + Custom Angle Snapping](docs/gifs/snapping.gif)
 
+### Essential Modeling Tools: Extrude, Inset, Bridge, Knife, Merge, Loop Cut, Mirror Modifier, Subdivide, Dissolve, Snap, Relax, Duplicate, Booleans, etc
+
+![Emsar Sword Modeling - Part 1](docs/gifs/emsar_01.gif)
+![Emsar Sword Modeling - Part 2](docs/gifs/emsar_02.gif)
+
+
+*Full 3D game asset modeling using 3DOO's interface. Check the model <a href="https://skfb.ly/pPToU" target="_blank">here</a>*.
 
 ## Quick start
 
