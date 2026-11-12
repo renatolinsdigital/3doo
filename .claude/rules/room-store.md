@@ -30,7 +30,8 @@ preferences. Depth: `docs/state-management.md`.
   `announce(get())`, which raises its status as a success toast. `exec` does
   it for every operator outside `SELECTION_OPERATORS`. It is quiet inside
   `transact`, so a script raises one toast, not one per step. Adding objects
-  stays quiet: the opening cube goes through `addPrimitive`.
+  stays quiet: the opening cube goes through `addPrimitive`. Duplicating is
+  announced, since the copy lands exactly on top of its original.
 - `resetScene` keeps the toasts on screen.
 - Assets sit in `state.assets` by id, never inside an object, so history
   never copies image bytes.

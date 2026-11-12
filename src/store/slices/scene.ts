@@ -1507,6 +1507,7 @@ export const createSceneSlice: StateCreator<
       meshVersion: state.meshVersion + 1,
       status: `Duplicated ${copies.length} object(s)`,
     }));
+    announce(get());
   },
 
   /** Merges the selected objects into the active one, leaving a single object. */

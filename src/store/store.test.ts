@@ -1221,6 +1221,17 @@ describe('editor store', () => {
       },
       () => store().booleanWithSelected('difference'),
     ],
+    ['duplicating', () => store().addPrimitive('cube'), () => store().duplicateSelected()],
+    [
+      'a linked duplicate',
+      () => store().addPrimitive('cube'),
+      () => store().duplicateSelected(true),
+    ],
+    [
+      'recalculating normals',
+      () => store().addPrimitive('cube'),
+      () => store().exec('recalculateNormals', { outside: true }, 'Recalculate normals'),
+    ],
     ['cutting in half', () => store().addPrimitive('cube'), () => store().cutInHalf('x')],
     ['deleting objects', () => store().addPrimitive('cube'), () => store().deleteSelected()],
     [

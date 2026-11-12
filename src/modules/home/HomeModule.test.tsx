@@ -1,4 +1,6 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+
+import { MODIFIER_TYPES, OPERATOR_SPECS } from '@domain/scripting/reference';
 
 import { HomeModule } from './HomeModule';
 
@@ -37,6 +39,28 @@ const lastSound = (post: ReturnType<typeof vi.spyOn>) =>
     .map(([message]) => JSON.parse(String(message)).func)
     .filter((func) => func === 'mute' || func === 'unMute')
     .at(-1);
+
+describe('HomeModule figures', () => {
+  const stat = (label: string) => screen.getByText(label).nextElementSibling?.textContent;
+
+  it('counts the operations and modifiers the editor really has', () => {
+    render(<HomeModule />);
+
+    // Selecting and moving are not operations a visitor would count, and the
+    // three booleans run on objects rather than through the operator list.
+    const operations =
+      OPERATOR_SPECS.filter((spec) => spec.group !== 'selection' && spec.group !== 'transform')
+        .length + 3;
+    const modifierCard = screen.getByRole('heading', { name: 'NON-DESTRUCTIVE MODIFIERS' })
+      .parentElement as HTMLElement;
+
+    // The page used to claim 20 operations and 10 modifiers long after the
+    // editor had grown past both, while its own modifier card listed twelve.
+    expect(stat('MESH OPERATIONS')).toBe(String(operations));
+    expect(stat('MODIFIERS')).toBe(String(MODIFIER_TYPES.length));
+    expect(within(modifierCard).getAllByRole('listitem')).toHaveLength(MODIFIER_TYPES.length);
+  });
+});
 
 describe('HomeModule demo reel', () => {
   afterEach(() => {

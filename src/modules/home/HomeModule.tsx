@@ -19,8 +19,8 @@ const FACTS = [
 
 const STATS = [
   { label: 'KERNEL', value: 'HALF-EDGE', note: 'Every element knows its neighbours' },
-  { label: 'MESH OPERATIONS', value: '20', note: 'Edit-mode tools, plus booleans' },
-  { label: 'MODIFIERS', value: '10', note: 'Stackable and non-destructive' },
+  { label: 'MESH OPERATIONS', value: '31', note: 'Edit-mode tools, plus booleans' },
+  { label: 'MODIFIERS', value: '12', note: 'Stackable and non-destructive' },
   { label: 'IMPORT / EXPORT', value: 'OBJ · FBX', note: 'Both formats, both ways' },
   { label: 'ENGINE PRESETS', value: '4', note: 'Unity, Unreal, Blender, Maya' },
 ];
@@ -37,7 +37,7 @@ const CAPABILITIES = [
     number: '02',
     badge: 'EDIT',
     title: 'MODELING OPERATIONS',
-    body: 'Twenty operations, applied to whatever you select in vertex, edge or face mode. These eleven are the core.',
+    body: 'Twenty-eight operations, applied to whatever you select in vertex, edge or face mode. These eleven are the core.',
     tags: [
       'EXTRUDE',
       'INSET',
