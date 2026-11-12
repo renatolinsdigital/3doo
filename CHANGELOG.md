@@ -10,6 +10,15 @@ All notable changes to 3DOO are recorded here. Versions follow
 New entries go under `Unreleased` until a version is cut. Group them under
 `Added`, `Changed`, `Fixed` or `Removed`.
 
+## [Unreleased]
+
+### Added
+
+- The home page plays the looping demo reel from YouTube where the placeholder used to be.
+  A click on the reel turns the music off and on, shown by a small speaker in its top right
+  corner, and never opens YouTube. A first visit starts muted, as browsers require, and
+  the music comes on at the first click or key press.
+
 ## [1.0.0] - 2026-10-05
 
 First tracked release. It marks the state of the project at this point,

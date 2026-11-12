@@ -214,108 +214,79 @@ $max-width: 1600px;
     background: var(--void);
   }
 
-  &__reel-bar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-4) var(--space-5);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    color: var(--bone-shade);
-    border-bottom: var(--border-thin) solid var(--ash);
-  }
-
-  &__reel-name {
-    display: flex;
-    align-items: center;
-    gap: var(--space-4);
-
-    &::before {
-      content: '';
-      width: 10px;
-      height: 10px;
-      background: var(--red);
-    }
-  }
-
   &__reel-screen {
     position: relative;
-    display: flex;
     flex: 1;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-4);
+    width: 100%;
     aspect-ratio: 16 / 9;
-    padding: 56px var(--space-6);
-    text-align: center;
-    background-image:
-      linear-gradient(var(--ash) 1px, transparent 1px),
-      linear-gradient(90deg, var(--ash) 1px, transparent 1px);
-    background-size: 48px 48px;
-
-    &::before {
-      @include corner-brackets(var(--bone));
-
-      content: '';
-      position: absolute;
-      inset: var(--space-5);
-      pointer-events: none;
-    }
+    overflow: hidden;
+    background: var(--void);
   }
 
-  &__reel-play {
-    position: relative;
-    width: 80px;
-    height: 80px;
-    margin-bottom: var(--space-4);
-    background: var(--red);
-    border: var(--border-width) solid var(--bone);
-    box-shadow: 6px 6px 0 var(--bone);
-
-    &::after {
-      content: '';
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 18px;
-      height: 20px;
-      background: var(--bone);
-      clip-path: polygon(0 0, 100% 50%, 0 100%);
-      transform: translate(-40%, -50%);
-    }
-  }
-
-  &__reel-title {
-    font-family: var(--font-display);
-    font-size: 20px;
-    letter-spacing: 0.06em;
-    color: var(--bone);
-  }
-
-  &__reel-spec,
-  &__reel-caption {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    color: var(--bone-shade);
-  }
-
-  &__reel-caption {
+  // The player never sees the pointer: the hit button above it takes every
+  // click, so the reel cannot pause or send the visitor off to YouTube.
+  &__reel-poster,
+  &__reel-video {
     position: absolute;
-    bottom: 28px;
-    color: var(--ink-muted);
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+  }
 
-    &--start {
-      left: 52px;
-    }
+  &__reel-poster {
+    object-fit: cover;
+  }
 
-    &--end {
-      right: 52px;
+  // Fades in, but hides at once: a restart must cover YouTube's overlay
+  // before it is drawn.
+  &__reel-video {
+    opacity: 0;
+    pointer-events: none;
+
+    &--shown {
+      opacity: 1;
+      transition: opacity 0.4s;
     }
+  }
+
+  &__reel-hit {
+    position: absolute;
+    inset: 0;
+    padding: 0;
+    cursor: pointer;
+    background: transparent;
+    border: 0;
+
+    &:focus-visible {
+      outline: var(--border-width) solid var(--red);
+      outline-offset: calc(-1 * var(--border-width));
+    }
+  }
+
+  // Below the video's own title strip, where the reel shows only empty floor.
+  &__reel-sound {
+    position: absolute;
+    top: 12%;
+    right: var(--space-4);
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    color: var(--bone);
+    background: rgb(0 0 0 / 45%);
+    opacity: 0.6;
+    transition: opacity 0.2s;
+
+    .home__reel-hit:hover &,
+    .home__reel-hit:focus-visible & {
+      opacity: 1;
+    }
+  }
+
+  &__reel-glyph {
+    width: 18px;
+    height: 18px;
   }
 
   // The gap is the rule between cells: the void background shows through it,
@@ -490,13 +461,16 @@ $max-width: 1600px;
     margin: 48px $gutter 0;
   }
 
-  @include tablet-up {
+  // Side by side only where the intro is about as tall as a 16:9 reel. Below
+  // that the intro outgrows it and the video sat letterboxed in a tall box.
+  @include desktop-up {
     &__intro {
       grid-column: span 4;
     }
 
     &__reel {
       grid-column: span 8;
+      align-self: start;
     }
   }
 
@@ -515,11 +489,6 @@ $max-width: 1600px;
 
     &__grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-
-    &__reel-screen {
-      aspect-ratio: 16 / 9;
-      min-height: 320px;
     }
 
     &__closer {
@@ -557,23 +526,6 @@ $max-width: 1600px;
 
     &__cta {
       width: 100%;
-    }
-
-    &__reel-screen {
-      aspect-ratio: auto;
-      min-height: 300px;
-    }
-
-    &__reel-caption {
-      bottom: 24px;
-
-      &--start {
-        left: 44px;
-      }
-
-      &--end {
-        display: none;
-      }
     }
 
     &__stats {

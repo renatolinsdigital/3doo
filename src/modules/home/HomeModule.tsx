@@ -1,3 +1,5 @@
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
+
 import { ModuleSwitcher } from '@app/ModuleSwitcher/ModuleSwitcher';
 import { navigate } from '@app/router';
 import { SiteFooter, ThemeToggle } from '@domain/components';
@@ -82,6 +84,195 @@ const CAPABILITIES = [
 const openModeling = () => navigate('/modeling');
 const openDocs = () => navigate('/docs');
 
+const REEL_ID = 'KBKQk15FBj0';
+const REEL_HOST = 'https://www.youtube-nocookie.com';
+
+// The player starts muted because YouTube only autoplays reliably that way.
+// Every click lands on the button laid over it, never on the player, so
+// nothing can open YouTube or pause the reel. There is no loop parameter: the
+// reel seeks back to the start itself, so it knows when a restart happens and
+// can cover it, and the player never reaches its end screen.
+const reelSource = () =>
+  `${REEL_HOST}/embed/${REEL_ID}?${new URLSearchParams({
+    autoplay: '1',
+    mute: '1',
+    controls: '0',
+    disablekb: '1',
+    fs: '0',
+    iv_load_policy: '3',
+    playsinline: '1',
+    rel: '0',
+    enablejsapi: '1',
+    origin: window.location.origin,
+  })}`;
+
+const REEL_POSTER = `https://i.ytimg.com/vi/${REEL_ID}/maxresdefault.jpg`;
+// YouTube lays its title, channel and buttons over the first seconds after
+// every start and every seek, whatever the embed asks. The player is shown only
+// once the reel is past them, so the poster covers each start and each loop.
+// The fallback shows it anyway if the player never reports its time.
+const REVEAL_AFTER_S = 3.5;
+const REVEAL_FALLBACK_MS = 10_000;
+const PLAYER_ENDED = 0;
+
+const hasUserActivation = () => navigator.userActivation?.hasBeenActive ?? false;
+
+function DemoReel() {
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const screenRef = useRef<HTMLDivElement>(null);
+  const chosenRef = useRef(false);
+  const [source] = useState(reelSource);
+  const [muted, setMuted] = useState(() => !hasUserActivation());
+  const [revealed, setRevealed] = useState(false);
+  const mutedRef = useRef(muted);
+
+  const post = useCallback(
+    (message: object) =>
+      frameRef.current?.contentWindow?.postMessage(JSON.stringify(message), REEL_HOST),
+    [],
+  );
+  const applySound = useCallback(() => {
+    for (const func of [mutedRef.current ? 'mute' : 'unMute', 'playVideo']) {
+      post({ event: 'command', func, args: [] });
+    }
+  }, [post]);
+  const setSound = useCallback(
+    (nextMuted: boolean) => {
+      mutedRef.current = nextMuted;
+      setMuted(nextMuted);
+      applySound();
+    },
+    [applySound],
+  );
+
+  useEffect(() => {
+    let reported = false;
+    const restart = () => {
+      setRevealed(false);
+      post({ event: 'command', func: 'seekTo', args: [0, true] });
+      post({ event: 'command', func: 'playVideo', args: [] });
+    };
+    // Commands sent before the player is ready are dropped, so the sound is
+    // applied again once it says it is.
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== frameRef.current?.contentWindow) return;
+      let data: {
+        event?: string;
+        info?: { currentTime?: number; playerState?: number };
+      };
+      try {
+        data = JSON.parse(String(event.data));
+      } catch {
+        return;
+      }
+      if (data.event === 'onReady') applySound();
+      const { currentTime, playerState } = data.info ?? {};
+      if (currentTime !== undefined) {
+        reported = true;
+        setRevealed(currentTime >= REVEAL_AFTER_S);
+      }
+      if (playerState === PLAYER_ENDED) restart();
+    };
+    window.addEventListener('message', onMessage);
+    const fallback = window.setTimeout(() => {
+      if (!reported) setRevealed(true);
+    }, REVEAL_FALLBACK_MS);
+    return () => {
+      window.removeEventListener('message', onMessage);
+      window.clearTimeout(fallback);
+    };
+  }, [applySound, post]);
+
+  useEffect(() => {
+    if (!mutedRef.current) return;
+    // Browsers refuse sound until the visitor has touched the page, so the
+    // sound comes on at the first click or key anywhere. A click on the reel
+    // is left to its own handler, which would otherwise undo it straight away.
+    const unmuteOnGesture = (event: Event) => {
+      if (screenRef.current?.contains(event.target as Node)) return;
+      stopListening();
+      if (!chosenRef.current) setSound(false);
+    };
+    const stopListening = () => {
+      document.removeEventListener('pointerdown', unmuteOnGesture);
+      document.removeEventListener('keydown', unmuteOnGesture);
+    };
+    document.addEventListener('pointerdown', unmuteOnGesture);
+    document.addEventListener('keydown', unmuteOnGesture);
+    return stopListening;
+  }, [setSound]);
+
+  const onLoad = () => {
+    post({ event: 'listening', id: 'reel', channel: 'widget' });
+    applySound();
+  };
+
+  const toggleSound = () => {
+    chosenRef.current = true;
+    setSound(!mutedRef.current);
+  };
+
+  return (
+    <section className="home__reel" aria-label="Demo reel">
+      <div ref={screenRef} className="home__reel-screen">
+        <img className="home__reel-poster" src={REEL_POSTER} alt="" />
+        <iframe
+          ref={frameRef}
+          className={revealed ? 'home__reel-video home__reel-video--shown' : 'home__reel-video'}
+          src={source}
+          title="3DOO demo reel"
+          allow="autoplay; encrypted-media; picture-in-picture"
+          tabIndex={-1}
+          onLoad={onLoad}
+        />
+        <button
+          type="button"
+          className="home__reel-hit"
+          aria-label={muted ? 'Turn the sound on' : 'Turn the sound off'}
+          onClick={toggleSound}
+        >
+          <span className="home__reel-sound">{muted ? <SoundOffIcon /> : <SoundOnIcon />}</span>
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function SoundGlyph({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      className="home__reel-glyph"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      data-testid="reel-sound-icon"
+    >
+      <path d="M2 6h2.5L8 3v10l-3.5-3H2Z" />
+      {children}
+    </svg>
+  );
+}
+
+function SoundOnIcon() {
+  return (
+    <SoundGlyph>
+      <path d="M10.5 6a2.8 2.8 0 0 1 0 4M12.5 4a5.6 5.6 0 0 1 0 8" />
+    </SoundGlyph>
+  );
+}
+
+function SoundOffIcon() {
+  return (
+    <SoundGlyph>
+      <path d="m10.5 6 4 4m0-4-4 4" />
+    </SoundGlyph>
+  );
+}
+
 export function HomeModule() {
   return (
     <div className="home">
@@ -114,8 +305,8 @@ export function HomeModule() {
               operations, real export. Open it and start building.
             </p>
             <p className="home__lede">
-              It also ships an MCP server, so an AI assistant can use 3DOO as a tool: it builds
-              and edits models while you watch.
+              It also ships an MCP server, so an AI assistant can use 3DOO as a tool: it builds and
+              edits models while you watch.
             </p>
             <div className="home__actions">
               <Button
@@ -136,21 +327,7 @@ export function HomeModule() {
             </dl>
           </section>
 
-          <section className="home__reel" aria-label="Demo reel">
-            <div className="home__reel-bar">
-              <span className="home__reel-name">VIEWPORT: DEMO REEL</span>
-              <span className="home__reel-format">GIF / MP4 / WEBM · 16:9</span>
-            </div>
-            <div className="home__reel-screen">
-              <span className="home__reel-play" aria-hidden="true" />
-              <p className="home__reel-title">DROP YOUR DEMO HERE</p>
-              <p className="home__reel-spec">1920 × 1080 · LOOPING · MUTED · 10 TO 20 S</p>
-              <span className="home__reel-caption home__reel-caption--start">
-                PERSPECTIVE · FACE MODE
-              </span>
-              <span className="home__reel-caption home__reel-caption--end">00:00 / [0:15]</span>
-            </div>
-          </section>
+          <DemoReel />
 
           <dl className="home__stats">
             {STATS.map((stat) => (
