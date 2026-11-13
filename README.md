@@ -147,6 +147,7 @@ Sass. No Tailwind, no CSS-in-JS, no component library.
 | [scripting.md](docs/scripting.md) | The operator registry, `exec`, and the scripting API behind the SCRIPT editor |
 | [mcp.md](docs/mcp.md) | The MCP server for AI assistants: tools, payloads, the page API, snapshots and scene links |
 | [mcp-package.md](docs/mcp-package.md) | Publishing the `3doo-mcp` npm package: building, bumping, releasing and keeping it in step with the app |
+| [releasing.md](docs/releasing.md) | Cutting a version of 3DOO: the changelog, the git tag, the GitHub release and its files, and the list of releases |
 | [testing.md](docs/testing.md) | What is tested and how to add to it |
 | [how_aie2e_agents_work.md](docs/how_aie2e_agents_work.md) | `npm run aie2e`: three AI agents build a game-ready axe in 3DOO and judge it, and what the run says about the software |
 | [ai-memory.md](docs/ai-memory.md) | How an AI assistant finds its way round the project without reading all of it |

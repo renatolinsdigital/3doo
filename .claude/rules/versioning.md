@@ -20,3 +20,5 @@ each version contains.
 - When a bump is approved, update `package.json`, both root `version`
   fields in `package-lock.json`, and move the `Unreleased` entries under a
   new `## [x.y.z] - YYYY-MM-DD` heading.
+- The tag (`x.y.z`, no `v`) and the GitHub release follow
+  `docs/releasing.md`, which also keeps the list of releases.
